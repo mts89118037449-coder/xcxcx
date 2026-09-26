@@ -102,7 +102,17 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
           <Place x={104} y={266} scale={0.98} key={`me${i}`} className={`pose ${meCls}`}>
             {poses ? (
               <Body look={me.look}>
-                <PoseG name={done ? (replay.win ? 'crossed' : 'lying') : last?.by === 0 ? 'lunge' : 'guard34'} />
+                {done && !replay.win ? (
+                  // лёжа — та же одетая фигура, опрокинутая на землю головой к сопернику
+                  <g>
+                    <ellipse cx={40} cy={209} rx={70} ry={6} fill="#000" opacity={0.4} />
+                    <g transform="translate(-100 -34) rotate(90 60 208)">
+                      <PoseG name="stand" look={me.look} noShadow />
+                    </g>
+                  </g>
+                ) : (
+                  <PoseG name={done ? 'crossed' : last?.by === 0 ? 'lunge' : 'guard34'} look={me.look} />
+                )}
               </Body>
             ) : (
               <CharacterG look={me.look} mood={myMood} />

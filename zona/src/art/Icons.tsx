@@ -42,7 +42,7 @@ function cropFor(id: string, slot: string): string {
   }
 }
 
-const TATTOO_CROP: Record<string, string> = {
+export const TATTOO_CROP: Record<string, string> = {
   t_cat: '18 100 24 26',
   t_spider: '20 44 26 26',
   t_church: '44 48 32 28',

@@ -9,7 +9,7 @@ import type { Look } from '../../shared/types.ts';
 import { CharacterG, type Mood } from './Character.tsx';
 import { artUrl, characterLayers, useArt, type Pose } from './raster.ts';
 import { CellScene, Place, WorkScene, YardScene, type InteriorIds } from './Scenes.tsx';
-import { ImageG, PoseG, WALK, useFlipbook, useNpc, usePoses, type PoseName } from './sprites.tsx';
+import { ImageG, PoseG, WALK, isDressed, useFlipbook, useNpc, usePoses, type PoseName } from './sprites.tsx';
 
 type Loc = 'cell' | 'work' | 'yard';
 
@@ -71,11 +71,21 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, a
   const at = PLACE[loc];
   let figure: ReactNode;
   if (poses) {
-    const idle: PoseName = loc === 'cell' ? (mood === 'hurt' ? 'floor' : 'sit') : loc === 'work' ? 'stand34' : walkFrame;
+    // на полу сидит только раздетым: для этой позы одежда рисуется плохо
+    const idle: PoseName = loc === 'cell' ? (mood === 'hurt' && !isDressed(art, look) ? 'floor' : 'sit') : loc === 'work' ? 'stand34' : walkFrame;
     figure = (
       <g className={walking ? 'yard-walk' : undefined}>
         <Body look={look}>
-          <PoseG name={busyPose ?? idle} />
+          {walking ? (
+            // все кадры ходьбы в DOM сразу — иначе слои одежды не успевают загрузиться
+            WALK.map((f) => (
+              <g key={f} style={{ display: f === walkFrame ? 'inline' : 'none' }}>
+                <PoseG name={f} look={look} />
+              </g>
+            ))
+          ) : (
+            <PoseG name={busyPose ?? idle} look={look} />
+          )}
         </Body>
       </g>
     );

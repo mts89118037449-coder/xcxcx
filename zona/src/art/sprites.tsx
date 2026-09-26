@@ -3,6 +3,7 @@
 // относительно стоячей позы: сидящий получается ниже, как и должно быть.
 
 import { useEffect, useState, type ReactNode } from 'react';
+import type { Look } from '../../shared/types.ts';
 import { artSize, artUrl, useArt } from './raster.ts';
 
 export type PoseName =
@@ -90,13 +91,94 @@ export function ImageG({ url, height = H, mirror, tone, className }: { url: stri
   );
 }
 
-/** Поза игрока в правильном масштабе относительно стоячей. */
-export function PoseG({ name, mirror, tone }: { name: PoseName; mirror?: boolean; tone?: string }) {
+/** Где у позы голова — чтобы надеть шапку (доли картинки: x0, y0, x1, y1). */
+let dressMeta: Record<string, { head: [number, number, number, number]; feet: [number, number] }> | null = null;
+fetch('/art/sheet/dress/meta.json')
+  .then((r) => (r.ok ? r.json() : null))
+  .then((m) => (dressMeta = m))
+  .catch(() => {});
+
+const SLOT_ORDER = ['legs', 'feet', 'body'] as const;
+/** Доля иконки шапки, которую надеваем (сверху вниз). */
+const HAT_KEEP: Record<string, number> = { cap_ushanka: 0.55, cap_knit: 0.9 };
+const GOLD_TINT = 'sepia(1) saturate(3.2) hue-rotate(-8deg) brightness(1.15) contrast(1.1)';
+
+/** Слои одежды и наколок для позы: только те, что реально нарисованы. */
+function dressLayers(art: Set<string> | null, name: PoseName, look?: Look): string[] {
+  if (!art || !look) return [];
+  const out: string[] = [];
+  const add = (id: string) => {
+    const u = artUrl(art, `sheet/dress/${name}/${id}`);
+    if (u) out.push(u);
+  };
+  look.tattoos.forEach(add);
+  for (const slot of SLOT_ORDER) {
+    const id = look.equipped[slot];
+    if (id) add(id);
+  }
+  return out;
+}
+
+/** Одета ли хоть одна вещь, которую умеем рисовать на теле. */
+export function isDressed(art: Set<string> | null, look?: Look): boolean {
+  return !!look && SLOT_ORDER.some((s) => look.equipped[s] && artUrl(art, `sheet/dress/stand/${look.equipped[s]}`));
+}
+
+/** Поза игрока в правильном масштабе относительно стоячей — вместе со шмотками и наколками. */
+export function PoseG({ name, mirror, tone, look, noShadow }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean }) {
+  const art = useArt();
   const url = poseUrl(name);
   const ref = artSize(poseUrl('stand'));
   const size = artSize(url);
   const h = ref && size ? (size[1] / ref[1]) * H : H;
-  return <ImageG url={url} height={h} mirror={mirror} tone={tone} className="char-breathe" />;
+  const w = size ? (size[0] / size[1]) * h : h * 0.4;
+  const x = 60 - w / 2;
+  const y = 210 - h;
+  const layers = dressLayers(art, name, look);
+  const hat = look?.equipped.head ? artUrl(art, `sheet/icons/${look.equipped.head}`) : null;
+  const hb = dressMeta?.[name]?.head;
+  let hatEl = null;
+  if (hat && hb) {
+    const headW = (hb[2] - hb[0]) * w;
+    const headH = (hb[3] - hb[1]) * h;
+    const hsz = artSize(hat);
+    const ratio = hsz ? hsz[1] / hsz[0] : 0.8;
+    // сколько картинки шапки брать сверху: у ушанки без свисающих клапанов, иначе закрывают лицо
+    const keep = HAT_KEEP[look!.equipped.head!] ?? 1;
+    const hw = headW * 1.22;
+    const hh = hw * ratio * keep;
+    const cx = x + ((hb[0] + hb[2]) / 2) * w;
+    // край шапки — на лбу, чуть выше бровей
+    const brow = y + hb[1] * h + headH * 0.3;
+    hatEl = (
+      <svg x={cx - hw / 2} y={brow - hh} width={hw} height={hh} viewBox={`0 0 100 ${100 * ratio * keep}`} preserveAspectRatio="none" overflow="hidden">
+        <image
+          href={hat}
+          width={100}
+          height={100 * ratio}
+          style={look?.equipped.head === 'cap_gold' ? { filter: GOLD_TINT } : undefined}
+        />
+      </svg>
+    );
+  }
+  return (
+    <g className="char-breathe">
+      <g transform={mirror ? 'translate(120 0) scale(-1 1)' : undefined} style={tone ? { filter: tone } : undefined}>
+        {/* тень строго под ступнями — иначе фигура «висит» */}
+        {!noShadow && (() => {
+          const f = dressMeta?.[name]?.feet ?? [0.25, 0.75];
+          const fx0 = x + f[0] * w;
+          const fx1 = x + f[1] * w;
+          return <ellipse cx={(fx0 + fx1) / 2} cy={209} rx={Math.max(12, (fx1 - fx0) / 2 + 6)} ry={4.5} fill="#000" opacity={0.45} style={{ filter: 'none' }} />;
+        })()}
+        <image href={url} x={x} y={y} width={w} height={h} />
+        {layers.map((u) => (
+          <image key={u} href={u} x={x} y={y} width={w} height={h} />
+        ))}
+        {hatEl}
+      </g>
+    </g>
+  );
 }
 
 /** Покадровая анимация (ходьба). */

@@ -8,7 +8,7 @@ from scipy import ndimage
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'public', 'art', 'sheet')
 
-def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False, trim=(0, 0)):
+def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False, trim=(0, 0), grey_gaps=False):
     x0, y0, x1, y1 = box
     im = src.crop(box)
     a = np.asarray(im).astype(int)
@@ -31,6 +31,12 @@ def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False, trim=
         gsizes = ndimage.sum(gap, glab, range(1, gn + 1))
         gtex = ndimage.mean(tex, glab, range(1, gn + 1))
         fg &= ~np.isin(glab, [i + 1 for i in range(gn) if gsizes[i] >= 30 and gtex[i] < 6])
+    if grey_gaps:  # на листе поз одежды нет: любой нейтрально-серый просвет — фон
+        grey = (sat < 12) & (np.abs(a.mean(2) - bgc.mean()) < 28)
+        glab2, gn2 = ndimage.label(grey)
+        if gn2:
+            gs = ndimage.sum(grey, glab2, range(1, gn2 + 1))
+            fg &= ~np.isin(glab2, [i + 1 for i in range(gn2) if gs[i] >= 20])
     # обрезки соседних фигур у краёв кадра
     if trim[0]:
         fg[:, : trim[0]] = False
@@ -162,7 +168,7 @@ if __name__ == '__main__':
             print(k, cut(cast, b, 'cast/' + k, keep_share=0.35, open_thin=k != 'lawyer', trim=CAST_TRIM.get(k, (0, 0))))
     poses = Image.open(sys.argv[1]).convert('RGB')
     for k, b in POSES.items():
-        print(k, cut(poses, b, 'pose/' + k))
+        print(k, cut(poses, b, 'pose/' + k, grey_gaps=True))
     if len(sys.argv) > 2:
         faces = Image.open(sys.argv[2]).convert('RGB')
         # сетка 8×4 под заголовком; линии сетки обрезаем отступом

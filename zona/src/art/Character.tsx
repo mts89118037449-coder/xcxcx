@@ -954,3 +954,8 @@ export function ItemOnly({ id, slot }: { id: string; slot: string }) {
     </g>
   );
 }
+
+/** Рисунок наколки отдельно, без тела — для набивки на рисованные позы. */
+export function TattooArt({ id }: { id: string }) {
+  return <g>{TATTOO[id]?.((x) => x)}</g>;
+}
