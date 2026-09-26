@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PlayerView } from '../shared/types.ts';
 import { api, ApiError, tg } from './api.ts';
-import { Bar, GameCtx, fmt, timeLeft, useNow, type FightLog, type Game, type Tab } from './game.tsx';
+import { FightArena, type Fighter } from './art/FightArena.tsx';
+import { Bar, GameCtx, fmt, lookOf, timeLeft, useNow, type FightLog, type Game, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
 import { Gear } from './screens/Gear.tsx';
 import { Home } from './screens/Home.tsx';
@@ -147,16 +148,25 @@ export function App() {
 
       {toastMsg && <div className={`toast toast-${toastMsg.kind}`}>{toastMsg.text}</div>}
 
-      {fight && (
-        <div className="modal" onClick={() => setFight(null)}>
-          <div className="modal-body" onClick={(e) => e.stopPropagation()}>
-            <h2 className={fight.win ? 'win' : 'lose'}>{fight.win ? '🏆 Победа' : '💀 Поражение'}</h2>
-            <div className="muted center">{fight.title}</div>
-            <ul className="fight-log">
-              {fight.log.map((l, i) => (
-                <li key={i}>{l}</li>
-              ))}
-            </ul>
+      {fight && <FightModal fight={fight} me={{ name: p.name, look: lookOf(p) }} onClose={() => setFight(null)} />}
+    </GameCtx.Provider>
+  );
+}
+
+function FightModal({ fight, me, onClose }: { fight: FightLog; me: Fighter; onClose(): void }) {
+  const [done, setDone] = useState(false);
+  const finish = useCallback(() => {
+    setDone(true);
+    tg?.HapticFeedback?.notificationOccurred(fight.replay.win ? 'success' : 'error');
+  }, [fight]);
+  return (
+    <div className="modal" onClick={() => done && onClose()}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <FightArena me={me} enemy={fight.enemy} replay={fight.replay} onDone={finish} />
+        <div className="muted center">{fight.title}</div>
+        {done && (
+          <div className="result-in">
+            <h2 className={fight.replay.win ? 'win' : 'lose'}>{fight.replay.win ? '🏆 Победа' : '💀 Поражение'}</h2>
             {fight.lines.length > 0 && (
               <div className="rewards">
                 {fight.lines.map((l, i) => (
@@ -164,10 +174,12 @@ export function App() {
                 ))}
               </div>
             )}
-            <button className="btn btn-wide" onClick={() => setFight(null)}>Ясно</button>
+            <button className="btn btn-wide" onClick={onClose}>
+              Ясно
+            </button>
           </div>
-        </div>
-      )}
-    </GameCtx.Provider>
+        )}
+      </div>
+    </div>
   );
 }

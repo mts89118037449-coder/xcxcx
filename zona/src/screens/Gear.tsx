@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ITEMS, SLOT_NAMES, TATTOOS, itemById, type Item, type Slot } from '../../shared/content.ts';
-import { BonusList, Card, Price, useGame } from '../game.tsx';
+import { Character } from '../art/Character.tsx';
+import { BonusList, Card, Price, lookOf, useAnim, useGame } from '../game.tsx';
 
 type View = 'mine' | 'shop' | 'ink';
 
@@ -8,16 +9,34 @@ export function Gear() {
   const { p, act, busy, toast } = useGame();
   const [view, setView] = useState<View>('mine');
   const [slot, setSlot] = useState<Slot | 'all'>('all');
+  const [bare, setBare] = useState(false);
+  const [anim, animKey, play] = useAnim();
+
+  const dress = async (type: 'equip' | 'unequip', body: Record<string, unknown>) => {
+    if ((await act(type, body)) !== null) play('act-dress');
+  };
 
   const buy = async (item: Item) => {
     if (item.currency === 'gold' && !confirm(`Купить «${item.name}» за ${item.price} 🪙?`)) return;
-    if ((await act('buy', { itemId: item.id })) !== null) toast(`${item.emoji} ${item.name} — твоё`);
+    if ((await act('buy', { itemId: item.id })) === null) return;
+    play('act-dress');
+    toast(`${item.emoji} ${item.name} — твоё`);
   };
 
   const sell = async (item: Item) => {
     if (!confirm(`Продать «${item.name}»?`)) return;
     const r = await act<{ price: number }>('sell', { itemId: item.id });
     if (r) toast(`Продано за ${r.price} ₽`);
+  };
+
+  const slotTile = (s: Slot) => {
+    const item = p.equipped[s] ? itemById.get(p.equipped[s]!) : null;
+    return (
+      <div key={s} className={`wslot ${item ? 'filled' : ''}`}>
+        <span>{item?.emoji ?? '▫️'}</span>
+        {item?.name ?? SLOT_NAMES[s]}
+      </div>
+    );
   };
 
   const shop = ITEMS.filter((i) => !i.bossOnly && (slot === 'all' || i.slot === slot));
@@ -33,19 +52,14 @@ export function Gear() {
 
       {view === 'mine' && (
         <>
-          <Card>
-            <div className="slots">
-              {(Object.keys(SLOT_NAMES) as Slot[]).map((s) => {
-                const item = p.equipped[s] ? itemById.get(p.equipped[s]!) : null;
-                return (
-                  <div key={s} className={`slot ${item ? 'filled' : ''}`}>
-                    <span className="slot-emoji">{item?.emoji ?? '▫️'}</span>
-                    <small>{item?.name ?? SLOT_NAMES[s]}</small>
-                  </div>
-                );
-              })}
+          <div className="wardrobe">
+            <div className="wardrobe-col">{(['head', 'body', 'legs'] as Slot[]).map(slotTile)}</div>
+            <div className="pose-wrap" onClick={() => setBare(!bare)}>
+              <Character key={animKey} className={`char-view pose ${anim}`} look={lookOf(p)} bare={bare} />
             </div>
-          </Card>
+            <div className="wardrobe-col">{(['weapon', 'charm', 'feet'] as Slot[]).map(slotTile)}</div>
+          </div>
+          <div className="muted small center">Нажми на персонажа — {bare ? 'одеть' : 'снять верх и показать наколки'}</div>
           <h3 className="section">Инвентарь</h3>
           {mine.map((i) => {
             const on = p.equipped[i.slot] === i.id;
@@ -58,9 +72,9 @@ export function Gear() {
                   </div>
                   <div className="row gap-s">
                     {on ? (
-                      <button className="btn btn-s btn-dark" disabled={busy} onClick={() => act('unequip', { slot: i.slot })}>Снять</button>
+                      <button className="btn btn-s btn-dark" disabled={busy} onClick={() => dress('unequip', { slot: i.slot })}>Снять</button>
                     ) : (
-                      <button className="btn btn-s" disabled={busy} onClick={() => act('equip', { itemId: i.id })}>Надеть</button>
+                      <button className="btn btn-s" disabled={busy} onClick={() => dress('equip', { itemId: i.id })}>Надеть</button>
                     )}
                     {i.currency === 'money' && (
                       <button className="btn btn-s btn-dark" disabled={busy} onClick={() => sell(i)}>₽</button>

@@ -1,5 +1,7 @@
 import { GOLD_PRICES, JOBS, STAT_NAMES, trainCost, type Stat } from '../../shared/content.ts';
-import { Card, Price, fmt, useGame } from '../game.tsx';
+import { CharacterG } from '../art/Character.tsx';
+import { Place, Scene, WorkScene } from '../art/Scenes.tsx';
+import { Card, Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
 
 const STAT_HINT: Record<Stat, string> = {
   str: '+3 к атаке',
@@ -9,14 +11,31 @@ const STAT_HINT: Record<Stat, string> = {
 
 export function Work() {
   const { p, act, toast, busy } = useGame();
+  const [anim, animKey, play] = useAnim();
 
   const work = async (jobId: string) => {
     const r = await act<{ money: number; xp: number; levelUps: number }>('job', { jobId });
-    if (r) toast(`+${fmt(r.money)} ₽, +${r.xp} опыта${r.levelUps ? ' · НОВЫЙ УРОВЕНЬ!' : ''}`);
+    if (!r) return;
+    play(r.levelUps ? 'act-cheer' : 'act-work');
+    toast(`+${fmt(r.money)} ₽, +${r.xp} опыта${r.levelUps ? ' · НОВЫЙ УРОВЕНЬ!' : ''}`);
+  };
+
+  const pump = async (type: 'allocate' | 'train', stat: Stat) => {
+    if ((await act(type, { stat })) !== null) play('act-work');
   };
 
   return (
     <>
+      <div className="scene-wrap">
+        <Scene>
+          <WorkScene>
+            <Place x={170} y={216} scale={0.8} key={animKey} className={`pose ${anim}`}>
+              <CharacterG look={lookOf(p)} mood={p.hp < p.stats.maxHp * 0.3 ? 'hurt' : 'idle'} />
+            </Place>
+          </WorkScene>
+        </Scene>
+        <div className="scene-tag">⚒️ Промзона</div>
+      </div>
       <Card>
         <h3>Прокачка {p.statPoints > 0 && <span className="badge">{p.statPoints} очк.</span>}</h3>
         {(Object.keys(STAT_NAMES) as Stat[]).map((s) => (
@@ -27,9 +46,9 @@ export function Work() {
             </div>
             <div className="row gap-s">
               {p.statPoints > 0 && (
-                <button className="btn btn-s" disabled={busy} onClick={() => act('allocate', { stat: s })}>+1</button>
+                <button className="btn btn-s" disabled={busy} onClick={() => pump('allocate', s)}>+1</button>
               )}
-              <button className="btn btn-s btn-dark" disabled={busy || p.money < trainCost(p[s])} onClick={() => act('train', { stat: s })}>
+              <button className="btn btn-s btn-dark" disabled={busy || p.money < trainCost(p[s])} onClick={() => pump('train', s)}>
                 🏋️ <Price amount={trainCost(p[s])} currency="money" />
               </button>
             </div>

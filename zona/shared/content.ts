@@ -168,6 +168,48 @@ export const BOSSES: Boss[] = [
   },
 ];
 
+// Обустройство хаты: мебель видна в сцене камеры и даёт постоянные бонусы.
+export type Spot = 'bed' | 'table' | 'wall' | 'tech' | 'floor' | 'window' | 'corner';
+
+export interface Furniture extends Bonus {
+  id: string;
+  name: string;
+  emoji: string;
+  spot: Spot;
+  minLevel: number;
+  price: number;
+  currency: 'money' | 'gold';
+}
+
+export const SPOT_NAMES: Record<Spot, string> = {
+  bed: 'Шконка',
+  table: 'Стол',
+  wall: 'Стена',
+  tech: 'Техника',
+  floor: 'Пол',
+  window: 'Окно',
+  corner: 'Угол',
+};
+
+// Внутри одного места более поздняя вещь — апгрейд: в сцене рисуется лучшая из купленных.
+export const FURNITURE: Furniture[] = [
+  { id: 'f_mattress', name: 'Ватный матрас', emoji: '🛏️', spot: 'bed', minLevel: 1, price: 400, currency: 'money', hp: 20 },
+  { id: 'f_blanket', name: 'Шерстяное одеяло', emoji: '🧶', spot: 'bed', minLevel: 5, price: 3500, currency: 'money', hp: 50 },
+  { id: 'f_bed_vip', name: 'Шконка с периной', emoji: '👑', spot: 'bed', minLevel: 5, price: 150, currency: 'gold', hp: 100, energy: 10 },
+  { id: 'f_tumba', name: 'Тумбочка', emoji: '🗄️', spot: 'table', minLevel: 2, price: 700, currency: 'money', money: 5 },
+  { id: 'f_table', name: 'Стол с чифирбаком', emoji: '🫖', spot: 'table', minLevel: 6, price: 5000, currency: 'money', money: 10, energy: 5 },
+  { id: 'f_calendar', name: 'Календарь с красоткой', emoji: '📅', spot: 'wall', minLevel: 1, price: 250, currency: 'money', energy: 5 },
+  { id: 'f_carpet', name: 'Ковёр на стену', emoji: '🟥', spot: 'wall', minLevel: 5, price: 3000, currency: 'money', def: 5, hp: 20 },
+  { id: 'f_icons', name: 'Иконостас', emoji: '🖼️', spot: 'wall', minLevel: 10, price: 9000, currency: 'money', crit: 3, def: 5 },
+  { id: 'f_radio', name: 'Радиоприёмник', emoji: '📻', spot: 'tech', minLevel: 3, price: 2000, currency: 'money', energy: 10 },
+  { id: 'f_tv', name: 'Телевизор', emoji: '📺', spot: 'tech', minLevel: 5, price: 120, currency: 'gold', energy: 20, money: 5 },
+  { id: 'f_rug', name: 'Половик', emoji: '🟫', spot: 'floor', minLevel: 2, price: 350, currency: 'money', def: 2 },
+  { id: 'f_curtains', name: 'Занавески', emoji: '🪟', spot: 'window', minLevel: 4, price: 1200, currency: 'money', money: 3 },
+  { id: 'f_plant', name: 'Цветок на окне', emoji: '🪴', spot: 'window', minLevel: 8, price: 6000, currency: 'money', hp: 30, money: 5 },
+  { id: 'f_fridge', name: 'Холодильник', emoji: '🧊', spot: 'corner', minLevel: 12, price: 15000, currency: 'money', hp: 40, energy: 10 },
+  { id: 'f_aquarium', name: 'Аквариум', emoji: '🐠', spot: 'corner', minLevel: 6, price: 200, currency: 'gold', money: 15, crit: 3 },
+];
+
 // Общий босс для всего сервера: его бьют все игроки онлайн, награду делят по урону.
 export const WORLD_BOSS = {
   name: 'Бунт на централе',
@@ -238,3 +280,4 @@ export const tattooById = new Map(TATTOOS.map((t) => [t.id, t]));
 export const jobById = new Map(JOBS.map((j) => [j.id, j]));
 export const bossById = new Map(BOSSES.map((b) => [b.id, b]));
 export const packById = new Map(STAR_PACKS.map((p) => [p.id, p]));
+export const furnitureById = new Map(FURNITURE.map((f) => [f.id, f]));

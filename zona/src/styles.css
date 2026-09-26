@@ -261,19 +261,7 @@ main {
   color: var(--muted);
   font-size: 11px;
 }
-.ink {
-  margin-top: 10px;
-  font-size: 22px;
-  letter-spacing: 4px;
-  text-align: center;
-}
 
-.boss-emoji {
-  font-size: 34px;
-  width: 44px;
-  text-align: center;
-  flex-shrink: 0;
-}
 
 /* --- Кнопки ------------------------------------------------------------ */
 .btn {
@@ -397,40 +385,11 @@ main {
 }
 
 /* --- Снаряжение -------------------------------------------------------- */
-.slots {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-}
-.slot {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 10px 4px;
-  border: 1px dashed var(--line);
-  border-radius: 10px;
-  color: var(--muted);
-}
-.slot.filled {
-  border-style: solid;
-  background: var(--card-2);
-  color: var(--text);
-}
-.slot-emoji {
-  font-size: 26px;
-}
-.slot small {
-  font-size: 11px;
-  line-height: 1.2;
-  margin-top: 2px;
-}
 
 /* --- Списки ------------------------------------------------------------ */
 .journal,
 .rating,
-.dmg-top,
-.fight-log {
+.dmg-top {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -583,14 +542,6 @@ main {
 .lose {
   color: #e06a55;
 }
-.fight-log {
-  margin: 12px 0;
-  font-size: 13.5px;
-  color: #cfc6b3;
-}
-.fight-log li {
-  padding: 3px 0;
-}
 .rewards {
   background: var(--card-2);
   border-radius: 10px;
@@ -612,4 +563,508 @@ main {
 }
 .splash-logo {
   font-size: 64px;
+}
+
+/* --- Сцены и персонаж --------------------------------------------------- */
+.scene-wrap {
+  position: relative;
+  margin: -10px -12px 10px;
+  border-bottom: 1px solid var(--line);
+  background: #111;
+  overflow: hidden;
+}
+.scene {
+  display: block;
+  width: 100%;
+  height: 250px;
+}
+.scene-tag {
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: #000a;
+  font-weight: 700;
+  font-size: 13px;
+}
+.scene-btn {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  border: 1px solid #fff3;
+  border-radius: 8px;
+  background: #000a;
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+
+.char-breathe {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: breathe 3.2s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% {
+    transform: scale(1.006, 1.014);
+  }
+}
+.char-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: blink 4.8s infinite;
+}
+@keyframes blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  97% {
+    transform: scaleY(0.1);
+  }
+}
+.tattoo {
+  animation: ink-in 0.8s ease-out;
+}
+@keyframes ink-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* действия персонажа */
+.pose {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.act-work {
+  animation: work 0.45s ease-in-out 2;
+}
+@keyframes work {
+  40% {
+    transform: translateY(6px) rotate(-3deg) scaleY(0.96);
+  }
+}
+.act-dress {
+  animation: dress 0.5s ease-out;
+}
+@keyframes dress {
+  30% {
+    transform: scale(1.06) translateY(-4px);
+    filter: brightness(1.4);
+  }
+}
+.act-cheer {
+  animation: cheer 0.6s ease-out 2;
+}
+@keyframes cheer {
+  40% {
+    transform: translateY(-10px);
+  }
+}
+
+/* бой */
+.lunge-r {
+  animation: lunge-r 0.36s ease-out;
+}
+.lunge-l {
+  animation: lunge-l 0.36s ease-out;
+}
+@keyframes lunge-r {
+  40% {
+    transform: translateX(34px) rotate(4deg);
+  }
+}
+@keyframes lunge-l {
+  40% {
+    transform: translateX(-34px) rotate(-4deg);
+  }
+}
+.got-hit {
+  animation: got-hit 0.4s ease-out;
+}
+@keyframes got-hit {
+  20% {
+    transform: translateX(-4px);
+    filter: sepia(1) saturate(6) hue-rotate(-40deg) brightness(0.9);
+  }
+  45% {
+    transform: translateX(4px);
+  }
+}
+.got-crit {
+  animation: got-crit 0.5s ease-out;
+}
+@keyframes got-crit {
+  20% {
+    transform: translateX(-8px) rotate(-6deg);
+    filter: sepia(1) saturate(8) hue-rotate(-40deg) brightness(1.1);
+  }
+  50% {
+    transform: translateX(6px) rotate(3deg);
+  }
+}
+.ko {
+  animation: ko 0.7s ease-in forwards;
+}
+/* падаем к центру арены, чтобы не уехать за край */
+@keyframes ko {
+  to {
+    transform: translateX(70px) rotate(-82deg);
+    opacity: 0.85;
+  }
+}
+.ko-r {
+  animation: ko-r 0.7s ease-in forwards;
+}
+@keyframes ko-r {
+  to {
+    transform: translateX(-70px) rotate(82deg);
+    opacity: 0.85;
+  }
+}
+.dmg-pop {
+  animation: dmg-pop 0.8s ease-out forwards;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 3px;
+}
+@keyframes dmg-pop {
+  from {
+    transform: translateY(0) scale(0.6);
+    opacity: 1;
+  }
+  30% {
+    transform: translateY(-8px) scale(1.2);
+  }
+  to {
+    transform: translateY(-26px) scale(1);
+    opacity: 0;
+  }
+}
+
+/* окружение */
+.lamp-flicker {
+  animation: flicker 6s infinite;
+}
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  91% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 0.4;
+  }
+  93% {
+    opacity: 1;
+  }
+  95% {
+    opacity: 0.6;
+  }
+}
+.crow-head {
+  transform-box: fill-box;
+  transform-origin: 20% 80%;
+  animation: peck 5s infinite;
+}
+@keyframes peck {
+  0%,
+  70%,
+  100% {
+    transform: rotate(0);
+  }
+  75% {
+    transform: rotate(35deg);
+  }
+  80% {
+    transform: rotate(0);
+  }
+  85% {
+    transform: rotate(-15deg);
+  }
+}
+.cloud-drift {
+  animation: drift 24s ease-in-out infinite alternate;
+}
+.cloud-drift.slow {
+  animation-duration: 60s;
+}
+@keyframes drift {
+  to {
+    transform: translateX(40px);
+  }
+}
+.twinkle {
+  animation: twinkle 2.4s infinite alternate;
+}
+@keyframes twinkle {
+  to {
+    opacity: 0.2;
+  }
+}
+.fish {
+  animation: swim 5s ease-in-out infinite alternate;
+}
+.fish-2 {
+  animation-duration: 7s;
+  animation-direction: alternate-reverse;
+}
+@keyframes swim {
+  to {
+    transform: translateX(16px);
+  }
+}
+.bubble {
+  animation: bubble 2.5s linear infinite;
+}
+@keyframes bubble {
+  to {
+    transform: translateY(-26px);
+    opacity: 0;
+  }
+}
+.steam {
+  animation: steam 2.6s ease-in-out infinite;
+}
+@keyframes steam {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+.note {
+  animation: note 2.2s ease-out infinite;
+}
+@keyframes note {
+  from {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(8px, -16px);
+  }
+}
+.tv-screen {
+  animation: tv 3s steps(1) infinite;
+}
+@keyframes tv {
+  0% {
+    fill: #6fb3d9;
+  }
+  33% {
+    fill: #9bd48a;
+  }
+  66% {
+    fill: #e6c07a;
+  }
+}
+.needle {
+  animation: needle 0.18s linear infinite alternate;
+}
+@keyframes needle {
+  to {
+    transform: translateY(4px);
+  }
+}
+.conveyor {
+  animation: conveyor 3s linear infinite;
+}
+@keyframes conveyor {
+  from {
+    transform: translateX(-40px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.searchlight {
+  transform-box: fill-box;
+  transform-origin: 100% 0%;
+  animation: sweep 7s ease-in-out infinite alternate;
+}
+@keyframes sweep {
+  from {
+    transform: rotate(-12deg);
+  }
+  to {
+    transform: rotate(14deg);
+  }
+}
+.spark {
+  opacity: 0;
+  animation: spark 0.9s ease-out infinite;
+}
+.spark-1 {
+  animation-delay: 0.15s;
+  --dx: -14px;
+}
+.spark-2 {
+  animation-delay: 0.3s;
+  --dx: 10px;
+}
+.spark-3 {
+  animation-delay: 0.45s;
+  --dx: -6px;
+}
+.spark-4 {
+  animation-delay: 0.6s;
+  --dx: 16px;
+}
+@keyframes spark {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx, 8px), 18px);
+  }
+}
+
+/* гардероб */
+.wardrobe {
+  display: grid;
+  grid-template-columns: 76px 1fr 76px;
+  align-items: center;
+  gap: 6px;
+  background: radial-gradient(ellipse at 50% 60%, #3a3226, #1b1813 70%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 8px;
+  margin-bottom: 8px;
+}
+.wardrobe .char-view {
+  width: 100%;
+  height: 270px;
+}
+.wardrobe-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wslot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+  min-height: 74px;
+  padding: 6px 2px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: #0006;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.15;
+}
+.wslot.filled {
+  border-style: solid;
+  border-color: #6b5520;
+  color: var(--text);
+}
+.wslot span {
+  font-size: 24px;
+}
+
+/* обустройство */
+.hscroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -12px 8px;
+  padding: 0 12px 2px;
+}
+.ftile {
+  flex: 0 0 128px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  font-size: 12.5px;
+}
+.ftile.owned {
+  border-color: var(--green);
+}
+.ftile.premium {
+  border-color: #6b5520;
+  background: linear-gradient(135deg, #2a2415, var(--card));
+}
+.ftile .femoji {
+  font-size: 24px;
+}
+.ftile .btn {
+  margin-top: auto;
+}
+
+/* арена */
+.arena {
+  position: relative;
+  margin: -18px -16px 10px;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+}
+.arena .scene {
+  height: 260px;
+}
+.arena-hp {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px #000;
+}
+.arena-hp > div:last-child {
+  text-align: right;
+}
+.arena-hp .bar {
+  height: 12px;
+  margin-top: 3px;
+}
+.arena-skip {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: #000a;
+  padding: 5px 10px;
+  font-size: 12.5px;
+}
+.result-in {
+  animation: up 0.3s ease-out;
+}
+.boss-emoji {
+  font-size: 34px;
+  width: 44px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.boss-face {
+  width: 56px;
+  height: 60px;
+  flex-shrink: 0;
+  background: #0006;
+  border-radius: 10px;
 }

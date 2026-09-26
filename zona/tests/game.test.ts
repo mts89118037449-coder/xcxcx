@@ -125,3 +125,32 @@ test('стартовый набор продаётся один раз', () => {
   assert.ok(g.isVip(p, T0));
   assert.throws(() => g.checkPack(p, 'starter'), /уже куплен/);
 });
+
+test('обустройство хаты даёт бонусы', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  const hp = g.stats(p, T0).maxHp;
+  assert.throws(() => g.buyFurniture(p, 'f_mattress', T0), /денег/);
+  p.money = 1000;
+  g.buyFurniture(p, 'f_mattress', T0);
+  assert.equal(p.money, 600);
+  assert.equal(g.stats(p, T0).maxHp, hp + 20);
+  assert.throws(() => g.buyFurniture(p, 'f_mattress', T0), /Уже стоит/);
+  assert.throws(() => g.buyFurniture(p, 'f_fridge', T0), /уровня/);
+});
+
+test('старое сохранение без мебели мигрирует', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0) as Partial<g.Player>;
+  delete p.furniture;
+  const m = g.migrate(p as g.Player);
+  assert.deepEqual(m.furniture, []);
+});
+
+test('бой отдаёт раунды для анимации, сумма урона сходится', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  const r = g.pvp(p, null, T0, fixed(0.5));
+  const toEnemy = r.rounds.filter((x) => x.by === 0).reduce((s, x) => s + x.dmg, 0);
+  const toMe = r.rounds.filter((x) => x.by === 1).reduce((s, x) => s + x.dmg, 0);
+  assert.equal(r.hpLeft, Math.max(0, r.startHp[0] - toMe));
+  assert.equal(r.win, toEnemy >= r.startHp[1]);
+  assert.ok(r.enemyLook.str > 0);
+});

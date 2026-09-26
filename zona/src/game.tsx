@@ -1,12 +1,12 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { PlayerView } from '../shared/types.ts';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import type { FightReplay, Look, PlayerView } from '../shared/types.ts';
 
 export type Tab = 'home' | 'work' | 'fight' | 'gear' | 'top' | 'shop';
 
 export interface FightLog {
   title: string;
-  win: boolean;
-  log: string[];
+  replay: FightReplay;
+  enemy: { name: string; look: Look; build?: number };
   lines: string[]; // итоги: награды, трофеи
 }
 
@@ -87,4 +87,15 @@ export function BonusList({ b }: { b: { atk?: number; def?: number; hp?: number;
   if (b.energy) parts.push(`⚡+${b.energy}`);
   if (b.money) parts.push(`₽+${b.money}%`);
   return <span className="bonus">{parts.join('  ')}</span>;
+}
+
+/** Перезапускаемая анимация: play('act-work') → класс и ключ, чтобы пересоздать элемент. */
+export function useAnim(): [string, number, (cls: string) => void] {
+  const [state, setState] = useState({ cls: '', key: 0 });
+  const play = useCallback((cls: string) => setState((s) => ({ cls, key: s.key + 1 })), []);
+  return [state.cls, state.key, play];
+}
+
+export function lookOf(p: PlayerView): Look {
+  return { equipped: p.equipped, tattoos: p.tattoos, str: p.str };
 }

@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BALANCE, BOSSES, GOLD_PRICES, WORLD_BOSS, itemById } from '../../shared/content.ts';
-import type { WorldBossView } from '../../shared/types.ts';
+import type { FightReplay, Look, WorldBossView } from '../../shared/types.ts';
 import { api } from '../api.ts';
-import { Bar, Card, fmt, timeLeft, useGame } from '../game.tsx';
+import { BOSS_LOOKS, CharacterG } from '../art/Character.tsx';
+import { Place, Scene, YardScene } from '../art/Scenes.tsx';
+import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
-interface FightResult {
-  win: boolean;
-  log: string[];
-}
+type FightResult = FightReplay;
 
 export function Fight() {
   const { p, now, act, busy, showFight, toast } = useGame();
   const [world, setWorld] = useState<WorldBossView | null>(null);
+  const [anim, animKey, play] = useAnim();
 
   const loadWorld = useCallback(() => {
     api.world().then((r) => setWorld(r.world)).catch(() => {});
@@ -26,12 +26,12 @@ export function Fight() {
   const lowHp = p.hp < p.stats.maxHp * BALANCE.pvpMinHpShare;
 
   const pvp = async () => {
-    const r = await act<FightResult & { enemy: string; loot: number; authority: number; xp: number }>('pvp');
+    const r = await act<FightResult & { enemy: string; enemyLook: Look; loot: number; authority: number; xp: number }>('pvp');
     if (!r) return;
     showFight({
-      title: `Наезд на ${r.enemy}`,
-      win: r.win,
-      log: r.log,
+      title: `Наезд: ${r.enemy}`,
+      replay: r,
+      enemy: { name: r.enemy, look: r.enemyLook },
       lines: r.win
         ? [`Отжал ${fmt(r.loot)} ₽`, `+${r.authority} авторитета`, `+${r.xp} опыта`]
         : [`${r.authority} авторитета`, 'Отлежись и возвращайся'],
@@ -44,8 +44,8 @@ export function Fight() {
     const drop = r.reward.drop ? itemById.get(r.reward.drop) : null;
     showFight({
       title: name,
-      win: r.win,
-      log: r.log,
+      replay: r,
+      enemy: { name, ...BOSS_LOOKS[bossId] },
       lines: r.win
         ? [
             `+${fmt(r.reward.money)} ₽ · +${r.reward.xp} опыта · +${r.reward.authority} авторитета`,
@@ -59,6 +59,7 @@ export function Fight() {
   const hitWorld = async () => {
     const r = await act<{ damage: number; crit: boolean; killed: boolean }>('worldHit');
     if (!r) return;
+    play('lunge-r');
     toast(r.killed ? '🔥 Ты добил! Награда разослана всем участникам' : `Удар на ${fmt(r.damage)}${r.crit ? ' 💥' : ''}`);
     loadWorld();
   };
@@ -68,6 +69,16 @@ export function Fight() {
 
   return (
     <>
+      <div className="scene-wrap">
+        <Scene>
+          <YardScene>
+            <Place x={150} y={218} scale={0.86} key={animKey} className={`pose ${anim}`}>
+              <CharacterG look={lookOf(p)} mood={lowHp ? 'hurt' : 'idle'} />
+            </Place>
+          </YardScene>
+        </Scene>
+        <div className="scene-tag">🥊 Двор</div>
+      </div>
       {world && (
         <Card className="world">
           <div className="row">
@@ -119,7 +130,9 @@ export function Fight() {
         return (
           <Card key={b.id} className={locked ? 'locked' : ''}>
             <div className="row">
-              <div className="boss-emoji">{b.emoji}</div>
+              <svg className="boss-face" viewBox="30 -4 60 64">
+                <CharacterG look={BOSS_LOOKS[b.id].look} build={BOSS_LOOKS[b.id].build} />
+              </svg>
               <div className="grow">
                 <b>{b.name}</b>
                 <div className="muted small">{b.description}</div>

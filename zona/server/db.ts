@@ -5,7 +5,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Player } from './game.ts';
+import { migrate, type Player } from './game.ts';
 
 export type Db = ReturnType<typeof openDb>;
 
@@ -108,14 +108,14 @@ export function openDb(file: string) {
     },
     getPlayer(id: number): Player | null {
       const row = q.get.get(id) as { data: string } | undefined;
-      return row ? (JSON.parse(row.data) as Player) : null;
+      return row ? migrate(JSON.parse(row.data) as Player) : null;
     },
     savePlayer(p: Player) {
       q.save.run(p.id, JSON.stringify(p), p.name, p.level, p.authority, p.lastSeen);
     },
     opponents(p: Player): Player[] {
       const rows = q.opponents.all(p.id, Math.max(1, p.level - 2), p.level + 2) as { data: string }[];
-      return rows.map((r) => JSON.parse(r.data) as Player);
+      return rows.map((r) => migrate(JSON.parse(r.data) as Player));
     },
     top(limit: number) {
       return q.top.all(limit) as { id: number; name: string; level: number; authority: number }[];

@@ -1,18 +1,49 @@
-import { GOLD_PRICES, TATTOOS } from '../../shared/content.ts';
-import { Card, fmt, timeLeft, useGame } from '../game.tsx';
+import { useState } from 'react';
+import { FURNITURE, GOLD_PRICES, SPOT_NAMES, TATTOOS, type Furniture } from '../../shared/content.ts';
+import { CharacterG } from '../art/Character.tsx';
+import { CellScene, Place, Scene } from '../art/Scenes.tsx';
+import { BonusList, Card, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
 export function Home() {
   const { p, now, online, act, toast, busy, go } = useGame();
+  const [bare, setBare] = useState(false);
+  const [anim, animKey, play] = useAnim();
   const dailyReady = now >= p.dailyReadyAt;
   const ink = TATTOOS.filter((t) => p.tattoos.includes(t.id));
+  const hurt = p.hp < p.stats.maxHp * 0.3;
 
   const daily = async () => {
     const r = await act<{ money: number; gold: number; streak: number }>('daily');
-    if (r) toast(`Грев с воли: +${fmt(r.money)} ₽, +${r.gold} 🪙 (день ${r.streak})`);
+    if (!r) return;
+    play('act-cheer');
+    toast(`Грев с воли: +${fmt(r.money)} ₽, +${r.gold} 🪙 (день ${r.streak})`);
+  };
+
+  const furnish = async (f: Furniture) => {
+    if (f.currency === 'gold' && !confirm(`Поставить «${f.name}» за ${f.price} 🪙?`)) return;
+    if ((await act('furnish', { furnitureId: f.id })) === null) return;
+    play('act-cheer');
+    toast(`${f.emoji} ${f.name} — теперь в хате`);
   };
 
   return (
     <>
+      <div className="scene-wrap">
+        <Scene onClick={() => play('act-cheer')}>
+          <CellScene furniture={p.furniture}>
+            <Place x={196} y={214} scale={0.9} key={animKey} className={`pose ${anim}`}>
+              <CharacterG look={lookOf(p)} bare={bare} mood={hurt ? 'hurt' : 'idle'} />
+            </Place>
+          </CellScene>
+        </Scene>
+        <div className="scene-tag">🏚️ Хата · {p.furniture.length}/{FURNITURE.length}</div>
+        {ink.length > 0 && (
+          <button className="scene-btn" onClick={() => setBare(!bare)}>
+            {bare ? '👕 Одеться' : '💪 Показать наколки'}
+          </button>
+        )}
+      </div>
+
       <Card className="online">
         <span className="pulse" /> На зоне сейчас: <b>{fmt(online)}</b>
       </Card>
@@ -29,6 +60,29 @@ export function Home() {
         </div>
       </Card>
 
+      <h3 className="section">Обустроить хату</h3>
+      <div className="hscroll">
+        {FURNITURE.map((f) => {
+          const owned = p.furniture.includes(f.id);
+          const locked = p.level < f.minLevel;
+          return (
+            <div key={f.id} className={`ftile ${owned ? 'owned' : ''} ${f.currency === 'gold' && !owned ? 'premium' : ''}`}>
+              <span className="femoji">{f.emoji}</span>
+              <b>{f.name}</b>
+              <span className="muted small">{SPOT_NAMES[f.spot]}</span>
+              <BonusList b={f} />
+              <button
+                className={`btn btn-s ${f.currency === 'gold' ? 'btn-gold' : ''}`}
+                disabled={owned || locked || busy}
+                onClick={() => furnish(f)}
+              >
+                {owned ? '✓ Стоит' : locked ? `🔒 ур. ${f.minLevel}` : <Price amount={f.price} currency={f.currency} />}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
       <Card>
         <h3>Характеристики</h3>
         <div className="grid3">
@@ -39,7 +93,6 @@ export function Home() {
           <div className="stat"><span>🏆</span><b>#{p.place}</b><small>в рейтинге</small></div>
           <div className="stat"><span>🥊</span><b>{p.wins}/{p.losses}</b><small>победы/пор.</small></div>
         </div>
-        {ink.length > 0 && <div className="ink">{ink.map((t) => <span key={t.id} title={t.name}>{t.emoji}</span>)}</div>}
       </Card>
 
       <Card>

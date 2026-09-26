@@ -2,12 +2,15 @@
 // меняют его и возвращают результат. Время и случайность передаются снаружи,
 // чтобы всё можно было проверить тестами.
 
+import type { Look } from '../shared/types.ts';
 import {
   BALANCE,
+  ITEMS,
   GOLD_PRICES,
   STAT_NAMES,
   WORLD_BOSS,
   bossById,
+  furnitureById,
   itemById,
   jobById,
   packById,
@@ -57,6 +60,7 @@ export interface Player {
   equipped: Partial<Record<Slot, string>>;
   inventory: string[];
   tattoos: string[];
+  furniture: string[];
   bossCd: Record<string, number>;
   pvpAt: number;
   shieldUntil: number;
@@ -78,9 +82,18 @@ export interface Fighter {
   crit: number;
 }
 
+export interface Round {
+  by: 0 | 1; // 0 — нападающий, 1 — защищающийся
+  dmg: number;
+  crit: boolean;
+}
+
 export interface FightResult {
   win: boolean;
   log: string[];
+  rounds: Round[];
+  startHp: [number, number];
+  maxHp: [number, number];
   damageDealt: number;
   hpLeft: number;
 }
@@ -116,6 +129,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     equipped: { body: 'body_robe', feet: 'feet_slippers' },
     inventory: ['body_robe', 'feet_slippers'],
     tattoos: [],
+    furniture: [],
     bossCd: {},
     pvpAt: 0,
     shieldUntil: 0,
@@ -131,6 +145,12 @@ export function newPlayer(id: number, name: string, username: string | null, now
   return p;
 }
 
+/** Досоздаёт поля, которых не было в старых сохранениях. */
+export function migrate(p: Player): Player {
+  p.furniture ??= [];
+  return p;
+}
+
 export function isVip(p: Player, now: number): boolean {
   return p.vipUntil > now;
 }
@@ -140,6 +160,7 @@ function bonuses(p: Player): Required<Bonus> {
   const sources = [
     ...Object.values(p.equipped).map((id) => (id ? itemById.get(id) : undefined)),
     ...p.tattoos.map((id) => tattooById.get(id)),
+    ...p.furniture.map((id) => furnitureById.get(id)),
   ].filter((b): b is NonNullable<typeof b> => !!b);
   for (const b of sources) {
     for (const k of Object.keys(total) as (keyof Bonus)[]) total[k] += b[k] ?? 0;
@@ -311,6 +332,16 @@ export function buyTattoo(p: Player, tattooId: string, now: number) {
   log(p, now, `${t.emoji} Набил наколку «${t.name}»`);
 }
 
+export function buyFurniture(p: Player, furnitureId: string, now: number) {
+  const f = furnitureById.get(furnitureId);
+  if (!f) throw new GameError('Нет такой мебели');
+  if (p.furniture.includes(furnitureId)) throw new GameError('Уже стоит в хате');
+  if (p.level < f.minLevel) throw new GameError(`Доступно с ${f.minLevel} уровня`);
+  spend(p, f.price, f.currency);
+  p.furniture.push(furnitureId);
+  log(p, now, `${f.emoji} Обустроил хату: ${f.name}`);
+}
+
 export function fighter(p: Player, now: number): Fighter {
   const s = stats(p, now);
   return { name: p.name, hp: p.hp, maxHp: s.maxHp, atk: s.atk, def: s.def, crit: s.crit };
@@ -321,6 +352,7 @@ export function fight(a: Fighter, b: Fighter, rng: Rng, maxRounds = 30): FightRe
   let bHp = b.hp;
   let dealt = 0;
   const lines: string[] = [];
+  const rounds: Round[] = [];
   const hit = (from: Fighter, to: Fighter) => {
     const crit = rng() * 100 < from.crit;
     const base = from.atk * (0.85 + rng() * 0.3) - to.def * 0.4;
@@ -331,16 +363,26 @@ export function fight(a: Fighter, b: Fighter, rng: Rng, maxRounds = 30): FightRe
     const h1 = hit(a, b);
     bHp -= h1.dmg;
     dealt += h1.dmg;
+    rounds.push({ by: 0, ...h1 });
     lines.push(`${a.name} бьёт на ${h1.dmg}${h1.crit ? ' 💥' : ''}`);
     if (bHp <= 0) break;
     const h2 = hit(b, a);
     aHp -= h2.dmg;
+    rounds.push({ by: 1, ...h2 });
     lines.push(`${b.name} отвечает на ${h2.dmg}${h2.crit ? ' 💥' : ''}`);
     if (aHp <= 0) break;
   }
   // Лог держим коротким: начало и развязка боя.
   const log = lines.length > 12 ? [...lines.slice(0, 6), '…', ...lines.slice(-5)] : lines;
-  return { win: bHp <= 0, log, damageDealt: Math.min(dealt, b.hp), hpLeft: Math.max(0, aHp) };
+  return {
+    win: bHp <= 0,
+    log,
+    rounds,
+    startHp: [a.hp, b.hp],
+    maxHp: [a.maxHp, b.maxHp],
+    damageDealt: Math.min(dealt, b.hp),
+    hpLeft: Math.max(0, aHp),
+  };
 }
 
 function requireHp(p: Player, now: number) {
@@ -395,7 +437,7 @@ export function fightBoss(p: Player, bossId: string, now: number, rng: Rng) {
 }
 
 /** Бот-противник, когда живых соперников подходящего уровня нет. */
-export function botOpponent(level: number, rng: Rng): Fighter & { money: number } {
+export function botOpponent(level: number, rng: Rng): Fighter & { money: number; look: Look } {
   const names = ['Фраер Вася', 'Шестёрка Лёха', 'Баклан Гоша', 'Чушок Петя', 'Барыга Сеня'];
   const k = 0.6 + rng() * 0.25; // боты слабее живых игроков того же уровня
   const maxHp = Math.round((80 + (5 + level) * 12) * k);
@@ -407,7 +449,23 @@ export function botOpponent(level: number, rng: Rng): Fighter & { money: number 
     def: Math.round((10 + level * 3) * k),
     crit: 3,
     money: 40 + level * 30,
+    look: botLook(level, rng),
   };
+}
+
+/** Бот одет в случайный дешёвый шмот своего уровня — чтобы в бою выглядел живым. */
+function botLook(level: number, rng: Rng): Look {
+  const equipped: Look['equipped'] = {};
+  for (const item of ITEMS) {
+    if (item.currency === 'money' && !item.bossOnly && item.minLevel <= level && rng() < 0.5) {
+      equipped[item.slot] = item.id;
+    }
+  }
+  return { equipped, tattoos: [], str: 5 + level };
+}
+
+export function lookOf(p: Player): Look {
+  return { equipped: p.equipped, tattoos: p.tattoos, str: p.str };
 }
 
 export function canBeAttacked(target: Player, now: number): boolean {
@@ -423,15 +481,18 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
 
   let enemy: Fighter;
   let loot: number;
+  let enemyLook: Look;
   if (target) {
     // Защищающийся бьётся в полную силу: оффлайн-игрока не обижаем на израненном здоровье.
     tick(target, now);
     enemy = { ...fighter(target, now), hp: stats(target, now).maxHp };
     loot = Math.min(Math.floor(target.money * BALANCE.pvpStealShare), target.level * 300);
+    enemyLook = lookOf(target);
   } else {
     const bot = botOpponent(p.level, rng);
     enemy = bot;
     loot = bot.money;
+    enemyLook = bot.look;
   }
 
   const result = fight(fighter(p, now), enemy, rng);
@@ -464,7 +525,7 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
     }
   }
   const levelUps = addXp(p, xp, now);
-  return { ...result, enemy: enemy.name, loot, authority, xp, levelUps };
+  return { ...result, enemy: enemy.name, enemyLook, loot, authority, xp, levelUps };
 }
 
 export function claimDaily(p: Player, now: number) {

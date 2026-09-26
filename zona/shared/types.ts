@@ -36,6 +36,7 @@ export interface PlayerView {
   equipped: Partial<Record<Slot, string>>;
   inventory: string[];
   tattoos: string[];
+  furniture: string[];
   bossCd: Record<string, number>;
   pvpReadyAt: number;
   worldHitReadyAt: number;
@@ -53,8 +54,17 @@ export interface WorldBossView {
   participants: number;
 }
 
-export interface FightView {
+/** Внешний вид персонажа: из чего рисуется фигурка. */
+export interface Look {
+  equipped: Partial<Record<Slot, string>>;
+  tattoos: string[];
+  str: number;
+}
+
+export interface FightReplay {
   win: boolean;
   log: string[];
-  hpLeft: number;
+  rounds: { by: 0 | 1; dmg: number; crit: boolean }[];
+  startHp: [number, number];
+  maxHp: [number, number];
 }
