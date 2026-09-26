@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FURNITURE, GOLD_PRICES, SPOT_NAMES, TATTOOS, type Furniture } from '../../shared/content.ts';
 import { CharacterG } from '../art/Character.tsx';
-import { CellScene, Place, Scene } from '../art/Scenes.tsx';
+import { CellScene, Place } from '../art/Scenes.tsx';
 import { BonusList, Card, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
 export function Home() {
@@ -29,13 +29,11 @@ export function Home() {
   return (
     <>
       <div className="scene-wrap">
-        <Scene onClick={() => play('act-cheer')}>
-          <CellScene furniture={p.furniture}>
-            <Place x={196} y={214} scale={0.9} key={animKey} className={`pose ${anim}`}>
-              <CharacterG look={lookOf(p)} bare={bare} mood={hurt ? 'hurt' : 'idle'} />
-            </Place>
-          </CellScene>
-        </Scene>
+        <CellScene furniture={p.furniture} onClick={() => play('act-cheer')}>
+          <Place x={194} y={262} scale={1.06} key={animKey} className={`pose ${anim}`}>
+            <CharacterG look={lookOf(p)} bare={bare} mood={hurt ? 'hurt' : 'idle'} />
+          </Place>
+        </CellScene>
         <div className="scene-tag">🏚️ Хата · {p.furniture.length}/{FURNITURE.length}</div>
         {ink.length > 0 && (
           <button className="scene-btn" onClick={() => setBare(!bare)}>

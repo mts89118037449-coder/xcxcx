@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ITEMS, SLOT_NAMES, TATTOOS, itemById, type Item, type Slot } from '../../shared/content.ts';
 import { Character } from '../art/Character.tsx';
+import { ItemIcon, TattooIcon } from '../art/Icons.tsx';
 import { BonusList, Card, Price, lookOf, useAnim, useGame } from '../game.tsx';
 
 type View = 'mine' | 'shop' | 'ink';
@@ -20,7 +21,7 @@ export function Gear() {
     if (item.currency === 'gold' && !confirm(`Купить «${item.name}» за ${item.price} 🪙?`)) return;
     if ((await act('buy', { itemId: item.id })) === null) return;
     play('act-dress');
-    toast(`${item.emoji} ${item.name} — твоё`);
+    toast(`${item.name} — твоё`);
   };
 
   const sell = async (item: Item) => {
@@ -33,7 +34,7 @@ export function Gear() {
     const item = p.equipped[s] ? itemById.get(p.equipped[s]!) : null;
     return (
       <div key={s} className={`wslot ${item ? 'filled' : ''}`}>
-        <span>{item?.emoji ?? '▫️'}</span>
+        {item ? <ItemIcon id={item.id} size={42} /> : <span className="slot-empty" />}
         {item?.name ?? SLOT_NAMES[s]}
       </div>
     );
@@ -66,9 +67,12 @@ export function Gear() {
             return (
               <Card key={i.id} className={i.bossOnly ? 'epic' : ''}>
                 <div className="row">
-                  <div>
-                    <b>{i.emoji} {i.name}</b> <span className="muted small">{SLOT_NAMES[i.slot]}</span>
-                    <div><BonusList b={i} /></div>
+                  <div className="item-row">
+                    <ItemIcon id={i.id} />
+                    <div>
+                      <b>{i.name}</b> <span className="muted small">{SLOT_NAMES[i.slot]}</span>
+                      <div><BonusList b={i} /></div>
+                    </div>
                   </div>
                   <div className="row gap-s">
                     {on ? (
@@ -101,10 +105,13 @@ export function Gear() {
             return (
               <Card key={i.id} className={`${i.currency === 'gold' ? 'premium' : ''} ${locked ? 'locked' : ''}`}>
                 <div className="row">
-                  <div>
-                    <b>{i.emoji} {i.name}</b>
-                    <div><BonusList b={i} /></div>
-                    {locked && <div className="muted small">🔒 с {i.minLevel} уровня</div>}
+                  <div className="item-row">
+                    <ItemIcon id={i.id} />
+                    <div>
+                      <b>{i.name}</b>
+                      <div><BonusList b={i} /></div>
+                      {locked && <div className="muted small">🔒 с {i.minLevel} уровня</div>}
+                    </div>
                   </div>
                   <button className={`btn btn-s ${i.currency === 'gold' ? 'btn-gold' : ''}`} disabled={owned || locked || busy} onClick={() => buy(i)}>
                     {owned ? 'Есть' : <Price amount={i.price} currency={i.currency} />}
@@ -126,7 +133,7 @@ export function Gear() {
             return (
               <Card key={t.id} className={`${t.currency === 'gold' ? 'premium' : ''} ${locked && !has ? 'locked' : ''}`}>
                 <div className="row">
-                  <div className="boss-emoji">{t.emoji}</div>
+                  <TattooIcon id={t.id} size={52} />
                   <div className="grow">
                     <b>{t.name}</b>
                     <div className="muted small">{t.meaning}</div>
@@ -138,7 +145,7 @@ export function Gear() {
                   <button
                     className={`btn btn-s ${t.currency === 'gold' ? 'btn-gold' : ''}`}
                     disabled={has || locked || busy}
-                    onClick={() => act('tattoo', { tattooId: t.id }).then((r) => r !== null && toast(`${t.emoji} Набито!`))}
+                    onClick={() => act('tattoo', { tattooId: t.id }).then((r) => r !== null && toast(`«${t.name}» набита!`))}
                   >
                     {has ? 'Набита' : <Price amount={t.price} currency={t.currency} />}
                   </button>

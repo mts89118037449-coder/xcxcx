@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FightReplay, Look } from '../../shared/types.ts';
 import { Bar, fmt } from '../game.tsx';
 import { CharacterG } from './Character.tsx';
-import { Place, Scene, YardScene } from './Scenes.tsx';
+import { Place, YardScene } from './Scenes.tsx';
 
 export interface Fighter {
   name: string;
@@ -34,26 +34,24 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
 
   const meCls = done ? (replay.win ? 'act-cheer' : 'ko') : last?.by === 0 ? 'lunge-r' : last ? (last.crit ? 'got-crit' : 'got-hit') : '';
   const enemyCls = done ? (replay.win ? 'ko-r' : 'act-cheer') : last?.by === 1 ? 'lunge-l' : last ? (last.crit ? 'got-crit' : 'got-hit') : '';
-  const popX = last?.by === 0 ? 255 : 105;
+  const popX = last?.by === 0 ? 256 : 104;
 
   return (
     <div className="arena">
-      <Scene>
-        <YardScene tower={false}>
-          <Place x={108} y={214} scale={0.8} key={`me${i}`} className={`pose ${meCls}`}>
+      <YardScene tower={false}>
+          <Place x={104} y={266} scale={0.98} key={`me${i}`} className={`pose ${meCls}`}>
             <CharacterG look={me.look} mood={done ? (replay.win ? 'win' : 'hurt') : myHp < replay.maxHp[0] * 0.3 ? 'hurt' : 'idle'} />
           </Place>
-          <Place x={252} y={214} scale={0.8} key={`en${i}`} className={`pose ${enemyCls}`}>
+          <Place x={256} y={266} scale={0.98} key={`en${i}`} className={`pose ${enemyCls}`}>
             <CharacterG look={enemy.look} build={enemy.build} mood={done ? (replay.win ? 'hurt' : 'win') : 'idle'} />
           </Place>
           {last && !done && (
-            <text key={`d${i}`} className="dmg-pop" x={popX} y={70} textAnchor="middle" fontSize={last.crit ? 26 : 18} fill={last.crit ? '#ffcf5a' : '#fff'}>
+            <text key={`d${i}`} className="dmg-pop" x={popX} y={84} textAnchor="middle" fontSize={last.crit ? 26 : 18} fill={last.crit ? '#ffcf5a' : '#fff'}>
               −{last.dmg}
               {last.crit ? '!' : ''}
             </text>
           )}
-        </YardScene>
-      </Scene>
+      </YardScene>
       <div className="arena-hp">
         <div>
           {me.name}

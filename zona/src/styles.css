@@ -574,10 +574,45 @@ main {
   overflow: hidden;
 }
 .scene {
-  display: block;
+  position: relative;
   width: 100%;
-  height: 250px;
+  aspect-ratio: 360 / 280;
+  overflow: hidden;
+  background: #111;
 }
+.scene-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* Зерно и виньетка поверх всей сцены — статичные, считаются один раз */
+.scene-fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 45%, transparent 50%, rgba(0, 0, 0, 0.55) 100%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>");
+  mix-blend-mode: multiply;
+  opacity: 0.85;
+}
+.dust {
+  animation: dust 9s ease-in-out infinite alternate;
+  opacity: 0.6;
+}
+.dust-1 { animation-duration: 11s; animation-delay: -3s; }
+.dust-2 { animation-duration: 13s; animation-delay: -6s; }
+.dust-3 { animation-duration: 10s; animation-delay: -2s; }
+.dust-4 { animation-duration: 12s; animation-delay: -8s; }
+.dust-5 { animation-duration: 14s; animation-delay: -5s; }
+@keyframes dust {
+  0% { transform: translate(0, 0); opacity: 0.1; }
+  50% { opacity: 0.7; }
+  100% { transform: translate(-14px, 20px); opacity: 0.15; }
+}
+.bubble-2 { animation-delay: -1.2s; }
+.tv-screen { fill: #6fb3d9; }
 .scene-tag {
   position: absolute;
   left: 10px;
@@ -711,7 +746,7 @@ main {
 /* падаем к центру арены, чтобы не уехать за край */
 @keyframes ko {
   to {
-    transform: translateX(70px) rotate(-82deg);
+    transform: translateX(110px) rotate(-82deg);
     opacity: 0.85;
   }
 }
@@ -720,7 +755,7 @@ main {
 }
 @keyframes ko-r {
   to {
-    transform: translateX(-70px) rotate(82deg);
+    transform: translateX(-110px) rotate(82deg);
     opacity: 0.85;
   }
 }
@@ -1020,9 +1055,7 @@ main {
   border-radius: 16px 16px 0 0;
   overflow: hidden;
 }
-.arena .scene {
-  height: 260px;
-}
+
 .arena-hp {
   position: absolute;
   top: 8px;
@@ -1067,4 +1100,27 @@ main {
   flex-shrink: 0;
   background: #0006;
   border-radius: 10px;
+}
+.icon {
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: radial-gradient(circle at 50% 40%, #3a3328, #15130f);
+  border: 1px solid #3a352c;
+}
+.icon .char-breathe,
+.icon .char-eyes,
+.icon .tattoo {
+  animation: none;
+}
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.slot-empty {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px dashed #3a352c;
 }

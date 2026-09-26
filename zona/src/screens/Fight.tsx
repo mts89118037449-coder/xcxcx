@@ -3,7 +3,7 @@ import { BALANCE, BOSSES, GOLD_PRICES, WORLD_BOSS, itemById } from '../../shared
 import type { FightReplay, Look, WorldBossView } from '../../shared/types.ts';
 import { api } from '../api.ts';
 import { BOSS_LOOKS, CharacterG } from '../art/Character.tsx';
-import { Place, Scene, YardScene } from '../art/Scenes.tsx';
+import { Place, YardScene } from '../art/Scenes.tsx';
 import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
 type FightResult = FightReplay;
@@ -70,13 +70,11 @@ export function Fight() {
   return (
     <>
       <div className="scene-wrap">
-        <Scene>
-          <YardScene>
-            <Place x={150} y={218} scale={0.86} key={animKey} className={`pose ${anim}`}>
-              <CharacterG look={lookOf(p)} mood={lowHp ? 'hurt' : 'idle'} />
-            </Place>
-          </YardScene>
-        </Scene>
+        <YardScene>
+          <Place x={150} y={266} scale={1.02} key={animKey} className={`pose ${anim}`}>
+            <CharacterG look={lookOf(p)} mood={lowHp ? 'hurt' : 'idle'} />
+          </Place>
+        </YardScene>
         <div className="scene-tag">🥊 Двор</div>
       </div>
       {world && (
@@ -130,7 +128,7 @@ export function Fight() {
         return (
           <Card key={b.id} className={locked ? 'locked' : ''}>
             <div className="row">
-              <svg className="boss-face" viewBox="30 -4 60 64">
+              <svg className="boss-face" viewBox="42 0 36 44">
                 <CharacterG look={BOSS_LOOKS[b.id].look} build={BOSS_LOOKS[b.id].build} />
               </svg>
               <div className="grow">
