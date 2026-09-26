@@ -1309,3 +1309,58 @@ main {
   border: 3px solid;
 }
 .clan-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+
+/* --- Зона, бычки, диалоги --------------------------------------------------- */
+.butt { animation: butt-in 0.4s ease-out; }
+@keyframes butt-in { from { opacity: 0; transform: scale(0.2); } }
+.butt-glint { animation: twinkle 1.2s infinite alternate; }
+.butt-pop {
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 2.5px;
+  animation: dmg-pop 0.9s ease-out forwards;
+  pointer-events: none;
+}
+.smoke { animation: smoke 4s ease-out infinite; }
+@keyframes smoke { from { transform: translate(0, 6px); opacity: 0.9; } to { transform: translate(8px, -14px); opacity: 0; } }
+.zone-tag:active rect { opacity: 0.9; }
+
+.talk-bubble { animation: bob 1.6s ease-in-out infinite; cursor: pointer; }
+@keyframes bob { 50% { transform: translateY(-3px); } }
+.npc-click { cursor: pointer; }
+
+.dialog-modal { align-items: flex-end; }
+.dialog {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  max-width: 560px;
+  background: linear-gradient(180deg, #2a251d, #1b1813);
+  border-top: 2px solid #6b5520;
+  border-radius: 16px 16px 0 0;
+  padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
+  animation: up 0.22s ease-out;
+}
+.dialog-pic { width: 96px; height: 150px; overflow: hidden; flex-shrink: 0; align-self: flex-end; }
+.dialog-pic img { width: 100%; height: 320px; object-fit: contain; object-position: 50% 0; transform: scale(1.4); transform-origin: 50% 0; }
+.dialog-body { flex: 1; min-width: 0; }
+.dialog-body p { margin: 6px 0 10px; color: #ece6d9; font-size: 15px; min-height: 40px; }
+.dialog-opts { display: flex; flex-direction: column; gap: 6px; }
+.dialog-opt {
+  text-align: left;
+  border: 1px solid var(--line);
+  background: #15130f;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-weight: 600;
+}
+.dialog-opt:disabled { opacity: 0.4; }
+.dialog-opt:not(:disabled):active { background: #2c2821; }
+
+.shells-top { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.shells-lyoha { width: 64px; height: 90px; object-fit: cover; object-position: 50% 0; }
+.shells-table { width: 100%; display: block; margin: 4px 0 10px; }
+.pulse-ring { animation: ring 1s ease-out infinite; }
+@keyframes ring { from { opacity: 0.9; } to { opacity: 0; transform: scale(1.3); } }
+.pulse-ring { transform-box: fill-box; transform-origin: center; }

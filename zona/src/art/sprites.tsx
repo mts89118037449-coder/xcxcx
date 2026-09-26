@@ -3,6 +3,7 @@
 // относительно стоячей позы: сидящий получается ниже, как и должно быть.
 
 import { useEffect, useState, type ReactNode } from 'react';
+import { OUTFITS } from '../../shared/content.ts';
 import type { Look } from '../../shared/types.ts';
 import { artSize, artUrl, useArt } from './raster.ts';
 
@@ -91,6 +92,32 @@ export function ImageG({ url, height = H, mirror, tone, className }: { url: stri
   );
 }
 
+/** Какую колонку листа комплектов брать для позы. */
+const OUTFIT_COL: Partial<Record<PoseName, number>> = {
+  sit: 10, floor: 10, squat: 10, stand: 2, stand34: 2, crossed: 1, push: 7, lunge: 7, guard34: 8, guard: 8, walk1: 1, walk2: 1, walk3: 1, walk4: 1,
+};
+let outfitMeta: Record<string, [number, number, number, number]> | null = null;
+fetch('/art/sheet/outfit/meta.json')
+  .then((r) => (r.ok ? r.json() : null))
+  .then((m) => (outfitMeta = m))
+  .catch(() => {});
+
+/** Картинка комплекта для позы (или null, если комплекта нет). */
+export function outfitSprite(art: Set<string> | null, look: Look | undefined, name: PoseName): { url: string; key: string; ref: string } | null {
+  const o = look?.equipped.body ? OUTFITS[look.equipped.body] : undefined;
+  if (!o || !art) return null;
+  const want = OUTFIT_COL[name] ?? 2;
+  const col = o.cols.includes(want) ? want : 2;
+  const url = artUrl(art, `sheet/outfit/${o.set}/${col}`);
+  const ref = artUrl(art, `sheet/outfit/${o.set}/2`);
+  return url && ref ? { url, key: `${o.set}/${col}`, ref } : null;
+}
+
+/** Надет ли комплект, у которого нет своей ходьбы — тогда во дворе стоим. */
+export function hasOutfit(art: Set<string> | null, look?: Look): boolean {
+  return !!outfitSprite(art, look, 'stand');
+}
+
 /** Где у позы голова — чтобы надеть шапку (доли картинки: x0, y0, x1, y1). */
 let dressMeta: Record<string, { head: [number, number, number, number]; feet: [number, number] }> | null = null;
 fetch('/art/sheet/dress/meta.json')
@@ -127,16 +154,19 @@ export function isDressed(art: Set<string> | null, look?: Look): boolean {
 /** Поза игрока в правильном масштабе относительно стоячей — вместе со шмотками и наколками. */
 export function PoseG({ name, mirror, tone, look, noShadow }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean }) {
   const art = useArt();
-  const url = poseUrl(name);
-  const ref = artSize(poseUrl('stand'));
+  const outfit = outfitSprite(art, look, name);
+  const url = outfit?.url ?? poseUrl(name);
+  const ref = artSize(outfit?.ref ?? poseUrl('stand'));
   const size = artSize(url);
-  const h = ref && size ? (size[1] / ref[1]) * H : H;
+  // на листе комплектов герой коренастее — уменьшаем, чтобы стоял вровень с остальными
+  const h = (ref && size ? (size[1] / ref[1]) * H : H) * (outfit ? 0.74 : 1);
   const w = size ? (size[0] / size[1]) * h : h * 0.4;
   const x = 60 - w / 2;
   const y = 210 - h;
-  const layers = dressLayers(art, name, look);
-  const hat = look?.equipped.head ? artUrl(art, `sheet/icons/${look.equipped.head}`) : null;
-  const hb = dressMeta?.[name]?.head;
+  const layers = outfit ? [] : dressLayers(art, name, look);
+  // у комплектов голова своя, мелкая — шапка закрывала бы лицо
+  const hat = !outfit && look?.equipped.head ? artUrl(art, `sheet/icons/${look.equipped.head}`) : null;
+  const hb = outfit ? outfitMeta?.[outfit.key] : dressMeta?.[name]?.head;
   let hatEl = null;
   if (hat && hb) {
     const headW = (hb[2] - hb[0]) * w;
@@ -166,7 +196,7 @@ export function PoseG({ name, mirror, tone, look, noShadow }: { name: PoseName; 
       <g transform={mirror ? 'translate(120 0) scale(-1 1)' : undefined} style={tone ? { filter: tone } : undefined}>
         {/* тень строго под ступнями — иначе фигура «висит» */}
         {!noShadow && (() => {
-          const f = dressMeta?.[name]?.feet ?? [0.25, 0.75];
+          const f = (!outfit && dressMeta?.[name]?.feet) || [0.2, 0.8];
           const fx0 = x + f[0] * w;
           const fx1 = x + f[1] * w;
           return <ellipse cx={(fx0 + fx1) / 2} cy={209} rx={Math.max(12, (fx1 - fx0) / 2 + 6)} ry={4.5} fill="#000" opacity={0.45} style={{ filter: 'none' }} />;

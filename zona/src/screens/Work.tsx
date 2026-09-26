@@ -1,7 +1,7 @@
 import { GOLD_PRICES, JOBS, STAT_NAMES, trainCost, type Stat } from '../../shared/content.ts';
 import { Stage } from '../art/Stage.tsx';
+import { useTalk } from '../Talk.tsx';
 import { Dailies, Quests } from '../Tasks.tsx';
-import { NpcBanner } from '../art/sprites.tsx';
 import { Card, Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
 
 const STAT_HINT: Record<Stat, string> = {
@@ -12,6 +12,7 @@ const STAT_HINT: Record<Stat, string> = {
 
 export function Work() {
   const { p, act, toast, busy } = useGame();
+  const talk = useTalk();
   const [anim, animKey, play] = useAnim();
 
   const work = async (jobId: string) => {
@@ -28,7 +29,7 @@ export function Work() {
   return (
     <>
       <div className="scene-wrap">
-        <Stage loc="work" look={lookOf(p)} mood={p.hp < p.stats.maxHp * 0.3 ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
+        <Stage onTalk={talk} loc="work" look={lookOf(p)} mood={p.hp < p.stats.maxHp * 0.3 ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
         <div className="scene-tag">⚒️ Промзона</div>
       </div>
       <Dailies />
@@ -62,7 +63,6 @@ export function Work() {
       </Card>
 
       <h3 className="section">Работа</h3>
-      <NpcBanner who="officer" name="Начальник промзоны" text="Норму сделал — свободен. Не сделал — объяснишь почему" />
       {JOBS.map((j) => {
         const locked = p.level < j.minLevel;
         return (

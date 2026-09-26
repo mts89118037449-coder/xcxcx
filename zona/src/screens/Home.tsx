@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { FURNITURE, GOLD_PRICES, SPOT_NAMES, TATTOOS, type Furniture } from '../../shared/content.ts';
 import { Stage } from '../art/Stage.tsx';
+import { useTalk } from '../Talk.tsx';
 import { CharacterEditor } from '../Editor.tsx';
 import { InteriorPicker } from '../Interior.tsx';
-import { NpcBanner, usePoses } from '../art/sprites.tsx';
+import { usePoses } from '../art/sprites.tsx';
 import { BonusList, Card, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
 export function Home() {
   const { p, now, online, act, toast, busy, go } = useGame();
+  const talk = useTalk();
   const [bare, setBare] = useState(false);
   const poses = usePoses();
   const [anim, animKey, play] = useAnim();
@@ -33,6 +35,7 @@ export function Home() {
     <>
       <div className="scene-wrap">
         <Stage
+          onTalk={talk}
           loc="cell"
           look={lookOf(p)}
           bare={bare}
@@ -56,8 +59,6 @@ export function Home() {
       <Card className="online">
         <span className="pulse" /> На зоне сейчас: <b>{fmt(online)}</b>
       </Card>
-
-      {dailyReady && <NpcBanner who="writer" name="Адвокат" text="Родня передала грев. Распишись и забирай" />}
       <Card className={dailyReady ? 'glow' : ''}>
         <div className="row">
           <div>
@@ -117,8 +118,6 @@ export function Home() {
           <button className="btn btn-gold" onClick={() => go('shop')}>{p.vipUntil ? 'Продлить' : 'Хочу'}</button>
         </div>
       </Card>
-
-      {p.hp < p.stats.maxHp * 0.5 && <NpcBanner who="doctor" name="Лепила" text="Опять разукрасили? Заходи в санчасть, заштопаю" />}
       <div className="row gap">
         <button className="btn btn-wide" disabled={busy || p.hp >= p.stats.maxHp} onClick={() => act('heal')}>
           💉 Санчасть · {GOLD_PRICES.heal} 🪙

@@ -4,7 +4,7 @@ import { Character } from '../art/Character.tsx';
 import { ItemIcon, TattooIcon } from '../art/Icons.tsx';
 import { characterLayers, useArt } from '../art/raster.ts';
 import { RasterFigure } from '../art/Stage.tsx';
-import { poseUrl, usePoses } from '../art/sprites.tsx';
+import { PoseG, usePoses } from '../art/sprites.tsx';
 import { NpcBanner } from '../art/sprites.tsx';
 import { BonusList, Card, Price, lookOf, useAnim, useGame } from '../game.tsx';
 
@@ -68,7 +68,9 @@ export function Gear() {
                   <RasterFigure layers={standLayers} className={anim} key={animKey} />
                 </div>
               ) : poses ? (
-                <img key={animKey} className={`char-view hero-img ${anim}`} src={poseUrl('stand')} alt="Персонаж" />
+                <svg key={animKey} className={`char-view pose ${anim}`} viewBox="0 -6 120 221">
+                  <PoseG name="stand" look={lookOf(p)} />
+                </svg>
               ) : (
                 <Character key={animKey} className={`char-view pose ${anim}`} look={lookOf(p)} bare={bare} />
               )}

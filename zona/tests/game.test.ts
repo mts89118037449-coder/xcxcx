@@ -247,3 +247,34 @@ test('уважение: раз в день', () => {
   assert.throws(() => g.respect(a, b, T0 + MIN), /уже/);
   assert.throws(() => g.respect(a, a, T0), /Себя/);
 });
+
+test('бычки: растут со временем, собираются, меняются у барыги', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  g.growField(p, T0 + 3 * 240_000, fixed(0.5));
+  assert.equal(p.field.length, 3);
+  g.growField(p, T0 + 100 * 240_000, fixed(0.5));
+  assert.equal(p.field.length, 8, 'не больше максимума');
+  const id = p.field[0].id;
+  g.pickButt(p, id);
+  assert.equal(p.butts, 1);
+  assert.throws(() => g.pickButt(p, id), /подобрали/);
+  p.butts = 5;
+  const r = g.trade(p, 'money', T0);
+  assert.equal(p.butts, 0);
+  assert.equal(r.money, 50);
+  assert.throws(() => g.trade(p, 'gold', T0), /100/);
+});
+
+test('напёрстки: выигрыш 2.7x, проигрыш — ставка, лимиты', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  p.money = 1000;
+  const w = g.playShells(p, 100, 1, T0, fixed(0.5)); // шарик под средним
+  assert.equal(w.win, true);
+  assert.equal(p.money, 1170);
+  const l = g.playShells(p, 100, 0, T0, fixed(0.5));
+  assert.equal(l.win, false);
+  assert.equal(p.money, 1070);
+  assert.throws(() => g.playShells(p, 10, 0, T0, fixed(0.5)), /от/);
+  assert.throws(() => g.playShells(p, 5000, 0, T0, fixed(0.5)), /до/);
+  assert.equal(g.shellsLeft(p, T0), 23);
+});

@@ -5,11 +5,12 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { BUILDS, FURNITURE, SKINS } from '../../shared/content.ts';
+import type { TalkKind } from '../Talk.tsx';
 import type { Look } from '../../shared/types.ts';
 import { CharacterG, type Mood } from './Character.tsx';
 import { artUrl, characterLayers, useArt, type Pose } from './raster.ts';
 import { CellScene, Place, WorkScene, YardScene, type InteriorIds } from './Scenes.tsx';
-import { ImageG, PoseG, WALK, isDressed, useFlipbook, useNpc, usePoses, type PoseName } from './sprites.tsx';
+import { ImageG, PoseG, WALK, hasOutfit, isDressed, useFlipbook, useNpc, usePoses, type PoseName } from './sprites.tsx';
 
 type Loc = 'cell' | 'work' | 'yard';
 
@@ -32,9 +33,11 @@ interface Props {
   anim: string;
   animKey: number;
   onClick?: () => void;
+  /** Разговор с сокамерником по тапу — только в своих сценах, не в гостях. */
+  onTalk?: (kind: TalkKind) => void;
 }
 
-export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, animKey, onClick }: Props) {
+export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, animKey, onClick, onTalk }: Props) {
   const art = useArt();
   const poses = usePoses();
   const bg = artUrl(art, `bg/${loc}`);
@@ -53,7 +56,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, a
     const t = setTimeout(() => setBusyPose(null), 1100);
     return () => clearTimeout(t);
   }, [animKey, anim, loc]);
-  const walking = loc === 'yard' && poses && !busyPose;
+  const walking = loc === 'yard' && poses && !busyPose && !hasOutfit(art, look);
   const walkFrame = useFlipbook(WALK, 170, walking);
 
   if (bg && layers) {
@@ -97,7 +100,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, a
       {figure}
     </Place>
   );
-  const crowd = poses ? <Crowd loc={loc} /> : null;
+  const crowd = poses ? <Crowd loc={loc} onTalk={onTalk} /> : null;
   if (loc === 'cell') return <CellScene furniture={furniture} interior={interior} onClick={onClick}>{crowd}{fig}</CellScene>;
   if (loc === 'work') return <WorkScene>{crowd}{fig}</WorkScene>;
   return <YardScene>{crowd}{fig}</YardScene>;
@@ -117,38 +120,57 @@ export function RasterFigure({ layers, className = '', mirror = false }: { layer
 }
 
 /** Сокамерники на заднем плане: чуть мельче и темнее, чтобы не спорить с героем. */
-const CROWD: Record<Loc, { name: string; x: number; y: number; scale: number }[]> = {
+const CROWD: Record<Loc, { name: string; x: number; y: number; scale: number; talk: TalkKind }[]> = {
   cell: [
-    { name: 'sheet/rival/3', x: 92, y: 250, scale: 0.8 },
-    { name: 'sheet/cast/ushanka', x: 318, y: 246, scale: 0.74 },
+    { name: 'sheet/rival/3', x: 92, y: 250, scale: 0.8, talk: 'lyoha' },
+    { name: 'sheet/cast/ushanka', x: 318, y: 246, scale: 0.74, talk: 'ded' },
   ],
   work: [
-    { name: 'sheet/rival/4', x: 300, y: 248, scale: 0.78 },
-    { name: 'sheet/cast/worker', x: 40, y: 246, scale: 0.74 },
+    { name: 'sheet/rival/4', x: 300, y: 248, scale: 0.78, talk: 'coverall' },
+    { name: 'sheet/cast/worker', x: 40, y: 246, scale: 0.74, talk: 'worker' },
   ],
   yard: [
-    { name: 'sheet/rival/5', x: 58, y: 236, scale: 0.72 },
-    { name: 'sheet/rival/1', x: 292, y: 238, scale: 0.74 },
+    { name: 'sheet/rival/5', x: 58, y: 236, scale: 0.72, talk: 'smoker' },
+    { name: 'sheet/rival/1', x: 292, y: 238, scale: 0.74, talk: 'amba' },
   ],
 };
 
-function Crowd({ loc }: { loc: Loc }) {
+function Crowd({ loc, onTalk }: { loc: Loc; onTalk?: (k: TalkKind) => void }) {
   return (
     <>
       {CROWD[loc].map((c) => (
-        <CrowdMember key={c.name} {...c} />
+        <CrowdMember key={c.name} {...c} onTalk={onTalk ? () => onTalk(c.talk) : undefined} />
       ))}
     </>
   );
 }
 
-function CrowdMember({ name, x, y, scale }: { name: string; x: number; y: number; scale: number }) {
+function CrowdMember({ name, x, y, scale, onTalk }: { name: string; x: number; y: number; scale: number; onTalk?: () => void }) {
   const npc = useNpc(name);
   if (!npc) return null;
+  const headY = y - npc.height * scale - 6;
   return (
-    <Place x={x} y={y} scale={scale}>
-      <ImageG url={npc.url} height={npc.height} tone="brightness(0.72) saturate(0.85)" className="char-breathe" />
-    </Place>
+    <g
+      className={onTalk ? 'npc-click' : undefined}
+      onClick={(e) => {
+        if (!onTalk) return;
+        e.stopPropagation();
+        onTalk();
+      }}
+    >
+      <Place x={x} y={y} scale={scale}>
+        <ImageG url={npc.url} height={npc.height} tone="brightness(0.72) saturate(0.85)" className="char-breathe" />
+      </Place>
+      {onTalk && (
+        <g className="talk-bubble" transform={`translate(${x} ${headY})`}>
+          <rect x={-12} y={-10} width={24} height={15} rx={7.5} fill="#f2e6c8" />
+          <path d="M-3,5 L0,10 L3,5 Z" fill="#f2e6c8" />
+          <text x={0} y={1.5} fontSize={9} textAnchor="middle" fill="#2a1a10" fontWeight={900}>
+            …
+          </text>
+        </g>
+      )}
+    </g>
   );
 }
 

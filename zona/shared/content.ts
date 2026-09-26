@@ -97,8 +97,15 @@ export const ITEMS: Item[] = [
   { id: 'body_telnyashka', name: 'Тельняшка', emoji: '🎽', slot: 'body', minLevel: 3, price: 700, currency: 'money', def: 3, hp: 15 },
   { id: 'body_robe', name: 'Роба', emoji: '👕', slot: 'body', minLevel: 1, price: 200, currency: 'money', def: 3, hp: 10 },
   { id: 'body_quilted', name: 'Телогрейка', emoji: '🧥', slot: 'body', minLevel: 4, price: 1500, currency: 'money', def: 8, hp: 25 },
+  { id: 'body_smock', name: 'Мешковина', emoji: '🥋', slot: 'body', minLevel: 1, price: 120, currency: 'money', def: 2, hp: 8 },
+  { id: 'body_gown', name: 'Больничная рубаха', emoji: '🥼', slot: 'body', minLevel: 2, price: 300, currency: 'money', def: 1, hp: 30 },
+  { id: 'body_overalls', name: 'Спецовка', emoji: '🦺', slot: 'body', minLevel: 3, price: 900, currency: 'money', def: 5, hp: 15, money: 5 },
+  { id: 'body_apron', name: 'Фартук с толстовкой', emoji: '🧑‍🍳', slot: 'body', minLevel: 5, price: 2200, currency: 'money', def: 6, hp: 20, money: 8 },
+  { id: 'body_vest', name: 'Стёганая безрукавка', emoji: '🦺', slot: 'body', minLevel: 7, price: 4200, currency: 'money', def: 11, hp: 35, crit: 2 },
+  { id: 'body_bomber', name: 'Бомбер', emoji: '🧥', slot: 'body', minLevel: 9, price: 6500, currency: 'money', def: 14, hp: 45, atk: 3 },
+  { id: 'body_camo', name: 'Горка камуфляж', emoji: '🪖', slot: 'body', minLevel: 8, price: 180, currency: 'gold', def: 24, hp: 80, crit: 3 },
   { id: 'body_leather', name: 'Кожанка', emoji: '🥼', slot: 'body', minLevel: 10, price: 8000, currency: 'money', def: 16, hp: 50 },
-  { id: 'body_tracksuit', name: 'Пуховик «Аляска»', emoji: '🦺', slot: 'body', minLevel: 6, price: 150, currency: 'gold', def: 20, hp: 70, energy: 10 },
+  { id: 'body_tracksuit', name: 'Спортивный костюм', emoji: '🦺', slot: 'body', minLevel: 6, price: 150, currency: 'gold', def: 20, hp: 70, energy: 10 },
   // Штаны
   { id: 'legs_pants', name: 'Казённые штаны', emoji: '👖', slot: 'legs', minLevel: 1, price: 120, currency: 'money', def: 2 },
   { id: 'legs_cargo', name: 'Камуфляж', emoji: '👖', slot: 'legs', minLevel: 7, price: 3000, currency: 'money', def: 8, hp: 15 },
@@ -120,7 +127,7 @@ export const ITEMS: Item[] = [
   // Только с боссов
   { id: 'drop_keys', name: 'Ключи вертухая', emoji: '🗝️', slot: 'charm', minLevel: 1, price: 0, currency: 'money', bossOnly: true, crit: 6, money: 15, energy: 10 },
   { id: 'drop_baton', name: 'Дубинка начкара', emoji: '🏏', slot: 'weapon', minLevel: 1, price: 0, currency: 'money', bossOnly: true, atk: 26, crit: 5 },
-  { id: 'drop_coat', name: 'Бушлат хозяина', emoji: '🧥', slot: 'body', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 26, hp: 90 },
+  { id: 'drop_coat', name: 'Тулуп хозяина', emoji: '🧥', slot: 'body', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 26, hp: 90 },
   { id: 'drop_crown', name: 'Корона смотрящего', emoji: '👑', slot: 'head', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 24, hp: 70, crit: 6 },
 ];
 
@@ -379,3 +386,38 @@ export const jobById = new Map(JOBS.map((j) => [j.id, j]));
 export const bossById = new Map(BOSSES.map((b) => [b.id, b]));
 export const packById = new Map(STAR_PACKS.map((p) => [p.id, p]));
 export const furnitureById = new Map(FURNITURE.map((f) => [f.id, f]));
+
+// --- Бычки и барыга ---------------------------------------------------------------
+export const BUTTS = {
+  regenSec: 240, // новый бычок на зоне раз в 4 минуты
+  maxOnField: 8,
+  packChance: 0.08, // иногда вместо бычка — целая пачка
+  packValue: 5,
+};
+export const TRADES = [
+  { id: 'money', label: 'Толкнуть барыге', cost: 5, give: 'money' as const },
+  { id: 'energy', label: '+15 энергии', cost: 8, give: 'energy' as const },
+  { id: 'chifir', label: 'Кружка чифира', cost: 25, give: 'chifir' as const },
+  { id: 'gold', label: '5 золота', cost: 100, give: 'gold' as const },
+];
+
+// --- Напёрстки ------------------------------------------------------------------
+export const SHELLS = { payout: 2.7, maxPerDay: 25, minBet: 50, betPerLevel: 250 };
+
+/** Комплекты одежды, нарисованные на герое целиком (public/art/sheet/outfit/<set>/<колонка>).
+ *  Колонки: 1 — руки в боки, 2 — стоит, 3 — боком, 7 — выпад, 8 — стойка, 10 — на кортах. */
+export const OUTFITS: Record<string, { set: string; cols: number[] }> = {
+  body_robe: { set: 'b1', cols: [1, 2, 3, 7, 8, 10] },
+  body_tank: { set: 'b3', cols: [1, 2, 3, 7, 8, 10] },
+  body_quilted: { set: 'b4', cols: [1, 2, 3, 7, 8, 10] },
+  body_tracksuit: { set: 'b5', cols: [1, 2, 3, 7, 8, 10] },
+  body_overalls: { set: 'b6', cols: [1, 2, 3, 7, 8, 10] },
+  body_vest: { set: 'b7', cols: [1, 2, 3, 7, 8, 10] },
+  body_camo: { set: 'b8', cols: [1, 2, 3, 7, 8, 10] },
+  body_leather: { set: 'b9', cols: [1, 2, 3, 7, 8, 10] },
+  body_smock: { set: 'b10', cols: [1, 2, 3, 7, 8, 10] },
+  drop_coat: { set: 'a_tulup', cols: [2] },
+  body_gown: { set: 'a_gown', cols: [2] },
+  body_bomber: { set: 'a_bomber', cols: [2, 3, 10] },
+  body_apron: { set: 'a_apron', cols: [2] },
+};

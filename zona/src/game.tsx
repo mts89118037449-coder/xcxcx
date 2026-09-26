@@ -1,7 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { FightReplay, Look, PlayerView } from '../shared/types.ts';
 
-export type Tab = 'home' | 'work' | 'fight' | 'gear' | 'top' | 'shop';
+export type Tab = 'home' | 'zone' | 'work' | 'fight' | 'gear' | 'top' | 'shop';
+
+export interface DialogOption {
+  label: string;
+  onPick?: () => unknown;
+  keepOpen?: boolean;
+  disabled?: boolean;
+}
+
+export interface DialogSpec {
+  who: string; // картинка персонажа: sheet/rival/3, sheet/cast/doctor…
+  name: string;
+  text: string;
+  options: DialogOption[];
+}
 
 export interface FightLog {
   title: string;
@@ -23,6 +37,8 @@ export interface Game {
   go(tab: Tab): void;
   visit(id: number): void;
   openEnergy(): void;
+  say(d: DialogSpec): void;
+  openShells(): void;
 }
 
 export const GameCtx = createContext<Game | null>(null);

@@ -45,6 +45,10 @@ export interface PlayerView {
   interior: { wall: string; floor: string };
   ownedInteriors: string[];
   chifir: number;
+  butts: number;
+  field: { id: number; x: number; y: number; pack: boolean }[];
+  nextButtAt: number | null;
+  shellsLeft: number;
   daily: DailyState;
   quests: QuestState;
   clan: { id: number; name: string; tag: string; level: number; owner: boolean } | null;

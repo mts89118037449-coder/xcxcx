@@ -5,6 +5,9 @@
 import type { DailyState, Look, Quest, QuestState } from '../shared/types.ts';
 import {
   BALANCE,
+  BUTTS,
+  SHELLS,
+  TRADES,
   BUILDS,
   CLAN,
   DAILY_BONUS_GOLD,
@@ -78,6 +81,11 @@ export interface Player {
   interior: { wall: string; floor: string };
   ownedInteriors: string[];
   chifir: number;
+  butts: number;
+  field: { id: number; x: number; y: number; pack: boolean }[];
+  fieldAt: number;
+  fieldSeq: number;
+  shells: { day: string; n: number };
   daily: DailyState;
   quests: QuestState;
   clanId: number | null;
@@ -160,6 +168,11 @@ export function newPlayer(id: number, name: string, username: string | null, now
     interior: { wall: 'w_green', floor: 'f_planks' },
     ownedInteriors: ['w_green', 'f_planks'],
     chifir: 1,
+    butts: 0,
+    field: [],
+    fieldAt: now,
+    fieldSeq: 0,
+    shells: { day: '', n: 0 },
     daily: { day: '', tasks: [], bonusClaimed: false },
     quests: { board: [], active: null },
     clanId: null,
@@ -191,6 +204,11 @@ export function migrate(p: Player): Player {
   p.interior ??= { wall: 'w_green', floor: 'f_planks' };
   p.ownedInteriors ??= ['w_green', 'f_planks'];
   p.chifir ??= 1;
+  p.butts ??= 0;
+  p.field ??= [];
+  p.fieldAt ??= Date.now();
+  p.fieldSeq ??= 0;
+  p.shells ??= { day: '', n: 0 };
   p.daily ??= { day: '', tasks: [], bonusClaimed: false };
   p.quests ??= { board: [], active: null };
   p.clanId ??= null;
@@ -259,6 +277,7 @@ export function tick(p: Player, now: number): void {
     log(p, now, `👑 Блатной статус: +${BALANCE.vipDailyGold} золота`);
   }
   ensureDaily(p, now);
+  growField(p, now, Math.random);
 }
 
 export function log(p: Player, now: number, text: string): void {
@@ -870,4 +889,85 @@ export function respect(p: Player, target: Player, now: number) {
   target.authority += 1;
   log(target, now, `🤝 ${p.name} зашёл в хату и выразил уважение: +1 авторитета`);
   addXp(p, 5, now);
+}
+
+// --- Бычки ---------------------------------------------------------------------
+
+/** Раз в regenSec на зоне появляется бычок (не больше maxOnField). */
+export function growField(p: Player, now: number, rng: Rng) {
+  const step = BUTTS.regenSec * 1000;
+  if (p.field.length >= BUTTS.maxOnField) {
+    p.fieldAt = now;
+    return;
+  }
+  let n = Math.floor((now - p.fieldAt) / step);
+  while (n-- > 0 && p.field.length < BUTTS.maxOnField) {
+    p.field.push({
+      id: ++p.fieldSeq,
+      x: Math.round((0.06 + rng() * 0.88) * 1000) / 1000,
+      y: Math.round((0.7 + rng() * 0.26) * 1000) / 1000,
+      pack: rng() < BUTTS.packChance,
+    });
+    p.fieldAt += step;
+  }
+  if (p.field.length >= BUTTS.maxOnField) p.fieldAt = now;
+}
+
+export function nextButtAt(p: Player): number | null {
+  return p.field.length >= BUTTS.maxOnField ? null : p.fieldAt + BUTTS.regenSec * 1000;
+}
+
+export function pickButt(p: Player, id: number) {
+  const b = p.field.find((x) => x.id === id);
+  if (!b) throw new GameError('Уже подобрали');
+  p.field = p.field.filter((x) => x.id !== id);
+  const got = b.pack ? BUTTS.packValue : 1;
+  p.butts += got;
+  return { got };
+}
+
+export function trade(p: Player, offerId: string, now: number) {
+  const o = TRADES.find((t) => t.id === offerId);
+  if (!o) throw new GameError('Барыга такого не берёт');
+  if (p.butts < o.cost) throw new GameError(`Нужно ${o.cost} бычков`);
+  if (o.give === 'energy') {
+    const max = stats(p, now).maxEnergy;
+    if (p.energy >= max) throw new GameError('Энергия и так полная');
+    p.energy = Math.min(max, p.energy + 15);
+  }
+  p.butts -= o.cost;
+  let money = 0;
+  if (o.give === 'money') {
+    money = 40 + p.level * 10;
+    p.money += money;
+  }
+  if (o.give === 'chifir') p.chifir += 1;
+  if (o.give === 'gold') p.gold += 5;
+  return { money };
+}
+
+// --- Напёрстки ------------------------------------------------------------------
+
+export function shellsLeft(p: Player, now: number): number {
+  return p.shells.day === dayKey(now) ? Math.max(0, SHELLS.maxPerDay - p.shells.n) : SHELLS.maxPerDay;
+}
+
+export function maxBet(p: Player): number {
+  return SHELLS.betPerLevel * p.level;
+}
+
+/** Шарик кладётся под случайный напёрсток уже после выбора игрока — честно 1 к 3. */
+export function playShells(p: Player, bet: number, pick: number, now: number, rng: Rng) {
+  if (!Number.isInteger(bet) || bet < SHELLS.minBet) throw new GameError(`Ставка от ${SHELLS.minBet} ₽`);
+  if (bet > maxBet(p)) throw new GameError(`На твоём уровне ставка до ${maxBet(p)} ₽`);
+  if (![0, 1, 2].includes(pick)) throw new GameError('Выбери напёрсток');
+  if (shellsLeft(p, now) <= 0) throw new GameError('Лёха на сегодня наигрался');
+  if (p.money < bet) throw new GameError('Не хватает денег');
+  const day = dayKey(now);
+  p.shells = { day, n: (p.shells.day === day ? p.shells.n : 0) + 1 };
+  const ball = Math.floor(rng() * 3);
+  const win = ball === pick;
+  const payout = win ? Math.floor(bet * SHELLS.payout) : 0;
+  p.money += payout - bet;
+  return { ball, win, payout };
 }

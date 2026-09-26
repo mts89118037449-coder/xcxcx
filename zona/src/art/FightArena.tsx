@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { OUTFITS } from '../../shared/content.ts';
 import type { FightReplay, Look } from '../../shared/types.ts';
 import { Bar, fmt } from '../game.tsx';
 import { CharacterG } from './Character.tsx';
@@ -16,6 +17,20 @@ export interface Fighter {
 }
 
 const STEP_MS = 480;
+
+/** Боссы, нарисованные вполоборота вправо — отражаем, чтобы смотрели на героя. */
+const BOSS_MIRROR = new Set<string>();
+
+const RIVAL_OUTFITS = Object.keys(OUTFITS).filter((id) => OUTFITS[id].cols.includes(8));
+
+/** Если у соперника нет комплекта — одеваем по имени, чтобы все были разные, но постоянные. */
+function rivalLook(enemy: Fighter): Look {
+  const body = enemy.look.equipped.body;
+  if (body && OUTFITS[body]?.cols.includes(8)) return enemy.look;
+  let h = 0;
+  for (const ch of enemy.name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return { ...enemy.look, equipped: { ...enemy.look.equipped, body: RIVAL_OUTFITS[h % RIVAL_OUTFITS.length] } };
+}
 
 /** Проигрывает бой, пришедший с сервера, удар за ударом. */
 export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: Fighter; replay: FightReplay; onDone(): void }) {
@@ -119,8 +134,15 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
             )}
           </Place>
           <Place x={256} y={266} scale={0.98} key={`en${i}`} className={`pose ${enemyCls}`}>
-            {foe ? (
-              <ImageG url={foe.url} height={foe.height} mirror={foe.url.endsWith('hero.png')} className="char-breathe" />
+            {!enemy.npc && poses ? (
+              // соперник-зэк — такой же герой в своём комплекте, развёрнут лицом к нам
+              <PoseG
+                name={done ? (replay.win ? 'guard34' : 'crossed') : last?.by === 1 ? 'lunge' : 'guard34'}
+                look={rivalLook(enemy)}
+                mirror
+              />
+            ) : foe ? (
+              <ImageG url={foe.url} height={foe.height} mirror={BOSS_MIRROR.has(enemy.npc ?? '')} className="char-breathe" />
             ) : (
               <CharacterG look={enemy.look} build={enemy.build} mood={done ? (replay.win ? 'hurt' : 'win') : 'idle'} />
             )}

@@ -5,7 +5,10 @@ import { FightArena, type Fighter } from './art/FightArena.tsx';
 import { Face } from './art/sprites.tsx';
 import { EnergySheet } from './Energy.tsx';
 import { VisitModal } from './Visit.tsx';
-import { Bar, GameCtx, fmt, lookOf, timeLeft, useNow, type FightLog, type Game, type Tab } from './game.tsx';
+import { DialogBox } from './Dialog.tsx';
+import { ShellGame } from './Shells.tsx';
+import { Zone } from './screens/Zone.tsx';
+import { Bar, GameCtx, fmt, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
 import { Gear } from './screens/Gear.tsx';
 import { Home } from './screens/Home.tsx';
@@ -15,6 +18,7 @@ import { Work } from './screens/Work.tsx';
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'home', icon: '🏚️', label: 'Хата' },
+  { id: 'zone', icon: '🗺️', label: 'Зона' },
   { id: 'work', icon: '⚒️', label: 'Работа' },
   { id: 'fight', icon: '🥊', label: 'Бой' },
   { id: 'gear', icon: '🎒', label: 'Шмот' },
@@ -33,6 +37,8 @@ export function App() {
   const [fight, setFight] = useState<FightLog | null>(null);
   const [visiting, setVisiting] = useState<number | null>(null);
   const [energyOpen, setEnergyOpen] = useState(false);
+  const [dialog, setDialog] = useState<DialogSpec | null>(null);
+  const [shellsOpen, setShellsOpen] = useState(false);
   const toastTimer = useRef<number>(0);
   const now = useNow();
 
@@ -102,7 +108,7 @@ export function App() {
     setTab(t);
     window.scrollTo(0, 0);
   };
-  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true) };
+  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true), say: setDialog, openShells: () => setShellsOpen(true) };
   const energyTimer = p.nextEnergyAt ? Math.max(0, p.nextEnergyAt - now) : 0;
 
   return (
@@ -118,7 +124,9 @@ export function App() {
             </span>
           </div>
           <div className="wallet">
-            <span>{fmt(p.money)} ₽</span>
+            <span>
+              {fmt(p.money)} ₽ · <span onClick={() => go('zone')}>{p.butts} 🚬</span>
+            </span>
             <span onClick={() => go('shop')}>{fmt(p.gold)} 🪙 <b className="plus">+</b></span>
           </div>
         </div>
@@ -138,6 +146,7 @@ export function App() {
 
       <main>
         {tab === 'home' && <Home />}
+        {tab === 'zone' && <Zone />}
         {tab === 'work' && <Work />}
         {tab === 'fight' && <Fight />}
         {tab === 'gear' && <Gear />}
@@ -161,6 +170,8 @@ export function App() {
       {toastMsg && <div className={`toast toast-${toastMsg.kind}`}>{toastMsg.text}</div>}
 
       {visiting !== null && <VisitModal id={visiting} onClose={() => setVisiting(null)} />}
+      {dialog && <DialogBox d={dialog} onClose={() => setDialog(null)} />}
+      {shellsOpen && <ShellGame onClose={() => setShellsOpen(false)} />}
       {energyOpen && <EnergySheet onClose={() => setEnergyOpen(false)} />}
       {fight && <FightModal fight={fight} me={{ name: p.name, look: lookOf(p) }} onClose={() => setFight(null)} />}
     </GameCtx.Provider>

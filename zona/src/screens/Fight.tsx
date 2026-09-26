@@ -5,6 +5,7 @@ import { api } from '../api.ts';
 import { BOSS_LOOKS, CharacterG } from '../art/Character.tsx';
 import { artUrl, useArt } from '../art/raster.ts';
 import { Stage } from '../art/Stage.tsx';
+import { useTalk } from '../Talk.tsx';
 import { NpcBanner } from '../art/sprites.tsx';
 import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
@@ -12,6 +13,7 @@ type FightResult = FightReplay;
 
 export function Fight() {
   const { p, now, act, busy, showFight, toast } = useGame();
+  const talk = useTalk();
   const [world, setWorld] = useState<WorldBossView | null>(null);
   const [anim, animKey, play] = useAnim();
   const art = useArt();
@@ -28,18 +30,7 @@ export function Fight() {
 
   const lowHp = p.hp < p.stats.maxHp * BALANCE.pvpMinHpShare;
 
-  const pvp = async () => {
-    const r = await act<FightResult & { enemy: string; enemyLook: Look; loot: number; authority: number; xp: number }>('pvp');
-    if (!r) return;
-    showFight({
-      title: `Наезд: ${r.enemy}`,
-      replay: r,
-      enemy: { name: r.enemy, look: r.enemyLook },
-      lines: r.win
-        ? [`Отжал ${fmt(r.loot)} ₽`, `+${r.authority} авторитета`, `+${r.xp} опыта`]
-        : [`${r.authority} авторитета`, 'Отлежись и возвращайся'],
-    });
-  };
+  const pvp = usePvp();
 
   const boss = async (bossId: string, name: string) => {
     const r = await act<FightResult & { reward: { money: number; xp: number; authority: number; gold: number; drop: string | null } }>('boss', { bossId });
@@ -73,7 +64,7 @@ export function Fight() {
   return (
     <>
       <div className="scene-wrap">
-        <Stage loc="yard" look={lookOf(p)} mood={lowHp ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
+        <Stage onTalk={talk} loc="yard" look={lookOf(p)} mood={lowHp ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
         <div className="scene-tag">🥊 Двор</div>
       </div>
       {world && (
@@ -167,4 +158,21 @@ export function Fight() {
       })}
     </>
   );
+}
+
+/** Наезд на сокамерника — вызывается и с кнопки, и из диалога во дворе. */
+export function usePvp() {
+  const { act, showFight } = useGame();
+  return async () => {
+      const r = await act<FightResult & { enemy: string; enemyLook: Look; loot: number; authority: number; xp: number }>('pvp');
+      if (!r) return;
+      showFight({
+        title: `Наезд: ${r.enemy}`,
+        replay: r,
+        enemy: { name: r.enemy, look: r.enemyLook },
+        lines: r.win
+          ? [`Отжал ${fmt(r.loot)} ₽`, `+${r.authority} авторитета`, `+${r.xp} опыта`]
+          : [`${r.authority} авторитета`, 'Отлежись и возвращайся'],
+      });
+  };
 }

@@ -1,7 +1,7 @@
 // Иконки вещей и наколок в той же манере, что персонаж.
 // Вещи рисуются сами по себе (как на витрине), наколки — на участке кожи.
 
-import { itemById } from '../../shared/content.ts';
+import { OUTFITS, itemById } from '../../shared/content.ts';
 import { CharacterG, ItemOnly } from './Character.tsx';
 import { artUrl, useArt } from './raster.ts';
 
@@ -56,7 +56,8 @@ export function ItemIcon({ id, size = 44 }: { id: string; size?: number }) {
   const art = useArt();
   const item = itemById.get(id);
   if (!item) return null;
-  const drawn = artUrl(art, `sheet/icons/${id}`);
+  const outfit = OUTFITS[id];
+  const drawn = (outfit && artUrl(art, `sheet/outfit/${outfit.set}/2`)) || artUrl(art, `sheet/icons/${id}`);
   if (drawn) {
     return (
       <span className="icon icon-img" style={{ width: size, height: size }}>

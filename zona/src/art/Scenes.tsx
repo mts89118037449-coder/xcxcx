@@ -761,3 +761,148 @@ function FloorPattern({ id, accent }: { id: string; accent: string }) {
     </g>
   );
 }
+
+// --- Зона целиком ---------------------------------------------------------------
+
+function ZoneBackdrop() {
+  const s = sky(new Date().getHours());
+  return (
+    <>
+      <linearGradient id="zone-sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor={s.top} />
+        <stop offset="1" stopColor={s.bottom} />
+      </linearGradient>
+      <rect width={W} height={120} fill="url(#zone-sky)" />
+      {/* дальний забор с колючкой и вышками */}
+      <rect y={78} width={W} height={34} fill="#7c7a70" />
+      <Grime x={0} y={78} w={W} h={34} stains={0.8} grime={0.5} />
+      {Array.from({ length: 30 }, (_, i) => (
+        <ellipse key={i} cx={i * 12.5 + 6} cy={73} rx={6} ry={6} fill="none" stroke="#4a4a4a" strokeWidth={0.9} />
+      ))}
+      {[40, 320].map((x) => (
+        <g key={x} transform={`translate(${x} 18)`}>
+          <path d="M4,26 L0,92 M24,26 L28,92 M4,50 L24,72 M24,50 L4,72" stroke="#3b3024" strokeWidth={2} />
+          <rect x={-4} y={12} width={36} height={16} fill="#5b4a36" />
+          <path d="M-8,12 L14,0 L36,12 Z" fill="#3a2f22" />
+        </g>
+      ))}
+      {/* земля */}
+      <rect y={110} width={W} height={H - 110} fill="#56554d" />
+      <Grime x={0} y={110} w={W} h={H - 110} stains={0.7} grime={0.65} />
+      <path d="M0,176 C80,170 160,182 360,172 L360,280 L0,280 Z" fill="#4a4943" />
+      <rect y={176} width={W} height={104} filter="url(#sc-grime)" opacity={0.5} />
+      <path d="M20,230 L60,236 L70,252 M260,210 L280,222 L300,221" stroke="#2a2a26" strokeWidth={0.9} fill="none" />
+      <ellipse cx={250} cy={255} rx={40} ry={6} fill="#6d7478" opacity={0.4} />
+
+      {/* барак */}
+      <g>
+        <rect x={6} y={96} width={124} height={74} fill="#8a7e68" />
+        <Grime x={6} y={96} w={124} h={74} stains={0.8} grime={0.5} />
+        <path d="M0,98 L68,70 L136,98 Z" fill="#4a3f33" />
+        {[18, 44, 70, 96].map((x) => (
+          <g key={x}>
+            <rect x={x} y={112} width={16} height={18} fill="#2a2620" />
+            <path d={`M${x},121 H${x + 16} M${x + 8},112 V130`} stroke="#6a6a6a" strokeWidth={1.2} />
+          </g>
+        ))}
+        <rect x={56} y={140} width={22} height={30} fill="#3a2a1c" />
+        <rect x={40} y={100} width={56} height={9} fill="#e6e0cc" />
+        <text x={68} y={107} fontSize={6.5} textAnchor="middle" fill="#2a1a10" fontWeight={800}>
+          БАРАК №3
+        </text>
+      </g>
+
+      {/* ларёк */}
+      <g>
+        <rect x={138} y={124} width={50} height={46} fill="#5d6e7a" />
+        <path d="M134,124 L192,124 L186,114 L140,114 Z" fill="#9c2a26" />
+        {[0, 1, 2, 3, 4, 5].map((i) => <path key={i} d={`M${142 + i * 8},114 L${140 + i * 8},124`} stroke="#e8e0cc" strokeWidth={2} />)}
+        <rect x={146} y={132} width={34} height={20} fill="#e8c86a" opacity={0.85} />
+        <rect x={146} y={132} width={34} height={20} fill="url(#sc-glass)" />
+        <text x={163} y={165} fontSize={6} textAnchor="middle" fill="#e8e0cc" fontWeight={800}>
+          ЛАРЁК
+        </text>
+      </g>
+
+      {/* промзона */}
+      <g>
+        <rect x={200} y={84} width={100} height={86} fill="#6e6a60" />
+        <Grime x={200} y={84} w={100} h={86} stains={0.9} grime={0.55} />
+        <path d="M200,84 L225,70 L250,84 L275,70 L300,84 Z" fill="#4a4a44" />
+        <rect x={284} y={30} width={10} height={56} fill="#7a4032" />
+        <rect x={282} y={28} width={14} height={5} fill="#5a2a20" />
+        {[212, 240, 268].map((x) => <rect key={x} x={x} y={100} width={20} height={14} fill="#e8c86a" opacity={0.55} />)}
+        <rect x={232} y={132} width={36} height={38} fill="#3c3c38" />
+        <path d="M232,140 H268 M232,148 H268 M232,156 H268 M232,164 H268" stroke="#2a2a26" />
+        <rect x={214} y={118} width={72} height={9} fill="#7a211d" />
+        <text x={250} y={125} fontSize={6} textAnchor="middle" fill="#ecdcbc" fontWeight={800}>
+          ПРОМЗОНА
+        </text>
+      </g>
+
+      {/* санчасть */}
+      <g>
+        <rect x={306} y={122} width={50} height={48} fill="#c9c4b4" />
+        <Grime x={306} y={122} w={50} h={48} stains={0.6} grime={0.4} />
+        <path d="M302,124 L331,108 L360,124 Z" fill="#6a6258" />
+        <rect x={325} y={130} width={12} height={4} fill="#b8342e" />
+        <rect x={329} y={126} width={4} height={12} fill="#b8342e" />
+        <rect x={322} y={148} width={16} height={22} fill="#4a4034" />
+      </g>
+    </>
+  );
+}
+
+/** Бычок (или пачка) на земле. */
+export function ButtG({ x, y, pack, onPick }: { x: number; y: number; pack: boolean; onPick(): void }) {
+  const rot = ((x * 997 + y * 131) % 1) * 360;
+  return (
+    <g className="butt" transform={`translate(${x * W} ${y * H})`} onClick={onPick} style={{ cursor: 'pointer' }}>
+      <circle r={13} fill="#fff" opacity={0.001} />
+      <ellipse cx={0} cy={3} rx={7} ry={2} fill="#000" opacity={0.3} />
+      {pack ? (
+        <g transform={`rotate(${rot % 40 - 20})`}>
+          <rect x={-6} y={-8} width={12} height={10} rx={1} fill="#d8d2c2" stroke="#3a2a1c" strokeWidth={0.6} />
+          <rect x={-6} y={-8} width={12} height={4} fill="#b8342e" />
+          <circle className="butt-glint" cx={3} cy={-6} r={1.2} fill="#fff" />
+        </g>
+      ) : (
+        <g transform={`rotate(${rot})`}>
+          <rect x={-5} y={-1.3} width={7} height={2.6} fill="#e8e2d2" />
+          <rect x={2} y={-1.3} width={3.5} height={2.6} fill="#c98a3a" />
+          <circle cx={-5} cy={0} r={1.1} fill="#3a2a1c" />
+        </g>
+      )}
+    </g>
+  );
+}
+
+export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace(place: 'barrack' | 'kiosk' | 'work' | 'medic' | 'yard'): void }) {
+  const tag = (x: number, y: number, label: string, place: Parameters<typeof onPlace>[0], w = 54) => (
+    <g className="zone-tag" onClick={() => onPlace(place)} style={{ cursor: 'pointer' }}>
+      <rect x={x - w / 2} y={y - 9} width={w} height={13} rx={6.5} fill="#000" opacity={0.65} />
+      <text x={x} y={y} fontSize={7.5} textAnchor="middle" fill="#f2e6c8" fontWeight={700}>
+        {label}
+      </text>
+    </g>
+  );
+  return (
+    <Scene backdrop={<ZoneBackdrop />}>
+      {/* кликабельные здания */}
+      <rect x={6} y={70} width={130} height={100} fill="#fff" opacity={0.001} onClick={() => onPlace('barrack')} style={{ cursor: 'pointer' }} />
+      <rect x={136} y={112} width={56} height={58} fill="#fff" opacity={0.001} onClick={() => onPlace('kiosk')} style={{ cursor: 'pointer' }} />
+      <rect x={200} y={30} width={100} height={140} fill="#fff" opacity={0.001} onClick={() => onPlace('work')} style={{ cursor: 'pointer' }} />
+      <rect x={302} y={106} width={58} height={64} fill="#fff" opacity={0.001} onClick={() => onPlace('medic')} style={{ cursor: 'pointer' }} />
+      <g className="smoke">
+        <circle cx={289} cy={22} r={5} fill="#cfcac0" opacity={0.5} />
+        <circle cx={293} cy={12} r={7} fill="#cfcac0" opacity={0.35} />
+      </g>
+      {tag(68, 64, '🏚️ Хата', 'barrack')}
+      {tag(163, 106, '⭐ Ларёк', 'kiosk')}
+      {tag(250, 64, '⚒️ Промка', 'work')}
+      {tag(331, 100, '💉 Санчасть', 'medic', 62)}
+      {tag(58, 196, '🥊 Во двор', 'yard', 60)}
+      {children}
+    </Scene>
+  );
+}
