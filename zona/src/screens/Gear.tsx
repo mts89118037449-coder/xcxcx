@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { ITEMS, SLOT_NAMES, TATTOOS, itemById, type Item, type Slot } from '../../shared/content.ts';
 import { Character } from '../art/Character.tsx';
 import { ItemIcon, TattooIcon } from '../art/Icons.tsx';
+import { characterLayers, useArt } from '../art/raster.ts';
+import { RasterFigure } from '../art/Stage.tsx';
 import { BonusList, Card, Price, lookOf, useAnim, useGame } from '../game.tsx';
 
 type View = 'mine' | 'shop' | 'ink';
@@ -12,6 +14,8 @@ export function Gear() {
   const [slot, setSlot] = useState<Slot | 'all'>('all');
   const [bare, setBare] = useState(false);
   const [anim, animKey, play] = useAnim();
+  const art = useArt();
+  const standLayers = characterLayers(art, 'stand', lookOf(p), { bare });
 
   const dress = async (type: 'equip' | 'unequip', body: Record<string, unknown>) => {
     if ((await act(type, body)) !== null) play('act-dress');
@@ -56,7 +60,13 @@ export function Gear() {
           <div className="wardrobe">
             <div className="wardrobe-col">{(['head', 'body', 'legs'] as Slot[]).map(slotTile)}</div>
             <div className="pose-wrap" onClick={() => setBare(!bare)}>
-              <Character key={animKey} className={`char-view pose ${anim}`} look={lookOf(p)} bare={bare} />
+              {standLayers ? (
+                <div className="stand-view">
+                  <RasterFigure layers={standLayers} className={anim} key={animKey} />
+                </div>
+              ) : (
+                <Character key={animKey} className={`char-view pose ${anim}`} look={lookOf(p)} bare={bare} />
+              )}
             </div>
             <div className="wardrobe-col">{(['weapon', 'charm', 'feet'] as Slot[]).map(slotTile)}</div>
           </div>

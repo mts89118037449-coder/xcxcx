@@ -9,10 +9,11 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "dev:server": "DEV_AUTH=1 node --watch --disable-warning=ExperimentalWarning server/index.ts",
-    "build": "vite build",
+    "build": "node scripts/art-manifest.mjs && vite build",
     "start": "node --disable-warning=ExperimentalWarning server/index.ts",
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.ts",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "art": "node scripts/art-manifest.mjs"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

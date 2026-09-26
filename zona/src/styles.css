@@ -1124,3 +1124,52 @@ main {
   border-radius: 8px;
   border: 1px dashed #3a352c;
 }
+
+/* --- Растровая графика --------------------------------------------------- */
+.raster-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+.raster-figure,
+.raster-breathe {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 90%;
+}
+.raster-breathe {
+  animation: breathe 3.6s ease-in-out infinite;
+}
+.stand-view {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+}
+.dmg-html {
+  position: absolute;
+  top: 22%;
+  font-size: 22px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 3px #000, 0 2px 4px #000;
+  animation: dmg-pop 0.8s ease-out forwards;
+}
+.dmg-html.right { right: 24%; }
+.dmg-html.left { left: 24%; }
+.dmg-html.crit { color: #ffcf5a; font-size: 30px; }
+.boss-face { object-fit: cover; }
+/* Стоячая поза (холст 2:3), вставленная в сцену локации */
+.raster-figure.raster-standin {
+  left: 28%;
+  right: auto;
+  top: 6%;
+  bottom: 2%;
+  aspect-ratio: 2 / 3;
+}
+.raster-standin .raster-layer {
+  object-fit: contain;
+}

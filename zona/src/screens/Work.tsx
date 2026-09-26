@@ -1,6 +1,5 @@
 import { GOLD_PRICES, JOBS, STAT_NAMES, trainCost, type Stat } from '../../shared/content.ts';
-import { CharacterG } from '../art/Character.tsx';
-import { Place, WorkScene } from '../art/Scenes.tsx';
+import { Stage } from '../art/Stage.tsx';
 import { Card, Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
 
 const STAT_HINT: Record<Stat, string> = {
@@ -27,11 +26,7 @@ export function Work() {
   return (
     <>
       <div className="scene-wrap">
-        <WorkScene>
-          <Place x={172} y={264} scale={1.02} key={animKey} className={`pose ${anim}`}>
-            <CharacterG look={lookOf(p)} mood={p.hp < p.stats.maxHp * 0.3 ? 'hurt' : 'idle'} />
-          </Place>
-        </WorkScene>
+        <Stage loc="work" look={lookOf(p)} mood={p.hp < p.stats.maxHp * 0.3 ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
         <div className="scene-tag">⚒️ Промзона</div>
       </div>
       <Card>

@@ -3,7 +3,8 @@ import { BALANCE, BOSSES, GOLD_PRICES, WORLD_BOSS, itemById } from '../../shared
 import type { FightReplay, Look, WorldBossView } from '../../shared/types.ts';
 import { api } from '../api.ts';
 import { BOSS_LOOKS, CharacterG } from '../art/Character.tsx';
-import { Place, YardScene } from '../art/Scenes.tsx';
+import { artUrl, useArt } from '../art/raster.ts';
+import { Stage } from '../art/Stage.tsx';
 import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
 type FightResult = FightReplay;
@@ -12,6 +13,7 @@ export function Fight() {
   const { p, now, act, busy, showFight, toast } = useGame();
   const [world, setWorld] = useState<WorldBossView | null>(null);
   const [anim, animKey, play] = useAnim();
+  const art = useArt();
 
   const loadWorld = useCallback(() => {
     api.world().then((r) => setWorld(r.world)).catch(() => {});
@@ -45,7 +47,7 @@ export function Fight() {
     showFight({
       title: name,
       replay: r,
-      enemy: { name, ...BOSS_LOOKS[bossId] },
+      enemy: { name, npc: bossId, ...BOSS_LOOKS[bossId] },
       lines: r.win
         ? [
             `+${fmt(r.reward.money)} ₽ · +${r.reward.xp} опыта · +${r.reward.authority} авторитета`,
@@ -70,11 +72,7 @@ export function Fight() {
   return (
     <>
       <div className="scene-wrap">
-        <YardScene>
-          <Place x={150} y={266} scale={1.02} key={animKey} className={`pose ${anim}`}>
-            <CharacterG look={lookOf(p)} mood={lowHp ? 'hurt' : 'idle'} />
-          </Place>
-        </YardScene>
+        <Stage loc="yard" look={lookOf(p)} mood={lowHp ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
         <div className="scene-tag">🥊 Двор</div>
       </div>
       {world && (
@@ -128,9 +126,13 @@ export function Fight() {
         return (
           <Card key={b.id} className={locked ? 'locked' : ''}>
             <div className="row">
-              <svg className="boss-face" viewBox="42 0 36 44">
-                <CharacterG look={BOSS_LOOKS[b.id].look} build={BOSS_LOOKS[b.id].build} />
-              </svg>
+              {artUrl(art, `npc/${b.id}_face`) ? (
+                <img className="boss-face" src={artUrl(art, `npc/${b.id}_face`)!} alt={b.name} />
+              ) : (
+                <svg className="boss-face" viewBox="42 0 36 44">
+                  <CharacterG look={BOSS_LOOKS[b.id].look} build={BOSS_LOOKS[b.id].build} />
+                </svg>
+              )}
               <div className="grow">
                 <b>{b.name}</b>
                 <div className="muted small">{b.description}</div>

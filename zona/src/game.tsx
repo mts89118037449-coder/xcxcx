@@ -6,7 +6,7 @@ export type Tab = 'home' | 'work' | 'fight' | 'gear' | 'top' | 'shop';
 export interface FightLog {
   title: string;
   replay: FightReplay;
-  enemy: { name: string; look: Look; build?: number };
+  enemy: { name: string; look: Look; build?: number; npc?: string };
   lines: string[]; // итоги: награды, трофеи
 }
 
