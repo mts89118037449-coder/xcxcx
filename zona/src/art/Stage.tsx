@@ -105,8 +105,14 @@ export function RasterFigure({ layers, className = '', mirror = false }: { layer
 
 /** Сокамерники на заднем плане: чуть мельче и темнее, чтобы не спорить с героем. */
 const CROWD: Record<Loc, { name: string; x: number; y: number; scale: number }[]> = {
-  cell: [{ name: 'sheet/rival/3', x: 92, y: 250, scale: 0.8 }],
-  work: [{ name: 'sheet/rival/4', x: 300, y: 248, scale: 0.78 }],
+  cell: [
+    { name: 'sheet/rival/3', x: 92, y: 250, scale: 0.8 },
+    { name: 'sheet/cast/ushanka', x: 318, y: 246, scale: 0.74 },
+  ],
+  work: [
+    { name: 'sheet/rival/4', x: 300, y: 248, scale: 0.78 },
+    { name: 'sheet/cast/worker', x: 40, y: 246, scale: 0.74 },
+  ],
   yard: [
     { name: 'sheet/rival/5', x: 58, y: 236, scale: 0.72 },
     { name: 'sheet/rival/1', x: 292, y: 238, scale: 0.74 },

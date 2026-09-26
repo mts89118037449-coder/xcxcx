@@ -5,6 +5,7 @@ import { ItemIcon, TattooIcon } from '../art/Icons.tsx';
 import { characterLayers, useArt } from '../art/raster.ts';
 import { RasterFigure } from '../art/Stage.tsx';
 import { poseUrl, usePoses } from '../art/sprites.tsx';
+import { NpcBanner } from '../art/sprites.tsx';
 import { BonusList, Card, Price, lookOf, useAnim, useGame } from '../game.tsx';
 
 type View = 'mine' | 'shop' | 'ink';
@@ -140,7 +141,7 @@ export function Gear() {
 
       {view === 'ink' && (
         <>
-          <div className="muted small center">Наколки дают постоянные бонусы и показывают масть</div>
+          <NpcBanner who="kolshik" name="Кольщик Усатый" text="Каждая наколка — масть. Набью что заслужил, лишнего не наколю" />
           {TATTOOS.map((t) => {
             const has = p.tattoos.includes(t.id);
             const locked = p.level < t.minLevel || p.authority < t.minAuthority;

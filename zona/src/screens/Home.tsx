@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FACE_COUNT, FURNITURE, GOLD_PRICES, SPOT_NAMES, TATTOOS, type Furniture } from '../../shared/content.ts';
 import { Stage } from '../art/Stage.tsx';
-import { Face, faceUrl, usePoses } from '../art/sprites.tsx';
+import { Face, NpcBanner, faceUrl, usePoses } from '../art/sprites.tsx';
 import { useArt } from '../art/raster.ts';
 import { BonusList, Card, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
@@ -94,6 +94,7 @@ export function Home() {
         <span className="pulse" /> На зоне сейчас: <b>{fmt(online)}</b>
       </Card>
 
+      {dailyReady && <NpcBanner who="lawyer" name="Адвокат" text="Родня передала грев. Распишись и забирай" />}
       <Card className={dailyReady ? 'glow' : ''}>
         <div className="row">
           <div>
@@ -153,6 +154,7 @@ export function Home() {
         </div>
       </Card>
 
+      {p.hp < p.stats.maxHp * 0.5 && <NpcBanner who="doctor" name="Лепила" text="Опять разукрасили? Заходи в санчасть, заштопаю" />}
       <div className="row gap">
         <button className="btn btn-wide" disabled={busy || p.hp >= p.stats.maxHp} onClick={() => act('heal')}>
           💉 Санчасть · {GOLD_PRICES.heal} 🪙

@@ -1,5 +1,5 @@
 # Вырезает позы и лица с листов ассетов на сером фоне в public/art/sheet.
-# Запуск: python3 scripts/cut-poses.py <лист_поз.jpg> [<лист_лиц.jpg>] [<лист_персонажей.jpg>]
+# Запуск: python3 scripts/cut-poses.py <лист_поз.jpg> [<лист_лиц.jpg>] [<лист_персонажей.jpg>] [<лист_каста.jpg>]
 # (нужны pillow, numpy, scipy)
 import os, sys
 import numpy as np
@@ -32,7 +32,12 @@ def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False):
     lab2, n = ndimage.label(fg)
     if n > 1:
         sizes = ndimage.sum(fg, lab2, range(1, n + 1))
-        fg = np.isin(lab2, [i + 1 for i, s in enumerate(sizes) if s >= sizes.max() * keep_share])
+        keep = [i + 1 for i, s in enumerate(sizes) if s >= sizes.max() * keep_share]
+        if open_thin:  # обрезки соседних фигур прижаты к боковому краю кадра — выкидываем
+            big = int(np.argmax(sizes)) + 1
+            W = fg.shape[1]
+            keep = [k for k in keep if k == big or not (np.any(lab2[:, :3] == k) or np.any(lab2[:, W - 3:] == k))]
+        fg = np.isin(lab2, keep)
     rgba = np.dstack([a.astype(np.uint8), (fg * 255).astype(np.uint8)])
     img = Image.fromarray(rgba, 'RGBA')
     img = img.crop(img.getbbox())
@@ -107,6 +112,19 @@ def erase_grid(img):
         fixed[y, x] = (fixed[y, lf] + fixed[y, rt]) // 2
     return Image.fromarray(fixed.astype(np.uint8))
 
+# Второй лист персонажей: зэки, обслуга, охрана. Имена — роли в игре.
+R1, R2 = (14, 290), (305, 572)
+CAST = {
+    'avtoritet': (18, R1[0], 132, R1[1]), 'brute': (148, R1[0], 280, R1[1]), 'ushanka': (276, R1[0], 352, R1[1]),
+    'coverall': (348, R1[0], 430, R1[1]), 'cook': (420, R1[0], 526, R1[1]), 'priest': (514, R1[0], 594, R1[1]),
+    'writer': (586, R1[0], 662, R1[1]), 'lawyer': (650, R1[0], 742, R1[1]), 'omon': (732, R1[0], 848, R1[1]),
+    'officer': (836, R1[0], 930, R1[1]), 'guardwoman': (924, R1[0], 1008, R1[1]),
+    'youngster': (20, R2[0], 124, R2[1]), 'oldman': (148, R2[0], 248, R2[1]), 'worker': (240, R2[0], 342, R2[1]),
+    'seller': (334, R2[0], 422, R2[1]), 'hermit': (410, R2[0], 492, R2[1]), 'doctor': (480, R2[0], 564, R2[1]),
+    'sport': (558, R2[0], 622, R2[1]), 'blatnoy': (624, R2[0], 710, R2[1]), 'thin': (712, R2[0], 767, R2[1]),
+    'bandaged': (768, R2[0], 840, R2[1]), 'spetsnaz': (838, R2[0], 916, R2[1]), 'kolshik': (916, R2[0], 1018, R2[1]),
+}
+
 def face_of(path, out):
     # Портрет босса — верх его же фигуры
     img = Image.open(os.path.join(OUT, path + '.png'))
@@ -123,6 +141,10 @@ if __name__ == '__main__':
             print(k, cut(npc, b, k, keep_share=0.2, open_thin=True))
         for k in ('b_rat', 'b_guard', 'b_chief', 'b_warden'):
             face_of('boss/' + k, 'npc/' + k + '_face')
+    if len(sys.argv) > 4:
+        cast = Image.open(sys.argv[4]).convert('RGB')
+        for k, b in CAST.items():
+            print(k, cut(cast, b, 'cast/' + k, keep_share=0.35, open_thin=k != 'lawyer'))
     poses = Image.open(sys.argv[1]).convert('RGB')
     for k, b in POSES.items():
         print(k, cut(poses, b, 'pose/' + k))

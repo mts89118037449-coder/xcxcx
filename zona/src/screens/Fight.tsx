@@ -5,6 +5,7 @@ import { api } from '../api.ts';
 import { BOSS_LOOKS, CharacterG } from '../art/Character.tsx';
 import { artUrl, useArt } from '../art/raster.ts';
 import { Stage } from '../art/Stage.tsx';
+import { NpcBanner } from '../art/sprites.tsx';
 import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
 type FightResult = FightReplay;
@@ -75,6 +76,9 @@ export function Fight() {
         <Stage loc="yard" look={lookOf(p)} mood={lowHp ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
         <div className="scene-tag">🥊 Двор</div>
       </div>
+      {world && (
+        <NpcBanner who="spetsnaz" name="Командир ОМОНа" text="На централе бунт. Мы заходим через час — успейте отличиться" />
+      )}
       {world && (
         <Card className="world">
           <div className="row">

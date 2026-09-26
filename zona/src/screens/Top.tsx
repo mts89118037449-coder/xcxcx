@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BALANCE } from '../../shared/content.ts';
 import { api, tg } from '../api.ts';
 import { Face } from '../art/sprites.tsx';
+import { NpcBanner } from '../art/sprites.tsx';
 import { Card, fmt, useGame } from '../game.tsx';
 
 type Row = Awaited<ReturnType<typeof api.top>>['top'][number];
@@ -42,6 +43,7 @@ export function Top() {
         </Card>
       )}
 
+      <NpcBanner who="avtoritet" name="Смотрящий" text="Авторитет не покупается — его делают делом. Смотри, кто тут кто" />
       <h3 className="section">Самые авторитетные · всего {fmt(total)}</h3>
       <Card>
         {!rows && <div className="muted center">Загрузка…</div>}

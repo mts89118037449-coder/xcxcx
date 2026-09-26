@@ -1,5 +1,6 @@
 import { GOLD_PRICES, JOBS, STAT_NAMES, trainCost, type Stat } from '../../shared/content.ts';
 import { Stage } from '../art/Stage.tsx';
+import { NpcBanner } from '../art/sprites.tsx';
 import { Card, Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
 
 const STAT_HINT: Record<Stat, string> = {
@@ -57,6 +58,7 @@ export function Work() {
       </Card>
 
       <h3 className="section">Работа</h3>
+      <NpcBanner who="officer" name="Начальник промзоны" text="Норму сделал — свободен. Не сделал — объяснишь почему" />
       {JOBS.map((j) => {
         const locked = p.level < j.minLevel;
         return (

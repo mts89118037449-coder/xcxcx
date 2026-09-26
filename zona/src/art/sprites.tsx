@@ -2,7 +2,7 @@
 // Все позы вырезаны с одного листа в одном масштабе, поэтому высоту считаем
 // относительно стоячей позы: сидящий получается ниже, как и должно быть.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { artSize, artUrl, useArt } from './raster.ts';
 
 export type PoseName =
@@ -23,7 +23,10 @@ export function usePoses(): boolean {
 
 /** Рост самой высокой стоячей фигуры с листа персонажей — от неё масштаб NPC. */
 const NPC_REF = 'sheet/boss/b_warden';
-const RIVALS = ['sheet/rival/0', 'sheet/rival/1', 'sheet/rival/2', 'sheet/rival/3', 'sheet/rival/4', 'sheet/rival/5', 'sheet/hero'];
+const RIVALS = [
+  'sheet/rival/0', 'sheet/rival/1', 'sheet/rival/2', 'sheet/rival/3', 'sheet/rival/4', 'sheet/rival/5', 'sheet/hero',
+  ...['brute', 'ushanka', 'coverall', 'youngster', 'oldman', 'worker', 'sport', 'blatnoy', 'thin', 'bandaged', 'hermit', 'writer'].map((n) => `sheet/cast/${n}`),
+];
 
 export interface Npc {
   url: string;
@@ -33,7 +36,8 @@ export interface Npc {
 function npcOf(art: Set<string> | null, name: string): Npc | null {
   const url = artUrl(art, name);
   if (!url) return null;
-  const ref = artUrl(art, NPC_REF);
+  // у каждого листа свой масштаб: эталон — офицер/хозяин в полный рост
+  const ref = artUrl(art, name.startsWith('sheet/cast/') ? 'sheet/cast/officer' : NPC_REF);
   const size = artSize(url);
   const refSize = ref ? artSize(ref) : null;
   // лист с татуированным героем другой, у него свой масштаб
@@ -115,4 +119,22 @@ export function Face({ face, size = 36, className = '' }: { face: number | null 
   const url = faceUrl(useArt(), face);
   if (!url) return null;
   return <img className={`face ${className}`} src={url} alt="" style={{ width: size, height: size }} />;
+}
+
+/** Персонаж-«хозяин» экрана: поясной портрет с репликой. */
+export function NpcBanner({ who, name, text, children }: { who: string; name: string; text: string; children?: ReactNode }) {
+  const url = artUrl(useArt(), `sheet/cast/${who}`);
+  if (!url) return null;
+  return (
+    <div className="npc-banner">
+      <div className="npc-pic">
+        <img src={url} alt={name} />
+      </div>
+      <div className="npc-say">
+        <b>{name}</b>
+        <span>«{text}»</span>
+        {children}
+      </div>
+    </div>
+  );
 }

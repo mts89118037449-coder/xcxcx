@@ -1244,3 +1244,42 @@ main {
 }
 .top-face { margin-right: 10px; }
 .top-row .who { flex: 1; }
+.npc-banner {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 10px 12px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, #2c2821, var(--card) 60%);
+  overflow: hidden;
+}
+.npc-pic {
+  width: 92px;
+  height: 112px;
+  overflow: hidden;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+/* показываем фигуру по пояс: картинка вдвое выше окна */
+.npc-pic img {
+  display: block;
+  width: 100%;
+  height: 240px;
+  object-fit: contain;
+  object-position: 50% 0;
+  transform: scale(1.35);
+  transform-origin: 50% 0;
+}
+.npc-say {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 10px;
+  font-size: 13.5px;
+}
+.npc-say span {
+  color: #cfc6b3;
+  font-style: italic;
+}

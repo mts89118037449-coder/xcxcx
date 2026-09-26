@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { GOLD_PRICES, STAR_PACKS, type StarPack } from '../../shared/content.ts';
 import { api, ApiError, tg } from '../api.ts';
+import { NpcBanner } from '../art/sprites.tsx';
 import { Card, Price, timeLeft, useGame } from '../game.tsx';
 
 export function Shop() {
@@ -37,6 +38,7 @@ export function Shop() {
 
   return (
     <>
+      <NpcBanner who="seller" name="Люба из ларька" text="Золотишко, статус, грев — всё есть, было бы чем платить" />
       <Card className="center">
         <div className="big">🪙 {p.gold}</div>
         <div className="muted small">
