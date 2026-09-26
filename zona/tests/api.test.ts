@@ -1,0 +1,152 @@
+import assert from 'node:assert/strict';
+import type { AddressInfo } from 'node:net';
+import { after, before, test } from 'node:test';
+import { createApp } from '../server/app.ts';
+import { signInitData } from '../server/auth.ts';
+import { openDb } from '../server/db.ts';
+import type { Bot } from '../server/telegram.ts';
+
+const TOKEN = '123:test-token';
+const calls: { method: string; body: Record<string, unknown> }[] = [];
+const bot: Bot = {
+  async call<T>(method: string, body: Record<string, unknown>) {
+    calls.push({ method, body });
+    return (method === 'createInvoiceLink' ? 'https://t.me/$invoice' : true) as T;
+  },
+};
+
+let base = '';
+let close: () => void;
+let app: ReturnType<typeof createApp>;
+const db = openDb(':memory:');
+
+before(async () => {
+  app = createApp({
+    db,
+    bot,
+    botToken: TOKEN,
+    webAppUrl: 'https://zona.test',
+    webhookSecret: 'secret',
+    adminIds: [],
+    devAuth: false,
+    rng: () => 0.5,
+  });
+  const server = app.app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  close = () => server.close();
+});
+after(() => close());
+
+function initData(id: number, name: string, extra: Record<string, string> = {}) {
+  return signInitData(
+    { auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id, first_name: name }), ...extra },
+    TOKEN,
+  );
+}
+
+async function post(path: string, auth: string | null, body: unknown = {}) {
+  const res = await fetch(base + path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(auth ? { authorization: `tma ${auth}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, json: (await res.json().catch(() => null)) as any };
+}
+
+test('без подписи Telegram не пускает', async () => {
+  assert.equal((await post('/api/me', null)).status, 401);
+  const forged = initData(1, 'Вася').replace('%D0%92', '%D0%93');
+  assert.equal((await post('/api/me', forged)).status, 401);
+});
+
+test('регистрация и реферал', async () => {
+  const a = await post('/api/me', initData(10, 'Пахан'));
+  assert.equal(a.status, 200);
+  assert.equal(a.json.player.name, 'Пахан');
+  const b = await post('/api/me', initData(11, 'Новенький', { start_param: 'ref_10' }));
+  assert.equal(b.json.player.gold, 70);
+  const a2 = await post('/api/me', initData(10, 'Пахан'));
+  assert.equal(a2.json.player.refCount, 1);
+});
+
+test('действия и ошибки', async () => {
+  const auth = initData(20, 'Работяга');
+  const r = await post('/api/action/job', auth, { jobId: 'j_floor' });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.player.energy, 95);
+  const bad = await post('/api/action/job', auth, { jobId: 'j_smuggle' });
+  assert.equal(bad.status, 400);
+  assert.match(bad.json.error, /уровня/);
+  assert.equal((await post('/api/action/hack', auth)).status, 404);
+  const pvp = await post('/api/action/pvp', auth);
+  assert.equal(pvp.status, 200);
+  assert.ok(pvp.json.result.enemy);
+});
+
+test('общий босс копит урон', async () => {
+  const auth = initData(30, 'Бунтарь');
+  const hit = await post('/api/action/worldHit', auth);
+  assert.equal(hit.status, 200);
+  assert.ok(hit.json.result.damage > 0);
+  const w = await post('/api/world', auth);
+  assert.equal(w.json.world.myDamage, hit.json.result.damage);
+  assert.equal(w.json.world.hp, w.json.world.maxHp - hit.json.result.damage);
+  assert.equal((await post('/api/action/worldHit', auth)).status, 400);
+});
+
+test('добитый общий босс делит награду и появляется снова', async () => {
+  const a = initData(31, 'Первый');
+  const b = initData(32, 'Второй');
+  await post('/api/action/worldHit', a);
+  const boss = db.worldBoss()!;
+  db.setWorldBossHp(boss.id, 1);
+  const kill = await post('/api/action/worldHit', b);
+  assert.equal(kill.json.result.killed, true);
+  assert.ok(kill.json.player.journal.some((j: { text: string }) => j.text.includes('Бунт подавлен')));
+  const next = db.worldBoss()!;
+  assert.equal(next.gen, boss.gen + 1);
+  assert.ok(next.max_hp > boss.max_hp);
+  const first = db.getPlayer(31)!;
+  assert.ok(first.money > 300, 'участник получил долю');
+});
+
+test('оплата Stars: счёт, pre-checkout, зачисление ровно один раз', async () => {
+  const auth = initData(40, 'Донатер');
+  await post('/api/me', auth);
+  const inv = await post('/api/invoice', auth, { packId: 'gold_m' });
+  assert.equal(inv.json.link, 'https://t.me/$invoice');
+  const invoiceCall = calls.find((c) => c.method === 'createInvoiceLink')!;
+  assert.equal(invoiceCall.body.currency, 'XTR');
+  const payload = invoiceCall.body.payload as string;
+
+  await app.handleUpdate({
+    update_id: 1,
+    pre_checkout_query: { id: 'q1', from: { id: 40 }, currency: 'XTR', total_amount: 150, invoice_payload: payload },
+  });
+  assert.deepEqual(calls.at(-1), { method: 'answerPreCheckoutQuery', body: { pre_checkout_query_id: 'q1', ok: true } });
+
+  await app.handleUpdate({
+    update_id: 2,
+    pre_checkout_query: { id: 'q2', from: { id: 40 }, currency: 'XTR', total_amount: 1, invoice_payload: payload },
+  });
+  assert.equal(calls.at(-1)!.body.ok, false);
+
+  const paid = {
+    update_id: 3,
+    message: {
+      message_id: 1,
+      chat: { id: 40 },
+      successful_payment: { currency: 'XTR', total_amount: 150, invoice_payload: payload, telegram_payment_charge_id: 'ch_1' },
+    },
+  };
+  await app.handleUpdate(paid);
+  await app.handleUpdate(paid); // Telegram может доставить повторно
+  const me = await post('/api/me', auth);
+  assert.equal(me.json.player.gold, 20 + 350);
+});
+
+test('webhook проверяет секрет', async () => {
+  const res = await fetch(`${base}/tg/webhook`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  assert.equal(res.status, 403);
+});

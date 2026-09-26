@@ -1,0 +1,127 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { BOSSES, STAR_PACKS, xpToNext } from '../shared/content.ts';
+import * as g from '../server/game.ts';
+
+const T0 = 1_700_000_000_000;
+const MIN = 60_000;
+const fixed = (v: number): g.Rng => () => v;
+
+test('новый игрок в полном здравии', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  const s = g.stats(p, T0);
+  assert.equal(p.hp, s.maxHp);
+  assert.equal(p.energy, s.maxEnergy);
+  assert.equal(p.level, 1);
+});
+
+test('энергия восстанавливается со временем, VIP вдвое быстрее', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  g.doJob(p, 'j_floor', T0, fixed(0.5));
+  g.doJob(p, 'j_floor', T0, fixed(0.5));
+  assert.equal(p.energy, 90);
+  g.tick(p, T0 + 9 * MIN); // 3 единицы по 3 минуты
+  assert.equal(p.energy, 93);
+
+  const v = g.newPlayer(2, 'Вип', null, T0);
+  g.applyPack(v, STAR_PACKS.find((x) => x.id === 'vip_30')!, T0);
+  v.energy = 10;
+  v.energyAt = T0;
+  g.tick(v, T0 + 9 * MIN);
+  assert.equal(v.energy, 16);
+});
+
+test('работа тратит энергию и даёт уровень', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  p.xp = xpToNext(1) - 1;
+  const r = g.doJob(p, 'j_floor', T0, fixed(0));
+  assert.equal(r.levelUps, 1);
+  assert.equal(p.level, 2);
+  assert.equal(p.statPoints, 3);
+  assert.throws(() => g.doJob(p, 'j_smuggle', T0, fixed(0)), g.GameError);
+  p.energy = 0;
+  assert.throws(() => g.doJob(p, 'j_floor', T0, fixed(0)), /энергии/);
+});
+
+test('магазин, экипировка и продажа', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  const before = g.stats(p, T0).atk;
+  g.buyItem(p, 'wpn_spoon');
+  assert.equal(p.equipped.weapon, 'wpn_spoon');
+  assert.equal(g.stats(p, T0).atk, before + 4);
+  assert.throws(() => g.buyItem(p, 'wpn_spoon'), /Уже есть/);
+  assert.throws(() => g.buyItem(p, 'drop_crown'), /нет в продаже/);
+  assert.throws(() => g.buyItem(p, 'wpn_golden'), /уровня/);
+  const { price } = g.sellItem(p, 'wpn_spoon', T0);
+  assert.equal(price, 75);
+  assert.equal(p.equipped.weapon, undefined);
+});
+
+test('наколки требуют авторитет', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  p.level = 4;
+  p.money = 10_000;
+  assert.throws(() => g.buyTattoo(p, 't_spider', T0), /авторитета/);
+  p.authority = 50;
+  g.buyTattoo(p, 't_spider', T0);
+  assert.deepEqual(p.tattoos, ['t_spider']);
+});
+
+test('босс: победа даёт награду и ставит откат', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  p.level = 20;
+  p.str = 60;
+  p.end = 40;
+  p.hp = g.stats(p, T0).maxHp;
+  const boss = BOSSES[0];
+  const r = g.fightBoss(p, boss.id, T0, fixed(0.5));
+  assert.equal(r.win, true);
+  assert.ok(r.reward.money > 0);
+  assert.equal(p.bossKills, 1);
+  assert.throws(() => g.fightBoss(p, boss.id, T0 + MIN, fixed(0.5)), /оклемался/);
+  p.gold = 100;
+  g.resetBoss(p, boss.id, T0 + MIN);
+  assert.equal(p.gold, 85);
+});
+
+test('новичок проигрывает сильному боссу и не может бить с низким здоровьем', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  p.level = 13;
+  const r = g.fightBoss(p, 'b_warden', T0, fixed(0.5));
+  assert.equal(r.win, false);
+  p.bossCd = {};
+  assert.throws(() => g.fightBoss(p, 'b_warden', T0, fixed(0.5)), /санчасти/);
+});
+
+test('наезд: победитель отжимает деньги, у жертвы щит', () => {
+  const a = g.newPlayer(1, 'Сильный', null, T0);
+  a.str = 50;
+  const b = g.newPlayer(2, 'Слабый', null, T0);
+  b.money = 1000;
+  const r = g.pvp(a, b, T0, fixed(0.5));
+  assert.equal(r.win, true);
+  assert.equal(r.loot, 100);
+  assert.equal(b.money, 900);
+  assert.equal(a.money, 400);
+  assert.equal(g.canBeAttacked(b, T0 + MIN), false);
+  assert.throws(() => g.pvp(a, null, T0 + 1000, fixed(0.5)), /Отдышись/);
+});
+
+test('ежедневный бонус и серия', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  g.claimDaily(p, T0);
+  assert.throws(() => g.claimDaily(p, T0 + MIN), /уже получал/);
+  const r = g.claimDaily(p, T0 + 25 * 60 * MIN);
+  assert.equal(r.streak, 2);
+  const late = g.claimDaily(p, T0 + 25 * 60 * MIN + 72 * 60 * MIN);
+  assert.equal(late.streak, 1);
+});
+
+test('стартовый набор продаётся один раз', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  const pack = g.checkPack(p, 'starter');
+  g.applyPack(p, pack, T0);
+  assert.equal(p.gold, 20 + 250);
+  assert.ok(g.isVip(p, T0));
+  assert.throws(() => g.checkPack(p, 'starter'), /уже куплен/);
+});
