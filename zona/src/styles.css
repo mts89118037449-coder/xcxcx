@@ -1173,3 +1173,27 @@ main {
 .raster-standin .raster-layer {
   object-fit: contain;
 }
+.icon-img {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+}
+.icon-img img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.hero-img {
+  object-fit: contain;
+  transform-origin: 50% 100%;
+}
+.arena-face {
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border-radius: 50%;
+  vertical-align: -6px;
+  margin-right: 5px;
+  border: 1px solid #fff4;
+}

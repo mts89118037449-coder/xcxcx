@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FightReplay, Look } from '../../shared/types.ts';
 import { Bar, fmt } from '../game.tsx';
 import { CharacterG } from './Character.tsx';
+import { HeroG, useHero } from './hero.tsx';
 import { artUrl, characterLayers, useArt } from './raster.ts';
 import { Place, YardScene } from './Scenes.tsx';
 import { RasterFigure } from './Stage.tsx';
@@ -42,7 +43,9 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
 
   const myMood = done ? (replay.win ? 'win' : 'hurt') : myHp < replay.maxHp[0] * 0.3 ? 'hurt' : 'idle';
   const art = useArt();
+  const hero = useHero();
   const bg = artUrl(art, 'bg/arena');
+  const enemyFace = enemy.npc ? artUrl(art, `npc/${enemy.npc}_face`) : null;
   const meLayers = characterLayers(art, 'fight', me.look, { hurt: myMood === 'hurt' });
   // Противник-босс — отдельная картинка; противник-игрок — те же слои, отражённые.
   const enemyNpc = enemy.npc ? artUrl(art, `npc/${enemy.npc}`) : null;
@@ -56,6 +59,7 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
         <Bar kind="hp" value={myHp} max={replay.maxHp[0]} label={fmt(myHp)} />
       </div>
       <div>
+        {enemyFace && <img className="arena-face" src={enemyFace} alt="" />}
         {enemy.name}
         <Bar kind="hp" value={enemyHp} max={replay.maxHp[1]} label={fmt(enemyHp)} />
       </div>
@@ -92,10 +96,14 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
     <div className="arena">
       <YardScene tower={false}>
           <Place x={104} y={266} scale={0.98} key={`me${i}`} className={`pose ${meCls}`}>
-            <CharacterG look={me.look} mood={myMood} />
+            {hero ? <HeroG url={hero} /> : <CharacterG look={me.look} mood={myMood} />}
           </Place>
           <Place x={256} y={266} scale={0.98} key={`en${i}`} className={`pose ${enemyCls}`}>
-            <CharacterG look={enemy.look} build={enemy.build} mood={done ? (replay.win ? 'hurt' : 'win') : 'idle'} />
+            {hero ? (
+              <HeroG url={hero} mirror tone={enemy.npc ? 'brightness(0.8) contrast(1.15) saturate(0.7)' : 'brightness(0.9) hue-rotate(-12deg)'} />
+            ) : (
+              <CharacterG look={enemy.look} build={enemy.build} mood={done ? (replay.win ? 'hurt' : 'win') : 'idle'} />
+            )}
           </Place>
           {last && !done && (
             <text key={`d${i}`} className="dmg-pop" x={popX} y={84} textAnchor="middle" fontSize={last.crit ? 26 : 18} fill={last.crit ? '#ffcf5a' : '#fff'}>

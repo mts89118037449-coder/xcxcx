@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { FURNITURE, GOLD_PRICES, SPOT_NAMES, TATTOOS, type Furniture } from '../../shared/content.ts';
 import { Stage } from '../art/Stage.tsx';
+import { useHero } from '../art/hero.tsx';
 import { BonusList, Card, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
 export function Home() {
   const { p, now, online, act, toast, busy, go } = useGame();
   const [bare, setBare] = useState(false);
+  const hero = useHero();
   const [anim, animKey, play] = useAnim();
   const dailyReady = now >= p.dailyReadyAt;
   const ink = TATTOOS.filter((t) => p.tattoos.includes(t.id));
@@ -39,7 +41,7 @@ export function Home() {
           onClick={() => play('act-cheer')}
         />
         <div className="scene-tag">🏚️ Хата · {p.furniture.length}/{FURNITURE.length}</div>
-        {ink.length > 0 && (
+        {ink.length > 0 && !hero && (
           <button className="scene-btn" onClick={() => setBare(!bare)}>
             {bare ? '👕 Одеться' : '💪 Показать наколки'}
           </button>

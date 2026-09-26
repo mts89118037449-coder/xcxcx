@@ -3,6 +3,11 @@
 
 import { itemById } from '../../shared/content.ts';
 import { CharacterG, ItemOnly } from './Character.tsx';
+import { artUrl, useArt } from './raster.ts';
+
+/** Золотые версии вещей — тонируем рисунок с листа. */
+const GOLD_TINT = 'sepia(1) saturate(3.2) hue-rotate(-8deg) brightness(1.15) contrast(1.1)';
+const TINT: Record<string, string> = { cap_gold: GOLD_TINT, wpn_golden: GOLD_TINT, charm_cross: GOLD_TINT };
 
 /** Кадр для каждой вещи: где она лежит в системе координат персонажа. */
 function cropFor(id: string, slot: string): string {
@@ -48,8 +53,17 @@ const TATTOO_CROP: Record<string, string> = {
 };
 
 export function ItemIcon({ id, size = 44 }: { id: string; size?: number }) {
+  const art = useArt();
   const item = itemById.get(id);
   if (!item) return null;
+  const drawn = artUrl(art, `sheet/icons/${id}`);
+  if (drawn) {
+    return (
+      <span className="icon icon-img" style={{ width: size, height: size }}>
+        <img src={drawn} alt={item.name} style={TINT[id] ? { filter: TINT[id] } : undefined} />
+      </span>
+    );
+  }
   return (
     <svg className="icon" viewBox={cropFor(id, item.slot)} width={size} height={size} aria-label={item.name}>
       <ItemOnly id={id} slot={item.slot} />
@@ -58,6 +72,14 @@ export function ItemIcon({ id, size = 44 }: { id: string; size?: number }) {
 }
 
 export function TattooIcon({ id, size = 44 }: { id: string; size?: number }) {
+  const drawn = artUrl(useArt(), `sheet/tattoo/${id}`);
+  if (drawn) {
+    return (
+      <span className="icon icon-img" style={{ width: size, height: size }}>
+        <img src={drawn} alt="" />
+      </span>
+    );
+  }
   return (
     <svg className="icon" viewBox={TATTOO_CROP[id] ?? '40 40 40 40'} width={size} height={size}>
       <CharacterG look={{ equipped: { legs: 'legs_pants' }, tattoos: [id], str: 10 }} />

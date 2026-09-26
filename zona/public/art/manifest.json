@@ -1,3 +1,34 @@
 {
-  "files": []
+  "files": [
+    "npc/b_chief_face.png",
+    "npc/b_guard_face.png",
+    "npc/b_rat_face.png",
+    "npc/b_warden_face.png",
+    "sheet/hero.png",
+    "sheet/icons/body_leather.png",
+    "sheet/icons/body_quilted.png",
+    "sheet/icons/body_robe.png",
+    "sheet/icons/body_tank.png",
+    "sheet/icons/body_telnyashka.png",
+    "sheet/icons/body_tracksuit.png",
+    "sheet/icons/cap_bandana.png",
+    "sheet/icons/cap_gold.png",
+    "sheet/icons/cap_knit.png",
+    "sheet/icons/cap_ushanka.png",
+    "sheet/icons/charm_beads.png",
+    "sheet/icons/charm_cross.png",
+    "sheet/icons/drop_coat.png",
+    "sheet/icons/drop_keys.png",
+    "sheet/icons/feet_kirza.png",
+    "sheet/icons/feet_slippers.png",
+    "sheet/icons/feet_sneakers.png",
+    "sheet/icons/legs_cargo.png",
+    "sheet/icons/legs_jeans.png",
+    "sheet/icons/legs_pants.png",
+    "sheet/icons/wpn_golden.png",
+    "sheet/icons/wpn_rebar.png",
+    "sheet/icons/wpn_spoon.png",
+    "sheet/tattoo/t_church.png",
+    "sheet/tattoo/t_stars.png"
+  ]
 }

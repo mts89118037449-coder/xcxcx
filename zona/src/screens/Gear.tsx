@@ -4,6 +4,7 @@ import { Character } from '../art/Character.tsx';
 import { ItemIcon, TattooIcon } from '../art/Icons.tsx';
 import { characterLayers, useArt } from '../art/raster.ts';
 import { RasterFigure } from '../art/Stage.tsx';
+import { useHero } from '../art/hero.tsx';
 import { BonusList, Card, Price, lookOf, useAnim, useGame } from '../game.tsx';
 
 type View = 'mine' | 'shop' | 'ink';
@@ -16,6 +17,7 @@ export function Gear() {
   const [anim, animKey, play] = useAnim();
   const art = useArt();
   const standLayers = characterLayers(art, 'stand', lookOf(p), { bare });
+  const hero = useHero();
 
   const dress = async (type: 'equip' | 'unequip', body: Record<string, unknown>) => {
     if ((await act(type, body)) !== null) play('act-dress');
@@ -64,13 +66,15 @@ export function Gear() {
                 <div className="stand-view">
                   <RasterFigure layers={standLayers} className={anim} key={animKey} />
                 </div>
+              ) : hero ? (
+                <img key={animKey} className={`char-view hero-img ${anim}`} src={hero} alt="Персонаж" />
               ) : (
                 <Character key={animKey} className={`char-view pose ${anim}`} look={lookOf(p)} bare={bare} />
               )}
             </div>
             <div className="wardrobe-col">{(['weapon', 'charm', 'feet'] as Slot[]).map(slotTile)}</div>
           </div>
-          <div className="muted small center">Нажми на персонажа — {bare ? 'одеть' : 'снять верх и показать наколки'}</div>
+          {!hero && <div className="muted small center">Нажми на персонажа — {bare ? 'одеть' : 'снять верх и показать наколки'}</div>}
           <h3 className="section">Инвентарь</h3>
           {mine.map((i) => {
             const on = p.equipped[i.slot] === i.id;

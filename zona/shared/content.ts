@@ -89,24 +89,26 @@ export const ITEMS: Item[] = [
   // Голова
   { id: 'cap_knit', name: 'Вязаная шапка', emoji: '🧢', slot: 'head', minLevel: 1, price: 150, currency: 'money', def: 2 },
   { id: 'cap_ushanka', name: 'Ушанка', emoji: '🪖', slot: 'head', minLevel: 5, price: 1200, currency: 'money', def: 6, hp: 10 },
-  { id: 'cap_bandana', name: 'Бандана смотрящего', emoji: '🎩', slot: 'head', minLevel: 12, price: 9000, currency: 'money', def: 14, hp: 25, crit: 2 },
+  { id: 'cap_bandana', name: 'Восьмиклинка смотрящего', emoji: '🧢', slot: 'head', minLevel: 12, price: 9000, currency: 'money', def: 14, hp: 25, crit: 2 },
   { id: 'cap_gold', name: 'Кепка «Пахан»', emoji: '👑', slot: 'head', minLevel: 8, price: 120, currency: 'gold', def: 16, hp: 40, crit: 3 },
   // Тело
+  { id: 'body_tank', name: 'Майка-алкоголичка', emoji: '🎽', slot: 'body', minLevel: 1, price: 80, currency: 'money', def: 1, hp: 5 },
+  { id: 'body_telnyashka', name: 'Тельняшка', emoji: '🎽', slot: 'body', minLevel: 3, price: 700, currency: 'money', def: 3, hp: 15 },
   { id: 'body_robe', name: 'Роба', emoji: '👕', slot: 'body', minLevel: 1, price: 200, currency: 'money', def: 3, hp: 10 },
   { id: 'body_quilted', name: 'Телогрейка', emoji: '🧥', slot: 'body', minLevel: 4, price: 1500, currency: 'money', def: 8, hp: 25 },
   { id: 'body_leather', name: 'Кожанка', emoji: '🥼', slot: 'body', minLevel: 10, price: 8000, currency: 'money', def: 16, hp: 50 },
-  { id: 'body_tracksuit', name: 'Спортивка с лампасами', emoji: '🦺', slot: 'body', minLevel: 6, price: 150, currency: 'gold', def: 20, hp: 70, energy: 10 },
+  { id: 'body_tracksuit', name: 'Пуховик «Аляска»', emoji: '🦺', slot: 'body', minLevel: 6, price: 150, currency: 'gold', def: 20, hp: 70, energy: 10 },
   // Штаны
   { id: 'legs_pants', name: 'Казённые штаны', emoji: '👖', slot: 'legs', minLevel: 1, price: 120, currency: 'money', def: 2 },
-  { id: 'legs_cargo', name: 'Карго', emoji: '👖', slot: 'legs', minLevel: 7, price: 3000, currency: 'money', def: 8, hp: 15 },
-  { id: 'legs_jeans', name: 'Варёнки', emoji: '👖', slot: 'legs', minLevel: 14, price: 14000, currency: 'money', def: 14, hp: 30 },
+  { id: 'legs_cargo', name: 'Камуфляж', emoji: '👖', slot: 'legs', minLevel: 7, price: 3000, currency: 'money', def: 8, hp: 15 },
+  { id: 'legs_jeans', name: 'Треники', emoji: '👖', slot: 'legs', minLevel: 14, price: 14000, currency: 'money', def: 14, hp: 30 },
   // Обувь
   { id: 'feet_slippers', name: 'Тапки', emoji: '🩴', slot: 'feet', minLevel: 1, price: 80, currency: 'money', def: 1 },
-  { id: 'feet_kirza', name: 'Кирзачи', emoji: '🥾', slot: 'feet', minLevel: 5, price: 1400, currency: 'money', def: 5, atk: 2 },
-  { id: 'feet_sneakers', name: 'Кроссы', emoji: '👟', slot: 'feet', minLevel: 11, price: 10000, currency: 'money', def: 10, crit: 3 },
+  { id: 'feet_kirza', name: 'Берцы', emoji: '🥾', slot: 'feet', minLevel: 5, price: 1400, currency: 'money', def: 5, atk: 2 },
+  { id: 'feet_sneakers', name: 'Ботинки-гады', emoji: '👟', slot: 'feet', minLevel: 11, price: 10000, currency: 'money', def: 10, crit: 3 },
   // Оружие
   { id: 'wpn_spoon', name: 'Заточенная ложка', emoji: '🥄', slot: 'weapon', minLevel: 1, price: 250, currency: 'money', atk: 4 },
-  { id: 'wpn_rebar', name: 'Кусок арматуры', emoji: '🔩', slot: 'weapon', minLevel: 4, price: 1800, currency: 'money', atk: 10 },
+  { id: 'wpn_rebar', name: 'Заточка', emoji: '🔩', slot: 'weapon', minLevel: 4, price: 1800, currency: 'money', atk: 10 },
   { id: 'wpn_knuckles', name: 'Кастет', emoji: '🥊', slot: 'weapon', minLevel: 9, price: 7500, currency: 'money', atk: 18, crit: 3 },
   { id: 'wpn_chain', name: 'Цепь', emoji: '⛓️', slot: 'weapon', minLevel: 15, price: 22000, currency: 'money', atk: 30, crit: 4 },
   { id: 'wpn_golden', name: 'Золотая финка', emoji: '🗡️', slot: 'weapon', minLevel: 8, price: 200, currency: 'gold', atk: 34, crit: 6 },
@@ -117,7 +119,7 @@ export const ITEMS: Item[] = [
   // Только с боссов
   { id: 'drop_keys', name: 'Ключи вертухая', emoji: '🗝️', slot: 'charm', minLevel: 1, price: 0, currency: 'money', bossOnly: true, crit: 6, money: 15, energy: 10 },
   { id: 'drop_baton', name: 'Дубинка начкара', emoji: '🏏', slot: 'weapon', minLevel: 1, price: 0, currency: 'money', bossOnly: true, atk: 26, crit: 5 },
-  { id: 'drop_coat', name: 'Шинель хозяина', emoji: '🧥', slot: 'body', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 26, hp: 90 },
+  { id: 'drop_coat', name: 'Бушлат хозяина', emoji: '🧥', slot: 'body', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 26, hp: 90 },
   { id: 'drop_crown', name: 'Корона смотрящего', emoji: '👑', slot: 'head', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 24, hp: 70, crit: 6 },
 ];
 

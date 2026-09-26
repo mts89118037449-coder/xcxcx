@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { FURNITURE } from '../../shared/content.ts';
 import type { Look } from '../../shared/types.ts';
 import { CharacterG, type Mood } from './Character.tsx';
+import { HeroG, useHero } from './hero.tsx';
 import { artUrl, characterLayers, useArt, type Pose } from './raster.ts';
 import { CellScene, Place, WorkScene, YardScene } from './Scenes.tsx';
 
@@ -31,6 +32,7 @@ interface Props {
 
 export function Stage({ loc, look, mood, bare, furniture = [], anim, animKey, onClick }: Props) {
   const art = useArt();
+  const hero = useHero();
   const bg = artUrl(art, `bg/${loc}`);
   const opts = { bare, hurt: mood === 'hurt' };
   // Своя поза для локации, а если её ещё не нарисовали — общая стоячая поза, вставленная в сцену.
@@ -53,7 +55,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], anim, animKey, on
   const at = SVG_PLACE[loc];
   const fig = (
     <Place x={at.x} y={at.y} scale={at.scale} key={animKey} className={`pose ${anim}`}>
-      <CharacterG look={look} bare={bare} mood={mood} />
+      {hero ? <HeroG url={hero} /> : <CharacterG look={look} bare={bare} mood={mood} />}
     </Place>
   );
   if (loc === 'cell') return <CellScene furniture={furniture} onClick={onClick}>{fig}</CellScene>;
