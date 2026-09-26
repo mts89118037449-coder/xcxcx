@@ -27,7 +27,7 @@ export const api = {
   action: <R = unknown>(type: string, body: Record<string, unknown> = {}) =>
     post<{ ok: true; result: R; player: PlayerView }>(`/action/${type}`, body),
   top: () =>
-    post<{ top: { id: number; name: string; level: number; authority: number; rank: string }[]; online: number; total: number }>('/top'),
+    post<{ top: { id: number; name: string; level: number; authority: number; rank: string; face: number | null }[]; online: number; total: number }>('/top'),
   world: () => post<{ world: WorldBossView; online: number }>('/world'),
   invoice: (packId: string) => post<{ link: string }>('/invoice', { packId }),
 };

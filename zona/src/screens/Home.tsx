@@ -1,13 +1,17 @@
 import { useState } from 'react';
-import { FURNITURE, GOLD_PRICES, SPOT_NAMES, TATTOOS, type Furniture } from '../../shared/content.ts';
+import { FACE_COUNT, FURNITURE, GOLD_PRICES, SPOT_NAMES, TATTOOS, type Furniture } from '../../shared/content.ts';
 import { Stage } from '../art/Stage.tsx';
-import { useHero } from '../art/hero.tsx';
+import { Face, faceUrl, usePoses } from '../art/sprites.tsx';
+import { useArt } from '../art/raster.ts';
 import { BonusList, Card, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
 export function Home() {
   const { p, now, online, act, toast, busy, go } = useGame();
   const [bare, setBare] = useState(false);
-  const hero = useHero();
+  const poses = usePoses();
+  const art = useArt();
+  const [picking, setPicking] = useState(false);
+  const hasFaces = !!faceUrl(art, 0);
   const [anim, animKey, play] = useAnim();
   const dailyReady = now >= p.dailyReadyAt;
   const ink = TATTOOS.filter((t) => p.tattoos.includes(t.id));
@@ -41,12 +45,50 @@ export function Home() {
           onClick={() => play('act-cheer')}
         />
         <div className="scene-tag">🏚️ Хата · {p.furniture.length}/{FURNITURE.length}</div>
-        {ink.length > 0 && !hero && (
+        {ink.length > 0 && !poses && (
           <button className="scene-btn" onClick={() => setBare(!bare)}>
             {bare ? '👕 Одеться' : '💪 Показать наколки'}
           </button>
         )}
       </div>
+
+      {hasFaces && (
+        <Card className={p.faceChosen ? '' : 'glow'}>
+          <div className="row">
+            <div className="row gap-s">
+              <Face face={p.face} size={52} />
+              <div>
+                <b>Внешность</b>
+                <div className="muted small">{p.faceChosen ? `Сменить — ${GOLD_PRICES.faceChange} 🪙` : 'Выбери лицо — бесплатно'}</div>
+              </div>
+            </div>
+            <button className="btn btn-s" onClick={() => setPicking(!picking)}>
+              {picking ? 'Закрыть' : p.faceChosen ? 'Сменить' : 'Выбрать'}
+            </button>
+          </div>
+          {picking && (
+            <div className="face-grid">
+              {Array.from({ length: FACE_COUNT }, (_, i) => (
+                <button
+                  key={i}
+                  className={p.face === i ? 'active' : ''}
+                  disabled={busy}
+                  onClick={async () => {
+                    if (p.face === i && p.faceChosen) return;
+                    if (p.faceChosen && !confirm(`Сменить лицо за ${GOLD_PRICES.faceChange} 🪙?`)) return;
+                    if ((await act('face', { face: i })) !== null) {
+                      setPicking(false);
+                      toast('Новая внешность');
+                    }
+                  }}
+                >
+                  <img src={faceUrl(art, i)!} alt="" loading="lazy" />
+                </button>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       <Card className="online">
         <span className="pulse" /> На зоне сейчас: <b>{fmt(online)}</b>

@@ -14,6 +14,16 @@ const files = [];
   }
 })(root);
 files.sort();
+// Размеры PNG читаем из заголовка — нужны, чтобы спрайты разных поз были в одном масштабе.
+const sizes = {};
+for (const f of files) {
+  if (!f.endsWith('.png')) continue;
+  const buf = Buffer.alloc(24);
+  const fd = fs.openSync(path.join(root, f), 'r');
+  fs.readSync(fd, buf, 0, 24, 0);
+  fs.closeSync(fd);
+  sizes[f] = [buf.readUInt32BE(16), buf.readUInt32BE(20)];
+}
 fs.mkdirSync(root, { recursive: true });
-fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ files }, null, 2) + '\n');
+fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ files, sizes }) + '\n');
 console.log(`manifest.json: ${files.length} файлов`);

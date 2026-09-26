@@ -22,13 +22,22 @@ const EXT = ['webp', 'png'];
 
 let manifest: Set<string> | null = null;
 let loading: Promise<Set<string>> | null = null;
+const sizes = new Map<string, [number, number]>();
 
 function load(): Promise<Set<string>> {
   loading ??= fetch('/art/manifest.json')
     .then((r) => (r.ok ? r.json() : { files: [] }))
     .catch(() => ({ files: [] }))
-    .then((m: { files?: string[] }) => (manifest = new Set(m.files ?? [])));
+    .then((m: { files?: string[]; sizes?: Record<string, [number, number]> }) => {
+      for (const [k, v] of Object.entries(m.sizes ?? {})) sizes.set(`/art/${k}`, v);
+      return (manifest = new Set(m.files ?? []));
+    });
   return loading;
+}
+
+/** Размер картинки в пикселях (из манифеста). */
+export function artSize(url: string): [number, number] | null {
+  return sizes.get(url) ?? null;
 }
 
 /** Набор доступных файлов; null пока манифест грузится. */

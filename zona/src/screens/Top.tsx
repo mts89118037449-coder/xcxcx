@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BALANCE } from '../../shared/content.ts';
 import { api, tg } from '../api.ts';
+import { Face } from '../art/sprites.tsx';
 import { Card, fmt, useGame } from '../game.tsx';
 
 type Row = Awaited<ReturnType<typeof api.top>>['top'][number];
@@ -48,6 +49,7 @@ export function Top() {
           {rows?.map((r, i) => (
             <li key={r.id} className={r.id === p.id ? 'me' : ''}>
               <span className="place">{i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
+              <Face face={r.face} size={30} />
               <span className="grow">
                 <b>{r.name}</b>
                 <small className="muted"> {r.rank} · ур. {r.level}</small>

@@ -69,7 +69,7 @@ export function openDb(file: string) {
       SELECT data FROM players
       WHERE id != ? AND level BETWEEN ? AND ?
       ORDER BY RANDOM() LIMIT 20`),
-    top: db.prepare('SELECT id, name, level, authority FROM players ORDER BY authority DESC, level DESC LIMIT ?'),
+    top: db.prepare("SELECT id, name, level, authority, json_extract(data, '$.face') AS face FROM players ORDER BY authority DESC, level DESC LIMIT ?"),
     rank: db.prepare('SELECT COUNT(*) + 1 AS r FROM players WHERE authority > ?'),
     online: db.prepare('SELECT COUNT(*) AS n FROM players WHERE last_seen > ?'),
     total: db.prepare('SELECT COUNT(*) AS n FROM players'),
@@ -118,7 +118,7 @@ export function openDb(file: string) {
       return rows.map((r) => migrate(JSON.parse(r.data) as Player));
     },
     top(limit: number) {
-      return q.top.all(limit) as { id: number; name: string; level: number; authority: number }[];
+      return q.top.all(limit) as { id: number; name: string; level: number; authority: number; face: number | null }[];
     },
     rank(authority: number): number {
       return (q.rank.get(authority) as { r: number }).r;

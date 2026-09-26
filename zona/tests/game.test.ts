@@ -154,3 +154,14 @@ test('бой отдаёт раунды для анимации, сумма ур�
   assert.equal(r.win, toEnemy >= r.startHp[1]);
   assert.ok(r.enemyLook.str > 0);
 });
+
+test('лицо: первый выбор бесплатный, смена за золото', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  g.setFace(p, 5);
+  assert.equal(p.face, 5);
+  assert.equal(p.gold, 20);
+  g.setFace(p, 7);
+  assert.equal(p.gold, 0);
+  assert.throws(() => g.setFace(p, 8), /золота/);
+  assert.throws(() => g.setFace(p, 99), /Нет такого/);
+});

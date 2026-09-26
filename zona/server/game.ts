@@ -5,6 +5,7 @@
 import type { Look } from '../shared/types.ts';
 import {
   BALANCE,
+  FACE_COUNT,
   ITEMS,
   GOLD_PRICES,
   STAT_NAMES,
@@ -61,6 +62,8 @@ export interface Player {
   inventory: string[];
   tattoos: string[];
   furniture: string[];
+  face: number;
+  faceChosen: boolean;
   bossCd: Record<string, number>;
   pvpAt: number;
   shieldUntil: number;
@@ -130,6 +133,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     inventory: ['body_robe', 'feet_slippers'],
     tattoos: [],
     furniture: [],
+    face: id % FACE_COUNT,
+    faceChosen: false,
     bossCd: {},
     pvpAt: 0,
     shieldUntil: 0,
@@ -148,6 +153,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
 /** Досоздаёт поля, которых не было в старых сохранениях. */
 export function migrate(p: Player): Player {
   p.furniture ??= [];
+  p.face ??= p.id % FACE_COUNT;
+  p.faceChosen ??= false;
   return p;
 }
 
@@ -332,6 +339,15 @@ export function buyTattoo(p: Player, tattooId: string, now: number) {
   log(p, now, `${t.emoji} Набил наколку «${t.name}»`);
 }
 
+/** Выбор лица: первый раз бесплатно, дальше за золото. */
+export function setFace(p: Player, face: number) {
+  if (!Number.isInteger(face) || face < 0 || face >= FACE_COUNT) throw new GameError('Нет такого лица');
+  if (face === p.face && p.faceChosen) throw new GameError('Это лицо уже выбрано');
+  if (p.faceChosen) spend(p, GOLD_PRICES.faceChange, 'gold');
+  p.face = face;
+  p.faceChosen = true;
+}
+
 export function buyFurniture(p: Player, furnitureId: string, now: number) {
   const f = furnitureById.get(furnitureId);
   if (!f) throw new GameError('Нет такой мебели');
@@ -461,11 +477,11 @@ function botLook(level: number, rng: Rng): Look {
       equipped[item.slot] = item.id;
     }
   }
-  return { equipped, tattoos: [], str: 5 + level };
+  return { equipped, tattoos: [], str: 5 + level, face: Math.floor(rng() * FACE_COUNT) };
 }
 
 export function lookOf(p: Player): Look {
-  return { equipped: p.equipped, tattoos: p.tattoos, str: p.str };
+  return { equipped: p.equipped, tattoos: p.tattoos, str: p.str, face: p.face };
 }
 
 export function canBeAttacked(target: Player, now: number): boolean {

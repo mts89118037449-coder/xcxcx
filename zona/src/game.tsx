@@ -97,5 +97,5 @@ export function useAnim(): [string, number, (cls: string) => void] {
 }
 
 export function lookOf(p: PlayerView): Look {
-  return { equipped: p.equipped, tattoos: p.tattoos, str: p.str };
+  return { equipped: p.equipped, tattoos: p.tattoos, str: p.str, face: p.face };
 }

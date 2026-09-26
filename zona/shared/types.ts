@@ -37,6 +37,8 @@ export interface PlayerView {
   inventory: string[];
   tattoos: string[];
   furniture: string[];
+  face: number;
+  faceChosen: boolean;
   bossCd: Record<string, number>;
   pvpReadyAt: number;
   worldHitReadyAt: number;
@@ -59,6 +61,7 @@ export interface Look {
   equipped: Partial<Record<Slot, string>>;
   tattoos: string[];
   str: number;
+  face?: number;
 }
 
 export interface FightReplay {

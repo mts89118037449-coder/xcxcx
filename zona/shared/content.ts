@@ -236,6 +236,7 @@ export const STAR_PACKS: StarPack[] = [
 
 // Траты золота внутри игры.
 export const GOLD_PRICES = {
+  faceChange: 20,
   energyRefill: 25,
   heal: 10,
   bossReset: 15,
@@ -258,6 +259,9 @@ export const BALANCE = {
   referralGold: 50,
   onlineWindowSec: 300,
 };
+
+/** Сколько лиц на выбор (картинки public/art/sheet/face/<n>.png). */
+export const FACE_COUNT = 32;
 
 export function xpToNext(level: number): number {
   return Math.round(60 * Math.pow(level, 1.6));

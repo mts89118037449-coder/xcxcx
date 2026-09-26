@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PlayerView } from '../shared/types.ts';
 import { api, ApiError, tg } from './api.ts';
 import { FightArena, type Fighter } from './art/FightArena.tsx';
+import { Face } from './art/sprites.tsx';
 import { Bar, GameCtx, fmt, lookOf, timeLeft, useNow, type FightLog, type Game, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
 import { Gear } from './screens/Gear.tsx';
@@ -93,13 +94,18 @@ export function App() {
   }
 
   const p = player;
-  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go: setTab };
+  const go = (t: Tab) => {
+    setTab(t);
+    window.scrollTo(0, 0);
+  };
+  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go };
   const energyTimer = p.nextEnergyAt ? Math.max(0, p.nextEnergyAt - now) : 0;
 
   return (
     <GameCtx.Provider value={game}>
       <header className="top">
         <div className="top-row">
+          <Face face={p.face} size={40} className="top-face" />
           <div className="who">
             <b>{p.name}</b>
             <span className="muted">
@@ -109,7 +115,7 @@ export function App() {
           </div>
           <div className="wallet">
             <span>{fmt(p.money)} ₽</span>
-            <span onClick={() => setTab('shop')}>{fmt(p.gold)} 🪙 <b className="plus">+</b></span>
+            <span onClick={() => go('shop')}>{fmt(p.gold)} 🪙 <b className="plus">+</b></span>
           </div>
         </div>
         <div className="bars">
@@ -135,7 +141,7 @@ export function App() {
 
       <nav className="tabs">
         {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => go(t.id)}>
             <span className="tab-icon">
               {t.icon}
               {t.id === 'work' && p.statPoints > 0 && <i className="dot" />}
