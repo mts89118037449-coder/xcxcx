@@ -39,6 +39,15 @@ export interface PlayerView {
   furniture: string[];
   face: number;
   faceChosen: boolean;
+  build: number;
+  skin: number;
+  nameChanged: boolean;
+  interior: { wall: string; floor: string };
+  ownedInteriors: string[];
+  chifir: number;
+  daily: DailyState;
+  quests: QuestState;
+  clan: { id: number; name: string; tag: string; level: number; owner: boolean } | null;
   bossCd: Record<string, number>;
   pvpReadyAt: number;
   worldHitReadyAt: number;
@@ -62,6 +71,8 @@ export interface Look {
   tattoos: string[];
   str: number;
   face?: number;
+  build?: number;
+  skin?: number;
 }
 
 export interface FightReplay {
@@ -70,4 +81,67 @@ export interface FightReplay {
   rounds: { by: 0 | 1; dmg: number; crit: boolean }[];
   startHp: [number, number];
   maxHp: [number, number];
+}
+
+export interface DailyTask {
+  kind: import('./content.ts').DailyKind;
+  target: number;
+  progress: number;
+  money: number;
+  xp: number;
+  gold: number;
+  claimed: boolean;
+}
+
+export interface DailyState {
+  day: string;
+  tasks: DailyTask[];
+  bonusClaimed: boolean;
+}
+
+export interface Quest {
+  key: string;
+  tpl: string;
+  minutes: number;
+  energy: number;
+  money: number;
+  xp: number;
+  gold: number;
+  chance: number;
+}
+
+export interface QuestState {
+  board: Quest[];
+  active: (Quest & { endsAt: number }) | null;
+  seq?: number;
+}
+
+/** Что видно, когда заходишь в хату к соседу. */
+export interface VisitView {
+  id: number;
+  name: string;
+  level: number;
+  rank: string;
+  authority: number;
+  wins: number;
+  face: number;
+  build: number;
+  skin: number;
+  furniture: string[];
+  interior: { wall: string; floor: string };
+  tattoos: string[];
+  clan: { id: number; name: string; tag: string } | null;
+  respectedToday: boolean;
+  online: boolean;
+}
+
+export interface ClanView {
+  id: number;
+  name: string;
+  tag: string;
+  level: number;
+  treasury: number;
+  ownerId: number;
+  members: { id: number; name: string; level: number; authority: number; face: number | null }[];
+  upgradeCost: number | null;
 }

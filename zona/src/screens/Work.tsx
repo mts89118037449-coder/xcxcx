@@ -1,5 +1,6 @@
 import { GOLD_PRICES, JOBS, STAT_NAMES, trainCost, type Stat } from '../../shared/content.ts';
 import { Stage } from '../art/Stage.tsx';
+import { Dailies, Quests } from '../Tasks.tsx';
 import { NpcBanner } from '../art/sprites.tsx';
 import { Card, Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
 
@@ -30,6 +31,9 @@ export function Work() {
         <Stage loc="work" look={lookOf(p)} mood={p.hp < p.stats.maxHp * 0.3 ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
         <div className="scene-tag">⚒️ Промзона</div>
       </div>
+      <Dailies />
+      <Quests />
+      <h3 className="section">Навыки</h3>
       <Card>
         <h3>Прокачка {p.statPoints > 0 && <span className="badge">{p.statPoints} очк.</span>}</h3>
         {(Object.keys(STAT_NAMES) as Stat[]).map((s) => (

@@ -8,7 +8,7 @@ from scipy import ndimage
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'public', 'art', 'sheet')
 
-def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False):
+def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False, trim=(0, 0)):
     x0, y0, x1, y1 = box
     im = src.crop(box)
     a = np.asarray(im).astype(int)
@@ -22,11 +22,20 @@ def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False):
     edge = set(np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))) - {0}
     fg = ~np.isin(lab, list(edge))
     # просветы внутри фигуры (между рукой и телом, под скамьёй) — тоже фон, если это заметное пятно цвета фона
+    # ... но только гладкие пятна: у серой ткани есть фактура, у фона — нет
     gap = np.abs(a - bgc).sum(2) < 16
+    lum = a.mean(2)
+    tex = np.sqrt(np.maximum(ndimage.uniform_filter(lum ** 2, 5) - ndimage.uniform_filter(lum, 5) ** 2, 0))
     glab, gn = ndimage.label(gap)
     if gn:
         gsizes = ndimage.sum(gap, glab, range(1, gn + 1))
-        fg &= ~np.isin(glab, [i + 1 for i, s in enumerate(gsizes) if s >= 25])
+        gtex = ndimage.mean(tex, glab, range(1, gn + 1))
+        fg &= ~np.isin(glab, [i + 1 for i in range(gn) if gsizes[i] >= 30 and gtex[i] < 6])
+    # обрезки соседних фигур у краёв кадра
+    if trim[0]:
+        fg[:, : trim[0]] = False
+    if trim[1]:
+        fg[:, fg.shape[1] - trim[1] :] = False
     if open_thin:  # срезаем тонкие хвосты (остатки линий сетки), толщиной до 2 px
         fg = ndimage.binary_opening(fg, structure=np.ones((3, 3)))
     lab2, n = ndimage.label(fg)
@@ -125,6 +134,12 @@ CAST = {
     'bandaged': (768, R2[0], 840, R2[1]), 'spetsnaz': (838, R2[0], 916, R2[1]), 'kolshik': (916, R2[0], 1018, R2[1]),
 }
 
+# Сколько пикселей листа срезать слева/справа — там руки соседей.
+CAST_TRIM = {
+    'bandaged': (0, 5), 'blatnoy': (0, 6), 'doctor': (5, 0), 'sport': (0, 6), 'thin': (6, 5), 'hermit': (6, 6),
+    'kolshik': (5, 0), 'priest': (6, 0), 'seller': (5, 0), 'writer': (5, 0), 'spetsnaz': (4, 0),
+}
+
 def face_of(path, out):
     # Портрет босса — верх его же фигуры
     img = Image.open(os.path.join(OUT, path + '.png'))
@@ -144,7 +159,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 4:
         cast = Image.open(sys.argv[4]).convert('RGB')
         for k, b in CAST.items():
-            print(k, cut(cast, b, 'cast/' + k, keep_share=0.35, open_thin=k != 'lawyer'))
+            print(k, cut(cast, b, 'cast/' + k, keep_share=0.35, open_thin=k != 'lawyer', trim=CAST_TRIM.get(k, (0, 0))))
     poses = Image.open(sys.argv[1]).convert('RGB')
     for k, b in POSES.items():
         print(k, cut(poses, b, 'pose/' + k))

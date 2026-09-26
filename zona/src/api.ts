@@ -1,4 +1,4 @@
-import type { PlayerView, WorldBossView } from '../shared/types.ts';
+import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
 
 export const tg = window.Telegram?.WebApp;
 
@@ -27,7 +27,10 @@ export const api = {
   action: <R = unknown>(type: string, body: Record<string, unknown> = {}) =>
     post<{ ok: true; result: R; player: PlayerView }>(`/action/${type}`, body),
   top: () =>
-    post<{ top: { id: number; name: string; level: number; authority: number; rank: string; face: number | null }[]; online: number; total: number }>('/top'),
+    post<{ top: { id: number; name: string; level: number; authority: number; rank: string; face: number | null; tag: string | null }[]; online: number; total: number }>('/top'),
   world: () => post<{ world: WorldBossView; online: number }>('/world'),
+  visit: (id: number) => post<{ visit: VisitView }>('/visit', { id }),
+  clans: () => post<{ clans: { id: number; name: string; tag: string; level: number; members: number; authority: number }[] }>('/clans'),
+  clan: (id: number) => post<{ clan: ClanView }>('/clan', { id }),
   invoice: (packId: string) => post<{ link: string }>('/invoice', { packId }),
 };

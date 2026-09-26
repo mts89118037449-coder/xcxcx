@@ -1283,3 +1283,29 @@ main {
   color: #cfc6b3;
   font-style: italic;
 }
+.energy-opts { display: flex; flex-direction: column; gap: 8px; }
+.tag { color: var(--accent); font-weight: 800; margin-right: 2px; }
+.clickable { cursor: pointer; }
+.input {
+  background: #15130f;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 9px 12px;
+  font: inherit;
+  min-width: 0;
+}
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e2ad86;
+  vertical-align: -1px;
+}
+.interior-sample {
+  height: 34px;
+  border-radius: 6px;
+  border: 3px solid;
+}
+.clan-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }

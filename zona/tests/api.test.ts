@@ -111,6 +111,33 @@ test('добитый общий босс делит награду и появл
   assert.ok(first.money > 300, 'участник получил долю');
 });
 
+test('кланы: создать, вступить, общак, уровень, выйти; визит к соседу', async () => {
+  const boss = initData(50, 'Пахан');
+  await post('/api/me', boss);
+  const pb = db.getPlayer(50)!;
+  pb.level = 6;
+  pb.money = 100000;
+  db.savePlayer(pb);
+  const created = await post('/api/action/clanCreate', boss, { name: 'Бродяги', tag: 'бр' });
+  assert.equal(created.status, 200, JSON.stringify(created.json));
+  const clanId = created.json.result.id;
+  assert.equal(created.json.player.clan.tag, 'БР');
+  assert.equal((await post('/api/action/clanCreate', initData(51, 'X'), { name: 'Бродяги', tag: 'XX' })).status, 400);
+  const m = initData(52, 'Шнырь');
+  assert.equal((await post('/api/action/clanJoin', m, { id: clanId })).status, 200);
+  await post('/api/action/clanDonate', boss, { amount: 30000 });
+  const up = await post('/api/action/clanUpgrade', boss);
+  assert.equal(up.json.player.clan.level, 2);
+  const info = await post('/api/clan', m, { id: clanId });
+  assert.equal(info.json.clan.members.length, 2);
+  const visit = await post('/api/visit', m, { id: 50 });
+  assert.equal(visit.json.visit.clan.tag, 'БР');
+  assert.equal((await post('/api/action/respect', m, { id: 50 })).status, 200);
+  assert.equal((await post('/api/visit', m, { id: 50 })).json.visit.respectedToday, true);
+  await post('/api/action/clanLeave', boss);
+  assert.equal(db.getClan(clanId)!.owner_id, 52, 'главный ушёл — клан перешёл к оставшемуся');
+});
+
 test('оплата Stars: счёт, pre-checkout, зачисление ровно один раз', async () => {
   const auth = initData(40, 'Донатер');
   await post('/api/me', auth);

@@ -1,17 +1,15 @@
 import { useState } from 'react';
-import { FACE_COUNT, FURNITURE, GOLD_PRICES, SPOT_NAMES, TATTOOS, type Furniture } from '../../shared/content.ts';
+import { FURNITURE, GOLD_PRICES, SPOT_NAMES, TATTOOS, type Furniture } from '../../shared/content.ts';
 import { Stage } from '../art/Stage.tsx';
-import { Face, NpcBanner, faceUrl, usePoses } from '../art/sprites.tsx';
-import { useArt } from '../art/raster.ts';
+import { CharacterEditor } from '../Editor.tsx';
+import { InteriorPicker } from '../Interior.tsx';
+import { NpcBanner, usePoses } from '../art/sprites.tsx';
 import { BonusList, Card, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
 export function Home() {
   const { p, now, online, act, toast, busy, go } = useGame();
   const [bare, setBare] = useState(false);
   const poses = usePoses();
-  const art = useArt();
-  const [picking, setPicking] = useState(false);
-  const hasFaces = !!faceUrl(art, 0);
   const [anim, animKey, play] = useAnim();
   const dailyReady = now >= p.dailyReadyAt;
   const ink = TATTOOS.filter((t) => p.tattoos.includes(t.id));
@@ -40,6 +38,7 @@ export function Home() {
           bare={bare}
           mood={hurt ? 'hurt' : 'idle'}
           furniture={p.furniture}
+          interior={p.interior}
           anim={anim}
           animKey={animKey}
           onClick={() => play('act-cheer')}
@@ -52,49 +51,13 @@ export function Home() {
         )}
       </div>
 
-      {hasFaces && (
-        <Card className={p.faceChosen ? '' : 'glow'}>
-          <div className="row">
-            <div className="row gap-s">
-              <Face face={p.face} size={52} />
-              <div>
-                <b>Внешность</b>
-                <div className="muted small">{p.faceChosen ? `Сменить — ${GOLD_PRICES.faceChange} 🪙` : 'Выбери лицо — бесплатно'}</div>
-              </div>
-            </div>
-            <button className="btn btn-s" onClick={() => setPicking(!picking)}>
-              {picking ? 'Закрыть' : p.faceChosen ? 'Сменить' : 'Выбрать'}
-            </button>
-          </div>
-          {picking && (
-            <div className="face-grid">
-              {Array.from({ length: FACE_COUNT }, (_, i) => (
-                <button
-                  key={i}
-                  className={p.face === i ? 'active' : ''}
-                  disabled={busy}
-                  onClick={async () => {
-                    if (p.face === i && p.faceChosen) return;
-                    if (p.faceChosen && !confirm(`Сменить лицо за ${GOLD_PRICES.faceChange} 🪙?`)) return;
-                    if ((await act('face', { face: i })) !== null) {
-                      setPicking(false);
-                      toast('Новая внешность');
-                    }
-                  }}
-                >
-                  <img src={faceUrl(art, i)!} alt="" loading="lazy" />
-                </button>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
+      <CharacterEditor />
 
       <Card className="online">
         <span className="pulse" /> На зоне сейчас: <b>{fmt(online)}</b>
       </Card>
 
-      {dailyReady && <NpcBanner who="lawyer" name="Адвокат" text="Родня передала грев. Распишись и забирай" />}
+      {dailyReady && <NpcBanner who="writer" name="Адвокат" text="Родня передала грев. Распишись и забирай" />}
       <Card className={dailyReady ? 'glow' : ''}>
         <div className="row">
           <div>
@@ -107,7 +70,8 @@ export function Home() {
         </div>
       </Card>
 
-      <h3 className="section">Обустроить хату</h3>
+      <InteriorPicker />
+      <h3 className="section">Мебель</h3>
       <div className="hscroll">
         {FURNITURE.map((f) => {
           const owned = p.furniture.includes(f.id);

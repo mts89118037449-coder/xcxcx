@@ -165,3 +165,85 @@ test('лицо: первый выбор бесплатный, смена за з
   assert.throws(() => g.setFace(p, 8), /золота/);
   assert.throws(() => g.setFace(p, 99), /Нет такого/);
 });
+
+test('дейлики: одинаковые в течение дня, прогресс и награда', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  g.tick(p, T0);
+  const tasks = JSON.stringify(p.daily.tasks.map((t) => t.kind));
+  g.tick(p, T0 + 60 * MIN);
+  assert.equal(JSON.stringify(p.daily.tasks.map((t) => t.kind)), tasks);
+  assert.equal(p.daily.tasks.length, 3);
+  const t0 = p.daily.tasks[0];
+  assert.throws(() => g.claimTask(p, 0, T0), /не выполнено/);
+  t0.progress = t0.target;
+  const gold = p.gold;
+  g.claimTask(p, 0, T0);
+  assert.equal(p.gold, gold + t0.gold);
+  assert.throws(() => g.claimTask(p, 0, T0), /Уже/);
+  g.tick(p, T0 + 25 * 60 * MIN);
+  assert.ok(p.daily.tasks.every((t) => !t.claimed), 'новый день — новые задания');
+});
+
+test('дейлики: работа засчитывается', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  g.tick(p, T0);
+  p.daily.tasks = [{ kind: 'job', target: 2, progress: 0, money: 1, xp: 1, gold: 1, claimed: false }];
+  g.doJob(p, 'j_floor', T0, fixed(0));
+  g.doJob(p, 'j_floor', T0, fixed(0));
+  assert.equal(p.daily.tasks[0].progress, 2);
+});
+
+test('поручения: старт, таймер, ускорение, результат', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  g.ensureBoard(p, fixed(0.3));
+  assert.equal(p.quests.board.length, 3);
+  assert.equal(new Set(p.quests.board.map((q) => q.tpl)).size, 3, 'поручения не повторяются');
+  const q = p.quests.board[0];
+  g.startQuest(p, q.key, T0);
+  assert.equal(p.quests.board.length, 2);
+  assert.throws(() => g.finishQuest(p, T0, fixed(0)), /не готово/);
+  assert.throws(() => g.startQuest(p, p.quests.board[0].key, T0), /текущее/);
+  p.gold = 100;
+  g.skipQuest(p, T0);
+  assert.ok(p.gold < 100);
+  const r = g.finishQuest(p, T0, fixed(0)); // rng 0 < шанс — успех
+  assert.equal(r.ok, true);
+  assert.equal(p.quests.board.length, 3);
+  assert.equal(p.quests.active, null);
+});
+
+test('имя: первый раз бесплатно, потом за золото; проверка символов', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  g.rename(p, 'Колян Питерский');
+  assert.equal(p.gold, 20);
+  assert.throws(() => g.rename(p, '<script>'), /Только/);
+  p.gold = 30;
+  g.rename(p, 'Колян');
+  assert.equal(p.gold, 0);
+});
+
+test('интерьер и энергия', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  p.money = 2000;
+  g.buyInterior(p, 'w_blue');
+  assert.equal(p.interior.wall, 'w_blue');
+  assert.equal(p.money, 500);
+  g.buyInterior(p, 'w_green'); // уже своё — бесплатно
+  assert.equal(p.money, 500);
+  p.energy = 10;
+  p.gold = 10;
+  g.buyEnergy(p, T0);
+  assert.equal(p.energy, 40);
+  g.drinkChifir(p, T0);
+  assert.equal(p.energy, g.stats(p, T0).maxEnergy);
+  assert.equal(p.chifir, 0);
+});
+
+test('уважение: раз в день', () => {
+  const a = g.newPlayer(1, 'А', null, T0);
+  const b = g.newPlayer(2, 'Б', null, T0);
+  g.respect(a, b, T0);
+  assert.equal(b.authority, 1);
+  assert.throws(() => g.respect(a, b, T0 + MIN), /уже/);
+  assert.throws(() => g.respect(a, a, T0), /Себя/);
+});

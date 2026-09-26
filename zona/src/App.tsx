@@ -3,6 +3,8 @@ import type { PlayerView } from '../shared/types.ts';
 import { api, ApiError, tg } from './api.ts';
 import { FightArena, type Fighter } from './art/FightArena.tsx';
 import { Face } from './art/sprites.tsx';
+import { EnergySheet } from './Energy.tsx';
+import { VisitModal } from './Visit.tsx';
 import { Bar, GameCtx, fmt, lookOf, timeLeft, useNow, type FightLog, type Game, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
 import { Gear } from './screens/Gear.tsx';
@@ -16,7 +18,7 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'work', icon: '⚒️', label: 'Работа' },
   { id: 'fight', icon: '🥊', label: 'Бой' },
   { id: 'gear', icon: '🎒', label: 'Шмот' },
-  { id: 'top', icon: '🏆', label: 'Топ' },
+  { id: 'top', icon: '🏴', label: 'Братва' },
   { id: 'shop', icon: '⭐', label: 'Ларёк' },
 ];
 
@@ -29,6 +31,8 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [toastMsg, setToast] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
   const [fight, setFight] = useState<FightLog | null>(null);
+  const [visiting, setVisiting] = useState<number | null>(null);
+  const [energyOpen, setEnergyOpen] = useState(false);
   const toastTimer = useRef<number>(0);
   const now = useNow();
 
@@ -98,7 +102,7 @@ export function App() {
     setTab(t);
     window.scrollTo(0, 0);
   };
-  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go };
+  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true) };
   const energyTimer = p.nextEnergyAt ? Math.max(0, p.nextEnergyAt - now) : 0;
 
   return (
@@ -120,12 +124,14 @@ export function App() {
         </div>
         <div className="bars">
           <Bar kind="hp" value={p.hp} max={p.stats.maxHp} label={`❤️ ${fmt(p.hp)}/${fmt(p.stats.maxHp)}`} />
+          <div onClick={() => setEnergyOpen(true)} style={{ cursor: "pointer" }}>
           <Bar
             kind="en"
             value={p.energy}
             max={p.stats.maxEnergy}
             label={`⚡ ${p.energy}/${p.stats.maxEnergy}${energyTimer ? ` · ${timeLeft(energyTimer)}` : ''}`}
           />
+          </div>
         </div>
         <Bar kind="xp" value={p.xp} max={p.xpNext} label={`Опыт ${fmt(p.xp)} / ${fmt(p.xpNext)}`} />
       </header>
@@ -154,6 +160,8 @@ export function App() {
 
       {toastMsg && <div className={`toast toast-${toastMsg.kind}`}>{toastMsg.text}</div>}
 
+      {visiting !== null && <VisitModal id={visiting} onClose={() => setVisiting(null)} />}
+      {energyOpen && <EnergySheet onClose={() => setEnergyOpen(false)} />}
       {fight && <FightModal fight={fight} me={{ name: p.name, look: lookOf(p) }} onClose={() => setFight(null)} />}
     </GameCtx.Provider>
   );

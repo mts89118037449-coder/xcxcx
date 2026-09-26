@@ -4,11 +4,11 @@
 //   3) SVG-персонаж.
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { FURNITURE } from '../../shared/content.ts';
+import { BUILDS, FURNITURE, SKINS } from '../../shared/content.ts';
 import type { Look } from '../../shared/types.ts';
 import { CharacterG, type Mood } from './Character.tsx';
 import { artUrl, characterLayers, useArt, type Pose } from './raster.ts';
-import { CellScene, Place, WorkScene, YardScene } from './Scenes.tsx';
+import { CellScene, Place, WorkScene, YardScene, type InteriorIds } from './Scenes.tsx';
 import { ImageG, PoseG, WALK, useFlipbook, useNpc, usePoses, type PoseName } from './sprites.tsx';
 
 type Loc = 'cell' | 'work' | 'yard';
@@ -28,12 +28,13 @@ interface Props {
   mood: Mood;
   bare?: boolean;
   furniture?: string[];
+  interior?: InteriorIds;
   anim: string;
   animKey: number;
   onClick?: () => void;
 }
 
-export function Stage({ loc, look, mood, bare, furniture = [], anim, animKey, onClick }: Props) {
+export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, animKey, onClick }: Props) {
   const art = useArt();
   const poses = usePoses();
   const bg = artUrl(art, `bg/${loc}`);
@@ -73,7 +74,9 @@ export function Stage({ loc, look, mood, bare, furniture = [], anim, animKey, on
     const idle: PoseName = loc === 'cell' ? (mood === 'hurt' ? 'floor' : 'sit') : loc === 'work' ? 'stand34' : walkFrame;
     figure = (
       <g className={walking ? 'yard-walk' : undefined}>
-        <PoseG name={busyPose ?? idle} />
+        <Body look={look}>
+          <PoseG name={busyPose ?? idle} />
+        </Body>
       </g>
     );
   } else {
@@ -85,7 +88,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], anim, animKey, on
     </Place>
   );
   const crowd = poses ? <Crowd loc={loc} /> : null;
-  if (loc === 'cell') return <CellScene furniture={furniture} onClick={onClick}>{crowd}{fig}</CellScene>;
+  if (loc === 'cell') return <CellScene furniture={furniture} interior={interior} onClick={onClick}>{crowd}{fig}</CellScene>;
   if (loc === 'work') return <WorkScene>{crowd}{fig}</WorkScene>;
   return <YardScene>{crowd}{fig}</YardScene>;
 }
@@ -136,5 +139,16 @@ function CrowdMember({ name, x, y, scale }: { name: string; x: number; y: number
     <Place x={x} y={y} scale={scale}>
       <ImageG url={npc.url} height={npc.height} tone="brightness(0.72) saturate(0.85)" className="char-breathe" />
     </Place>
+  );
+}
+
+/** Телосложение (ширина фигуры) и цвет кожи из редактора персонажа. */
+export function Body({ look, children }: { look: Look; children: ReactNode }) {
+  const scale = BUILDS.find((b) => b.id === look.build)?.scale ?? 1;
+  const filter = SKINS.find((s) => s.id === look.skin)?.filter || undefined;
+  return (
+    <g transform={`translate(60 0) scale(${scale} 1) translate(-60 0)`} style={filter ? { filter } : undefined}>
+      {children}
+    </g>
   );
 }

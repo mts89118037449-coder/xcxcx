@@ -21,6 +21,8 @@ export interface Game {
   toast(text: string, kind?: 'ok' | 'err'): void;
   showFight(f: FightLog): void;
   go(tab: Tab): void;
+  visit(id: number): void;
+  openEnergy(): void;
 }
 
 export const GameCtx = createContext<Game | null>(null);
@@ -97,5 +99,5 @@ export function useAnim(): [string, number, (cls: string) => void] {
 }
 
 export function lookOf(p: PlayerView): Look {
-  return { equipped: p.equipped, tattoos: p.tattoos, str: p.str, face: p.face };
+  return { equipped: p.equipped, tattoos: p.tattoos, str: p.str, face: p.face, build: p.build, skin: p.skin };
 }

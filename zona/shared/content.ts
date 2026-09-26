@@ -67,6 +67,7 @@ export interface StarPack {
   stars: number; // цена в Telegram Stars (XTR)
   gold?: number;
   vipDays?: number;
+  chifir?: number;
   badge?: string;
 }
 
@@ -226,6 +227,7 @@ export const WORLD_BOSS = {
 
 // Донат за Telegram Stars. Цифровые товары в Telegram продаются только за Stars.
 export const STAR_PACKS: StarPack[] = [
+  { id: 'chifir_10', title: '10 кружек чифира', description: 'Каждая — полная энергия в любой момент', stars: 75, chifir: 10, badge: 'Энергия' },
   { id: 'starter', title: 'Стартовый грев', description: '250 золота + VIP на 7 дней. Один раз на аккаунт', stars: 99, gold: 250, vipDays: 7, badge: '−60%' },
   { id: 'gold_s', title: '100 золота', description: 'Горсть рыжья', stars: 50, gold: 100 },
   { id: 'gold_m', title: '350 золота', description: '+17% бонус', stars: 150, gold: 350, badge: 'Хит' },
@@ -237,6 +239,11 @@ export const STAR_PACKS: StarPack[] = [
 // Траты золота внутри игры.
 export const GOLD_PRICES = {
   faceChange: 20,
+  rename: 30,
+  energySmall: 10, // +30 энергии
+  chifir: 20, // одна кружка про запас
+  questReroll: 5,
+  questSkipPer10Min: 2,
   energyRefill: 25,
   heal: 10,
   bossReset: 15,
@@ -258,6 +265,91 @@ export const BALANCE = {
   dailyBase: 100,
   referralGold: 50,
   onlineWindowSec: 300,
+};
+
+// --- Персонаж ---------------------------------------------------------------
+export const BUILDS = [
+  { id: 0, name: 'Сухой', scale: 0.9 },
+  { id: 1, name: 'Обычный', scale: 1 },
+  { id: 2, name: 'Здоровый', scale: 1.12 },
+];
+export const SKINS = [
+  { id: 0, name: 'Как есть', filter: '' },
+  { id: 1, name: 'Бледный', filter: 'brightness(1.08) saturate(0.7)' },
+  { id: 2, name: 'Загорелый', filter: 'sepia(0.35) saturate(1.3) brightness(0.92)' },
+  { id: 3, name: 'Смуглый', filter: 'sepia(0.5) saturate(1.2) brightness(0.72)' },
+];
+
+// --- Интерьер хаты ------------------------------------------------------------
+export interface Interior {
+  id: string;
+  kind: 'wall' | 'floor';
+  name: string;
+  price: number;
+  currency: 'money' | 'gold';
+  color: string; // основной цвет
+  accent: string; // полосы, швы
+}
+export const INTERIORS: Interior[] = [
+  { id: 'w_green', kind: 'wall', name: 'Казённая зелёнка', price: 0, currency: 'money', color: '#2f4234', accent: '#1f2d23' },
+  { id: 'w_blue', kind: 'wall', name: 'Синяя панель', price: 1500, currency: 'money', color: '#2b3d55', accent: '#1b2839' },
+  { id: 'w_tiles', kind: 'wall', name: 'Белый кафель', price: 4000, currency: 'money', color: '#b9bdb6', accent: '#8d928b' },
+  { id: 'w_wood', kind: 'wall', name: 'Вагонка', price: 9000, currency: 'money', color: '#7a5433', accent: '#4f341e' },
+  { id: 'w_royal', kind: 'wall', name: 'Бордо с золотом', price: 120, currency: 'gold', color: '#5b1620', accent: '#c49a48' },
+  { id: 'f_planks', kind: 'floor', name: 'Крашеные доски', price: 0, currency: 'money', color: '#5a2a1f', accent: '#2c130d' },
+  { id: 'f_linoleum', kind: 'floor', name: 'Линолеум', price: 1200, currency: 'money', color: '#6b6a4c', accent: '#4a4933' },
+  { id: 'f_tile', kind: 'floor', name: 'Плитка', price: 5000, currency: 'money', color: '#5d6166', accent: '#3a3d41' },
+  { id: 'f_parquet', kind: 'floor', name: 'Паркет ёлочкой', price: 90, currency: 'gold', color: '#8a5a2e', accent: '#5a3818' },
+];
+export const interiorById = new Map(INTERIORS.map((i) => [i.id, i]));
+
+// --- Поручения (случайные задания с таймером) ---------------------------------
+export interface QuestTemplate {
+  id: string;
+  name: string;
+  text: string;
+  minutes: number;
+  energy: number;
+  money: [number, number];
+  xp: number;
+  chance: number; // шанс успеха
+}
+export const QUEST_TEMPLATES: QuestTemplate[] = [
+  { id: 'q_note', name: 'Затянуть маляву', text: 'Переправить записку в соседний барак мимо вертухаев', minutes: 5, energy: 5, money: [40, 70], xp: 8, chance: 0.95 },
+  { id: 'q_wagon', name: 'Разгрузить вагон', text: 'Ночная разгрузка на промке, начальник обещал доплатить', minutes: 15, energy: 12, money: [120, 200], xp: 18, chance: 0.9 },
+  { id: 'q_cards', name: 'Катран у барыги', text: 'Сесть за стол с барыгой и не остаться без штанов', minutes: 10, energy: 8, money: [60, 260], xp: 12, chance: 0.6 },
+  { id: 'q_rat', name: 'Найти крысу', text: 'Кто-то тянет из общака. Вычислить и предъявить', minutes: 30, energy: 15, money: [200, 320], xp: 30, chance: 0.8 },
+  { id: 'q_kum', name: 'Отмазать кента', text: 'Кента вызвал кум. Надо зайти и развести по понятиям', minutes: 20, energy: 10, money: [150, 240], xp: 22, chance: 0.75 },
+  { id: 'q_grev', name: 'Принять грев', text: 'Встретить передачку у забора, пока смена меняется', minutes: 45, energy: 18, money: [300, 480], xp: 40, chance: 0.85 },
+  { id: 'q_tattoo', name: 'Постоять на шухере', text: 'Кольщик бьёт наколку — нужен человек на атасе', minutes: 5, energy: 4, money: [30, 60], xp: 6, chance: 0.97 },
+  { id: 'q_tunnel', name: 'Копать подкоп', text: 'Смотрящий поручил ночную смену в подвале. Никому ни слова', minutes: 60, energy: 25, money: [450, 700], xp: 60, chance: 0.7 },
+  { id: 'q_debt', name: 'Выбить долг', text: 'Фраер проиграл и не отдаёт. Объяснить ему правила', minutes: 15, energy: 12, money: [150, 260], xp: 18, chance: 0.8 },
+  { id: 'q_kitchen', name: 'Подрезать на кухне', text: 'Вынести из столовой тушёнку, пока повар отвернулся', minutes: 10, energy: 6, money: [70, 120], xp: 10, chance: 0.85 },
+];
+
+// --- Дейлики ----------------------------------------------------------------------
+export type DailyKind = 'job' | 'pvpWin' | 'boss' | 'worldHit' | 'train' | 'quest' | 'spend';
+export const DAILY_KINDS: { kind: DailyKind; label: string; range: [number, number] }[] = [
+  { kind: 'job', label: 'Отработать смен', range: [3, 6] },
+  { kind: 'pvpWin', label: 'Выиграть наездов', range: [1, 3] },
+  { kind: 'boss', label: 'Завалить босса', range: [1, 1] },
+  { kind: 'worldHit', label: 'Ударить по бунту', range: [2, 4] },
+  { kind: 'train', label: 'Потренироваться', range: [1, 3] },
+  { kind: 'quest', label: 'Выполнить поручений', range: [1, 3] },
+  { kind: 'spend', label: 'Потратить энергии', range: [50, 100] },
+];
+export const DAILY_BONUS_GOLD = 10;
+
+// --- Кланы --------------------------------------------------------------------
+export const CLAN = {
+  minLevel: 5,
+  createCost: 5000,
+  maxMembers: 20,
+  maxLevel: 10,
+  upgradeCost: (level: number) => Math.round(20000 * Math.pow(level, 1.5)),
+  // бонус каждому участнику за уровень клана
+  moneyPerLevel: 3,
+  energyPerLevel: 2,
 };
 
 /** Сколько лиц на выбор (картинки public/art/sheet/face/<n>.png). */

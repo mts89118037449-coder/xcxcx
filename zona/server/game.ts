@@ -2,9 +2,17 @@
 // меняют его и возвращают результат. Время и случайность передаются снаружи,
 // чтобы всё можно было проверить тестами.
 
-import type { Look } from '../shared/types.ts';
+import type { DailyState, Look, Quest, QuestState } from '../shared/types.ts';
 import {
   BALANCE,
+  BUILDS,
+  CLAN,
+  DAILY_BONUS_GOLD,
+  DAILY_KINDS,
+  QUEST_TEMPLATES,
+  SKINS,
+  interiorById,
+  type DailyKind,
   FACE_COUNT,
   ITEMS,
   GOLD_PRICES,
@@ -64,6 +72,17 @@ export interface Player {
   furniture: string[];
   face: number;
   faceChosen: boolean;
+  build: number;
+  skin: number;
+  nameChanged: boolean;
+  interior: { wall: string; floor: string };
+  ownedInteriors: string[];
+  chifir: number;
+  daily: DailyState;
+  quests: QuestState;
+  clanId: number | null;
+  clanLevel: number;
+  respect: Record<string, string>;
   bossCd: Record<string, number>;
   pvpAt: number;
   shieldUntil: number;
@@ -135,6 +154,17 @@ export function newPlayer(id: number, name: string, username: string | null, now
     furniture: [],
     face: id % FACE_COUNT,
     faceChosen: false,
+    build: 1,
+    skin: 0,
+    nameChanged: false,
+    interior: { wall: 'w_green', floor: 'f_planks' },
+    ownedInteriors: ['w_green', 'f_planks'],
+    chifir: 1,
+    daily: { day: '', tasks: [], bonusClaimed: false },
+    quests: { board: [], active: null },
+    clanId: null,
+    clanLevel: 0,
+    respect: {},
     bossCd: {},
     pvpAt: 0,
     shieldUntil: 0,
@@ -155,6 +185,17 @@ export function migrate(p: Player): Player {
   p.furniture ??= [];
   p.face ??= p.id % FACE_COUNT;
   p.faceChosen ??= false;
+  p.build ??= 1;
+  p.skin ??= 0;
+  p.nameChanged ??= false;
+  p.interior ??= { wall: 'w_green', floor: 'f_planks' };
+  p.ownedInteriors ??= ['w_green', 'f_planks'];
+  p.chifir ??= 1;
+  p.daily ??= { day: '', tasks: [], bonusClaimed: false };
+  p.quests ??= { board: [], active: null };
+  p.clanId ??= null;
+  p.clanLevel ??= 0;
+  p.respect ??= {};
   return p;
 }
 
@@ -183,8 +224,8 @@ export function stats(p: Player, now: number) {
     def: p.agi * 2 + b.def,
     maxHp: 80 + p.end * 12 + b.hp,
     crit: Math.min(40, 2 + Math.floor(p.agi * 0.3) + b.crit),
-    maxEnergy: BALANCE.baseEnergy + b.energy + (vip ? BALANCE.vipEnergyBonus : 0),
-    moneyBonus: b.money + (vip ? BALANCE.vipMoneyBonus : 0),
+    maxEnergy: BALANCE.baseEnergy + b.energy + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel,
+    moneyBonus: b.money + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel,
   };
 }
 
@@ -217,6 +258,7 @@ export function tick(p: Player, now: number): void {
     p.vipGoldAt = now;
     log(p, now, `👑 Блатной статус: +${BALANCE.vipDailyGold} золота`);
   }
+  ensureDaily(p, now);
 }
 
 export function log(p: Player, now: number, text: string): void {
@@ -229,6 +271,7 @@ function spendEnergy(p: Player, amount: number, now: number): void {
   const wasFull = p.energy >= stats(p, now).maxEnergy;
   p.energy -= amount;
   if (wasFull) p.energyAt = now;
+  track(p, 'spend', amount);
 }
 
 function spend(p: Player, amount: number, currency: 'money' | 'gold'): void {
@@ -270,6 +313,7 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   const money = Math.round(roll(rng, job.money) * (1 + stats(p, now).moneyBonus / 100));
   p.money += money;
   const levelUps = addXp(p, job.xp, now);
+  track(p, 'job');
   return { money, xp: job.xp, levelUps };
 }
 
@@ -285,6 +329,7 @@ export function train(p: Player, stat: Stat) {
   const cost = trainCost(p[stat]);
   spend(p, cost, 'money');
   p[stat] += 1;
+  track(p, 'train');
   return { cost };
 }
 
@@ -442,6 +487,7 @@ export function fightBoss(p: Player, bossId: string, now: number, rng: Rng) {
     p.gold += reward.gold;
     p.authority += reward.authority;
     p.bossKills += 1;
+    track(p, 'boss');
     reward.levelUps = addXp(p, reward.xp, now);
     const drop = reward.drop ? itemById.get(reward.drop) : null;
     log(p, now, `${boss.emoji} Завалил «${boss.name}»${drop ? `, трофей: ${drop.emoji} ${drop.name}` : ''}`);
@@ -521,6 +567,7 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
     xp = 8 + p.level * 2;
     p.money += loot;
     p.authority += authority;
+    track(p, 'pvpWin');
     p.wins += 1;
     if (target) {
       target.money -= loot;
@@ -601,6 +648,7 @@ export function applyPack(p: Player, pack: StarPack, now: number) {
   if (pack.vipDays) {
     p.vipUntil = Math.max(p.vipUntil, now) + pack.vipDays * 24 * 60 * MIN;
   }
+  if (pack.chifir) p.chifir += pack.chifir;
   if (pack.id === 'starter') p.starterBought = true;
   p.starsSpent += pack.stars;
   log(p, now, `⭐ Покупка: ${pack.title}. Спасибо за поддержку!`);
@@ -612,7 +660,214 @@ export function worldBossHit(p: Player, now: number, rng: Rng) {
   requireHp(p, now);
   spendEnergy(p, WORLD_BOSS.energy, now);
   p.worldHitAt = now;
+  track(p, 'worldHit');
   const s = stats(p, now);
   const crit = rng() * 100 < s.crit;
   return { damage: Math.round(s.atk * 4 * (0.85 + rng() * 0.3) * (crit ? 2 : 1)), crit };
+}
+
+// --- Персонаж -----------------------------------------------------------------
+
+export function setLook(p: Player, build: number, skin: number) {
+  if (!BUILDS.some((b) => b.id === build)) throw new GameError('Нет такого телосложения');
+  if (!SKINS.some((s) => s.id === skin)) throw new GameError('Нет такого цвета кожи');
+  p.build = build;
+  p.skin = skin;
+}
+
+/** Смена имени: первый раз бесплатно, дальше за золото. */
+export function rename(p: Player, raw: string) {
+  const name = raw.replace(/\s+/g, ' ').trim();
+  if (name.length < 2 || name.length > 24) throw new GameError('Имя — от 2 до 24 символов');
+  if (!/^[\p{L}\p{N} ._-]+$/u.test(name)) throw new GameError('Только буквы, цифры, пробел, точка, дефис');
+  if (name === p.name) throw new GameError('Имя то же самое');
+  if (p.nameChanged) spend(p, GOLD_PRICES.rename, 'gold');
+  p.name = name;
+  p.nameChanged = true;
+}
+
+// --- Интерьер ------------------------------------------------------------------
+
+export function buyInterior(p: Player, id: string) {
+  const it = interiorById.get(id);
+  if (!it) throw new GameError('Нет такой отделки');
+  if (!p.ownedInteriors.includes(id)) {
+    spend(p, it.price, it.currency);
+    p.ownedInteriors.push(id);
+  }
+  p.interior[it.kind] = id;
+}
+
+// --- Энергия -------------------------------------------------------------------
+
+export function buyEnergy(p: Player, now: number) {
+  const max = stats(p, now).maxEnergy;
+  if (p.energy >= max) throw new GameError('Энергия и так полная');
+  spend(p, GOLD_PRICES.energySmall, 'gold');
+  p.energy = Math.min(max, p.energy + 30);
+  if (p.energy >= max) p.energyAt = now;
+}
+
+export function buyChifir(p: Player) {
+  spend(p, GOLD_PRICES.chifir, 'gold');
+  p.chifir += 1;
+}
+
+export function drinkChifir(p: Player, now: number) {
+  if (p.chifir <= 0) throw new GameError('Чифира нет');
+  const max = stats(p, now).maxEnergy;
+  if (p.energy >= max) throw new GameError('Энергия и так полная');
+  p.chifir -= 1;
+  p.energy = max;
+  p.energyAt = now;
+}
+
+// --- Дейлики -------------------------------------------------------------------
+
+/** День по Москве — дейлики сбрасываются в полночь МСК. */
+export function dayKey(now: number): string {
+  return new Date(now + 3 * 3600_000).toISOString().slice(0, 10);
+}
+
+/** Следующая полночь по Москве. */
+export function nextDayAt(now: number): number {
+  const msk = now + 3 * 3600_000;
+  return msk - (msk % 86_400_000) + 86_400_000 - 3 * 3600_000;
+}
+
+/** Детерминированный генератор: задания дня одинаковы при любом числе заходов. */
+export function seeded(seed: string): Rng {
+  let h = 1779033703 ^ seed.length;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+  let a = h >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function ensureDaily(p: Player, now: number) {
+  const day = dayKey(now);
+  if (p.daily.day === day) return;
+  const rng = seeded(`${p.id}:${day}`);
+  const kinds = [...DAILY_KINDS].sort(() => rng() - 0.5).slice(0, 3);
+  p.daily = {
+    day,
+    bonusClaimed: false,
+    tasks: kinds.map((k) => {
+      const target = k.range[0] + Math.floor(rng() * (k.range[1] - k.range[0] + 1));
+      return { kind: k.kind, target, progress: 0, money: 100 + p.level * 60, xp: 20 + p.level * 5, gold: 2, claimed: false };
+    }),
+  };
+}
+
+export function track(p: Player, kind: DailyKind, amount = 1) {
+  for (const t of p.daily.tasks) if (t.kind === kind && !t.claimed) t.progress = Math.min(t.target, t.progress + amount);
+}
+
+export function claimTask(p: Player, index: number, now: number) {
+  const t = p.daily.tasks[index];
+  if (!t) throw new GameError('Нет такого задания');
+  if (t.claimed) throw new GameError('Уже получено');
+  if (t.progress < t.target) throw new GameError('Задание не выполнено');
+  t.claimed = true;
+  p.money += t.money;
+  p.gold += t.gold;
+  addXp(p, t.xp, now);
+  let bonus = 0;
+  if (!p.daily.bonusClaimed && p.daily.tasks.every((x) => x.claimed)) {
+    p.daily.bonusClaimed = true;
+    bonus = DAILY_BONUS_GOLD;
+    p.gold += bonus;
+    log(p, now, `📋 Все дела на день закрыты: +${bonus} золота`);
+  }
+  return { money: t.money, gold: t.gold, xp: t.xp, bonus };
+}
+
+// --- Поручения -----------------------------------------------------------------
+
+function makeQuest(p: Player, rng: Rng): Quest {
+  // без повторов: на доске и в работе — разные поручения
+  const busy = new Set([...p.quests.board.map((q) => q.tpl), p.quests.active?.tpl]);
+  const pool = QUEST_TEMPLATES.filter((t) => !busy.has(t.id));
+  const tpl = pool[Math.floor(rng() * pool.length)];
+  const k = 1 + p.level * 0.15;
+  return {
+    key: String((p.quests.seq = (p.quests.seq ?? 0) + 1)),
+    tpl: tpl.id,
+    minutes: tpl.minutes,
+    energy: tpl.energy,
+    money: Math.round(roll(rng, tpl.money) * k),
+    xp: Math.round(tpl.xp * (1 + p.level * 0.1)),
+    gold: rng() < 0.2 ? 1 + Math.floor(rng() * 3) : 0,
+    chance: tpl.chance,
+  };
+}
+
+export function ensureBoard(p: Player, rng: Rng) {
+  while (p.quests.board.length < 3) p.quests.board.push(makeQuest(p, rng));
+}
+
+export function rerollBoard(p: Player, rng: Rng) {
+  spend(p, GOLD_PRICES.questReroll, 'gold');
+  p.quests.board = [];
+  ensureBoard(p, rng);
+}
+
+export function startQuest(p: Player, key: string, now: number) {
+  if (p.quests.active) throw new GameError('Сначала закончи текущее поручение');
+  const q = p.quests.board.find((x) => x.key === key);
+  if (!q) throw new GameError('Нет такого поручения');
+  spendEnergy(p, q.energy, now);
+  p.quests.board = p.quests.board.filter((x) => x.key !== key);
+  p.quests.active = { ...q, endsAt: now + q.minutes * MIN };
+}
+
+export function skipCost(p: Player, now: number): number {
+  const a = p.quests.active;
+  if (!a) return 0;
+  return Math.max(1, Math.ceil((a.endsAt - now) / (10 * MIN))) * GOLD_PRICES.questSkipPer10Min;
+}
+
+export function skipQuest(p: Player, now: number) {
+  const a = p.quests.active;
+  if (!a) throw new GameError('Нет поручения');
+  if (a.endsAt <= now) throw new GameError('Уже готово');
+  spend(p, skipCost(p, now), 'gold');
+  a.endsAt = now;
+}
+
+export function finishQuest(p: Player, now: number, rng: Rng) {
+  const a = p.quests.active;
+  if (!a) throw new GameError('Нет поручения');
+  if (a.endsAt > now) throw new GameError('Ещё не готово');
+  p.quests.active = null;
+  const ok = rng() < a.chance;
+  const money = ok ? Math.round(a.money * (1 + stats(p, now).moneyBonus / 100)) : 0;
+  const gold = ok ? a.gold : 0;
+  const xp = ok ? a.xp : Math.round(a.xp / 3);
+  p.money += money;
+  p.gold += gold;
+  const levelUps = addXp(p, xp, now);
+  track(p, 'quest');
+  ensureBoard(p, rng);
+  return { ok, money, gold, xp, levelUps, tpl: a.tpl };
+}
+
+// --- Соседи --------------------------------------------------------------------
+
+/** Уважить соседа: раз в день на каждого. */
+export function respect(p: Player, target: Player, now: number) {
+  if (p.id === target.id) throw new GameError('Себя не уважают — себя уважать заставляют');
+  const day = dayKey(now);
+  if (p.respect[target.id] === day) throw new GameError('Сегодня уже уважил');
+  p.respect[target.id] = day;
+  // чистим старые записи, чтобы документ не рос
+  for (const [k, v] of Object.entries(p.respect)) if (v !== day) delete p.respect[k];
+  target.authority += 1;
+  log(target, now, `🤝 ${p.name} зашёл в хату и выразил уважение: +1 авторитета`);
+  addXp(p, 5, now);
 }

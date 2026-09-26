@@ -5,7 +5,7 @@ import { CharacterG } from './Character.tsx';
 import { Face, ImageG, PoseG, useBoss, usePoses, useRival } from './sprites.tsx';
 import { artUrl, characterLayers, useArt } from './raster.ts';
 import { Place, YardScene } from './Scenes.tsx';
-import { RasterFigure } from './Stage.tsx';
+import { Body, RasterFigure } from './Stage.tsx';
 
 export interface Fighter {
   name: string;
@@ -101,7 +101,9 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
       <YardScene tower={false}>
           <Place x={104} y={266} scale={0.98} key={`me${i}`} className={`pose ${meCls}`}>
             {poses ? (
-              <PoseG name={done ? (replay.win ? 'crossed' : 'lying') : last?.by === 0 ? 'lunge' : 'guard34'} />
+              <Body look={me.look}>
+                <PoseG name={done ? (replay.win ? 'crossed' : 'lying') : last?.by === 0 ? 'lunge' : 'guard34'} />
+              </Body>
             ) : (
               <CharacterG look={me.look} mood={myMood} />
             )}

@@ -5,7 +5,7 @@
 // Система координат 360×280, пол на y≈236.
 
 import type { ReactNode } from 'react';
-import { FURNITURE, type Spot } from '../../shared/content.ts';
+import { FURNITURE, interiorById, type Spot } from '../../shared/content.ts';
 
 const W = 360;
 const H = 280;
@@ -168,8 +168,13 @@ function techPos(f: Partial<Record<Spot, string>>) {
   return { x: 266, y: 206 };
 }
 
-function CellBackdrop({ furniture }: { furniture: string[] }) {
+export type InteriorIds = { wall: string; floor: string };
+const DEFAULT_INTERIOR: InteriorIds = { wall: 'w_green', floor: 'f_planks' };
+
+function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: string[]; interior?: InteriorIds }) {
   const f = bestBySpot(furniture);
+  const wall = interiorById.get(interior.wall) ?? interiorById.get('w_green')!;
+  const floor = interiorById.get(interior.floor) ?? interiorById.get('f_planks')!;
   const s = sky(new Date().getHours());
   const tech = techPos(f);
   return (
@@ -187,17 +192,25 @@ function CellBackdrop({ furniture }: { furniture: string[] }) {
       <path d="M152,2 L156,11 L161,21 L172,32 L184,24 L198,26 L211,15" fill="none" stroke="#000" strokeWidth={1.2} opacity={0.25} />
       <path d="M40,20 L48,34 L45,48 L52,60 M300,138 L310,128 L318,132 M112,6 L118,20" stroke="#3b372c" strokeWidth={0.7} fill="none" opacity={0.7} />
       {/* Крашеная панель */}
-      <rect y={150} width={W} height={86} fill="#2f4234" />
-      <rect y={150} width={W} height={86} filter="url(#sc-chips)" opacity={0.55} />
+      <rect y={150} width={W} height={86} fill={wall.color} />
+      <WallPattern id={wall.id} accent={wall.accent} />
+      <rect y={150} width={W} height={86} filter="url(#sc-chips)" opacity={wall.id === 'w_green' ? 0.55 : 0.2} />
       <Grime x={0} y={150} w={W} h={86} stains={0.5} grime={0.3} />
-      <rect y={150} width={W} height={4} fill="#1f2d23" />
-      <rect y={154} width={W} height={2} fill="#5f7a64" opacity={0.5} />
-      {[40, 96, 214, 340].map((x) => (
+      <rect y={150} width={W} height={4} fill={wall.accent} />
+      <rect y={154} width={W} height={2} fill="#fff" opacity={0.12} />
+      {wall.id === 'w_green' && [40, 96, 214, 340].map((x) => (
         <path key={x} d={`M${x},156 C${x + 0.6},166 ${x - 0.4},176 ${x + 0.4},${186 + (x % 30)}`} stroke="#1c2a20" strokeWidth={1.2} opacity={0.5} />
       ))}
       {/* Плинтус и пол */}
       <rect y={FLOOR - 4} width={W} height={5} fill="#1c120c" />
-      <rect y={FLOOR} width={W} height={H - FLOOR} fill="url(#sc-planks)" />
+      {floor.id === 'f_planks' ? (
+        <rect y={FLOOR} width={W} height={H - FLOOR} fill="url(#sc-planks)" />
+      ) : (
+        <>
+          <rect y={FLOOR} width={W} height={H - FLOOR} fill={floor.color} />
+          <FloorPattern id={floor.id} accent={floor.accent} />
+        </>
+      )}
       <rect y={FLOOR} width={W} height={H - FLOOR} filter="url(#sc-grime)" opacity={0.45} />
       <ellipse cx={200} cy={258} rx={120} ry={30} fill="url(#sc-floorlight)" />
 
@@ -476,9 +489,9 @@ function Crow({ x, y }: { x: number; y: number }) {
   );
 }
 
-export function CellScene({ furniture, children, onClick }: { furniture: string[]; children?: ReactNode; onClick?: () => void }) {
+export function CellScene({ furniture, interior, children, onClick }: { furniture: string[]; interior?: InteriorIds; children?: ReactNode; onClick?: () => void }) {
   return (
-    <Scene backdrop={<CellBackdrop furniture={furniture} />} onClick={onClick}>
+    <Scene backdrop={<CellBackdrop furniture={furniture} interior={interior} />} onClick={onClick}>
       <CellLive furniture={furniture} />
       {children}
     </Scene>
@@ -684,5 +697,67 @@ export function YardScene({ children, tower = true }: { children?: ReactNode; to
       <YardLive tower={tower} />
       {children}
     </Scene>
+  );
+}
+
+/** Рисунок нижней панели стены под выбранную отделку. */
+function WallPattern({ id, accent }: { id: string; accent: string }) {
+  if (id === 'w_tiles') {
+    return (
+      <g stroke={accent} strokeWidth={0.8}>
+        {Array.from({ length: 8 }, (_, i) => <path key={`h${i}`} d={`M0,${156 + i * 11} H${W}`} />)}
+        {Array.from({ length: 33 }, (_, i) => <path key={`v${i}`} d={`M${i * 11},154 V${FLOOR}`} />)}
+      </g>
+    );
+  }
+  if (id === 'w_wood') {
+    return (
+      <g stroke={accent} strokeWidth={1.2}>
+        {Array.from({ length: 30 }, (_, i) => <path key={i} d={`M${i * 12 + 6},154 V${FLOOR}`} />)}
+      </g>
+    );
+  }
+  if (id === 'w_royal') {
+    return (
+      <g fill="none" stroke={accent} strokeWidth={0.8} opacity={0.8}>
+        {Array.from({ length: 12 }, (_, i) =>
+          Array.from({ length: 3 }, (_, j) => (
+            <path key={`${i}-${j}`} d={`M${i * 32 + 8 + (j % 2) * 16},${170 + j * 22} l6,-7 l6,7 l-6,7 z`} />
+          )),
+        )}
+        <path d={`M0,158 H${W} M0,${FLOOR - 6} H${W}`} strokeWidth={1.5} />
+      </g>
+    );
+  }
+  if (id === 'w_blue') {
+    return <path d={`M0,195 H${W}`} stroke={accent} strokeWidth={2} />;
+  }
+  return null;
+}
+
+function FloorPattern({ id, accent }: { id: string; accent: string }) {
+  const h = H - FLOOR;
+  if (id === 'f_tile') {
+    return (
+      <g stroke={accent} strokeWidth={1}>
+        {Array.from({ length: 4 }, (_, i) => <path key={`h${i}`} d={`M0,${FLOOR + i * 12} H${W}`} />)}
+        {Array.from({ length: 19 }, (_, i) => <path key={`v${i}`} d={`M${i * 20},${FLOOR} V${H}`} />)}
+      </g>
+    );
+  }
+  if (id === 'f_parquet') {
+    return (
+      <g stroke={accent} strokeWidth={1}>
+        {Array.from({ length: 40 }, (_, i) => (
+          <path key={i} d={`M${i * 10},${FLOOR} l10,${h / 2} l-10,${h / 2}`} fill="none" />
+        ))}
+      </g>
+    );
+  }
+  // линолеум: крупный «ромбик»
+  return (
+    <g stroke={accent} strokeWidth={0.8} opacity={0.7}>
+      {Array.from({ length: 24 }, (_, i) => <path key={i} d={`M${i * 18 - 20},${H} L${i * 18 + 20},${FLOOR} M${i * 18 - 20},${FLOOR} L${i * 18 + 20},${H}`} />)}
+    </g>
   );
 }

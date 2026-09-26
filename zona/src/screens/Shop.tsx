@@ -53,7 +53,7 @@ export function Shop() {
           <div className="row">
             <div className="grow">
               <b>
-                {pack.vipDays && !pack.gold ? '👑' : '🪙'} {pack.title}
+                {pack.chifir ? '🍵' : pack.vipDays && !pack.gold ? '👑' : '🪙'} {pack.title}
               </b>
               {pack.badge && <span className="badge">{pack.badge}</span>}
               <div className="muted small">{pack.description}</div>

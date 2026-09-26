@@ -1,6 +1,6 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
-import { BALANCE, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
-import type { PlayerView, WorldBossView } from '../shared/types.ts';
+import { BALANCE, CLAN, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
+import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
 import { validateInitData, type TgUser } from './auth.ts';
 import type { Db } from './db.ts';
 import * as g from './game.ts';
@@ -68,8 +68,17 @@ export function createApp(opts: AppOptions) {
       }
     }
     g.tick(p, t);
+    syncClan(p);
+    g.ensureBoard(p, rng);
     p.lastSeen = t;
     return p;
+  }
+
+  /** Уровень клана кэшируется в игроке: от него зависят бонусы в stats(). */
+  function syncClan(p: g.Player) {
+    const clan = p.clanId ? db.getClan(p.clanId) : null;
+    if (!clan) p.clanId = null;
+    p.clanLevel = clan?.level ?? 0;
   }
 
   function view(p: g.Player, t: number): PlayerView {
@@ -108,6 +117,18 @@ export function createApp(opts: AppOptions) {
       furniture: p.furniture,
       face: p.face,
       faceChosen: p.faceChosen,
+      build: p.build,
+      skin: p.skin,
+      nameChanged: p.nameChanged,
+      interior: p.interior,
+      ownedInteriors: p.ownedInteriors,
+      chifir: p.chifir,
+      daily: p.daily,
+      quests: p.quests,
+      clan: (() => {
+        const c = p.clanId ? db.getClan(p.clanId) : null;
+        return c ? { id: c.id, name: c.name, tag: c.tag, level: c.level, owner: c.owner_id === p.id } : null;
+      })(),
       bossCd: p.bossCd,
       pvpReadyAt: p.pvpAt + BALANCE.pvpCooldownSec * 1000,
       worldHitReadyAt: p.worldHitAt + WORLD_BOSS.cooldownSec * 1000,
@@ -175,7 +196,98 @@ export function createApp(opts: AppOptions) {
   type Handler = (p: g.Player, body: Record<string, unknown>, t: number) => unknown;
   const str = (v: unknown) => (typeof v === 'string' ? v : '');
 
+  const clanOf = (p: g.Player) => {
+    const c = p.clanId ? db.getClan(p.clanId) : null;
+    if (!c) throw new g.GameError('Ты не в клане');
+    return c;
+  };
+  const num = (v: unknown) => (typeof v === 'number' ? v : Number(v));
+
   const actions: Record<string, Handler> = {
+    look: (p, b) => g.setLook(p, num(b.build), num(b.skin)),
+    rename: (p, b) => g.rename(p, str(b.name)),
+    interior: (p, b) => g.buyInterior(p, str(b.id)),
+    energy: (p, _b, t) => g.buyEnergy(p, t),
+    buyChifir: (p) => g.buyChifir(p),
+    chifir: (p, _b, t) => g.drinkChifir(p, t),
+    task: (p, b, t) => g.claimTask(p, num(b.index), t),
+    questStart: (p, b, t) => g.startQuest(p, str(b.key), t),
+    questSkip: (p, _b, t) => g.skipQuest(p, t),
+    questFinish: (p, _b, t) => g.finishQuest(p, t, rng),
+    questReroll: (p) => g.rerollBoard(p, rng),
+    respect: (p, b, t) => {
+      const target = db.getPlayer(num(b.id));
+      if (!target) throw new g.GameError('Нет такого игрока');
+      g.respect(p, target, t);
+      db.savePlayer(target);
+    },
+    clanCreate: (p, b, t) => {
+      if (p.clanId) throw new g.GameError('Сначала выйди из клана');
+      if (p.level < CLAN.minLevel) throw new g.GameError(`Клан можно создать с ${CLAN.minLevel} уровня`);
+      const name = str(b.name).replace(/\s+/g, ' ').trim();
+      const tag = str(b.tag).trim().toUpperCase();
+      if (name.length < 3 || name.length > 20) throw new g.GameError('Название — от 3 до 20 символов');
+      if (!/^[\p{L}\p{N}]{2,4}$/u.test(tag)) throw new g.GameError('Тег — 2–4 буквы или цифры');
+      if (db.clanNameTaken(name)) throw new g.GameError('Такое название уже занято');
+      if (p.money < CLAN.createCost) throw new g.GameError('Не хватает денег');
+      p.money -= CLAN.createCost;
+      p.clanId = db.createClan(name, tag, p.id, t);
+      syncClan(p);
+      g.log(p, t, `🏴 Основал клан «${name}» [${tag}]`);
+      return { id: p.clanId };
+    },
+    clanJoin: (p, b, t) => {
+      if (p.clanId) throw new g.GameError('Сначала выйди из клана');
+      const c = db.getClan(num(b.id));
+      if (!c) throw new g.GameError('Нет такого клана');
+      if (db.clanMembers(c.id).length >= CLAN.maxMembers) throw new g.GameError('В клане нет мест');
+      p.clanId = c.id;
+      syncClan(p);
+      g.log(p, t, `🏴 Вступил в клан «${c.name}»`);
+    },
+    clanLeave: (p) => {
+      const c = clanOf(p);
+      const others = db.clanMembers(c.id).filter((m) => m.id !== p.id);
+      if (c.owner_id === p.id) {
+        if (others.length) {
+          c.owner_id = others[0].id; // главным становится самый авторитетный
+          db.saveClan(c);
+        } else db.deleteClan(c.id);
+      }
+      p.clanId = null;
+      syncClan(p);
+    },
+    clanDonate: (p, b, t) => {
+      const c = clanOf(p);
+      const amount = Math.floor(num(b.amount));
+      if (!(amount >= 100)) throw new g.GameError('Минимум 100 ₽');
+      if (p.money < amount) throw new g.GameError('Не хватает денег');
+      p.money -= amount;
+      c.treasury += amount;
+      db.saveClan(c);
+      g.log(p, t, `💰 Закинул в общак ${amount} ₽`);
+    },
+    clanUpgrade: (p) => {
+      const c = clanOf(p);
+      if (c.owner_id !== p.id) throw new g.GameError('Развивает клан только главный');
+      if (c.level >= CLAN.maxLevel) throw new g.GameError('Клан уже максимального уровня');
+      const cost = CLAN.upgradeCost(c.level);
+      if (c.treasury < cost) throw new g.GameError(`В общаке нужно ${cost} ₽`);
+      c.treasury -= cost;
+      c.level += 1;
+      db.saveClan(c);
+      syncClan(p);
+    },
+    clanKick: (p, b, t) => {
+      const c = clanOf(p);
+      if (c.owner_id !== p.id) throw new g.GameError('Выгнать может только главный');
+      const target = db.getPlayer(num(b.id));
+      if (!target || target.clanId !== c.id || target.id === p.id) throw new g.GameError('Нет такого участника');
+      target.clanId = null;
+      target.clanLevel = 0;
+      g.log(target, t, `🏴 Тебя выгнали из клана «${c.name}»`);
+      db.savePlayer(target);
+    },
     job: (p, b, t) => g.doJob(p, str(b.jobId), t, rng),
     allocate: (p, b) => g.allocate(p, str(b.stat) as Stat),
     train: (p, b) => g.train(p, str(b.stat) as Stat),
@@ -241,6 +353,52 @@ export function createApp(opts: AppOptions) {
       online: db.online(t - BALANCE.onlineWindowSec * 1000),
       total: db.totalPlayers(),
     });
+  });
+
+  api.post('/visit', (req: AuthedRequest, res) => {
+    const t = now();
+    const v = db.getPlayer(Number(req.body?.id));
+    if (!v) return res.status(404).json({ error: 'Нет такого игрока' });
+    const me = db.getPlayer(req.tgUser!.id);
+    const c = v.clanId ? db.getClan(v.clanId) : null;
+    const visit: VisitView = {
+      id: v.id,
+      name: v.name,
+      level: v.level,
+      rank: rankTitle(v.authority),
+      authority: v.authority,
+      wins: v.wins,
+      face: v.face,
+      build: v.build,
+      skin: v.skin,
+      furniture: v.furniture,
+      interior: v.interior,
+      tattoos: v.tattoos,
+      clan: c ? { id: c.id, name: c.name, tag: c.tag } : null,
+      respectedToday: !!me && me.respect[v.id] === g.dayKey(t),
+      online: t - v.lastSeen < BALANCE.onlineWindowSec * 1000,
+    };
+    res.json({ visit });
+  });
+
+  api.post('/clans', (_req, res) => {
+    res.json({ clans: db.clans() });
+  });
+
+  api.post('/clan', (req: AuthedRequest, res) => {
+    const c = db.getClan(Number(req.body?.id));
+    if (!c) return res.status(404).json({ error: 'Нет такого клана' });
+    const clan: ClanView = {
+      id: c.id,
+      name: c.name,
+      tag: c.tag,
+      level: c.level,
+      treasury: c.treasury,
+      ownerId: c.owner_id,
+      members: db.clanMembers(c.id),
+      upgradeCost: c.level < CLAN.maxLevel ? CLAN.upgradeCost(c.level) : null,
+    };
+    res.json({ clan });
   });
 
   api.post('/world', (req: AuthedRequest, res) => {
