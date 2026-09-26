@@ -159,7 +159,7 @@ export function PoseG({ name, mirror, tone, look, noShadow }: { name: PoseName; 
   const ref = artSize(outfit?.ref ?? poseUrl('stand'));
   const size = artSize(url);
   // на листе комплектов герой коренастее — уменьшаем, чтобы стоял вровень с остальными
-  const h = (ref && size ? (size[1] / ref[1]) * H : H) * (outfit ? 0.86 : 1);
+  const h = (ref && size ? (size[1] / ref[1]) * H : H) * (outfit ? 0.78 : 1);
   const w = size ? (size[0] / size[1]) * h : h * 0.4;
   const x = 60 - w / 2;
   const y = 210 - h;

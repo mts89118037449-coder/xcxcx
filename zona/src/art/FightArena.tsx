@@ -43,19 +43,45 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
       onDone();
       return;
     }
-    const t = setTimeout(() => setI(i + 1), i === 0 ? 350 : STEP_MS);
+    const next = replay.rounds[i];
+    const t = setTimeout(() => setI(i + 1), i === 0 ? 350 : next && !next.dmg && !next.miss ? STEP_MS * 0.8 : STEP_MS);
     return () => clearTimeout(t);
   }, [i, done, onDone]);
 
   const played = replay.rounds.slice(0, i);
-  const myHp = Math.max(0, replay.startHp[0] - played.filter((r) => r.by === 1).reduce((s, r) => s + r.dmg, 0));
-  const enemyHp = Math.max(0, replay.startHp[1] - played.filter((r) => r.by === 0).reduce((s, r) => s + r.dmg, 0));
+  // здоровье — по записи: урон противнику того, кто действует, лечение — ему самому
+  const hpNow: [number, number] = [replay.startHp[0], replay.startHp[1]];
+  for (const r of played) {
+    const o = r.by === 0 ? 1 : 0;
+    hpNow[o] = Math.max(0, hpNow[o] - r.dmg);
+    hpNow[r.by] = Math.min(replay.maxHp[r.by], hpNow[r.by] + (r.heal ?? 0));
+  }
+  const [myHp, enemyHp] = hpNow;
   const last = played[played.length - 1];
+  // удар — с выпадом; кровотечение и перки без урона — без
+  const strike = !!last && (last.miss || (last.dmg > 0 && last.note !== '🩸'));
+  const hurt = !!last && last.dmg > 0;
 
   const poses = usePoses();
-  const meCls = done ? (replay.win ? 'act-cheer' : poses ? '' : 'ko') : last?.by === 0 ? 'lunge-r' : last ? (last.crit ? 'got-crit' : 'got-hit') : '';
-  const enemyCls = done ? (replay.win ? 'ko-r' : 'act-cheer') : last?.by === 1 ? 'lunge-l' : last ? (last.crit ? 'got-crit' : 'got-hit') : '';
+  const hitCls = last?.crit ? 'got-crit' : 'got-hit';
+  const meCls = done ? (replay.win ? 'act-cheer' : poses ? '' : 'ko') : !last ? '' : last.by === 0 ? (strike ? 'lunge-r' : '') : hurt ? hitCls : '';
+  const enemyCls = done ? (replay.win ? 'ko-r' : 'act-cheer') : !last ? '' : last.by === 1 ? (strike ? 'lunge-l' : '') : hurt ? hitCls : '';
   const popX = last?.by === 0 ? 256 : 104;
+  // всплывашки: урон — над целью, лечение и перк — над тем, кто действует
+  const notes = last && !done && (
+    <>
+      {last.note && (
+        <div key={`n${i}`} className="perk-note" style={{ left: last.by === 0 ? '29%' : '71%' }}>
+          {last.note}
+        </div>
+      )}
+      {!!last.heal && (
+        <div key={`h${i}`} className={`dmg-html heal-pop ${last.by === 0 ? 'left' : 'right'}`}>
+          +{last.heal}
+        </div>
+      )}
+    </>
+  );
 
   const myMood = done ? (replay.win ? 'win' : 'hurt') : myHp < replay.maxHp[0] * 0.3 ? 'hurt' : 'idle';
   const art = useArt();
@@ -97,12 +123,12 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
           <img className="raster-layer" src={bg} alt="" />
           <RasterFigure layers={meLayers} className={meCls} key={`me${i}`} />
           <RasterFigure layers={enemyLayers} className={enemyCls} key={`en${i}`} mirror={!enemy.npc} />
-          {last && !done && (
+          {last && !done && (last.dmg > 0 || last.miss) && (
             <div key={`d${i}`} className={`dmg-html ${last.by === 0 ? 'right' : 'left'} ${last.crit ? 'crit' : ''}`}>
-              −{last.dmg}
-              {last.crit ? '!' : ''}
+              {last.miss ? 'мимо' : `−${last.dmg}${last.crit ? '!' : ''}`}
             </div>
           )}
+          {notes}
           <div className="scene-fx" />
         </div>
         {hp}
@@ -126,7 +152,7 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
                     </g>
                   </g>
                 ) : (
-                  <PoseG name={done ? 'crossed' : last?.by === 0 ? 'lunge' : 'guard34'} look={me.look} />
+                  <PoseG name={done ? 'crossed' : last?.by === 0 && strike ? 'lunge' : 'guard34'} look={me.look} />
                 )}
               </Body>
             ) : (
@@ -137,7 +163,7 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
             {!enemy.npc && poses ? (
               // соперник-зэк — такой же герой в своём комплекте, развёрнут лицом к нам
               <PoseG
-                name={done ? (replay.win ? 'guard34' : 'crossed') : last?.by === 1 ? 'lunge' : 'guard34'}
+                name={done ? (replay.win ? 'guard34' : 'crossed') : last?.by === 1 && strike ? 'lunge' : 'guard34'}
                 look={rivalLook(enemy)}
                 mirror
               />
@@ -147,13 +173,13 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
               <CharacterG look={enemy.look} build={enemy.build} mood={done ? (replay.win ? 'hurt' : 'win') : 'idle'} />
             )}
           </Place>
-          {last && !done && (
-            <text key={`d${i}`} className="dmg-pop" x={popX} y={84} textAnchor="middle" fontSize={last.crit ? 26 : 18} fill={last.crit ? '#ffcf5a' : '#fff'}>
-              −{last.dmg}
-              {last.crit ? '!' : ''}
+          {last && !done && (last.dmg > 0 || last.miss) && (
+            <text key={`d${i}`} className="dmg-pop" x={popX} y={84} textAnchor="middle" fontSize={last.crit ? 26 : 18} fill={last.miss ? '#9fd3ff' : last.crit ? '#ffcf5a' : '#fff'}>
+              {last.miss ? 'мимо' : `−${last.dmg}${last.crit ? '!' : ''}`}
             </text>
           )}
       </YardScene>
+      {notes}
       {hp}
       {skip}
     </div>

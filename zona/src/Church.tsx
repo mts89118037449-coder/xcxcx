@@ -32,10 +32,10 @@ export function Church({ onBack }: { onBack(): void }) {
           },
         },
         {
-          label: p.confessReady ? 'Исповедаться (лечит 30%)' : 'Исповедь — завтра',
+          label: p.confessReady ? 'Исповедаться (лечит 30% + святая вода)' : 'Исповедь — завтра',
           disabled: !p.confessReady,
           onPick: async () => {
-            if ((await act('confess')) !== null) toast('На душе полегчало');
+            if ((await act('confess')) !== null) toast('На душе полегчало · батюшка дал 💧 святой воды');
           },
         },
         { label: 'Уйти' },

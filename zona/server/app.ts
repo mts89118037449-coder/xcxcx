@@ -147,6 +147,9 @@ export function createApp(opts: AppOptions) {
       worldHitReadyAt: p.worldHitAt + WORLD_BOSS.cooldownSec * 1000,
       shieldUntil: p.shieldUntil,
       refCount: p.refCount,
+      perks: p.perks,
+      belt: p.belt,
+      stash: p.stash,
       journal: p.journal.slice(0, 15),
     };
   }
@@ -218,6 +221,9 @@ export function createApp(opts: AppOptions) {
 
   const actions: Record<string, Handler> = {
     look: (p, b) => g.setLook(p, num(b.build), num(b.skin)),
+    perks: (p, b) => g.setPerks(p, Array.isArray(b.ids) ? b.ids.map(str) : []),
+    belt: (p, b) => g.setBelt(p, Array.isArray(b.ids) ? b.ids.map(str) : []),
+    buyItem: (p, b) => g.buyConsumable(p, str(b.id), num(b.n)),
     rename: (p, b) => g.rename(p, str(b.name)),
     interior: (p, b) => g.buyInterior(p, str(b.id)),
     energy: (p, _b, t) => g.buyEnergy(p, t),

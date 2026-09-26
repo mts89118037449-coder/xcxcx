@@ -5,6 +5,8 @@ import os, sys
 import numpy as np
 from PIL import Image, ImageFilter
 from scipy import ndimage
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import esrgan  # noqa: E402  нейро-апскейл, если задан ESRGAN_WEIGHTS
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'public', 'art', 'sheet')
 
@@ -55,8 +57,16 @@ def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False, trim=
         fg = np.isin(lab2, keep)
     rgba = np.dstack([a.astype(np.uint8), (fg * 255).astype(np.uint8)])
     img = Image.fromarray(rgba, 'RGBA')
-    img = img.crop(img.getbbox())
-    img = img.resize((img.width * scale, img.height * scale), Image.LANCZOS)
+    bb = img.getbbox()
+    if esrgan.enabled() and scale >= 3:
+        # Real-ESRGAN ×4 по кадру целиком (с фоном — контекст для контуров), маска — Ланцошем
+        up = esrgan.upscale4(a.astype(np.uint8))
+        al = Image.fromarray((fg * 255).astype(np.uint8)).resize((up.shape[1], up.shape[0]), Image.LANCZOS)
+        img = Image.merge('RGBA', (*Image.fromarray(up).split(), al)).crop(tuple(v * 4 for v in bb))
+        scale = 4
+    else:
+        img = img.crop(bb)
+        img = img.resize((img.width * scale, img.height * scale), Image.LANCZOS)
     r, g, b, al = img.split()
     al = al.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(0.9))
     img = Image.merge('RGBA', (r, g, b, al))

@@ -312,3 +312,69 @@ test('церковь и турник — без энергии', () => {
   assert.throws(() => g.pullups(p, 10, T0 + MIN), /отошли/);
   assert.equal(p.energy, 0);
 });
+
+// --- Перки и расходники ---------------------------------------------------------
+
+import { CONSUMABLES, PERKS, perkById } from '../shared/perks.ts';
+
+/** Прогон записи боя так же, как это делает клиент: здоровье сходится с сервером. */
+function replayHp(r: g.FightResult): [number, number] {
+  const hp: [number, number] = [...r.startHp];
+  for (const x of r.rounds) {
+    const o = x.by === 0 ? 1 : 0;
+    hp[o] = Math.max(0, hp[o] - x.dmg);
+    hp[x.by] = Math.min(r.maxHp[x.by], hp[x.by] + (x.heal ?? 0));
+  }
+  return hp;
+}
+
+const dummy = (o: Partial<g.Fighter> = {}): g.Fighter => ({ name: 'X', hp: 500, maxHp: 500, atk: 40, def: 10, crit: 0, ...o });
+
+test('перков 100, расходников 20, уровни растут со ступенью', () => {
+  assert.equal(PERKS.length, 100);
+  assert.equal(new Set(PERKS.map((p) => p.id)).size, 100);
+  assert.equal(CONSUMABLES.length, 20);
+  assert.ok(perkById.get('crit_2')!.minLevel > perkById.get('crit_1')!.minLevel);
+  assert.ok(PERKS.every((p) => p.minLevel >= 1 && p.minLevel <= 50));
+});
+
+test('бой с перками: откат, лечение и запись сходится с итогом', () => {
+  let seed = 7;
+  const rng: g.Rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 200; i++) {
+    const r = g.fight(
+      dummy({ perks: ['crit_3', 'heal_3', 'leech_3'], items: ['c_bandage', 'c_photo', 'c_salt'] }),
+      dummy({ name: 'Y', atk: 55, perks: ['stun_3', 'bleed_3', 'counter_3'] }),
+      rng,
+    );
+    const hp = replayHp(r);
+    assert.equal(hp[0], r.hpLeft, `бой ${i}`);
+    assert.equal(r.win, hp[1] <= 0 && hp[0] > 0);
+  }
+  // точный удар раз в cd ходов
+  const r = g.fight(dummy({ hp: 5000, maxHp: 5000, perks: ['crit_1'] }), dummy({ hp: 5000, maxHp: 5000, atk: 1 }), fixed(0.5), 12);
+  const crits = r.rounds.filter((x) => x.by === 0 && x.note?.includes('Точный')).length;
+  assert.equal(crits, Math.ceil(12 / perkById.get('crit_1')!.cd));
+});
+
+test('расходники: срабатывают раз и списываются с пояса', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  assert.deepEqual(p.belt, ['c_bandage', 'c_sand']);
+  p.money = 10_000;
+  g.buyConsumable(p, 'c_insert', 2);
+  assert.equal(p.stash.c_insert, 2);
+  assert.deepEqual(p.belt, ['c_bandage', 'c_sand', 'c_insert']);
+  assert.throws(() => g.buyConsumable(p, 'c_photo', 1), /только найти/);
+  p.level = BOSSES[0].minLevel;
+  const r = g.fightBoss(p, BOSSES[0].id, T0, fixed(0.5));
+  assert.ok(r.used.includes('c_sand') && r.used.includes('c_insert'));
+  assert.equal(p.stash.c_sand, undefined);
+  assert.equal(p.stash.c_insert, 1);
+  assert.throws(() => g.setBelt(p, ['c_photo']), /нет/);
+  assert.throws(() => g.setPerks(p, ['crit_1', 'crit_2']), /уровня|типа/);
+  assert.throws(() => g.setPerks(p, ['legend_dog']), /уровня/);
+  p.level = 20;
+  assert.throws(() => g.setPerks(p, ['crit_1', 'crit_2']), /типа/);
+  g.setPerks(p, ['crit_2', 'stun_2', 'heal_2']);
+  assert.throws(() => g.setPerks(p, ['crit_2', 'stun_2', 'heal_2', 'dodge_1']), /не больше/);
+});

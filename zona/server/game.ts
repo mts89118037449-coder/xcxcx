@@ -40,6 +40,10 @@ import {
   type StarPack,
 } from '../shared/content.ts';
 
+import { fight, npcPerks, type Fighter } from './combat.ts';
+import { CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
+
+export { fight, npcPerks };
 export type Rng = () => number;
 
 export class GameError extends Error {}
@@ -101,6 +105,11 @@ export interface Player {
   clanId: number | null;
   clanLevel: number;
   respect: Record<string, string>;
+  /** Надетые боевые перки (до PERK_SLOTS). */
+  perks: string[];
+  /** Расходники на поясе (до CONSUMABLE_SLOTS) и запас в мешке. */
+  belt: string[];
+  stash: Record<string, number>;
   bossCd: Record<string, number>;
   pvpAt: number;
   shieldUntil: number;
@@ -113,32 +122,12 @@ export interface Player {
   lastSeen: number;
 }
 
-export interface Fighter {
-  name: string;
-  hp: number;
-  maxHp: number;
-  atk: number;
-  def: number;
-  crit: number;
-}
-
-export interface Round {
-  by: 0 | 1; // 0 — нападающий, 1 — защищающийся
-  dmg: number;
-  crit: boolean;
-}
-
-export interface FightResult {
-  win: boolean;
-  log: string[];
-  rounds: Round[];
-  startHp: [number, number];
-  maxHp: [number, number];
-  damageDealt: number;
-  hpLeft: number;
-}
+export type { Fighter, Round, FightResult } from './combat.ts';
 
 const MIN = 60_000;
+const BOSS_ITEM_CHANCE = 0.4;
+const PVP_ITEM_CHANCE = 0.12;
+const QUEST_ITEM_CHANCE = 0.35;
 
 export function newPlayer(id: number, name: string, username: string | null, now: number): Player {
   const p: Player = {
@@ -200,6 +189,9 @@ export function newPlayer(id: number, name: string, username: string | null, now
     refBy: null,
     refCount: 0,
     starsSpent: 0,
+    perks: ['crit_1'],
+    belt: ['c_bandage', 'c_sand'],
+    stash: { c_bandage: 2, c_sand: 1 },
     journal: [{ t: now, text: 'Тебя заехал конвой. Добро пожаловать на зону.' }],
     createdAt: now,
     lastSeen: now,
@@ -234,6 +226,9 @@ export function migrate(p: Player): Player {
   p.clanId ??= null;
   p.clanLevel ??= 0;
   p.respect ??= {};
+  p.perks ??= ['crit_1'];
+  p.belt ??= ['c_bandage', 'c_sand'];
+  p.stash ??= { c_bandage: 2, c_sand: 1 };
   return p;
 }
 
@@ -444,45 +439,59 @@ export function buyFurniture(p: Player, furnitureId: string, now: number) {
 
 export function fighter(p: Player, now: number): Fighter {
   const s = stats(p, now);
-  return { name: p.name, hp: p.hp, maxHp: s.maxHp, atk: s.atk, def: s.def, crit: s.crit };
+  return {
+    name: p.name, hp: p.hp, maxHp: s.maxHp, atk: s.atk, def: s.def, crit: s.crit,
+    perks: p.perks.filter((id) => (perkById.get(id)?.minLevel ?? Infinity) <= p.level),
+    items: p.belt.filter((id) => (p.stash[id] ?? 0) > 0),
+  };
 }
 
-export function fight(a: Fighter, b: Fighter, rng: Rng, maxRounds = 30): FightResult {
-  let aHp = a.hp;
-  let bHp = b.hp;
-  let dealt = 0;
-  const lines: string[] = [];
-  const rounds: Round[] = [];
-  const hit = (from: Fighter, to: Fighter) => {
-    const crit = rng() * 100 < from.crit;
-    const base = from.atk * (0.85 + rng() * 0.3) - to.def * 0.4;
-    const dmg = Math.max(1, Math.round(base * (crit ? 2 : 1)));
-    return { dmg, crit };
-  };
-  for (let round = 1; round <= maxRounds; round++) {
-    const h1 = hit(a, b);
-    bHp -= h1.dmg;
-    dealt += h1.dmg;
-    rounds.push({ by: 0, ...h1 });
-    lines.push(`${a.name} бьёт на ${h1.dmg}${h1.crit ? ' 💥' : ''}`);
-    if (bHp <= 0) break;
-    const h2 = hit(b, a);
-    aHp -= h2.dmg;
-    rounds.push({ by: 1, ...h2 });
-    lines.push(`${b.name} отвечает на ${h2.dmg}${h2.crit ? ' 💥' : ''}`);
-    if (aHp <= 0) break;
+/** Списывает потраченные в бою расходники. */
+function spendItems(p: Player, used: string[]) {
+  for (const id of used) {
+    p.stash[id] = Math.max(0, (p.stash[id] ?? 0) - 1);
+    if (!p.stash[id]) delete p.stash[id];
   }
-  // Лог держим коротким: начало и развязка боя.
-  const log = lines.length > 12 ? [...lines.slice(0, 6), '…', ...lines.slice(-5)] : lines;
-  return {
-    win: bHp <= 0,
-    log,
-    rounds,
-    startHp: [a.hp, b.hp],
-    maxHp: [a.maxHp, b.maxHp],
-    damageDealt: Math.min(dealt, b.hp),
-    hpLeft: Math.max(0, aHp),
-  };
+}
+
+export function giveItem(p: Player, id: string, n = 1) {
+  p.stash[id] = (p.stash[id] ?? 0) + n;
+  // пустой слот на поясе — сразу туда
+  if (!p.belt.includes(id) && p.belt.length < CONSUMABLE_SLOTS) p.belt.push(id);
+}
+
+// --- Перки и расходники ---------------------------------------------------------
+
+export function setPerks(p: Player, ids: string[]) {
+  if (!Array.isArray(ids) || ids.length > PERK_SLOTS) throw new GameError(`Перков — не больше ${PERK_SLOTS}`);
+  const kinds = new Set<string>();
+  for (const id of ids) {
+    const perk = perkById.get(String(id));
+    if (!perk) throw new GameError('Нет такого перка');
+    if (perk.minLevel > p.level) throw new GameError(`«${perk.name}» — с ${perk.minLevel} уровня`);
+    const k = perk.kind === 'legend' ? perk.id : perk.kind;
+    if (kinds.has(k)) throw new GameError('Два перка одного типа не взять');
+    kinds.add(k);
+  }
+  p.perks = ids.map(String);
+}
+
+export function setBelt(p: Player, ids: string[]) {
+  if (!Array.isArray(ids) || ids.length > CONSUMABLE_SLOTS) throw new GameError(`На поясе — не больше ${CONSUMABLE_SLOTS}`);
+  const uniq = [...new Set(ids.map(String))];
+  for (const id of uniq) {
+    if (!consumableById.has(id)) throw new GameError('Нет такой вещи');
+    if (!p.stash[id]) throw new GameError('Этого у тебя нет');
+  }
+  p.belt = uniq;
+}
+
+export function buyConsumable(p: Player, id: string, count: number) {
+  const c = consumableById.get(id);
+  if (!c || !c.price) throw new GameError('Это не продаётся — только найти');
+  const n = Math.max(1, Math.min(10, Math.floor(Number(count) || 1)));
+  spend(p, c.price * n, c.currency);
+  giveItem(p, id, n);
 }
 
 function requireHp(p: Player, now: number) {
@@ -500,18 +509,24 @@ export function fightBoss(p: Player, bossId: string, now: number, rng: Rng) {
   requireHp(p, now);
   spendEnergy(p, boss.energy, now);
 
+  const bossIdx = [...bossById.keys()].indexOf(bossId);
   const result = fight(
     fighter(p, now),
-    { name: boss.name, hp: boss.hp, maxHp: boss.hp, atk: boss.atk, def: boss.def, crit: 5 },
+    { name: boss.name, hp: boss.hp, maxHp: boss.hp, atk: boss.atk, def: boss.def, crit: 5, perks: npcPerks(boss.minLevel + 2, bossIdx * 7 + 1) },
     rng,
   );
+  spendItems(p, result.used);
   p.hp = result.hpLeft;
   p.hpAt = now;
   p.bossCd[bossId] = now + boss.cooldownMin * MIN * (result.win ? 1 : 0.25);
 
-  const reward = { money: 0, xp: 0, authority: 0, gold: 0, drop: null as string | null, levelUps: 0 };
+  const reward = { money: 0, xp: 0, authority: 0, gold: 0, drop: null as string | null, item: null as string | null, levelUps: 0 };
   if (result.win) {
-    reward.money = Math.round(roll(rng, boss.reward.money) * (1 + stats(p, now).moneyBonus / 100) * (weeklyEvent(now).id === 'search' ? 1.5 : 1));
+    reward.money = Math.round(roll(rng, boss.reward.money) * (1 + stats(p, now).moneyBonus / 100) * (weeklyEvent(now).id === 'search' ? 1.5 : 1) * (1 + result.lootBonus / 100));
+    if (rng() < BOSS_ITEM_CHANCE) {
+      reward.item = rollConsumable(rng);
+      giveItem(p, reward.item);
+    }
     reward.xp = boss.reward.xp;
     reward.authority = boss.reward.authority;
     reward.gold = roll(rng, boss.reward.gold);
@@ -549,6 +564,7 @@ export function botOpponent(level: number, rng: Rng): Fighter & { money: number;
     atk: Math.round((20 + level * 5) * k),
     def: Math.round((10 + level * 3) * k),
     crit: 3,
+    perks: npcPerks(level - 2, Math.floor(rng() * 1000)),
     money: 40 + level * 30,
     look: botLook(level, rng),
   };
@@ -586,7 +602,7 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
   if (target) {
     // Защищающийся бьётся в полную силу: оффлайн-игрока не обижаем на израненном здоровье.
     tick(target, now);
-    enemy = { ...fighter(target, now), hp: stats(target, now).maxHp };
+    enemy = { ...fighter(target, now), hp: stats(target, now).maxHp, items: [] };
     loot = Math.min(Math.floor(target.money * BALANCE.pvpStealShare), target.level * 300);
     enemyLook = lookOf(target);
   } else {
@@ -597,15 +613,22 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
   }
 
   const result = fight(fighter(p, now), enemy, rng);
+  spendItems(p, result.used);
   p.hp = result.hpLeft;
+  let item: string | null = null;
   p.hpAt = now;
   let authority = 0;
   let xp = 0;
   if (result.win) {
     authority = (3 + Math.floor(rng() * 6)) * (weeklyEvent(now).id === 'tournament' ? 2 : 1);
     xp = 8 + p.level * 2;
+    loot = Math.round(loot * (1 + result.lootBonus / 100));
     p.money += loot;
     p.authority += authority;
+    if (rng() < PVP_ITEM_CHANCE) {
+      item = rollConsumable(rng);
+      giveItem(p, item);
+    }
     track(p, 'pvpWin');
     p.wins += 1;
     if (target) {
@@ -627,7 +650,7 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
     }
   }
   const levelUps = addXp(p, xp, now);
-  return { ...result, enemy: enemy.name, enemyLook, loot, authority, xp, levelUps };
+  return { ...result, enemy: enemy.name, enemyLook, loot, authority, xp, levelUps, item };
 }
 
 export function claimDaily(p: Player, now: number) {
@@ -821,14 +844,19 @@ export function claimTask(p: Player, index: number, now: number) {
   p.money += t.money;
   p.gold += t.gold;
   addXp(p, t.xp, now);
+  const rng = seeded(`${p.id}:${p.daily.day}:${index}`);
+  const items: string[] = [];
+  if (rng() < 0.3) items.push(rollConsumable(rng));
   let bonus = 0;
   if (!p.daily.bonusClaimed && p.daily.tasks.every((x) => x.claimed)) {
     p.daily.bonusClaimed = true;
     bonus = DAILY_BONUS_GOLD;
     p.gold += bonus;
+    items.push(rollConsumable(rng));
     log(p, now, `📋 Все дела на день закрыты: +${bonus} золота`);
   }
-  return { money: t.money, gold: t.gold, xp: t.xp, bonus };
+  for (const id of items) giveItem(p, id);
+  return { money: t.money, gold: t.gold, xp: t.xp, bonus, items };
 }
 
 // --- Поручения -----------------------------------------------------------------
@@ -896,9 +924,14 @@ export function finishQuest(p: Player, now: number, rng: Rng) {
   p.money += money;
   p.gold += gold;
   const levelUps = addXp(p, xp, now);
+  let item: string | null = null;
+  if (ok && rng() < QUEST_ITEM_CHANCE) {
+    item = rollConsumable(rng);
+    giveItem(p, item);
+  }
   track(p, 'quest');
   ensureBoard(p, rng);
-  return { ok, money, gold, xp, levelUps, tpl: a.tpl };
+  return { ok, money, gold, xp, levelUps, tpl: a.tpl, item };
 }
 
 // --- Соседи --------------------------------------------------------------------
@@ -1029,8 +1062,11 @@ export function claimWeekly(p: Player, tier: number, now: number) {
   p.money += r.money;
   p.gold += r.gold;
   p.chifir += r.chifir;
+  const rng = seeded(`${p.id}:${p.weekly.week}:${tier}`);
+  const items = Array.from({ length: tier + 1 }, () => rollConsumable(rng));
+  for (const id of items) giveItem(p, id);
   log(p, now, `🏆 ${ev.name}: награда ${tier + 1}-й ступени`);
-  return r;
+  return { ...r, items };
 }
 
 // --- Церковь -----------------------------------------------------------------------
@@ -1055,6 +1091,7 @@ export function confess(p: Player, now: number) {
   const max = stats(p, now).maxHp;
   p.hp = Math.min(max, p.hp + Math.round(max * CHURCH.confessHeal));
   p.hpAt = now;
+  giveItem(p, 'c_holywater'); // батюшка даёт с собой святой воды
 }
 
 // --- Турник ------------------------------------------------------------------------

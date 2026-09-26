@@ -6,9 +6,10 @@ import { characterLayers, useArt } from '../art/raster.ts';
 import { RasterFigure } from '../art/Stage.tsx';
 import { PoseG, usePoses } from '../art/sprites.tsx';
 import { NpcBanner } from '../art/sprites.tsx';
+import { PerksPanel } from '../Perks.tsx';
 import { BonusList, Card, Price, lookOf, useAnim, useGame } from '../game.tsx';
 
-type View = 'mine' | 'shop' | 'ink';
+type View = 'mine' | 'shop' | 'ink' | 'perks';
 
 export function Gear() {
   const { p, act, busy, toast } = useGame();
@@ -56,7 +57,10 @@ export function Gear() {
         <button className={view === 'mine' ? 'active' : ''} onClick={() => setView('mine')}>Надето</button>
         <button className={view === 'shop' ? 'active' : ''} onClick={() => setView('shop')}>Барахолка</button>
         <button className={view === 'ink' ? 'active' : ''} onClick={() => setView('ink')}>Наколки</button>
+        <button className={view === 'perks' ? 'active' : ''} onClick={() => setView('perks')}>Перки</button>
       </div>
+
+      {view === 'perks' && <PerksPanel />}
 
       {view === 'mine' && (
         <>

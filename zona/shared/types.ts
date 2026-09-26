@@ -63,6 +63,9 @@ export interface PlayerView {
   worldHitReadyAt: number;
   shieldUntil: number;
   refCount: number;
+  perks: string[];
+  belt: string[];
+  stash: Record<string, number>;
   journal: { t: number; text: string }[];
 }
 
@@ -88,7 +91,7 @@ export interface Look {
 export interface FightReplay {
   win: boolean;
   log: string[];
-  rounds: { by: 0 | 1; dmg: number; crit: boolean }[];
+  rounds: { by: 0 | 1; dmg: number; crit: boolean; heal?: number; miss?: boolean; note?: string }[];
   startHp: [number, number];
   maxHp: [number, number];
 }

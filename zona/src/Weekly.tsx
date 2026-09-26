@@ -1,3 +1,4 @@
+import { itemLabel } from './Perks.tsx';
 import { WEEKLY_EVENTS, WEEKLY_REWARDS } from '../shared/content.ts';
 import { Bar, Card, fmt, timeLeft, useGame } from './game.tsx';
 
@@ -25,7 +26,8 @@ export function WeeklyCard() {
               className={`week-tier ${ready ? 'ready' : ''} ${done ? 'done' : ''}`}
               disabled={!ready}
               onClick={async () => {
-                if ((await act('weekly', { tier: i })) !== null) toast(`Награда недели: +${fmt(r.money)} ₽, +${r.gold} 🪙`);
+                const res = await act<{ items: string[] }>('weekly', { tier: i });
+                if (res) toast(`Награда недели: +${fmt(r.money)} ₽, +${r.gold} 🪙 · ${res.items.map(itemLabel).join(', ')}`);
               }}
             >
               <span>{done ? '✅' : ['📦', '🎁', '💰'][i]}</span>

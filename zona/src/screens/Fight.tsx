@@ -1,3 +1,4 @@
+import { itemLines } from '../Perks.tsx';
 import { useCallback, useEffect, useState } from 'react';
 import { BALANCE, BOSSES, GOLD_PRICES, WORLD_BOSS, itemById } from '../../shared/content.ts';
 import type { FightReplay, Look, WorldBossView } from '../../shared/types.ts';
@@ -33,7 +34,7 @@ export function Fight() {
   const pvp = usePvp();
 
   const boss = async (bossId: string, name: string) => {
-    const r = await act<FightResult & { reward: { money: number; xp: number; authority: number; gold: number; drop: string | null } }>('boss', { bossId });
+    const r = await act<FightResult & { reward: { money: number; xp: number; authority: number; gold: number; drop: string | null; item: string | null }; used: string[] }>('boss', { bossId });
     if (!r) return;
     const drop = r.reward.drop ? itemById.get(r.reward.drop) : null;
     showFight({
@@ -45,8 +46,9 @@ export function Fight() {
             `+${fmt(r.reward.money)} ₽ · +${r.reward.xp} опыта · +${r.reward.authority} авторитета`,
             ...(r.reward.gold ? [`+${r.reward.gold} 🪙`] : []),
             ...(drop ? [`🎁 Трофей: ${drop.emoji} ${drop.name}!`] : []),
+            ...itemLines(r.used, r.reward.item),
           ]
-        : [`+${r.reward.xp} опыта за смелость`],
+        : [`+${r.reward.xp} опыта за смелость`, ...itemLines(r.used, null)],
     });
   };
 
@@ -164,15 +166,15 @@ export function Fight() {
 export function usePvp() {
   const { act, showFight } = useGame();
   return async () => {
-      const r = await act<FightResult & { enemy: string; enemyLook: Look; loot: number; authority: number; xp: number }>('pvp');
+      const r = await act<FightResult & { enemy: string; enemyLook: Look; loot: number; authority: number; xp: number; item: string | null; used: string[] }>('pvp');
       if (!r) return;
       showFight({
         title: `Наезд: ${r.enemy}`,
         replay: r,
         enemy: { name: r.enemy, look: r.enemyLook },
         lines: r.win
-          ? [`Отжал ${fmt(r.loot)} ₽`, `+${r.authority} авторитета`, `+${r.xp} опыта`]
-          : [`${r.authority} авторитета`, 'Отлежись и возвращайся'],
+          ? [`Отжал ${fmt(r.loot)} ₽`, `+${r.authority} авторитета`, `+${r.xp} опыта`, ...itemLines(r.used, r.item)]
+          : [`${r.authority} авторитета`, 'Отлежись и возвращайся', ...itemLines(r.used, null)],
       });
   };
 }

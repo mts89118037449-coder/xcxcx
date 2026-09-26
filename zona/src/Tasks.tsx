@@ -1,3 +1,4 @@
+import { itemLabel } from './Perks.tsx';
 import { DAILY_BONUS_GOLD, DAILY_KINDS, GOLD_PRICES, QUEST_TEMPLATES } from '../shared/content.ts';
 import { Bar, Card, fmt, timeLeft, useGame } from './game.tsx';
 
@@ -33,8 +34,9 @@ export function Dailies() {
               className="btn btn-s"
               disabled={busy || !ready}
               onClick={async () => {
-                const r = await act<{ bonus: number }>('task', { index: i });
-                if (r) toast(r.bonus ? `Все дела закрыты! +${r.bonus} 🪙 сверху` : 'Награда получена');
+                const r = await act<{ bonus: number; items: string[] }>('task', { index: i });
+                const got = r?.items?.length ? ` · ${r.items.map(itemLabel).join(', ')}` : '';
+                if (r) toast(r.bonus ? `Все дела закрыты! +${r.bonus} 🪙 сверху${got}` : `Награда получена${got}`);
               }}
             >
               {t.claimed ? '✓' : 'Забрать'}
@@ -56,10 +58,10 @@ export function Quests() {
   const skip = a ? Math.max(1, Math.ceil(left / 600_000)) * GOLD_PRICES.questSkipPer10Min : 0;
 
   const finish = async () => {
-    const r = await act<{ ok: boolean; money: number; gold: number; xp: number; tpl: string }>('questFinish');
+    const r = await act<{ ok: boolean; money: number; gold: number; xp: number; tpl: string; item: string | null }>('questFinish');
     if (!r) return;
     const name = tplById.get(r.tpl)?.name ?? 'Поручение';
-    toast(r.ok ? `${name}: +${fmt(r.money)} ₽, +${r.xp} опыта${r.gold ? `, +${r.gold} 🪙` : ''}` : `${name}: спалился. Только +${r.xp} опыта`, r.ok ? 'ok' : 'err');
+    toast(r.ok ? `${name}: +${fmt(r.money)} ₽, +${r.xp} опыта${r.gold ? `, +${r.gold} 🪙` : ''}${r.item ? `, ${itemLabel(r.item)}` : ''}` : `${name}: спалился. Только +${r.xp} опыта`, r.ok ? 'ok' : 'err');
   };
 
   return (
