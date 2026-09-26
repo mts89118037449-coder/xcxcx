@@ -812,6 +812,16 @@ function ZoneBackdrop() {
         </text>
       </g>
 
+      {/* церквушка */}
+      <g>
+        <rect x={146} y={62} width={34} height={52} fill="#6b5236" />
+        <path d="M146,70 H180 M146,80 H180 M146,90 H180 M146,100 H180 M146,110 H180" stroke="#3a2a1a" />
+        <path d="M142,64 L163,50 L184,64 Z" fill="#4a3a28" />
+        <rect x={158} y={34} width={10} height={18} fill="#6b5236" />
+        <ellipse cx={163} cy={33} rx={8} ry={9} fill="#d9a53a" />
+        <path d="M163,16 V26 M159,20 H167" stroke="#d9a53a" strokeWidth={1.6} />
+        <rect x={158} y={96} width={10} height={18} fill="#2a1d12" />
+      </g>
       {/* ларёк */}
       <g>
         <rect x={138} y={124} width={50} height={46} fill="#5d6e7a" />
@@ -877,7 +887,7 @@ export function ButtG({ x, y, pack, onPick }: { x: number; y: number; pack: bool
   );
 }
 
-export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace(place: 'barrack' | 'kiosk' | 'work' | 'medic' | 'yard'): void }) {
+export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace(place: 'barrack' | 'kiosk' | 'work' | 'medic' | 'yard' | 'church'): void }) {
   const tag = (x: number, y: number, label: string, place: Parameters<typeof onPlace>[0], w = 54) => (
     <g className="zone-tag" onClick={() => onPlace(place)} style={{ cursor: 'pointer' }}>
       <rect x={x - w / 2} y={y - 9} width={w} height={13} rx={6.5} fill="#000" opacity={0.65} />
@@ -890,6 +900,7 @@ export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace
     <Scene backdrop={<ZoneBackdrop />}>
       {/* кликабельные здания */}
       <rect x={6} y={70} width={130} height={100} fill="#fff" opacity={0.001} onClick={() => onPlace('barrack')} style={{ cursor: 'pointer' }} />
+      <rect x={140} y={14} width={46} height={98} fill="#fff" opacity={0.001} onClick={() => onPlace('church')} style={{ cursor: 'pointer' }} />
       <rect x={136} y={112} width={56} height={58} fill="#fff" opacity={0.001} onClick={() => onPlace('kiosk')} style={{ cursor: 'pointer' }} />
       <rect x={200} y={30} width={100} height={140} fill="#fff" opacity={0.001} onClick={() => onPlace('work')} style={{ cursor: 'pointer' }} />
       <rect x={302} y={106} width={58} height={64} fill="#fff" opacity={0.001} onClick={() => onPlace('medic')} style={{ cursor: 'pointer' }} />
@@ -899,9 +910,79 @@ export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace
       </g>
       {tag(68, 64, '🏚️ Хата', 'barrack')}
       {tag(163, 106, '⭐ Ларёк', 'kiosk')}
+      {tag(163, 12, '⛪ Церковь', 'church', 60)}
       {tag(250, 64, '⚒️ Промка', 'work')}
       {tag(331, 100, '💉 Санчасть', 'medic', 62)}
       {tag(58, 196, '🥊 Во двор', 'yard', 60)}
+      {children}
+    </Scene>
+  );
+}
+
+// --- Церковь -------------------------------------------------------------------
+
+function ChurchBackdrop() {
+  return (
+    <>
+      <linearGradient id="church-wall" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#4a3a28" />
+        <stop offset="1" stopColor="#6b5236" />
+      </linearGradient>
+      {/* бревенчатые стены */}
+      <rect width={W} height={FLOOR} fill="url(#church-wall)" />
+      {Array.from({ length: 16 }, (_, i) => (
+        <g key={i}>
+          <rect y={i * 15} width={W} height={13} fill="#5a4330" opacity={0.5} />
+          <path d={`M0,${i * 15 + 13} H${W}`} stroke="#2a1d12" strokeWidth={1.4} />
+        </g>
+      ))}
+      <Grime x={0} y={0} w={W} h={FLOOR} stains={0.5} grime={0.5} />
+      {/* окошко с решёткой, луч света */}
+      <rect x={40} y={30} width={34} height={54} rx={17} fill="#e8d9a8" />
+      {[48, 57, 66].map((x) => <rect key={x} x={x - 1} y={30} width={2} height={54} fill="#2a2a2a" />)}
+      <path d="M40,84 L74,84 L160,236 L70,236 Z" fill="url(#sc-shaft)" />
+      {/* иконостас */}
+      <rect x={120} y={26} width={196} height={150} fill="#6b3f14" />
+      <rect x={126} y={32} width={184} height={138} fill="#a67a22" />
+      {[0, 1, 2, 3].map((c) =>
+        [0, 1].map((r) => (
+          <g key={`${c}${r}`} transform={`translate(${134 + c * 44} ${40 + r * 64})`}>
+            <rect width={36} height={56} fill="#4a2a14" stroke="#d9b060" strokeWidth={1.2} />
+            <circle cx={18} cy={18} r={9} fill="#e8c35a" opacity={0.9} />
+            <ellipse cx={18} cy={20} rx={5} ry={6} fill="#b98b62" />
+            <path d={`M8,56 C8,34 28,34 28,56 Z`} fill={['#6b1f1f', '#1f3a6b', '#2f5a2c', '#6b1f1f'][c]} />
+          </g>
+        )),
+      )}
+      <path d="M200,6 L218,26 L182,26 Z" fill="#d9a53a" />
+      <path d="M200,-4 L200,14 M194,4 L206,4" stroke="#e8c35a" strokeWidth={2} />
+      {/* аналой и подсвечник */}
+      <rect x={180} y={196} width={30} height={40} fill="#5a3a1e" />
+      <path d="M176,196 L214,196 L206,186 L184,186 Z" fill="#7a5230" />
+      <rect x={70} y={200} width={4} height={36} fill="#b8923e" />
+      <rect x={56} y={196} width={32} height={5} rx={2} fill="#b8923e" />
+      {/* пол */}
+      <rect y={FLOOR} width={W} height={H - FLOOR} fill="#3e2a1a" />
+      <rect y={FLOOR} width={W} height={H - FLOOR} fill="url(#sc-planks)" opacity={0.7} />
+      <rect y={FLOOR} width={W} height={H - FLOOR} filter="url(#sc-grime)" opacity={0.5} />
+    </>
+  );
+}
+
+export function ChurchScene({ children, candles }: { children?: ReactNode; candles: number }) {
+  const spots = [60, 66, 72, 78, 84, 63, 69, 75, 81];
+  return (
+    <Scene backdrop={<ChurchBackdrop />}>
+      {/* тёплый свет от свечей и лампады */}
+      <circle className="lamp-flicker" cx={72} cy={190} r={60} fill="url(#sc-lamp)" />
+      <circle className="lamp-flicker" cx={218} cy={40} r={40} fill="url(#sc-lamp)" />
+      <circle cx={218} cy={44} r={3} fill="#ff8a3a" />
+      {spots.slice(0, Math.max(2, Math.min(spots.length, candles))).map((x, i) => (
+        <g key={i} transform={`translate(${x} ${196 - (i >= 5 ? 6 : 0)})`}>
+          <rect x={-1} y={-12} width={2} height={12} fill="#efe6c8" />
+          <path className="flame" d="M0,-18 C2,-15 2,-13 0,-12 C-2,-13 -2,-15 0,-18 Z" fill="#ffb347" />
+        </g>
+      ))}
       {children}
     </Scene>
   );

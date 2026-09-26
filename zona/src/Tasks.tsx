@@ -102,7 +102,7 @@ export function Quests() {
               </div>
               <button
                 className="btn"
-                disabled={busy || !!a || p.energy < q.energy}
+                disabled={busy || !!a}
                 onClick={async () => {
                   if ((await act('questStart', { key: q.key })) !== null) toast('Пошёл выполнять');
                 }}

@@ -100,7 +100,22 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, a
       {figure}
     </Place>
   );
-  const crowd = poses ? <Crowd loc={loc} onTalk={onTalk} /> : null;
+  const crowd = poses ? (
+    <>
+      <Crowd loc={loc} onTalk={onTalk} />
+      {loc === 'yard' && onTalk && (
+        // турник во дворе — подтягивания без энергии
+        <g className="npc-click" onClick={(e) => { e.stopPropagation(); onTalk('turnik'); }}>
+          <rect x={16} y={124} width={74} height={126} fill="#fff" opacity={0.001} />
+          <g className="talk-bubble" transform="translate(53 118)">
+            <rect x={-12} y={-10} width={24} height={15} rx={7.5} fill="#f2e6c8" />
+            <path d="M-3,5 L0,10 L3,5 Z" fill="#f2e6c8" />
+            <text x={0} y={2} fontSize={9} textAnchor="middle">💪</text>
+          </g>
+        </g>
+      )}
+    </>
+  ) : null;
   if (loc === 'cell') return <CellScene furniture={furniture} interior={interior} onClick={onClick}>{crowd}{fig}</CellScene>;
   if (loc === 'work') return <WorkScene>{crowd}{fig}</WorkScene>;
   return <YardScene>{crowd}{fig}</YardScene>;

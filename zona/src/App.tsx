@@ -8,6 +8,8 @@ import { VisitModal } from './Visit.tsx';
 import { DialogBox } from './Dialog.tsx';
 import { ShellGame } from './Shells.tsx';
 import { Zone } from './screens/Zone.tsx';
+import { Church } from './Church.tsx';
+import { Pullups } from './Pullups.tsx';
 import { Bar, GameCtx, fmt, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
 import { Gear } from './screens/Gear.tsx';
@@ -39,6 +41,8 @@ export function App() {
   const [energyOpen, setEnergyOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const [shellsOpen, setShellsOpen] = useState(false);
+  const [place, setPlace] = useState<'church' | null>(null);
+  const [pullOpen, setPullOpen] = useState(false);
   const toastTimer = useRef<number>(0);
   const now = useNow();
 
@@ -77,6 +81,7 @@ export function App() {
         return r.result;
       } catch (e) {
         toast(e instanceof ApiError ? e.message : 'Нет связи с сервером', 'err');
+        if (e instanceof ApiError && e.message.startsWith('Не хватает энергии')) setEnergyOpen(true);
         return null;
       } finally {
         setBusy(false);
@@ -106,9 +111,10 @@ export function App() {
   const p = player;
   const go = (t: Tab) => {
     setTab(t);
+    setPlace(null);
     window.scrollTo(0, 0);
   };
-  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true), say: setDialog, openShells: () => setShellsOpen(true) };
+  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true), say: setDialog, openShells: () => setShellsOpen(true), openPlace: (pl) => (pl === 'church' ? (setPlace('church'), window.scrollTo(0, 0)) : setPullOpen(true)) };
   const energyTimer = p.nextEnergyAt ? Math.max(0, p.nextEnergyAt - now) : 0;
 
   return (
@@ -145,13 +151,14 @@ export function App() {
       </header>
 
       <main>
-        {tab === 'home' && <Home />}
-        {tab === 'zone' && <Zone />}
-        {tab === 'work' && <Work />}
-        {tab === 'fight' && <Fight />}
-        {tab === 'gear' && <Gear />}
-        {tab === 'top' && <Top />}
-        {tab === 'shop' && <Shop />}
+        {place === 'church' && <Church onBack={() => { setPlace(null); setTab('zone'); }} />}
+        {!place && tab === 'home' && <Home />}
+        {!place && tab === 'zone' && <Zone />}
+        {!place && tab === 'work' && <Work />}
+        {!place && tab === 'fight' && <Fight />}
+        {!place && tab === 'gear' && <Gear />}
+        {!place && tab === 'top' && <Top />}
+        {!place && tab === 'shop' && <Shop />}
       </main>
 
       <nav className="tabs">
@@ -171,6 +178,7 @@ export function App() {
 
       {visiting !== null && <VisitModal id={visiting} onClose={() => setVisiting(null)} />}
       {dialog && <DialogBox d={dialog} onClose={() => setDialog(null)} />}
+      {pullOpen && <Pullups onClose={() => setPullOpen(false)} />}
       {shellsOpen && <ShellGame onClose={() => setShellsOpen(false)} />}
       {energyOpen && <EnergySheet onClose={() => setEnergyOpen(false)} />}
       {fight && <FightModal fight={fight} me={{ name: p.name, look: lookOf(p) }} onClose={() => setFight(null)} />}

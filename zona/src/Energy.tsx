@@ -3,7 +3,7 @@ import { fmt, timeLeft, useGame } from './game.tsx';
 
 /** Всё про энергию: таймеры восстановления и способы пополнить. */
 export function EnergySheet({ onClose }: { onClose(): void }) {
-  const { p, now, act, busy, toast, go } = useGame();
+  const { p, now, act, busy, toast, go, openPlace } = useGame();
   const max = p.stats.maxEnergy;
   const full = p.energy >= max;
   const perPoint = (BALANCE.energyRegenSec * 1000) / (p.vipUntil ? 2 : 1);
@@ -49,6 +49,18 @@ export function EnergySheet({ onClose }: { onClose(): void }) {
           </button>
         </div>
         <div className="muted small center" style={{ marginTop: 10 }}>У тебя {fmt(p.gold)} 🪙</div>
+        <div className="section" style={{ marginTop: 14 }}>Пока ждёшь — бесплатно</div>
+        <div className="free-list">
+          <button onClick={() => { onClose(); go('zone'); }}>
+            <span>🚬</span>Бычки на зоне
+          </button>
+          <button onClick={() => { onClose(); openPlace('church'); }}>
+            <span>⛪</span>Церковь
+          </button>
+          <button onClick={() => { onClose(); openPlace('pullups'); }}>
+            <span>💪</span>Турник
+          </button>
+        </div>
       </div>
     </div>
   );

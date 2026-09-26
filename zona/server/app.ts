@@ -1,5 +1,5 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
-import { BALANCE, CLAN, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
+import { BALANCE, CHURCH, CLAN, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
 import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
 import { validateInitData, type TgUser } from './auth.ts';
 import type { Db } from './db.ts';
@@ -127,6 +127,15 @@ export function createApp(opts: AppOptions) {
       field: p.field,
       nextButtAt: g.nextButtAt(p),
       shellsLeft: g.shellsLeft(p, t),
+      weekly: (() => {
+        g.ensureWeekly(p, t);
+        return { ...p.weekly, event: g.weeklyEvent(t).id, endsAt: g.weekEndsAt(t) };
+      })(),
+      blessUntil: p.blessUntil,
+      prayReadyAt: p.prayAt + CHURCH.prayCooldownMin * 60_000,
+      confessReady: p.confessDay !== g.dayKey(t),
+      pullupsReadyAt: p.pullups.at + PULLUPS.cooldownMin * 60_000,
+      pullupsLeft: g.pullupsLeft(p, t),
       daily: p.daily,
       quests: p.quests,
       clan: (() => {
@@ -216,6 +225,11 @@ export function createApp(opts: AppOptions) {
     chifir: (p, _b, t) => g.drinkChifir(p, t),
     butt: (p, b) => g.pickButt(p, num(b.id)),
     trade: (p, b, t) => g.trade(p, str(b.offer), t),
+    weekly: (p, b, t) => g.claimWeekly(p, num(b.tier), t),
+    pray: (p, _b, t) => g.pray(p, t),
+    candle: (p, _b, t) => g.lightCandle(p, t),
+    confess: (p, _b, t) => g.confess(p, t),
+    pullups: (p, b, t) => g.pullups(p, num(b.reps), t),
     shells: (p, b, t) => g.playShells(p, num(b.bet), num(b.pick), t, rng),
     task: (p, b, t) => g.claimTask(p, num(b.index), t),
     questStart: (p, b, t) => g.startQuest(p, str(b.key), t),

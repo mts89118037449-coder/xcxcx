@@ -57,7 +57,7 @@ export function ItemIcon({ id, size = 44 }: { id: string; size?: number }) {
   const item = itemById.get(id);
   if (!item) return null;
   const outfit = OUTFITS[id];
-  const drawn = (outfit && artUrl(art, `sheet/outfit/${outfit.set}/2`)) || artUrl(art, `sheet/icons/${id}`);
+  const drawn = (outfit && artUrl(art, `sheet/outfit/${outfit.set}/stand`)) || artUrl(art, `sheet/icons/${id}`);
   if (drawn) {
     return (
       <span className="icon icon-img" style={{ width: size, height: size }}>

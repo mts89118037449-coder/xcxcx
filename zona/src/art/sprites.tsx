@@ -3,7 +3,7 @@
 // относительно стоячей позы: сидящий получается ниже, как и должно быть.
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { OUTFITS } from '../../shared/content.ts';
+import { OUTFITS, type OutfitPose } from '../../shared/content.ts';
 import type { Look } from '../../shared/types.ts';
 import { artSize, artUrl, useArt } from './raster.ts';
 
@@ -92,9 +92,9 @@ export function ImageG({ url, height = H, mirror, tone, className }: { url: stri
   );
 }
 
-/** Какую колонку листа комплектов брать для позы. */
-const OUTFIT_COL: Partial<Record<PoseName, number>> = {
-  sit: 10, floor: 10, squat: 10, stand: 2, stand34: 2, crossed: 1, push: 7, lunge: 7, guard34: 8, guard: 8, walk1: 1, walk2: 1, walk3: 1, walk4: 1,
+/** Какую позу комплекта брать для позы героя (если нет — stand). */
+const OUTFIT_POSE: Partial<Record<PoseName, OutfitPose>> = {
+  sit: 'sit', floor: 'sit', squat: 'sit', push: 'guard', lunge: 'guard', guard34: 'guard', guard: 'guard',
 };
 let outfitMeta: Record<string, [number, number, number, number]> | null = null;
 fetch('/art/sheet/outfit/meta.json')
@@ -106,11 +106,11 @@ fetch('/art/sheet/outfit/meta.json')
 export function outfitSprite(art: Set<string> | null, look: Look | undefined, name: PoseName): { url: string; key: string; ref: string } | null {
   const o = look?.equipped.body ? OUTFITS[look.equipped.body] : undefined;
   if (!o || !art) return null;
-  const want = OUTFIT_COL[name] ?? 2;
-  const col = o.cols.includes(want) ? want : 2;
-  const url = artUrl(art, `sheet/outfit/${o.set}/${col}`);
-  const ref = artUrl(art, `sheet/outfit/${o.set}/2`);
-  return url && ref ? { url, key: `${o.set}/${col}`, ref } : null;
+  const want = OUTFIT_POSE[name] ?? 'stand';
+  const pose = o.poses.includes(want) ? want : 'stand';
+  const url = artUrl(art, `sheet/outfit/${o.set}/${pose}`);
+  const ref = artUrl(art, `sheet/outfit/${o.set}/stand`);
+  return url && ref ? { url, key: `${o.set}/${pose}`, ref } : null;
 }
 
 /** Надет ли комплект, у которого нет своей ходьбы — тогда во дворе стоим. */
@@ -159,7 +159,7 @@ export function PoseG({ name, mirror, tone, look, noShadow }: { name: PoseName; 
   const ref = artSize(outfit?.ref ?? poseUrl('stand'));
   const size = artSize(url);
   // на листе комплектов герой коренастее — уменьшаем, чтобы стоял вровень с остальными
-  const h = (ref && size ? (size[1] / ref[1]) * H : H) * (outfit ? 0.74 : 1);
+  const h = (ref && size ? (size[1] / ref[1]) * H : H) * (outfit ? 0.86 : 1);
   const w = size ? (size[0] / size[1]) * h : h * 0.4;
   const x = 60 - w / 2;
   const y = 210 - h;

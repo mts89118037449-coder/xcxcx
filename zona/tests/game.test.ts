@@ -278,3 +278,37 @@ test('напёрстки: выигрыш 2.7x, проигрыш — ставка
   assert.throws(() => g.playShells(p, 5000, 0, T0, fixed(0.5)), /до/);
   assert.equal(g.shellsLeft(p, T0), 23);
 });
+
+test('неделя: событие по номеру недели, прогресс и ступени наград', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  const ev = g.weeklyEvent(T0);
+  g.ensureWeekly(p, T0);
+  assert.throws(() => g.claimWeekly(p, 0, T0), /не выполнена/);
+  p.weekly.progress = ev.tiers[1];
+  g.claimWeekly(p, 0, T0);
+  g.claimWeekly(p, 1, T0);
+  assert.throws(() => g.claimWeekly(p, 1, T0), /Уже/);
+  assert.throws(() => g.claimWeekly(p, 2, T0), /не выполнена/);
+  assert.equal(p.gold, 20 + 5 + 15);
+  g.ensureWeekly(p, T0 + 8 * 86_400_000);
+  assert.equal(p.weekly.progress, 0, 'новая неделя — с нуля');
+  assert.notEqual(g.weeklyEvent(T0 + 7 * 86_400_000).id, ev.id, 'события чередуются');
+});
+
+test('церковь и турник — без энергии', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  p.energy = 0;
+  const base = g.stats(p, T0).moneyBonus;
+  g.pray(p, T0);
+  assert.equal(g.stats(p, T0).moneyBonus, base + 10);
+  assert.throws(() => g.pray(p, T0 + MIN), /торопись/);
+  p.hp = 10;
+  g.confess(p, T0);
+  assert.ok(p.hp > 10);
+  assert.throws(() => g.confess(p, T0 + MIN), /раз в день/);
+  const r = g.pullups(p, 999, T0);
+  assert.equal(r.reps, 40);
+  assert.equal(r.xp, 13);
+  assert.throws(() => g.pullups(p, 10, T0 + MIN), /отошли/);
+  assert.equal(p.energy, 0);
+});

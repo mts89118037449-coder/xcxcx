@@ -21,12 +21,12 @@ const STEP_MS = 480;
 /** Боссы, нарисованные вполоборота вправо — отражаем, чтобы смотрели на героя. */
 const BOSS_MIRROR = new Set<string>();
 
-const RIVAL_OUTFITS = Object.keys(OUTFITS).filter((id) => OUTFITS[id].cols.includes(8));
+const RIVAL_OUTFITS = Object.keys(OUTFITS).filter((id) => OUTFITS[id].poses.includes('guard'));
 
 /** Если у соперника нет комплекта — одеваем по имени, чтобы все были разные, но постоянные. */
 function rivalLook(enemy: Fighter): Look {
   const body = enemy.look.equipped.body;
-  if (body && OUTFITS[body]?.cols.includes(8)) return enemy.look;
+  if (body && OUTFITS[body]?.poses.includes('guard')) return enemy.look;
   let h = 0;
   for (const ch of enemy.name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return { ...enemy.look, equipped: { ...enemy.look.equipped, body: RIVAL_OUTFITS[h % RIVAL_OUTFITS.length] } };

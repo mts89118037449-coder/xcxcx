@@ -5,6 +5,11 @@
 import type { DailyState, Look, Quest, QuestState } from '../shared/types.ts';
 import {
   BALANCE,
+  CHURCH,
+  PULLUPS,
+  WEEKLY_EVENTS,
+  WEEKLY_REWARDS,
+  type TrackKind,
   BUTTS,
   SHELLS,
   TRADES,
@@ -86,6 +91,11 @@ export interface Player {
   fieldAt: number;
   fieldSeq: number;
   shells: { day: string; n: number };
+  weekly: { week: number; progress: number; claimed: number[] };
+  blessUntil: number;
+  prayAt: number;
+  confessDay: string;
+  pullups: { at: number; day: string; n: number };
   daily: DailyState;
   quests: QuestState;
   clanId: number | null;
@@ -173,6 +183,11 @@ export function newPlayer(id: number, name: string, username: string | null, now
     fieldAt: now,
     fieldSeq: 0,
     shells: { day: '', n: 0 },
+    weekly: { week: 0, progress: 0, claimed: [] },
+    blessUntil: 0,
+    prayAt: 0,
+    confessDay: '',
+    pullups: { at: 0, day: '', n: 0 },
     daily: { day: '', tasks: [], bonusClaimed: false },
     quests: { board: [], active: null },
     clanId: null,
@@ -209,6 +224,11 @@ export function migrate(p: Player): Player {
   p.fieldAt ??= Date.now();
   p.fieldSeq ??= 0;
   p.shells ??= { day: '', n: 0 };
+  p.weekly ??= { week: 0, progress: 0, claimed: [] };
+  p.blessUntil ??= 0;
+  p.prayAt ??= 0;
+  p.confessDay ??= '';
+  p.pullups ??= { at: 0, day: '', n: 0 };
   p.daily ??= { day: '', tasks: [], bonusClaimed: false };
   p.quests ??= { board: [], active: null };
   p.clanId ??= null;
@@ -241,16 +261,16 @@ export function stats(p: Player, now: number) {
     atk: 5 + p.str * 3 + b.atk,
     def: p.agi * 2 + b.def,
     maxHp: 80 + p.end * 12 + b.hp,
-    crit: Math.min(40, 2 + Math.floor(p.agi * 0.3) + b.crit),
+    crit: Math.min(40, 2 + Math.floor(p.agi * 0.3) + b.crit + (p.blessUntil > now ? CHURCH.blessCrit : 0)),
     maxEnergy: BALANCE.baseEnergy + b.energy + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel,
-    moneyBonus: b.money + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel,
+    moneyBonus: b.money + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel + (p.blessUntil > now ? CHURCH.blessMoney : 0),
   };
 }
 
 /** Восстановление энергии и здоровья по прошедшему времени. */
 export function tick(p: Player, now: number): void {
   const s = stats(p, now);
-  const regenSec = BALANCE.energyRegenSec / (isVip(p, now) ? 2 : 1);
+  const regenSec = BALANCE.energyRegenSec / (isVip(p, now) ? 2 : 1) / (weeklyEvent(now).id === 'amnesty' ? 1.5 : 1);
   if (p.energy >= s.maxEnergy) {
     p.energyAt = now;
   } else {
@@ -491,7 +511,7 @@ export function fightBoss(p: Player, bossId: string, now: number, rng: Rng) {
 
   const reward = { money: 0, xp: 0, authority: 0, gold: 0, drop: null as string | null, levelUps: 0 };
   if (result.win) {
-    reward.money = Math.round(roll(rng, boss.reward.money) * (1 + stats(p, now).moneyBonus / 100));
+    reward.money = Math.round(roll(rng, boss.reward.money) * (1 + stats(p, now).moneyBonus / 100) * (weeklyEvent(now).id === 'search' ? 1.5 : 1));
     reward.xp = boss.reward.xp;
     reward.authority = boss.reward.authority;
     reward.gold = roll(rng, boss.reward.gold);
@@ -582,7 +602,7 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
   let authority = 0;
   let xp = 0;
   if (result.win) {
-    authority = 3 + Math.floor(rng() * 6);
+    authority = (3 + Math.floor(rng() * 6)) * (weeklyEvent(now).id === 'tournament' ? 2 : 1);
     xp = 8 + p.level * 2;
     p.money += loot;
     p.authority += authority;
@@ -682,7 +702,8 @@ export function worldBossHit(p: Player, now: number, rng: Rng) {
   track(p, 'worldHit');
   const s = stats(p, now);
   const crit = rng() * 100 < s.crit;
-  return { damage: Math.round(s.atk * 4 * (0.85 + rng() * 0.3) * (crit ? 2 : 1)), crit };
+  const k = weeklyEvent(now).id === 'riot' ? 2 : 1;
+  return { damage: Math.round(s.atk * 4 * (0.85 + rng() * 0.3) * (crit ? 2 : 1) * k), crit };
 }
 
 // --- Персонаж -----------------------------------------------------------------
@@ -783,7 +804,11 @@ export function ensureDaily(p: Player, now: number) {
   };
 }
 
-export function track(p: Player, kind: DailyKind, amount = 1) {
+export function track(p: Player, kind: TrackKind, amount = 1) {
+  if (weeklyEvent(Date.now()).goal.kind === kind) {
+    ensureWeekly(p, Date.now());
+    p.weekly.progress += amount;
+  }
   for (const t of p.daily.tasks) if (t.kind === kind && !t.claimed) t.progress = Math.min(t.target, t.progress + amount);
 }
 
@@ -921,7 +946,8 @@ export function pickButt(p: Player, id: number) {
   const b = p.field.find((x) => x.id === id);
   if (!b) throw new GameError('Уже подобрали');
   p.field = p.field.filter((x) => x.id !== id);
-  const got = b.pack ? BUTTS.packValue : 1;
+  const got = (b.pack ? BUTTS.packValue : 1) * (weeklyEvent(Date.now()).id === 'tobacco' ? 2 : 1);
+  track(p, 'butts', got);
   p.butts += got;
   return { got };
 }
@@ -970,4 +996,81 @@ export function playShells(p: Player, bet: number, pick: number, now: number, rn
   const payout = win ? Math.floor(bet * SHELLS.payout) : 0;
   p.money += payout - bet;
   return { ball, win, payout };
+}
+
+// --- Еженедельные события --------------------------------------------------------
+
+/** Номер недели по Москве, неделя начинается в понедельник. */
+export function weekIndex(now: number): number {
+  return Math.floor((now + 3 * 3600_000 + 3 * 86_400_000) / (7 * 86_400_000));
+}
+
+export function weekEndsAt(now: number): number {
+  return (weekIndex(now) + 1) * 7 * 86_400_000 - 3 * 86_400_000 - 3 * 3600_000;
+}
+
+export function weeklyEvent(now: number) {
+  return WEEKLY_EVENTS[weekIndex(now) % WEEKLY_EVENTS.length];
+}
+
+export function ensureWeekly(p: Player, now: number) {
+  const w = weekIndex(now);
+  if (p.weekly.week !== w) p.weekly = { week: w, progress: 0, claimed: [] };
+}
+
+export function claimWeekly(p: Player, tier: number, now: number) {
+  ensureWeekly(p, now);
+  const ev = weeklyEvent(now);
+  if (![0, 1, 2].includes(tier)) throw new GameError('Нет такой награды');
+  if (p.weekly.claimed.includes(tier)) throw new GameError('Уже забрал');
+  if (p.weekly.progress < ev.tiers[tier]) throw new GameError('Цель ещё не выполнена');
+  const r = WEEKLY_REWARDS[tier];
+  p.weekly.claimed.push(tier);
+  p.money += r.money;
+  p.gold += r.gold;
+  p.chifir += r.chifir;
+  log(p, now, `🏆 ${ev.name}: награда ${tier + 1}-й ступени`);
+  return r;
+}
+
+// --- Церковь -----------------------------------------------------------------------
+
+export function pray(p: Player, now: number) {
+  if (p.prayAt + CHURCH.prayCooldownMin * MIN > now) throw new GameError('Батюшка: «Не торопись, сын мой»');
+  p.prayAt = now;
+  p.blessUntil = Math.max(p.blessUntil, now) + CHURCH.prayBlessMin * MIN;
+  addXp(p, 5, now);
+}
+
+export function lightCandle(p: Player, now: number) {
+  if (p.butts < CHURCH.candleCost) throw new GameError(`Свечка — ${CHURCH.candleCost} бычков`);
+  p.butts -= CHURCH.candleCost;
+  p.blessUntil = Math.max(p.blessUntil, now) + CHURCH.candleBlessMin * MIN;
+}
+
+export function confess(p: Player, now: number) {
+  const day = dayKey(now);
+  if (p.confessDay === day) throw new GameError('Исповедь — раз в день');
+  p.confessDay = day;
+  const max = stats(p, now).maxHp;
+  p.hp = Math.min(max, p.hp + Math.round(max * CHURCH.confessHeal));
+  p.hpAt = now;
+}
+
+// --- Турник ------------------------------------------------------------------------
+
+export function pullupsLeft(p: Player, now: number) {
+  return p.pullups.day === dayKey(now) ? Math.max(0, PULLUPS.perDay - p.pullups.n) : PULLUPS.perDay;
+}
+
+/** Подтягивания без энергии: сколько натапал (не больше предела) — столько опыта по чуть-чуть. */
+export function pullups(p: Player, reps: number, now: number) {
+  if (p.pullups.at + PULLUPS.cooldownMin * MIN > now) throw new GameError('Руки ещё не отошли');
+  if (pullupsLeft(p, now) <= 0) throw new GameError('На сегодня хватит');
+  const n = Math.max(0, Math.min(PULLUPS.maxReps, Math.floor(reps)));
+  const day = dayKey(now);
+  p.pullups = { at: now, day, n: (p.pullups.day === day ? p.pullups.n : 0) + 1 };
+  const xp = Math.floor(n / PULLUPS.repsPerXp);
+  addXp(p, xp, now);
+  return { reps: n, xp };
 }

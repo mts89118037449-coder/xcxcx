@@ -49,6 +49,12 @@ export interface PlayerView {
   field: { id: number; x: number; y: number; pack: boolean }[];
   nextButtAt: number | null;
   shellsLeft: number;
+  weekly: { week: number; event: string; progress: number; claimed: number[]; endsAt: number };
+  blessUntil: number;
+  prayReadyAt: number;
+  confessReady: boolean;
+  pullupsReadyAt: number;
+  pullupsLeft: number;
   daily: DailyState;
   quests: QuestState;
   clan: { id: number; name: string; tag: string; level: number; owner: boolean } | null;

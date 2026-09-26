@@ -104,6 +104,10 @@ export const ITEMS: Item[] = [
   { id: 'body_vest', name: 'Стёганая безрукавка', emoji: '🦺', slot: 'body', minLevel: 7, price: 4200, currency: 'money', def: 11, hp: 35, crit: 2 },
   { id: 'body_bomber', name: 'Бомбер', emoji: '🧥', slot: 'body', minLevel: 9, price: 6500, currency: 'money', def: 14, hp: 45, atk: 3 },
   { id: 'body_camo', name: 'Горка камуфляж', emoji: '🪖', slot: 'body', minLevel: 8, price: 180, currency: 'gold', def: 24, hp: 80, crit: 3 },
+  { id: 'body_denim', name: 'Джинсовка', emoji: '🧥', slot: 'body', minLevel: 4, price: 1800, currency: 'money', def: 7, hp: 20 },
+  { id: 'body_bib', name: 'Комбинезон на лямках', emoji: '👖', slot: 'body', minLevel: 6, price: 3200, currency: 'money', def: 9, hp: 25, atk: 2 },
+  { id: 'body_parka', name: 'Кожаная парка', emoji: '🧥', slot: 'body', minLevel: 12, price: 16000, currency: 'money', def: 20, hp: 60 },
+  { id: 'body_alaska', name: 'Пуховик «Аляска»', emoji: '🧥', slot: 'body', minLevel: 10, price: 260, currency: 'gold', def: 28, hp: 110, energy: 15 },
   { id: 'body_leather', name: 'Кожанка', emoji: '🥼', slot: 'body', minLevel: 10, price: 8000, currency: 'money', def: 16, hp: 50 },
   { id: 'body_tracksuit', name: 'Спортивный костюм', emoji: '🦺', slot: 'body', minLevel: 6, price: 150, currency: 'gold', def: 20, hp: 70, energy: 10 },
   // Штаны
@@ -127,6 +131,7 @@ export const ITEMS: Item[] = [
   // Только с боссов
   { id: 'drop_keys', name: 'Ключи вертухая', emoji: '🗝️', slot: 'charm', minLevel: 1, price: 0, currency: 'money', bossOnly: true, crit: 6, money: 15, energy: 10 },
   { id: 'drop_baton', name: 'Дубинка начкара', emoji: '🏏', slot: 'weapon', minLevel: 1, price: 0, currency: 'money', bossOnly: true, atk: 26, crit: 5 },
+  { id: 'drop_uniform', name: 'Форма вертухая', emoji: '👮', slot: 'body', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 22, hp: 70, crit: 4 },
   { id: 'drop_coat', name: 'Тулуп хозяина', emoji: '🧥', slot: 'body', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 26, hp: 90 },
   { id: 'drop_crown', name: 'Корона смотрящего', emoji: '👑', slot: 'head', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 24, hp: 70, crit: 6 },
 ];
@@ -162,7 +167,7 @@ export const BOSSES: Boss[] = [
     id: 'b_guard', name: 'Вертухай Палыч', emoji: '👮', description: 'Любит шмонать по ночам.',
     minLevel: 5, hp: 650, atk: 28, def: 12, energy: 25, cooldownMin: 60,
     reward: { money: [500, 800], xp: 80, authority: 15, gold: [0, 2] },
-    drops: [{ itemId: 'drop_keys', chance: 0.1 }, { itemId: 'drop_baton', chance: 0.03 }],
+    drops: [{ itemId: 'drop_keys', chance: 0.1 }, { itemId: 'drop_uniform', chance: 0.05 }, { itemId: 'drop_baton', chance: 0.03 }],
   },
   {
     id: 'b_chief', name: 'Начкар Кувалда', emoji: '💂', description: 'Начальник караула. Бьёт первым.',
@@ -336,6 +341,7 @@ export const QUEST_TEMPLATES: QuestTemplate[] = [
 
 // --- Дейлики ----------------------------------------------------------------------
 export type DailyKind = 'job' | 'pvpWin' | 'boss' | 'worldHit' | 'train' | 'quest' | 'spend';
+export type TrackKind = DailyKind | 'butts';
 export const DAILY_KINDS: { kind: DailyKind; label: string; range: [number, number] }[] = [
   { kind: 'job', label: 'Отработать смен', range: [3, 6] },
   { kind: 'pvpWin', label: 'Выиграть наездов', range: [1, 3] },
@@ -404,20 +410,61 @@ export const TRADES = [
 // --- Напёрстки ------------------------------------------------------------------
 export const SHELLS = { payout: 2.7, maxPerDay: 25, minBet: 50, betPerLevel: 250 };
 
-/** Комплекты одежды, нарисованные на герое целиком (public/art/sheet/outfit/<set>/<колонка>).
- *  Колонки: 1 — руки в боки, 2 — стоит, 3 — боком, 7 — выпад, 8 — стойка, 10 — на кортах. */
-export const OUTFITS: Record<string, { set: string; cols: number[] }> = {
-  body_robe: { set: 'b1', cols: [1, 2, 3, 7, 8, 10] },
-  body_tank: { set: 'b3', cols: [1, 2, 3, 7, 8, 10] },
-  body_quilted: { set: 'b4', cols: [1, 2, 3, 7, 8, 10] },
-  body_tracksuit: { set: 'b5', cols: [1, 2, 3, 7, 8, 10] },
-  body_overalls: { set: 'b6', cols: [1, 2, 3, 7, 8, 10] },
-  body_vest: { set: 'b7', cols: [1, 2, 3, 7, 8, 10] },
-  body_camo: { set: 'b8', cols: [1, 2, 3, 7, 8, 10] },
-  body_leather: { set: 'b9', cols: [1, 2, 3, 7, 8, 10] },
-  body_smock: { set: 'b10', cols: [1, 2, 3, 7, 8, 10] },
-  drop_coat: { set: 'a_tulup', cols: [2] },
-  body_gown: { set: 'a_gown', cols: [2] },
-  body_bomber: { set: 'a_bomber', cols: [2, 3, 10] },
-  body_apron: { set: 'a_apron', cols: [2] },
+// --- Еженедельные события -------------------------------------------------------
+export interface WeeklyEvent {
+  id: 'riot' | 'search' | 'amnesty' | 'tobacco' | 'tournament';
+  name: string;
+  desc: string;
+  goal: { kind: TrackKind; label: string };
+  tiers: [number, number, number];
+}
+export const WEEKLY_EVENTS: WeeklyEvent[] = [
+  { id: 'riot', name: 'Неделя бунта', desc: 'Урон по бунту на централе ×2', goal: { kind: 'worldHit', label: 'Ударов по бунту' }, tiers: [10, 30, 70] },
+  { id: 'search', name: 'Большой шмон', desc: 'С боссов в полтора раза больше денег', goal: { kind: 'boss', label: 'Боссов завалено' }, tiers: [5, 15, 35] },
+  { id: 'amnesty', name: 'Слухи об амнистии', desc: 'Энергия восстанавливается в 1,5 раза быстрее', goal: { kind: 'job', label: 'Смен отработано' }, tiers: [20, 60, 140] },
+  { id: 'tobacco', name: 'Табачный кризис', desc: 'Каждый поднятый бычок идёт за два', goal: { kind: 'butts', label: 'Бычков собрано' }, tiers: [40, 120, 280] },
+  { id: 'tournament', name: 'Турнир на дворе', desc: 'Авторитет за победу в наезде ×2', goal: { kind: 'pvpWin', label: 'Побед в наездах' }, tiers: [10, 30, 70] },
+];
+/** Награды за три ступени недельной цели. */
+export const WEEKLY_REWARDS = [
+  { money: 3000, gold: 5, chifir: 0 },
+  { money: 8000, gold: 15, chifir: 2 },
+  { money: 20000, gold: 40, chifir: 5 },
+];
+
+// --- Бесплатные занятия (когда нет энергии) --------------------------------------
+export const CHURCH = {
+  prayCooldownMin: 60,
+  prayBlessMin: 120,
+  candleCost: 10, // бычков
+  candleBlessMin: 360,
+  blessMoney: 10, // % к деньгам
+  blessCrit: 3,
+  confessHeal: 0.3, // доля здоровья, раз в день
+};
+export const PULLUPS = { maxReps: 40, cooldownMin: 10, perDay: 12, repsPerXp: 3 };
+
+/** Комплекты одежды, нарисованные на герое целиком (public/art/sheet/outfit/<set>/<поза>.png).
+ *  У всех есть stand; guard — боевая стойка, walk — шаг, sit — сидя. */
+export type OutfitPose = 'stand' | 'guard' | 'walk' | 'sit';
+export const OUTFITS: Record<string, { set: string; poses: OutfitPose[] }> = {
+  body_robe: { set: 'c_stripes', poses: ['stand'] },
+  body_tank: { set: 'c_tank', poses: ['stand', 'guard'] },
+  body_telnyashka: { set: 'c_telnyashka', poses: ['stand'] },
+  body_quilted: { set: 'c_bushlat', poses: ['stand'] },
+  body_tracksuit: { set: 'c_tracksuit', poses: ['stand'] },
+  body_overalls: { set: 'c_overalls', poses: ['stand'] },
+  body_bib: { set: 'c_bib', poses: ['stand', 'guard'] },
+  body_denim: { set: 'c_denim', poses: ['stand'] },
+  body_vest: { set: 'c_vest', poses: ['stand', 'walk'] },
+  body_camo: { set: 'c_camo', poses: ['stand', 'guard', 'walk'] },
+  body_leather: { set: 'c_leather', poses: ['stand', 'walk'] },
+  body_parka: { set: 'c_parka', poses: ['stand'] },
+  body_alaska: { set: 'c_alaska', poses: ['stand'] },
+  body_smock: { set: 'c_smock', poses: ['stand', 'walk'] },
+  body_bomber: { set: 'c_bomber', poses: ['stand'] },
+  body_apron: { set: 'c_apron', poses: ['stand'] },
+  body_gown: { set: 'a_gown', poses: ['stand'] },
+  drop_coat: { set: 'c_tulup', poses: ['stand'] },
+  drop_uniform: { set: 'c_guardform', poses: ['stand', 'guard', 'walk'] },
 };

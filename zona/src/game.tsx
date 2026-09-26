@@ -39,6 +39,7 @@ export interface Game {
   openEnergy(): void;
   say(d: DialogSpec): void;
   openShells(): void;
+  openPlace(place: 'church' | 'pullups'): void;
 }
 
 export const GameCtx = createContext<Game | null>(null);

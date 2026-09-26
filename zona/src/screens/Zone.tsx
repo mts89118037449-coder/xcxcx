@@ -4,10 +4,11 @@ import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
 import { lookOf, timeLeft, useGame } from '../game.tsx';
 import { useTalk } from '../Talk.tsx';
+import { WeeklyCard } from '../Weekly.tsx';
 
 /** Вся зона: здания ведут на экраны, по земле валяются бычки, барыга меняет их. */
 export function Zone() {
-  const { p, now, act, go } = useGame();
+  const { p, now, act, go, openPlace } = useGame();
   const talk = useTalk();
   const baryga = useNpc('sheet/cast/sport');
   const [taken, setTaken] = useState<number[]>([]);
@@ -30,6 +31,7 @@ export function Zone() {
             else if (pl === 'kiosk') go('shop');
             else if (pl === 'work') go('work');
             else if (pl === 'yard') go('fight');
+            else if (pl === 'church') openPlace('church');
             else talk('medic');
           }}
         >
@@ -63,6 +65,7 @@ export function Zone() {
         {field.length ? 'Тапай по бычкам на земле. Барыге — на обмен.' : 'Бычков пока нет'}
         {p.nextButtAt ? ` · следующий через ${timeLeft(p.nextButtAt - now)}` : ' · на земле максимум'}
       </div>
+      <WeeklyCard />
     </>
   );
 }

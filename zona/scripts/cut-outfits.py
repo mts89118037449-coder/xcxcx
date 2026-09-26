@@ -24,10 +24,20 @@ def sheet_a(cells):
     for name, box in cells.items():
         cp.cut(src, box, f'outfit/{name}', scale=3, keep_share=0.3, grey_gaps=not name.startswith(('a_gown', 'a_apron')))
 
+def sheet_c(cells):
+    src = Image.open(os.path.join(DOCS, 'outfits-c.jpg')).convert('RGB')
+    for name, box in cells.items():
+        # тельняшка, роба и полосатая — серые, как фон: не вырезаем серые просветы
+        grey = name.split('/')[0] in ('c_telnyashka', 'c_stripes', 'c_tank')
+        cp.cut(src, tuple(box), f'outfit/{name}', scale=3, keep_share=0.3, grey_gaps=not grey, open_thin=True)
+
+
 if __name__ == '__main__':
-    sheet_b()
-    from outfit_cells_a import CELLS_A  # noqa: E402
+    import shutil
+    shutil.rmtree(os.path.join(cp.OUT, 'outfit'), ignore_errors=True)
+    from outfit_cells_a import CELLS_A, CELLS_C  # noqa: E402
     sheet_a(CELLS_A)
+    sheet_c(CELLS_C)
 
 
 def head_meta():
@@ -39,7 +49,7 @@ def head_meta():
     for d in sorted(os.listdir(root)):
         if not os.path.isdir(os.path.join(root, d)):
             continue
-        ref = os.path.join(root, d, '2.png')
+        ref = os.path.join(root, d, 'stand.png')
         ref_h = Image.open(ref).size[1] if os.path.exists(ref) else None
         for f in sorted(os.listdir(os.path.join(root, d))):
             a = np.asarray(Image.open(os.path.join(root, d, f)))[..., 3] > 100
@@ -56,4 +66,5 @@ def head_meta():
         json.dump(meta, fh)
 
 
-head_meta()
+if __name__ == '__main__':
+    head_meta()

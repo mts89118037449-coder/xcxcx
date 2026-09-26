@@ -2,7 +2,7 @@ import { GOLD_PRICES, JOBS, TRADES } from '../shared/content.ts';
 import { fmt, useGame, type DialogSpec } from './game.tsx';
 import { usePvp } from './screens/Fight.tsx';
 
-export type TalkKind = 'lyoha' | 'ded' | 'amba' | 'smoker' | 'worker' | 'coverall' | 'baryga' | 'medic';
+export type TalkKind = 'lyoha' | 'ded' | 'amba' | 'smoker' | 'worker' | 'coverall' | 'baryga' | 'medic' | 'turnik';
 
 const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
@@ -16,12 +16,13 @@ const DED_TIPS = [
 
 /** Разговоры с персонажами в сценах вместо пунктов меню. */
 export function useTalk() {
-  const { p, now, act, toast, say, go, openShells } = useGame();
+  const { p, now, act, toast, say, go, openShells, openPlace } = useGame();
   const pvp = usePvp();
   const job = [...JOBS].reverse().find((j) => j.minLevel <= p.level)!;
 
   return (kind: TalkKind) => {
-    const specs: Record<TalkKind, () => DialogSpec> = {
+    if (kind === 'turnik') return openPlace('pullups');
+    const specs: Record<Exclude<TalkKind, 'turnik'>, () => DialogSpec> = {
       lyoha: () => ({
         who: 'sheet/rival/3',
         name: 'Лёха-напёрсточник',
@@ -48,7 +49,7 @@ export function useTalk() {
         name: 'Амбал',
         text: pick(['Чё вылупился? Проблемы?', 'Место здесь моё. Хочешь оспорить — давай.']),
         options: [
-          { label: 'Наехать (⚡10)', onPick: pvp, disabled: now < p.pvpReadyAt || p.energy < 10 },
+          { label: 'Наехать (⚡10)', onPick: pvp, disabled: now < p.pvpReadyAt },
           { label: 'Отойти' },
         ],
       }),
@@ -65,8 +66,7 @@ export function useTalk() {
         options: [
           {
             label: `Отработать (⚡${job.energy})`,
-            disabled: p.energy < job.energy,
-            onPick: async () => {
+                        onPick: async () => {
               const r = await act<{ money: number; xp: number }>('job', { jobId: job.id });
               if (r) toast(`+${fmt(r.money)} ₽, +${r.xp} опыта`);
             },

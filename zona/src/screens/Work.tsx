@@ -74,7 +74,7 @@ export function Work() {
                   {locked ? `🔒 с ${j.minLevel} уровня` : `${fmt(j.money[0])}–${fmt(j.money[1])} ₽ · ${j.xp} опыта`}
                 </div>
               </div>
-              <button className="btn" disabled={locked || busy || p.energy < j.energy} onClick={() => work(j.id)}>
+              <button className="btn" disabled={locked || busy} onClick={() => work(j.id)}>
                 ⚡{j.energy}
               </button>
             </div>

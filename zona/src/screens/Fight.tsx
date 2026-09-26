@@ -83,7 +83,7 @@ export function Fight() {
           </div>
           <div className="row">
             <span>Твой урон: <b>{fmt(world.myDamage)}</b></span>
-            <button className="btn btn-red" disabled={busy || !worldReady || lowHp || p.energy < WORLD_BOSS.energy} onClick={hitWorld}>
+            <button className="btn btn-red" disabled={busy || !worldReady || lowHp} onClick={hitWorld}>
               {worldReady ? `Ударить ⚡${WORLD_BOSS.energy}` : timeLeft(p.worldHitReadyAt - now)}
             </button>
           </div>
@@ -106,7 +106,7 @@ export function Fight() {
             <b>🥊 Наехать на сокамерника</b>
             <div className="muted">Соперник твоего уровня. Победа — отжимаешь 10% его денег</div>
           </div>
-          <button className="btn btn-red" disabled={busy || !pvpReady || lowHp || p.energy < BALANCE.pvpEnergy} onClick={pvp}>
+          <button className="btn btn-red" disabled={busy || !pvpReady || lowHp} onClick={pvp}>
             {pvpReady ? `⚡${BALANCE.pvpEnergy}` : timeLeft(p.pvpReadyAt - now)}
           </button>
         </div>
@@ -148,7 +148,7 @@ export function Fight() {
                   </button>
                 </>
               ) : (
-                <button className="btn btn-red" disabled={busy || lowHp || p.energy < b.energy} onClick={() => boss(b.id, b.name)}>
+                <button className="btn btn-red" disabled={busy || lowHp} onClick={() => boss(b.id, b.name)}>
                   В бой ⚡{b.energy}
                 </button>
               )}
