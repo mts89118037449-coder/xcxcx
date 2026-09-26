@@ -9,7 +9,7 @@ import type { Look } from '../../shared/types.ts';
 import { CharacterG, type Mood } from './Character.tsx';
 import { artUrl, characterLayers, useArt, type Pose } from './raster.ts';
 import { CellScene, Place, WorkScene, YardScene } from './Scenes.tsx';
-import { PoseG, WALK, useFlipbook, usePoses, type PoseName } from './sprites.tsx';
+import { ImageG, PoseG, WALK, useFlipbook, useNpc, usePoses, type PoseName } from './sprites.tsx';
 
 type Loc = 'cell' | 'work' | 'yard';
 
@@ -70,7 +70,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], anim, animKey, on
   const at = PLACE[loc];
   let figure: ReactNode;
   if (poses) {
-    const idle: PoseName = loc === 'cell' ? 'sit' : loc === 'work' ? 'stand34' : walkFrame;
+    const idle: PoseName = loc === 'cell' ? (mood === 'hurt' ? 'floor' : 'sit') : loc === 'work' ? 'stand34' : walkFrame;
     figure = (
       <g className={walking ? 'yard-walk' : undefined}>
         <PoseG name={busyPose ?? idle} />
@@ -84,9 +84,10 @@ export function Stage({ loc, look, mood, bare, furniture = [], anim, animKey, on
       {figure}
     </Place>
   );
-  if (loc === 'cell') return <CellScene furniture={furniture} onClick={onClick}>{fig}</CellScene>;
-  if (loc === 'work') return <WorkScene>{fig}</WorkScene>;
-  return <YardScene>{fig}</YardScene>;
+  const crowd = poses ? <Crowd loc={loc} /> : null;
+  if (loc === 'cell') return <CellScene furniture={furniture} onClick={onClick}>{crowd}{fig}</CellScene>;
+  if (loc === 'work') return <WorkScene>{crowd}{fig}</WorkScene>;
+  return <YardScene>{crowd}{fig}</YardScene>;
 }
 
 /** Стопка слоёв одного размера — персонаж, нарисованный в позе. */
@@ -99,5 +100,35 @@ export function RasterFigure({ layers, className = '', mirror = false }: { layer
         ))}
       </div>
     </div>
+  );
+}
+
+/** Сокамерники на заднем плане: чуть мельче и темнее, чтобы не спорить с героем. */
+const CROWD: Record<Loc, { name: string; x: number; y: number; scale: number }[]> = {
+  cell: [{ name: 'sheet/rival/3', x: 92, y: 250, scale: 0.8 }],
+  work: [{ name: 'sheet/rival/4', x: 300, y: 248, scale: 0.78 }],
+  yard: [
+    { name: 'sheet/rival/5', x: 58, y: 236, scale: 0.72 },
+    { name: 'sheet/rival/1', x: 292, y: 238, scale: 0.74 },
+  ],
+};
+
+function Crowd({ loc }: { loc: Loc }) {
+  return (
+    <>
+      {CROWD[loc].map((c) => (
+        <CrowdMember key={c.name} {...c} />
+      ))}
+    </>
+  );
+}
+
+function CrowdMember({ name, x, y, scale }: { name: string; x: number; y: number; scale: number }) {
+  const npc = useNpc(name);
+  if (!npc) return null;
+  return (
+    <Place x={x} y={y} scale={scale}>
+      <ImageG url={npc.url} height={npc.height} tone="brightness(0.72) saturate(0.85)" className="char-breathe" />
+    </Place>
   );
 }

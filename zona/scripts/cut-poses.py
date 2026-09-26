@@ -1,5 +1,6 @@
 # Вырезает позы и лица с листов ассетов на сером фоне в public/art/sheet.
-# Запуск: python3 scripts/cut-poses.py <лист_поз.jpg> <лист_лиц.jpg>   (нужны pillow, numpy, scipy)
+# Запуск: python3 scripts/cut-poses.py <лист_поз.jpg> [<лист_лиц.jpg>] [<лист_персонажей.jpg>]
+# (нужны pillow, numpy, scipy)
 import os, sys
 import numpy as np
 from PIL import Image, ImageFilter
@@ -7,7 +8,7 @@ from scipy import ndimage
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'public', 'art', 'sheet')
 
-def cut(src, box, path, scale=3, keep_share=0.04, tol=22):
+def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False):
     x0, y0, x1, y1 = box
     im = src.crop(box)
     a = np.asarray(im).astype(int)
@@ -26,6 +27,8 @@ def cut(src, box, path, scale=3, keep_share=0.04, tol=22):
     if gn:
         gsizes = ndimage.sum(gap, glab, range(1, gn + 1))
         fg &= ~np.isin(glab, [i + 1 for i, s in enumerate(gsizes) if s >= 25])
+    if open_thin:  # срезаем тонкие хвосты (остатки линий сетки), толщиной до 2 px
+        fg = ndimage.binary_opening(fg, structure=np.ones((3, 3)))
     lab2, n = ndimage.label(fg)
     if n > 1:
         sizes = ndimage.sum(fg, lab2, range(1, n + 1))
@@ -62,7 +65,64 @@ POSES = {
     'push': (870, 400, 1010, 565),
 }
 
+# Лист персонажей: боссы, зэки-соперники и состояния героя.
+NPC = {
+    'boss/b_rat': (640, 38, 740, 236),
+    'boss/b_guard': (145, 315, 265, 569),
+    'boss/b_chief': (280, 315, 385, 569),
+    'boss/b_warden': (15, 302, 128, 569),
+    'rival/0': (15, 28, 128, 287),
+    'rival/1': (138, 20, 282, 285),
+    'rival/2': (283, 38, 398, 287),
+    'rival/3': (400, 28, 514, 283),
+    'rival/4': (528, 32, 612, 264),
+    'rival/5': (905, 30, 1004, 260),
+    'pose/lying': (612, 506, 812, 562),
+    'pose/floor': (892, 430, 1014, 568),
+}
+
+def erase_grid(img):
+    # Линии сетки листа: длинные прямые тёмные отрезки. Заменяем их соседними пикселями,
+    # иначе линия остаётся поперёк фигур.
+    a = np.asarray(img).astype(np.int16)
+    dark = a.max(2) < 90
+    fixed = a.copy()
+    run = 60
+    # горизонтальные
+    # линия тонкая: в 3 пикселях выше и ниже уже не тёмное (иначе это тёмная одежда)
+    thin_h = dark & ~np.roll(dark, 3, 0) & ~np.roll(dark, -3, 0)
+    thin_v = dark & ~np.roll(dark, 3, 1) & ~np.roll(dark, -3, 1)
+    h = ndimage.uniform_filter1d(thin_h.astype(float), run, axis=1) > 0.9
+    h = ndimage.binary_dilation(h, structure=np.ones((3, run)))
+    ys, xs = np.nonzero(h & dark & ~np.roll(dark, 4, 0) | h & dark & ~np.roll(dark, -4, 0))
+    for y, x in zip(ys, xs):
+        up, dn = max(0, y - 3), min(a.shape[0] - 1, y + 3)
+        fixed[y, x] = (a[up, x] + a[dn, x]) // 2
+    # вертикальные
+    v = ndimage.uniform_filter1d(thin_v.astype(float), run, axis=0) > 0.9
+    v = ndimage.binary_dilation(v, structure=np.ones((run, 3)))
+    ys, xs = np.nonzero(v & dark & ~np.roll(dark, 4, 1) | v & dark & ~np.roll(dark, -4, 1))
+    for y, x in zip(ys, xs):
+        lf, rt = max(0, x - 3), min(a.shape[1] - 1, x + 3)
+        fixed[y, x] = (fixed[y, lf] + fixed[y, rt]) // 2
+    return Image.fromarray(fixed.astype(np.uint8))
+
+def face_of(path, out):
+    # Портрет босса — верх его же фигуры
+    img = Image.open(os.path.join(OUT, path + '.png'))
+    w, h = img.size
+    side = int(w * 0.62)
+    top = img.crop(((w - side) // 2, 0, (w + side) // 2, side))
+    full = os.path.join(OUT, '..', out + '.png')
+    top.save(full, optimize=True)
+
 if __name__ == '__main__':
+    if len(sys.argv) > 3:
+        npc = erase_grid(Image.open(sys.argv[3]).convert('RGB'))
+        for k, b in NPC.items():
+            print(k, cut(npc, b, k, keep_share=0.2, open_thin=True))
+        for k in ('b_rat', 'b_guard', 'b_chief', 'b_warden'):
+            face_of('boss/' + k, 'npc/' + k + '_face')
     poses = Image.open(sys.argv[1]).convert('RGB')
     for k, b in POSES.items():
         print(k, cut(poses, b, 'pose/' + k))

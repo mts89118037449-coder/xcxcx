@@ -7,7 +7,7 @@ import { artSize, artUrl, useArt } from './raster.ts';
 
 export type PoseName =
   | 'stand' | 'stand34' | 'crossed' | 'squat' | 'sit' | 'sit34' | 'lunge' | 'run'
-  | 'guard' | 'guard34' | 'guard2' | 'guard3' | 'walk1' | 'walk2' | 'walk3' | 'walk4' | 'push';
+  | 'guard' | 'guard34' | 'guard2' | 'guard3' | 'walk1' | 'walk2' | 'walk3' | 'walk4' | 'push' | 'lying' | 'floor';
 
 const REQUIRED: PoseName[] = ['stand', 'stand34', 'sit', 'crossed', 'guard34', 'lunge', 'push', 'walk1', 'walk2', 'walk3', 'walk4'];
 export const WALK: PoseName[] = ['walk1', 'walk2', 'walk3', 'walk4'];
@@ -21,9 +21,44 @@ export function usePoses(): boolean {
   return !!art && REQUIRED.every((n) => art.has(`sheet/pose/${n}.png`));
 }
 
-/** Второй персонаж (с наколками) — им рисуем соперников. */
-export function useRival(): string | null {
-  return artUrl(useArt(), 'sheet/hero');
+/** Рост самой высокой стоячей фигуры с листа персонажей — от неё масштаб NPC. */
+const NPC_REF = 'sheet/boss/b_warden';
+const RIVALS = ['sheet/rival/0', 'sheet/rival/1', 'sheet/rival/2', 'sheet/rival/3', 'sheet/rival/4', 'sheet/rival/5', 'sheet/hero'];
+
+export interface Npc {
+  url: string;
+  height: number;
+}
+
+function npcOf(art: Set<string> | null, name: string): Npc | null {
+  const url = artUrl(art, name);
+  if (!url) return null;
+  const ref = artUrl(art, NPC_REF);
+  const size = artSize(url);
+  const refSize = ref ? artSize(ref) : null;
+  // лист с татуированным героем другой, у него свой масштаб
+  const height = name === 'sheet/hero' || !size || !refSize ? 204 : (size[1] / refSize[1]) * 208;
+  return { url, height };
+}
+
+/** Соперник-зэк: один и тот же для одного имени. */
+export function useRival(seed: string): Npc | null {
+  const art = useArt();
+  const pool = RIVALS.filter((r) => artUrl(art, r));
+  if (!pool.length) return null;
+  let h = 0;
+  for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return npcOf(art, pool[h % pool.length]);
+}
+
+export function useBoss(id: string | undefined): Npc | null {
+  const art = useArt();
+  return id ? npcOf(art, `sheet/boss/${id}`) : null;
+}
+
+/** Фоновые персонажи локаций. */
+export function useNpc(name: string): Npc | null {
+  return npcOf(useArt(), name);
 }
 
 export function poseUrl(name: PoseName) {
