@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { FURNITURE, GOLD_PRICES, SPOT_NAMES, TATTOOS, type Furniture } from '../../shared/content.ts';
+import { GOLD_PRICES, TATTOOS } from '../../shared/content.ts';
+import { CellShop } from '../Cell.tsx';
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
 import { CharacterEditor } from '../Editor.tsx';
@@ -24,13 +25,6 @@ export function Home() {
     toast(`Грев с воли: +${fmt(r.money)} ₽, +${r.gold} 🪙 (день ${r.streak})`);
   };
 
-  const furnish = async (f: Furniture) => {
-    if (f.currency === 'gold' && !confirm(`Поставить «${f.name}» за ${f.price} 🪙?`)) return;
-    if ((await act('furnish', { furnitureId: f.id })) === null) return;
-    play('act-cheer');
-    toast(`${f.emoji} ${f.name} — теперь в хате`);
-  };
-
   return (
     <>
       <div className="scene-wrap">
@@ -40,13 +34,13 @@ export function Home() {
           look={lookOf(p)}
           bare={bare}
           mood={hurt ? 'hurt' : 'idle'}
-          furniture={p.furniture}
+          furniture={p.cell}
           interior={p.interior}
           anim={anim}
           animKey={animKey}
           onClick={() => play('act-cheer')}
         />
-        <div className="scene-tag">🏚️ Хата · {p.furniture.length}/{FURNITURE.length}</div>
+        <div className="scene-tag">🏚️ Хата · 🛋️ уют {p.comfort}</div>
         {ink.length > 0 && !poses && (
           <button className="scene-btn" onClick={() => setBare(!bare)}>
             {bare ? '👕 Одеться' : '💪 Показать наколки'}
@@ -72,28 +66,7 @@ export function Home() {
       </Card>
 
       <InteriorPicker />
-      <h3 className="section">Мебель</h3>
-      <div className="hscroll">
-        {FURNITURE.map((f) => {
-          const owned = p.furniture.includes(f.id);
-          const locked = p.level < f.minLevel;
-          return (
-            <div key={f.id} className={`ftile ${owned ? 'owned' : ''} ${f.currency === 'gold' && !owned ? 'premium' : ''}`}>
-              <span className="femoji">{f.emoji}</span>
-              <b>{f.name}</b>
-              <span className="muted small">{SPOT_NAMES[f.spot]}</span>
-              <BonusList b={f} />
-              <button
-                className={`btn btn-s ${f.currency === 'gold' ? 'btn-gold' : ''}`}
-                disabled={owned || locked || busy}
-                onClick={() => furnish(f)}
-              >
-                {owned ? '✓ Стоит' : locked ? `🔒 ур. ${f.minLevel}` : <Price amount={f.price} currency={f.currency} />}
-              </button>
-            </div>
-          );
-        })}
-      </div>
+      <CellShop onChange={() => play('act-cheer')} />
 
       <Card>
         <h3>Характеристики</h3>

@@ -378,3 +378,108 @@ test('расходники: срабатывают раз и списывают�
   g.setPerks(p, ['crit_2', 'stun_2', 'heal_2']);
   assert.throws(() => g.setPerks(p, ['crit_2', 'stun_2', 'heal_2', 'dodge_1']), /не больше/);
 });
+
+// --- Хата, случаи, побег, санчасть, гости --------------------------------------
+
+import { ESCAPE_STAGES, EVENTS } from '../shared/events.ts';
+import { FURNITURE, SPOTS, cellView, comfortOf } from '../shared/content.ts';
+
+test('хата: лестница улучшений, выбор что стоит, голые стены', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.level = 30;
+  p.money = 1_000_000;
+  p.gold = 10_000;
+  assert.throws(() => g.buyFurniture(p, 'f_carpet', T0), /Сначала/);
+  g.buyFurniture(p, 'f_calendar', T0);
+  g.buyFurniture(p, 'f_poster', T0);
+  g.buyFurniture(p, 'f_carpet', T0);
+  assert.deepEqual(cellView(p.furniture, p.cellShow), ['f_carpet']);
+  g.setCellShow(p, 'wall', 'f_calendar');
+  assert.deepEqual(cellView(p.furniture, p.cellShow), ['f_calendar']);
+  g.setCellShow(p, 'wall', 'none');
+  assert.deepEqual(cellView(p.furniture, p.cellShow), []);
+  assert.throws(() => g.setCellShow(p, 'wall', 'f_painting'), /нет/);
+  assert.equal(comfortOf(p.furniture), 1 + 2 + 3);
+  // у каждого места есть хотя бы 3 ступени
+  for (const s of SPOTS) assert.ok(FURNITURE.filter((f) => f.spot === s).length >= 3, s);
+  // бонусы всех ступеней складываются, даже если убраны
+  assert.equal(g.stats(p, T0).def, g.stats({ ...p, furniture: [] }, T0).def + 5);
+});
+
+test('случаи: появляются со временем, ответ стоит денег и даёт исход', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  g.tick(p, T0 + 6 * MIN);
+  assert.ok(p.event, 'случай появился');
+  p.event = { id: 'cards', until: T0 + 60 * MIN };
+  p.money = 0;
+  assert.throws(() => g.answerEvent(p, 0, T0 + 7 * MIN, fixed(0.1)), /Не на что/);
+  p.money = 10_000;
+  const r = g.answerEvent(p, 0, T0 + 7 * MIN, fixed(0.1)); // выигрыш
+  assert.ok(r.money > 0);
+  assert.equal(p.event, null);
+  assert.throws(() => g.answerEvent(p, 0, T0 + 7 * MIN, fixed(0.1)), /упущен/);
+  // прогулка — случай сразу, раз в полчаса
+  const y = g.yardWalk(p, T0 + 8 * MIN, fixed(0.5));
+  assert.ok(EVENTS.some((e) => e.id === y.id));
+  assert.throws(() => g.yardWalk(p, T0 + 9 * MIN, fixed(0.5)), /погоди/);
+  for (const e of EVENTS) for (const o of e.options) assert.ok(o.outcomes.length > 0, e.id);
+});
+
+test('побег: никогда не удаётся, чем дальше — тем больше награда', () => {
+  const run = (quality: number, rng: g.Rng) => {
+    const p = g.newPlayer(1, 'Тест', null, T0);
+    p.level = 10;
+    p.energy = 100;
+    g.escapeStart(p, T0);
+    let r;
+    for (let i = 0; i < 20; i++) {
+      r = g.escapeStep(p, quality, T0, rng);
+      if (!r.passed) break;
+    }
+    return { p, r: r! };
+  };
+  const lucky = run(1, fixed(0));
+  assert.equal(lucky.r.passed, false, 'на вокзале ловят всегда');
+  assert.equal(lucky.r.stage, ESCAPE_STAGES.length - 1);
+  assert.ok(lucky.p.escape.cdUntil > T0);
+  const early = run(0, fixed(0.99));
+  assert.equal(early.r.stage, 0);
+  assert.ok(lucky.p.money > early.p.money);
+  assert.throws(() => g.escapeStart(lucky.p, T0 + MIN), /ШИЗО/);
+  // вернуться самому — без ШИЗО надолго, но меньше
+  const p = g.newPlayer(2, 'Тест', null, T0);
+  p.level = 10;
+  g.escapeStart(p, T0);
+  g.escapeStep(p, 1, T0, fixed(0));
+  g.escapeStep(p, 1, T0, fixed(0));
+  const b = g.escapeEnd(p, false, T0, fixed(0.5));
+  assert.equal(b.caught, false);
+  assert.ok(b.reward.money > 0 && p.escape.cdUntil - T0 < 2 * 3600_000);
+});
+
+test('санчасть и гости', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  const max = g.stats(p, T0).maxHp;
+  p.hp = 10;
+  const r = g.medBed(p, T0);
+  assert.ok(r.hp > 0);
+  assert.throws(() => g.medBed(p, T0 + MIN), /занята/);
+  g.medNote(p, T0, fixed(0.1));
+  assert.throws(() => g.medNote(p, T0, fixed(0.1)), /уже/);
+  p.money = 100_000;
+  g.medShot(p, T0);
+  assert.ok(p.hp <= max);
+
+  const host = g.newPlayer(2, 'Хозяин', null, T0);
+  p.butts = 20;
+  g.gift(p, host, T0);
+  assert.equal(host.butts, 5);
+  assert.throws(() => g.gift(p, host, T0), /уже/);
+  const hp = p.hp;
+  const c = g.snoop(p, host, T0, fixed(0.01));
+  assert.equal(c.outcome, 'caught');
+  assert.ok(p.hp < hp);
+  g.snoop(p, host, T0, fixed(0.99));
+  g.snoop(p, host, T0, fixed(0.99));
+  assert.throws(() => g.snoop(p, host, T0, fixed(0.99)), /хватит/);
+});

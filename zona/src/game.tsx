@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { FightReplay, Look, PlayerView } from '../shared/types.ts';
 
+export type Place = 'church' | 'medic' | 'escape' | 'pullups';
 export type Tab = 'home' | 'zone' | 'work' | 'fight' | 'gear' | 'top' | 'shop';
 
 export interface DialogOption {
@@ -39,7 +40,7 @@ export interface Game {
   openEnergy(): void;
   say(d: DialogSpec): void;
   openShells(): void;
-  openPlace(place: 'church' | 'pullups'): void;
+  openPlace(place: Place): void;
 }
 
 export const GameCtx = createContext<Game | null>(null);

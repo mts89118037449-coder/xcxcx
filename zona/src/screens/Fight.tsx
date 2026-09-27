@@ -1,4 +1,5 @@
 import { itemLines } from '../Perks.tsx';
+import { useEvent } from '../Events.tsx';
 import { useCallback, useEffect, useState } from 'react';
 import { BALANCE, BOSSES, GOLD_PRICES, WORLD_BOSS, itemById } from '../../shared/content.ts';
 import type { FightReplay, Look, WorldBossView } from '../../shared/types.ts';
@@ -32,6 +33,7 @@ export function Fight() {
   const lowHp = p.hp < p.stats.maxHp * BALANCE.pvpMinHpShare;
 
   const pvp = usePvp();
+  const openEvent = useEvent();
 
   const boss = async (bossId: string, name: string) => {
     const r = await act<FightResult & { reward: { money: number; xp: number; authority: number; gold: number; drop: string | null; item: string | null }; used: string[] }>('boss', { bossId });
@@ -60,6 +62,12 @@ export function Fight() {
     loadWorld();
   };
 
+  // прогулка — бесплатный случай во дворе раз в полчаса
+  const walkYard = async () => {
+    const r = await act<{ id: string }>('yard');
+    if (r) openEvent(r.id);
+  };
+
   const worldReady = now >= p.worldHitReadyAt;
   const pvpReady = now >= p.pvpReadyAt;
 
@@ -68,6 +76,9 @@ export function Fight() {
       <div className="scene-wrap">
         <Stage onTalk={talk} loc="yard" look={lookOf(p)} mood={lowHp ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
         <div className="scene-tag">🥊 Двор</div>
+        <button className="scene-btn" disabled={busy || now < p.yardReadyAt} onClick={walkYard}>
+          {now < p.yardReadyAt ? `🚶 ${timeLeft(p.yardReadyAt - now)}` : '🚶 Прогуляться'}
+        </button>
       </div>
       {world && (
         <NpcBanner who="spetsnaz" name="Командир ОМОНа" text="На централе бунт. Мы заходим через час — успейте отличиться" />

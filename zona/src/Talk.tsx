@@ -67,8 +67,8 @@ export function useTalk() {
           {
             label: `Отработать (⚡${job.energy})`,
                         onPick: async () => {
-              const r = await act<{ money: number; xp: number }>('job', { jobId: job.id });
-              if (r) toast(`+${fmt(r.money)} ₽, +${r.xp} опыта`);
+              const r = await act<{ money: number; xp: number; bonus: boolean }>('job', { jobId: job.id });
+              if (r) toast(`${r.bonus ? '💰 Премия ×2! ' : ''}+${fmt(r.money)} ₽, +${r.xp} опыта`);
             },
           },
           { label: 'Позже' },

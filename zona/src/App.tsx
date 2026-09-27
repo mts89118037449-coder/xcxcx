@@ -10,6 +10,9 @@ import { ShellGame } from './Shells.tsx';
 import { Zone } from './screens/Zone.tsx';
 import { Church } from './Church.tsx';
 import { Pullups } from './Pullups.tsx';
+import { Medic } from './Medic.tsx';
+import { Escape } from './Escape.tsx';
+import { EventButton } from './Events.tsx';
 import { Bar, GameCtx, fmt, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
 import { Gear } from './screens/Gear.tsx';
@@ -41,7 +44,7 @@ export function App() {
   const [energyOpen, setEnergyOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const [shellsOpen, setShellsOpen] = useState(false);
-  const [place, setPlace] = useState<'church' | null>(null);
+  const [place, setPlace] = useState<'church' | 'medic' | 'escape' | null>(null);
   const [pullOpen, setPullOpen] = useState(false);
   const toastTimer = useRef<number>(0);
   const now = useNow();
@@ -114,7 +117,7 @@ export function App() {
     setPlace(null);
     window.scrollTo(0, 0);
   };
-  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true), say: setDialog, openShells: () => setShellsOpen(true), openPlace: (pl) => (pl === 'church' ? (setPlace('church'), window.scrollTo(0, 0)) : setPullOpen(true)) };
+  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true), say: setDialog, openShells: () => setShellsOpen(true), openPlace: (pl) => (pl === 'pullups' ? setPullOpen(true) : (setPlace(pl), window.scrollTo(0, 0))) };
   const energyTimer = p.nextEnergyAt ? Math.max(0, p.nextEnergyAt - now) : 0;
 
   return (
@@ -152,6 +155,8 @@ export function App() {
 
       <main>
         {place === 'church' && <Church onBack={() => { setPlace(null); setTab('zone'); }} />}
+        {place === 'medic' && <Medic onBack={() => { setPlace(null); setTab('zone'); }} />}
+        {place === 'escape' && <Escape onBack={() => { setPlace(null); setTab('zone'); }} />}
         {!place && tab === 'home' && <Home />}
         {!place && tab === 'zone' && <Zone />}
         {!place && tab === 'work' && <Work />}
@@ -174,6 +179,7 @@ export function App() {
         ))}
       </nav>
 
+      <EventButton />
       {toastMsg && <div className={`toast toast-${toastMsg.kind}`}>{toastMsg.text}</div>}
 
       {visiting !== null && <VisitModal id={visiting} onClose={() => setVisiting(null)} />}

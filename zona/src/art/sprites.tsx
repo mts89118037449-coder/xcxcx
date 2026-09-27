@@ -107,15 +107,18 @@ export function outfitSprite(art: Set<string> | null, look: Look | undefined, na
   const o = look?.equipped.body ? OUTFITS[look.equipped.body] : undefined;
   if (!o || !art) return null;
   const want = OUTFIT_POSE[name] ?? 'stand';
+  // своей позы на листе нет (или это кадр ходьбы) — берём базовую позу с одеждой комплекта
+  const dressed = artUrl(art, `sheet/dress/${name}/outfit_${look!.equipped.body}`);
+  if ((!o.poses.includes(want) || name.startsWith('walk')) && dressed) return null;
   const pose = o.poses.includes(want) ? want : 'stand';
   const url = artUrl(art, `sheet/outfit/${o.set}/${pose}`);
   const ref = artUrl(art, `sheet/outfit/${o.set}/stand`);
   return url && ref ? { url, key: `${o.set}/${pose}`, ref } : null;
 }
 
-/** Надет ли комплект, у которого нет своей ходьбы — тогда во дворе стоим. */
+/** Надет ли комплект, у которого нет ходьбы ни на листе, ни в перенесённой одежде — тогда во дворе стоим. */
 export function hasOutfit(art: Set<string> | null, look?: Look): boolean {
-  return !!outfitSprite(art, look, 'stand');
+  return !!outfitSprite(art, look, 'walk1');
 }
 
 /** Где у позы голова — чтобы надеть шапку (доли картинки: x0, y0, x1, y1). */
@@ -139,6 +142,13 @@ function dressLayers(art: Set<string> | null, name: PoseName, look?: Look): stri
     if (u) out.push(u);
   };
   look.tattoos.forEach(add);
+  // комплект, перенесённый на позу: он закрывает и штаны, и обувь
+  const body = look.equipped.body;
+  const of = body && OUTFITS[body] ? artUrl(art, `sheet/dress/${name}/outfit_${body}`) : null;
+  if (of) {
+    out.push(of);
+    return out;
+  }
   for (const slot of SLOT_ORDER) {
     const id = look.equipped[slot];
     if (id) add(id);

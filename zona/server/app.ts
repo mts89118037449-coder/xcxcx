@@ -1,5 +1,6 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
-import { BALANCE, CHURCH, CLAN, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
+import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
+import { BALANCE, CHURCH, cellView, comfortOf, CLAN, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
 import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
 import { validateInitData, type TgUser } from './auth.ts';
 import type { Db } from './db.ts';
@@ -147,6 +148,15 @@ export function createApp(opts: AppOptions) {
       worldHitReadyAt: p.worldHitAt + WORLD_BOSS.cooldownSec * 1000,
       shieldUntil: p.shieldUntil,
       refCount: p.refCount,
+      cell: cellView(p.furniture, p.cellShow),
+      cellShow: p.cellShow,
+      comfort: comfortOf(p.furniture),
+      event: p.event && p.event.until > t ? p.event : null,
+      yardReadyAt: p.yardAt + EVENT_TIMING.yardCooldownMin * 60_000,
+      escape: { cdUntil: p.escape.cdUntil, stage: p.escape.run?.stage ?? null, best: p.escape.best },
+      medBedReadyAt: p.medBedAt + MEDIC.bedCooldownMin * 60_000,
+      noteReady: p.noteDay !== g.dayKey(t),
+      snoopsLeft: g.snoopsLeft(p, t),
       perks: p.perks,
       belt: p.belt,
       stash: p.stash,
@@ -221,6 +231,28 @@ export function createApp(opts: AppOptions) {
 
   const actions: Record<string, Handler> = {
     look: (p, b) => g.setLook(p, num(b.build), num(b.skin)),
+    cellShow: (p, b) => g.setCellShow(p, str(b.spot), str(b.id)),
+    event: (p, b, t) => g.answerEvent(p, num(b.choice), t, rng),
+    yard: (p, _b, t) => g.yardWalk(p, t, rng),
+    escapeStart: (p, _b, t) => g.escapeStart(p, t),
+    escapeStep: (p, b, t) => g.escapeStep(p, num(b.quality), t, rng),
+    escapeBail: (p, _b, t) => g.escapeEnd(p, false, t, rng),
+    medBed: (p, _b, t) => g.medBed(p, t),
+    medShot: (p, _b, t) => g.medShot(p, t),
+    medNote: (p, _b, t) => g.medNote(p, t, rng),
+    gift: (p, b, t) => {
+      const target = db.getPlayer(num(b.id));
+      if (!target) throw new g.GameError('Нет такого игрока');
+      g.gift(p, target, t);
+      db.savePlayer(target);
+    },
+    snoop: (p, b, t) => {
+      const target = db.getPlayer(num(b.id));
+      if (!target) throw new g.GameError('Нет такого игрока');
+      const r = g.snoop(p, target, t, rng);
+      db.savePlayer(target);
+      return r;
+    },
     perks: (p, b) => g.setPerks(p, Array.isArray(b.ids) ? b.ids.map(str) : []),
     belt: (p, b) => g.setBelt(p, Array.isArray(b.ids) ? b.ids.map(str) : []),
     buyItem: (p, b) => g.buyConsumable(p, str(b.id), num(b.n)),
@@ -384,8 +416,11 @@ export function createApp(opts: AppOptions) {
 
   api.post('/visit', (req: AuthedRequest, res) => {
     const t = now();
-    const v = db.getPlayer(Number(req.body?.id));
-    if (!v) return res.status(404).json({ error: 'Нет такого игрока' });
+    // id = 0 — обход бараков: случайный сосед (не тот, у кого только что были)
+    let id = Number(req.body?.id);
+    if (!id) id = db.randomNeighbour(req.tgUser!.id, Array.isArray(req.body?.skip) ? req.body.skip.map(Number) : []) ?? 0;
+    const v = db.getPlayer(id);
+    if (!v) return res.status(404).json({ error: 'В бараке никого' });
     const me = db.getPlayer(req.tgUser!.id);
     const c = v.clanId ? db.getClan(v.clanId) : null;
     const visit: VisitView = {
@@ -398,11 +433,15 @@ export function createApp(opts: AppOptions) {
       face: v.face,
       build: v.build,
       skin: v.skin,
-      furniture: v.furniture,
+      furniture: cellView(v.furniture, v.cellShow),
+      comfort: comfortOf(v.furniture),
+      equipped: v.equipped,
+      str: v.str,
       interior: v.interior,
       tattoos: v.tattoos,
       clan: c ? { id: c.id, name: c.name, tag: c.tag } : null,
       respectedToday: !!me && me.respect[v.id] === g.dayKey(t),
+      giftedToday: !!me && me.respect[`g${v.id}`] === g.dayKey(t),
       online: t - v.lastSeen < BALANCE.onlineWindowSec * 1000,
     };
     res.json({ visit });

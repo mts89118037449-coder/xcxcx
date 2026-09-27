@@ -1,3 +1,4 @@
+import { itemLabel } from '../Perks.tsx';
 import { GOLD_PRICES, JOBS, STAT_NAMES, trainCost, type Stat } from '../../shared/content.ts';
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
@@ -16,10 +17,12 @@ export function Work() {
   const [anim, animKey, play] = useAnim();
 
   const work = async (jobId: string) => {
-    const r = await act<{ money: number; xp: number; levelUps: number }>('job', { jobId });
+    const r = await act<{ money: number; xp: number; levelUps: number; bonus: boolean; item: string | null }>('job', { jobId });
     if (!r) return;
     play(r.levelUps ? 'act-cheer' : 'act-work');
-    toast(`+${fmt(r.money)} ₽, +${r.xp} опыта${r.levelUps ? ' · НОВЫЙ УРОВЕНЬ!' : ''}`);
+    toast(
+      `${r.bonus ? '💰 Премия ×2! ' : ''}+${fmt(r.money)} ₽, +${r.xp} опыта${r.item ? ` · нашёл ${itemLabel(r.item)}` : ''}${r.levelUps ? ' · НОВЫЙ УРОВЕНЬ!' : ''}`,
+    );
   };
 
   const pump = async (type: 'allocate' | 'train', stat: Stat) => {

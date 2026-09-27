@@ -28,6 +28,9 @@ import {
   WORLD_BOSS,
   bossById,
   furnitureById,
+  FURNITURE,
+  SPOT_NAMES,
+  type Spot,
   itemById,
   jobById,
   packById,
@@ -41,6 +44,7 @@ import {
 } from '../shared/content.ts';
 
 import { fight, npcPerks, type Fighter } from './combat.ts';
+import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, type Effects } from '../shared/events.ts';
 import { CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
 
 export { fight, npcPerks };
@@ -82,6 +86,7 @@ export interface Player {
   inventory: string[];
   tattoos: string[];
   furniture: string[];
+  cellShow: Partial<Record<Spot, string>>;
   face: number;
   faceChosen: boolean;
   build: number;
@@ -100,6 +105,13 @@ export interface Player {
   prayAt: number;
   confessDay: string;
   pullups: { at: number; day: string; n: number };
+  snoop: { day: string; n: number };
+  event: { id: string; until: number } | null;
+  eventAt: number;
+  yardAt: number;
+  escape: { cdUntil: number; run: { stage: number; at: number } | null; best: number };
+  medBedAt: number;
+  noteDay: string;
   daily: DailyState;
   quests: QuestState;
   clanId: number | null;
@@ -159,6 +171,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     inventory: ['body_robe', 'feet_slippers'],
     tattoos: [],
     furniture: [],
+    cellShow: {},
     face: id % FACE_COUNT,
     faceChosen: false,
     build: 1,
@@ -177,6 +190,13 @@ export function newPlayer(id: number, name: string, username: string | null, now
     prayAt: 0,
     confessDay: '',
     pullups: { at: 0, day: '', n: 0 },
+    snoop: { day: '', n: 0 },
+    event: null,
+    eventAt: now + 5 * MIN,
+    yardAt: 0,
+    escape: { cdUntil: 0, run: null, best: 0 },
+    medBedAt: 0,
+    noteDay: '',
     daily: { day: '', tasks: [], bonusClaimed: false },
     quests: { board: [], active: null },
     clanId: null,
@@ -203,6 +223,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
 /** Досоздаёт поля, которых не было в старых сохранениях. */
 export function migrate(p: Player): Player {
   p.furniture ??= [];
+  p.cellShow ??= {};
   p.face ??= p.id % FACE_COUNT;
   p.faceChosen ??= false;
   p.build ??= 1;
@@ -221,6 +242,13 @@ export function migrate(p: Player): Player {
   p.prayAt ??= 0;
   p.confessDay ??= '';
   p.pullups ??= { at: 0, day: '', n: 0 };
+  p.snoop ??= { day: '', n: 0 };
+  p.event ??= null;
+  p.eventAt ??= 0;
+  p.yardAt ??= 0;
+  p.escape ??= { cdUntil: 0, run: null, best: 0 };
+  p.medBedAt ??= 0;
+  p.noteDay ??= '';
   p.daily ??= { day: '', tasks: [], bonusClaimed: false };
   p.quests ??= { board: [], active: null };
   p.clanId ??= null;
@@ -293,6 +321,7 @@ export function tick(p: Player, now: number): void {
   }
   ensureDaily(p, now);
   growField(p, now, Math.random);
+  spawnEvent(p, now, Math.random);
 }
 
 export function log(p: Player, now: number, text: string): void {
@@ -344,11 +373,18 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   if (!job) throw new GameError('Нет такой работы');
   if (p.level < job.minLevel) throw new GameError(`Доступно с ${job.minLevel} уровня`);
   spendEnergy(p, job.energy, now);
-  const money = Math.round(roll(rng, job.money) * (1 + stats(p, now).moneyBonus / 100));
+  // рандом смены: иногда премия от бригадира, иногда находка на промке
+  const bonus = rng() < 0.1;
+  const money = Math.round(roll(rng, job.money) * (1 + stats(p, now).moneyBonus / 100) * (bonus ? 2 : 1));
   p.money += money;
+  let item: string | null = null;
+  if (rng() < 0.05) {
+    item = rollConsumable(rng);
+    giveItem(p, item);
+  }
   const levelUps = addXp(p, job.xp, now);
   track(p, 'job');
-  return { money, xp: job.xp, levelUps };
+  return { money, xp: job.xp, levelUps, bonus, item };
 }
 
 export function allocate(p: Player, stat: Stat) {
@@ -432,9 +468,26 @@ export function buyFurniture(p: Player, furnitureId: string, now: number) {
   if (!f) throw new GameError('Нет такой мебели');
   if (p.furniture.includes(furnitureId)) throw new GameError('Уже стоит в хате');
   if (p.level < f.minLevel) throw new GameError(`Доступно с ${f.minLevel} уровня`);
+  const ladder = FURNITURE.filter((x) => x.spot === f.spot);
+  const prev = ladder[ladder.indexOf(f) - 1];
+  if (prev && !p.furniture.includes(prev.id)) throw new GameError(`Сначала — ${prev.name}`);
   spend(p, f.price, f.currency);
   p.furniture.push(furnitureId);
+  delete p.cellShow[f.spot]; // новинку сразу видно
   log(p, now, `${f.emoji} Обустроил хату: ${f.name}`);
+}
+
+/** Что поставить на место в сцене: купленную вещь, 'none' — пусто, '' — лучшее. */
+export function setCellShow(p: Player, spot: string, id: string) {
+  if (!(spot in SPOT_NAMES)) throw new GameError('Нет такого места');
+  const sp = spot as Spot;
+  if (id === '') delete p.cellShow[sp];
+  else if (id === 'none') p.cellShow[sp] = 'none';
+  else {
+    const f = furnitureById.get(id);
+    if (!f || f.spot !== sp || !p.furniture.includes(id)) throw new GameError('Этого у тебя нет');
+    p.cellShow[sp] = id;
+  }
 }
 
 export function fighter(p: Player, now: number): Fighter {
@@ -949,6 +1002,62 @@ export function respect(p: Player, target: Player, now: number) {
   addXp(p, 5, now);
 }
 
+/** Подогреть соседа бычками: раз в день на каждого. */
+export function gift(p: Player, target: Player, now: number) {
+  if (p.id === target.id) throw new GameError('Себе не греют');
+  const day = dayKey(now);
+  if (p.respect[`g${target.id}`] === day) throw new GameError('Сегодня уже грел');
+  if (p.butts < VISIT.giftButts) throw new GameError(`Нужно ${VISIT.giftButts} бычков`);
+  p.butts -= VISIT.giftButts;
+  p.respect[`g${target.id}`] = day;
+  target.butts += VISIT.giftButts;
+  target.authority += 2;
+  p.authority += 1;
+  log(target, now, `🚬 ${p.name} подогрел хату: +${VISIT.giftButts} бычков, +2 авторитета`);
+  addXp(p, 8, now);
+}
+
+export function snoopsLeft(p: Player, now: number) {
+  return p.snoop.day === dayKey(now) ? Math.max(0, VISIT.snoopPerDay - p.snoop.n) : VISIT.snoopPerDay;
+}
+
+/** Пошарить в чужой хате, пока хозяин на прогулке. Заначка, пусто или спалился. */
+export function snoop(p: Player, target: Player, now: number, rng: Rng) {
+  if (p.id === target.id) throw new GameError('В своей хате не шарят');
+  if (snoopsLeft(p, now) <= 0) throw new GameError('На сегодня хватит — и так косо смотрят');
+  const day = dayKey(now);
+  p.snoop = { day, n: (p.snoop.day === day ? p.snoop.n : 0) + 1 };
+  // живность сторожит хату
+  const guard = target.furniture.includes('f_parrot') ? 0.15 : target.furniture.includes('f_cat') ? 0.08 : 0;
+  const r = rng();
+  if (r < VISIT.caught + guard) {
+    const max = stats(p, now).maxHp;
+    const hp = Math.round(max * 0.15);
+    p.hp = Math.max(1, p.hp - hp);
+    p.hpAt = now;
+    const auth = Math.min(p.authority, 2);
+    p.authority -= auth;
+    target.authority += 1;
+    log(target, now, `🫵 Застал ${p.name} за шмоном своей хаты. Навешал люлей, +1 авторитета`);
+    return { outcome: 'caught' as const, hp, authority: auth, by: guard && rng() < 0.5 ? (target.furniture.includes('f_parrot') ? 'parrot' : 'cat') : 'host' };
+  }
+  if (r < VISIT.caught + guard + VISIT.empty) return { outcome: 'empty' as const };
+  const k = rng();
+  if (k < 0.15) {
+    const item = rollConsumable(rng);
+    giveItem(p, item);
+    return { outcome: 'item' as const, item };
+  }
+  if (k < 0.5) {
+    const butts = 2 + Math.floor(rng() * 5);
+    p.butts += butts;
+    return { outcome: 'butts' as const, butts };
+  }
+  const money = Math.round((30 + target.level * 25) * (0.6 + rng() * 0.8));
+  p.money += money;
+  return { outcome: 'money' as const, money };
+}
+
 // --- Бычки ---------------------------------------------------------------------
 
 /** Раз в regenSec на зоне появляется бычок (не больше maxOnField). */
@@ -1110,4 +1219,195 @@ export function pullups(p: Player, reps: number, now: number) {
   const xp = Math.floor(n / PULLUPS.repsPerXp);
   addXp(p, xp, now);
   return { reps: n, xp };
+}
+
+// --- Случаи --------------------------------------------------------------------------
+
+/** Пайка — единица денег в случаях, растёт с уровнем. */
+export const ration = (p: Player) => 30 + p.level * 15;
+
+function pickWeighted<T extends { w: number }>(list: T[], rng: Rng): T {
+  const sum = list.reduce((a, x) => a + x.w, 0);
+  let r = rng() * sum;
+  for (const x of list) if ((r -= x.w) < 0) return x;
+  return list[list.length - 1];
+}
+
+/** Время от времени на зоне что-то случается — висит, пока не ответишь. */
+export function spawnEvent(p: Player, now: number, rng: Rng, where: 'any' | 'yard' = 'any') {
+  if (p.event && p.event.until <= now) p.event = null;
+  if (where === 'any' && (p.event || now < p.eventAt)) return;
+  const pool = EVENTS.filter((e) => e.where === 'any' || e.where === where);
+  const ev = pool[Math.floor(rng() * pool.length)];
+  p.event = { id: ev.id, until: now + EVENT_TIMING.ttlMin * MIN };
+  const gap = EVENT_TIMING.minGapMin + rng() * (EVENT_TIMING.maxGapMin - EVENT_TIMING.minGapMin);
+  p.eventAt = now + gap * MIN;
+}
+
+export interface Applied {
+  money: number;
+  butts: number;
+  gold: number;
+  xp: number;
+  authority: number;
+  energy: number;
+  hp: number;
+  item: string | null;
+  levelUps: number;
+}
+
+function applyEffects(p: Player, e: Effects, now: number, rng: Rng): Applied {
+  const max = stats(p, now);
+  const out: Applied = { money: 0, butts: 0, gold: 0, xp: 0, authority: 0, energy: 0, hp: 0, item: null, levelUps: 0 };
+  if (e.money) {
+    out.money = Math.max(-p.money, Math.round(e.money * ration(p)));
+    p.money += out.money;
+  }
+  if (e.butts) {
+    out.butts = Math.max(-p.butts, e.butts);
+    p.butts += out.butts;
+  }
+  if (e.gold) {
+    out.gold = e.gold;
+    p.gold += e.gold;
+  }
+  if (e.authority) {
+    out.authority = Math.max(-p.authority, e.authority);
+    p.authority += out.authority;
+  }
+  if (e.energy) {
+    out.energy = e.energy;
+    p.energy = Math.max(0, p.energy + e.energy); // сверх максимума — можно, как с чифиром
+  }
+  if (e.hp) {
+    const before = p.hp;
+    p.hp = Math.max(1, Math.min(max.maxHp, Math.round(p.hp + e.hp * max.maxHp)));
+    p.hpAt = now;
+    out.hp = p.hp - before;
+  }
+  if (e.item) {
+    out.item = rollConsumable(rng);
+    giveItem(p, out.item);
+  }
+  if (e.xp) {
+    out.xp = e.xp;
+    out.levelUps = addXp(p, e.xp, now);
+  }
+  return out;
+}
+
+export function answerEvent(p: Player, choice: number, now: number, rng: Rng) {
+  if (!p.event || p.event.until <= now) {
+    p.event = null;
+    throw new GameError('Момент упущен');
+  }
+  const ev = eventById.get(p.event.id);
+  const opt = ev?.options[choice];
+  if (!ev || !opt) throw new GameError('Нет такого ответа');
+  const cost = opt.cost ?? {};
+  const money = Math.round((cost.money ?? 0) * ration(p));
+  if (p.money < money || p.butts < (cost.butts ?? 0) || p.gold < (cost.gold ?? 0)) throw new GameError('Не на что');
+  p.money -= money;
+  p.butts -= cost.butts ?? 0;
+  p.gold -= cost.gold ?? 0;
+  p.event = null;
+  const o = pickWeighted(opt.outcomes, rng);
+  const got = applyEffects(p, o, now, rng);
+  return { text: o.text, who: ev.who, name: ev.name, ...got };
+}
+
+/** Прогулка по двору: случай прямо сейчас (раз в полчаса), без энергии. */
+export function yardWalk(p: Player, now: number, rng: Rng) {
+  if (p.yardAt + EVENT_TIMING.yardCooldownMin * MIN > now) throw new GameError('Прогулка уже была — погоди');
+  p.yardAt = now;
+  const keepAt = p.eventAt;
+  spawnEvent(p, now, rng, 'yard');
+  p.eventAt = keepAt;
+  return { id: p.event!.id };
+}
+
+// --- Побег ----------------------------------------------------------------------------
+
+export function escapeStart(p: Player, now: number) {
+  if (p.escape.run) throw new GameError('Ты уже в бегах');
+  if (p.escape.cdUntil > now) throw new GameError('Сидишь в ШИЗО');
+  if (p.level < 3) throw new GameError('Побег — с 3 уровня. Сначала осмотрись');
+  spendEnergy(p, ESCAPE.energy, now);
+  p.escape.run = { stage: 0, at: now };
+  return { stage: 0 };
+}
+
+/** Этап побега: quality — насколько точно сыграл мини-игру (0..1). */
+export function escapeStep(p: Player, quality: number, now: number, rng: Rng) {
+  const run = p.escape.run;
+  if (!run) throw new GameError('Ты не в бегах');
+  const st = ESCAPE_STAGES[run.stage];
+  const q = Math.max(0, Math.min(1, Number(quality) || 0));
+  const agi = Math.min(0.1, p.agi * 0.002);
+  const chance = st.pass ? Math.min(0.97, st.pass + q * ESCAPE.qualityBonus + agi) : 0;
+  if (rng() < chance) {
+    run.stage += 1;
+    return { passed: true, stage: run.stage, caught: false as const };
+  }
+  return { passed: false, ...escapeEnd(p, true, now, rng) };
+}
+
+/** Конец побега: пойман (ШИЗО, побои) или вернулся сам (меньше награды). */
+export function escapeEnd(p: Player, caught: boolean, now: number, rng: Rng) {
+  const run = p.escape.run;
+  if (!run) throw new GameError('Ты не в бегах');
+  p.escape.run = null;
+  const stages = run.stage;
+  p.escape.best = Math.max(p.escape.best, stages);
+  const r = escapeReward(p.level, stages);
+  const k = caught ? 1 : ESCAPE.bailShare;
+  const reward = applyEffects(p, { xp: Math.round(r.xp * k), authority: Math.round(r.authority * k), gold: caught ? r.gold : 0, item: r.item && caught }, now, rng);
+  const money = Math.round(r.money * k);
+  p.money += money;
+  reward.money = money;
+  if (caught) {
+    const max = stats(p, now).maxHp;
+    p.hp = Math.max(1, Math.min(p.hp, Math.round(max * 0.4)));
+    p.hpAt = now;
+    p.escape.cdUntil = now + ESCAPE.cooldownMin * MIN;
+    log(p, now, `🏃 Побег: дошёл до «${ESCAPE_STAGES[Math.min(stages, ESCAPE_STAGES.length - 1)].name}». Поймали — ШИЗО`);
+  } else {
+    p.escape.cdUntil = now + ESCAPE.bailCooldownMin * MIN;
+  }
+  return { caught, stage: stages, reward };
+}
+
+// --- Санчасть ---------------------------------------------------------------------------
+
+export function medBed(p: Player, now: number) {
+  const max = stats(p, now).maxHp;
+  if (p.hp >= max) throw new GameError('Лепила: «Здоров — иди работай»');
+  if (p.medBedAt + MEDIC.bedCooldownMin * MIN > now) throw new GameError('Койка занята');
+  p.medBedAt = now;
+  const before = p.hp;
+  p.hp = Math.min(max, p.hp + Math.round(max * MEDIC.bedHeal));
+  p.hpAt = now;
+  return { hp: p.hp - before };
+}
+
+export function medShot(p: Player, now: number) {
+  const max = stats(p, now).maxHp;
+  if (p.hp >= max) throw new GameError('Ты и так здоров');
+  spend(p, MEDIC.shotPerLevel * p.level, 'money');
+  const before = p.hp;
+  p.hp = Math.min(max, p.hp + Math.round(max * MEDIC.shotHeal));
+  p.hpAt = now;
+  return { hp: p.hp - before };
+}
+
+/** Справка «освобождение от работ»: раз в день, как повезёт. */
+export function medNote(p: Player, now: number, rng: Rng) {
+  const day = dayKey(now);
+  if (p.noteDay === day) throw new GameError('Сегодня уже просил');
+  p.noteDay = day;
+  if (rng() < MEDIC.noteChance) {
+    p.energy += MEDIC.noteEnergy;
+    return { ok: true, energy: MEDIC.noteEnergy };
+  }
+  return { ok: false, energy: 0 };
 }

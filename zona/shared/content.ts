@@ -184,7 +184,10 @@ export const BOSSES: Boss[] = [
 ];
 
 // Обустройство хаты: мебель видна в сцене камеры и даёт постоянные бонусы.
-export type Spot = 'bed' | 'table' | 'wall' | 'tech' | 'floor' | 'window' | 'corner';
+// В каждом месте — лестница улучшений: следующую ступень можно купить, только когда есть предыдущая.
+// Бонусы всех купленных ступеней складываются, а в сцене стоит выбранная (по умолчанию — лучшая),
+// или ничего — голые стены тоже стиль.
+export type Spot = 'bed' | 'wall' | 'light' | 'tech' | 'table' | 'floor' | 'window' | 'corner' | 'sport' | 'pet';
 
 export interface Furniture extends Bonus {
   id: string;
@@ -198,32 +201,110 @@ export interface Furniture extends Bonus {
 
 export const SPOT_NAMES: Record<Spot, string> = {
   bed: 'Шконка',
-  table: 'Стол',
   wall: 'Стена',
+  light: 'Свет',
   tech: 'Техника',
+  table: 'Стол',
   floor: 'Пол',
   window: 'Окно',
   corner: 'Угол',
+  sport: 'Спорт',
+  pet: 'Живность',
 };
 
-// Внутри одного места более поздняя вещь — апгрейд: в сцене рисуется лучшая из купленных.
+/** Что стоит в месте, пока ничего не куплено. */
+export const SPOT_BARE: Record<Spot, string> = {
+  bed: 'Голые пружины',
+  wall: 'Облезлая штукатурка',
+  light: 'Лампочка на шнуре',
+  tech: 'Тишина',
+  table: 'Пусто',
+  floor: 'Голые доски',
+  window: 'Решётка',
+  corner: 'Паутина',
+  sport: 'Отжимания от пола',
+  pet: 'Только ворона за окном',
+};
+
 export const FURNITURE: Furniture[] = [
   { id: 'f_mattress', name: 'Ватный матрас', emoji: '🛏️', spot: 'bed', minLevel: 1, price: 400, currency: 'money', hp: 20 },
   { id: 'f_blanket', name: 'Шерстяное одеяло', emoji: '🧶', spot: 'bed', minLevel: 5, price: 3500, currency: 'money', hp: 50 },
-  { id: 'f_bed_vip', name: 'Шконка с периной', emoji: '👑', spot: 'bed', minLevel: 5, price: 150, currency: 'gold', hp: 100, energy: 10 },
+  { id: 'f_featherbed', name: 'Перина с подушками', emoji: '🪶', spot: 'bed', minLevel: 9, price: 12000, currency: 'money', hp: 70, energy: 5 },
+  { id: 'f_bed_vip', name: 'Шконка с балдахином', emoji: '👑', spot: 'bed', minLevel: 12, price: 150, currency: 'gold', hp: 100, energy: 10 },
+
+  { id: 'f_calendar', name: 'Календарь с красоткой', emoji: '📅', spot: 'wall', minLevel: 1, price: 250, currency: 'money', energy: 5 },
+  { id: 'f_poster', name: 'Плакат с певицей', emoji: '🎤', spot: 'wall', minLevel: 3, price: 900, currency: 'money', energy: 3, money: 2 },
+  { id: 'f_carpet', name: 'Ковёр на стену', emoji: '🟥', spot: 'wall', minLevel: 5, price: 3000, currency: 'money', def: 5, hp: 20 },
+  { id: 'f_carpet_silk', name: 'Персидский ковёр', emoji: '🧿', spot: 'wall', minLevel: 9, price: 11000, currency: 'money', def: 6, hp: 30 },
+  { id: 'f_icons', name: 'Иконостас', emoji: '🖼️', spot: 'wall', minLevel: 12, price: 20000, currency: 'money', crit: 3, def: 5 },
+  { id: 'f_painting', name: 'Картина в золотой раме', emoji: '🖼', spot: 'wall', minLevel: 16, price: 120, currency: 'gold', crit: 3, money: 8 },
+
+  { id: 'f_newspaper', name: 'Абажур из газеты', emoji: '📰', spot: 'light', minLevel: 2, price: 300, currency: 'money', energy: 3 },
+  { id: 'f_shade', name: 'Тканевый абажур', emoji: '🏮', spot: 'light', minLevel: 6, price: 2500, currency: 'money', energy: 5, money: 2 },
+  { id: 'f_garland', name: 'Гирлянда', emoji: '✨', spot: 'light', minLevel: 9, price: 7000, currency: 'money', money: 4, crit: 1 },
+  { id: 'f_chandelier', name: 'Хрустальная люстра', emoji: '💎', spot: 'light', minLevel: 13, price: 90, currency: 'gold', money: 10, energy: 10 },
+
+  { id: 'f_radio', name: 'Радиоприёмник', emoji: '📻', spot: 'tech', minLevel: 3, price: 2000, currency: 'money', energy: 10 },
+  { id: 'f_tv', name: 'Пузатый телевизор', emoji: '📺', spot: 'tech', minLevel: 5, price: 6000, currency: 'money', energy: 15, money: 3 },
+  { id: 'f_lcd', name: 'Плоский телевизор', emoji: '🖥️', spot: 'tech', minLevel: 10, price: 22000, currency: 'money', energy: 20, money: 6 },
+  { id: 'f_plasma', name: 'Гигантская плазма', emoji: '📡', spot: 'tech', minLevel: 14, price: 250, currency: 'gold', energy: 30, money: 12, crit: 2 },
+  { id: 'f_console', name: 'Плазма с приставкой', emoji: '🎮', spot: 'tech', minLevel: 20, price: 400, currency: 'gold', energy: 40, money: 15, crit: 3 },
+
   { id: 'f_tumba', name: 'Тумбочка', emoji: '🗄️', spot: 'table', minLevel: 2, price: 700, currency: 'money', money: 5 },
   { id: 'f_table', name: 'Стол с чифирбаком', emoji: '🫖', spot: 'table', minLevel: 6, price: 5000, currency: 'money', money: 10, energy: 5 },
-  { id: 'f_calendar', name: 'Календарь с красоткой', emoji: '📅', spot: 'wall', minLevel: 1, price: 250, currency: 'money', energy: 5 },
-  { id: 'f_carpet', name: 'Ковёр на стену', emoji: '🟥', spot: 'wall', minLevel: 5, price: 3000, currency: 'money', def: 5, hp: 20 },
-  { id: 'f_icons', name: 'Иконостас', emoji: '🖼️', spot: 'wall', minLevel: 10, price: 9000, currency: 'money', crit: 3, def: 5 },
-  { id: 'f_radio', name: 'Радиоприёмник', emoji: '📻', spot: 'tech', minLevel: 3, price: 2000, currency: 'money', energy: 10 },
-  { id: 'f_tv', name: 'Телевизор', emoji: '📺', spot: 'tech', minLevel: 5, price: 120, currency: 'gold', energy: 20, money: 5 },
+  { id: 'f_samovar', name: 'Стол с самоваром', emoji: '🍯', spot: 'table', minLevel: 12, price: 18000, currency: 'money', money: 12, energy: 8, hp: 20 },
+
   { id: 'f_rug', name: 'Половик', emoji: '🟫', spot: 'floor', minLevel: 2, price: 350, currency: 'money', def: 2 },
+  { id: 'f_floorcarpet', name: 'Ковёр на пол', emoji: '🧶', spot: 'floor', minLevel: 7, price: 4500, currency: 'money', def: 4, hp: 20 },
+  { id: 'f_bearskin', name: 'Шкура медведя', emoji: '🐻', spot: 'floor', minLevel: 12, price: 100, currency: 'gold', def: 8, hp: 40 },
+
   { id: 'f_curtains', name: 'Занавески', emoji: '🪟', spot: 'window', minLevel: 4, price: 1200, currency: 'money', money: 3 },
   { id: 'f_plant', name: 'Цветок на окне', emoji: '🪴', spot: 'window', minLevel: 8, price: 6000, currency: 'money', hp: 30, money: 5 },
-  { id: 'f_fridge', name: 'Холодильник', emoji: '🧊', spot: 'corner', minLevel: 12, price: 15000, currency: 'money', hp: 40, energy: 10 },
-  { id: 'f_aquarium', name: 'Аквариум', emoji: '🐠', spot: 'corner', minLevel: 6, price: 200, currency: 'gold', money: 15, crit: 3 },
+  { id: 'f_drapes', name: 'Бархатные шторы', emoji: '🎭', spot: 'window', minLevel: 12, price: 16000, currency: 'money', money: 8, hp: 20 },
+
+  { id: 'f_stool', name: 'Табурет с тазиком', emoji: '🪣', spot: 'corner', minLevel: 2, price: 300, currency: 'money', hp: 10 },
+  { id: 'f_aquarium', name: 'Аквариум', emoji: '🐠', spot: 'corner', minLevel: 6, price: 7000, currency: 'money', money: 10, crit: 2 },
+  { id: 'f_fridge', name: 'Холодильник «ЗИЛ»', emoji: '🧊', spot: 'corner', minLevel: 11, price: 15000, currency: 'money', hp: 40, energy: 10 },
+  { id: 'f_bar', name: 'Мини-бар', emoji: '🍾', spot: 'corner', minLevel: 16, price: 180, currency: 'gold', money: 12, energy: 15 },
+
+  { id: 'f_dumbbells', name: 'Гантели из бутылок', emoji: '🏋️', spot: 'sport', minLevel: 3, price: 500, currency: 'money', atk: 2 },
+  { id: 'f_bench', name: 'Скамья для жима', emoji: '🪑', spot: 'sport', minLevel: 8, price: 5000, currency: 'money', atk: 5, hp: 20 },
+  { id: 'f_bag', name: 'Боксёрская груша', emoji: '🥊', spot: 'sport', minLevel: 13, price: 14000, currency: 'money', atk: 8, crit: 2 },
+  { id: 'f_gym', name: 'Тренажёр «Качалка»', emoji: '💪', spot: 'sport', minLevel: 18, price: 150, currency: 'gold', atk: 12, hp: 50 },
+
+  { id: 'f_roach', name: 'Таракан Борька', emoji: '🪳', spot: 'pet', minLevel: 1, price: 100, currency: 'money', crit: 1 },
+  { id: 'f_cat', name: 'Кот Васька', emoji: '🐈', spot: 'pet', minLevel: 7, price: 4000, currency: 'money', hp: 20, money: 3 },
+  { id: 'f_parrot', name: 'Попугай Кеша', emoji: '🦜', spot: 'pet', minLevel: 11, price: 60, currency: 'gold', money: 6, energy: 5 },
 ];
+
+export const SPOTS = Object.keys(SPOT_NAMES) as Spot[];
+
+/** Уют хаты: сумма ступеней всех купленных вещей — для рейтинга и в гостях. */
+export function comfortOf(owned: string[]): number {
+  let c = 0;
+  for (const spot of SPOTS) {
+    FURNITURE.filter((f) => f.spot === spot).forEach((f, i) => {
+      if (owned.includes(f.id)) c += i + 1;
+    });
+  }
+  return c;
+}
+
+/** Что показать в сцене: выбранное игроком, иначе лучшее купленное по каждому месту. */
+export function cellView(owned: string[], show: Partial<Record<Spot, string>> = {}): string[] {
+  const out: string[] = [];
+  for (const spot of SPOTS) {
+    const pick = show[spot];
+    if (pick === 'none') continue;
+    if (pick && owned.includes(pick)) {
+      out.push(pick);
+      continue;
+    }
+    const best = FURNITURE.filter((f) => f.spot === spot && owned.includes(f.id)).pop();
+    if (best) out.push(best.id);
+  }
+  return out;
+}
 
 // Общий босс для всего сервера: его бьют все игроки онлайн, награду делят по урону.
 export const WORLD_BOSS = {

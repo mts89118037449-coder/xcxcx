@@ -63,6 +63,15 @@ export interface PlayerView {
   worldHitReadyAt: number;
   shieldUntil: number;
   refCount: number;
+  cell: string[];
+  cellShow: Record<string, string>;
+  comfort: number;
+  event: { id: string; until: number } | null;
+  yardReadyAt: number;
+  escape: { cdUntil: number; stage: number | null; best: number };
+  medBedReadyAt: number;
+  noteReady: boolean;
+  snoopsLeft: number;
   perks: string[];
   belt: string[];
   stash: Record<string, number>;
@@ -141,10 +150,14 @@ export interface VisitView {
   build: number;
   skin: number;
   furniture: string[];
+  comfort: number;
+  equipped: Look['equipped'];
+  str: number;
   interior: { wall: string; floor: string };
   tattoos: string[];
   clan: { id: number; name: string; tag: string } | null;
   respectedToday: boolean;
+  giftedToday: boolean;
   online: boolean;
 }
 

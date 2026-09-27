@@ -6,6 +6,7 @@
 
 import type { ReactNode } from 'react';
 import { FURNITURE, interiorById, type Spot } from '../../shared/content.ts';
+import { BearSkin, Canopy, Drapes, Featherbed, FloorCarpet, Garland, Light, MiniBar, Painting, Pet, Poster, Samovar, SilkCarpet, Sport, Stool, WallTv } from './CellDecor.tsx';
 
 const W = 360;
 const H = 280;
@@ -163,7 +164,7 @@ function bestBySpot(owned: string[]): Partial<Record<Spot, string>> {
 
 /** Где стоит техника: на столе, на тумбочке или на полу. */
 function techPos(f: Partial<Record<Spot, string>>) {
-  if (f.table === 'f_table') return { x: 252, y: 158 };
+  if (f.table === 'f_table' || f.table === 'f_samovar') return { x: 252, y: 158 };
   if (f.table === 'f_tumba') return { x: 264, y: 158 };
   return { x: 266, y: 206 };
 }
@@ -241,6 +242,8 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
         <rect x={246} y={123} width={96} height={2} fill="#000" opacity={0.35} />
         {!s.night && <path d="M262,112 L326,112 L250,236 L120,236 Z" fill="url(#sc-shaft)" />}
       </g>
+      {f.pet === 'f_parrot' && <Pet kind="f_parrot" />}
+      {f.window === 'f_drapes' && <Drapes />}
       {(f.window === 'f_curtains' || f.window === 'f_plant') && (
         <g>
           <rect x={244} y={38} width={100} height={3} fill="#3b2a1c" />
@@ -249,7 +252,7 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
           <path d="M250,44 C254,70 253,100 256,122 M338,44 C334,70 335,100 332,122" stroke="#000" strokeWidth={1.4} opacity={0.3} fill="none" />
         </g>
       )}
-      {f.window === 'f_plant' && (
+      {(f.window === 'f_plant' || f.window === 'f_drapes') && (
         <g transform="translate(314 118)">
           <path d="M-6,0 L6,0 L4.5,-9 L-4.5,-9 Z" fill="#8c4a2c" />
           <path d="M0,-9 C-7,-16 -9,-22 -6,-27 M0,-9 C2,-18 7,-22 10,-24 M0,-9 C0,-17 -1,-24 0,-30" stroke="#2f5a2c" strokeWidth={2} fill="none" />
@@ -259,7 +262,13 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
         </g>
       )}
 
+      {f.light === 'f_garland' && <Garland />}
+      {(f.tech === 'f_lcd' || f.tech === 'f_plasma' || f.tech === 'f_console') && <WallTv kind={f.tech} />}
       {/* Над шконкой */}
+      {f.wall === 'f_poster' && <Poster />}
+      {f.wall === 'f_carpet_silk' && <SilkCarpet />}
+      {f.wall === 'f_painting' && <Painting />}
+      {f.bed === 'f_bed_vip' && <Canopy />}
       {f.wall === 'f_calendar' && (
         <g transform="translate(62 50)">
           <rect x={1.5} y={1.5} width={34} height={46} fill="#000" opacity={0.3} />
@@ -328,6 +337,7 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
             <path d="M24,148 C32,151 44,151 54,148" stroke="#9b9585" strokeWidth={1} fill="none" />
           </g>
         )}
+        {f.bed === 'f_featherbed' && <Featherbed />}
         {(f.bed === 'f_blanket' || f.bed === 'f_bed_vip') && (
           <g>
             <path d="M66,144 L160,144 L161,176 C150,179 90,179 64,176 Z" fill={f.bed === 'f_bed_vip' ? '#5e1320' : '#51553f'} stroke="#1a1a12" strokeWidth={0.8} />
@@ -346,6 +356,8 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
         )}
       </g>
 
+      {f.floor === 'f_floorcarpet' && <FloorCarpet />}
+      {f.floor === 'f_bearskin' && <BearSkin />}
       {f.floor === 'f_rug' && (
         <g>
           <ellipse cx={196} cy={260} rx={86} ry={15} fill="#5e4326" />
@@ -355,6 +367,8 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
         </g>
       )}
 
+      {f.corner === 'f_stool' && <Stool />}
+      {f.corner === 'f_bar' && <MiniBar />}
       {f.corner === 'f_fridge' && (
         <g transform="translate(322 126)">
           <rect x={-3} y={100} width={42} height={12} fill="#000" opacity={0.4} filter="url(#sc-blur-s)" />
@@ -394,7 +408,7 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
           <rect width={44} height={50} filter="url(#sc-grime)" opacity={0.4} />
         </g>
       )}
-      {f.table === 'f_table' && (
+      {(f.table === 'f_table' || f.table === 'f_samovar') && (
         <g transform="translate(244 186)">
           <rect x={0} y={44} width={80} height={8} fill="#000" opacity={0.45} filter="url(#sc-blur-s)" />
           <rect width={80} height={7} fill="url(#sc-wood)" stroke="#2a1a0e" strokeWidth={1} />
@@ -410,6 +424,7 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
           <rect x={30} y={-4} width={16} height={4} fill="#d8cfb8" transform="rotate(-6 38 -2)" />
         </g>
       )}
+      {f.table === 'f_samovar' && <Samovar />}
       {f.tech === 'f_radio' && (
         <g transform={`translate(${tech.x} ${tech.y})`}>
           <rect width={38} height={28} rx={3} fill="url(#sc-wood)" stroke="#1a100a" strokeWidth={1} />
@@ -429,6 +444,7 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
           <circle cx={36} cy={18} r={2.2} fill="#bdb49a" />
         </g>
       )}
+      {f.pet === 'f_cat' && <Pet kind="f_cat" />}
     </>
   );
 }
@@ -439,11 +455,9 @@ function CellLive({ furniture }: { furniture: string[] }) {
   const night = sky(new Date().getHours()).night;
   return (
     <>
-      {/* Лампа на шнуре */}
-      <path d="M232,0 L232,34" stroke="#111" strokeWidth={1.2} />
-      <rect x={228.5} y={32} width={7} height={6} rx={1} fill="#2a2a2a" />
-      <circle className="lamp-flicker" cx={232} cy={44} r={100} fill="url(#sc-lamp)" />
-      <circle className="lamp-flicker" cx={232} cy={43} r={5.5} fill="#fff5cf" />
+      {/* Свет: лампочка, абажуры или люстра */}
+      <Light kind={f.light} />
+      {f.sport && <Sport kind={f.sport} />}
       {/* Пыль в луче из окна */}
       {!night &&
         [0, 1, 2, 3, 4, 5].map((i) => (
@@ -469,6 +483,7 @@ function CellLive({ furniture }: { furniture: string[] }) {
         </text>
       )}
       {f.tech === 'f_tv' && <rect className="tv-screen" x={tech.x + 4} y={tech.y} width={26} height={24} rx={4} opacity={0.75} />}
+      {f.pet === 'f_roach' && <Pet kind="f_roach" />}
     </>
   );
 }

@@ -1,37 +1,86 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { VISIT } from '../shared/events.ts';
 import type { VisitView } from '../shared/types.ts';
 import { api, ApiError } from './api.ts';
 import { Stage } from './art/Stage.tsx';
 import { Face } from './art/sprites.tsx';
+import { itemLabel } from './Perks.tsx';
 import { fmt, useGame } from './game.tsx';
 
-/** Хата соседа: его отделка, мебель и он сам, плюс «уважить». */
+type Snoop =
+  | { outcome: 'caught'; hp: number; authority: number; by: 'host' | 'cat' | 'parrot' }
+  | { outcome: 'empty' }
+  | { outcome: 'item'; item: string }
+  | { outcome: 'butts'; butts: number }
+  | { outcome: 'money'; money: number };
+
+/** Хата соседа: его отделка, мебель и он сам. id = 0 — обход бараков: случайные хаты подряд. */
 export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
-  const { p, act, toast, busy } = useGame();
+  const { p, act, toast, busy, say } = useGame();
   const [v, setV] = useState<VisitView | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [seen, setSeen] = useState<number[]>([]);
+  const walk = id === 0;
 
-  useEffect(() => {
-    api.visit(id).then((r) => setV(r.visit)).catch((e) => setErr(e instanceof ApiError ? e.message : 'Ошибка'));
-  }, [id]);
+  const load = useCallback(
+    (target: number, skip: number[]) => {
+      setV(null);
+      setErr(null);
+      api
+        .visit(target, skip)
+        .then((r) => {
+          setV(r.visit);
+          setSeen((s) => [...s.slice(-8), r.visit.id]);
+        })
+        .catch((e) => setErr(e instanceof ApiError ? e.message : 'Ошибка'));
+    },
+    [],
+  );
+  useEffect(() => load(id, []), [id, load]);
 
   const respect = async () => {
-    if ((await act('respect', { id })) === null) return;
+    if ((await act('respect', { id: v!.id })) === null) return;
     toast(`Уважил ${v?.name}. +5 опыта`);
     setV((x) => (x ? { ...x, respectedToday: true, authority: x.authority + 1 } : x));
   };
+  const gift = async () => {
+    if ((await act('gift', { id: v!.id })) === null) return;
+    toast(`Подогрел хату: −${VISIT.giftButts} 🚬, +1 авторитета`);
+    setV((x) => (x ? { ...x, giftedToday: true, authority: x.authority + 2 } : x));
+  };
+  const snoop = async () => {
+    const r = await act<Snoop>('snoop', { id: v!.id });
+    if (!r) return;
+    const who = r.outcome === 'caught' && r.by === 'host' ? `sheet/face/${v!.face}` : 'sheet/cast/thin';
+    const text =
+      r.outcome === 'caught'
+        ? r.by === 'cat'
+          ? `Кот ${v!.name} заорал на весь барак. Хозяин прибежал и навешал. −${r.hp} ❤️, −${r.authority} 🎖️`
+          : r.by === 'parrot'
+            ? `Попугай заорал «ВОР-Р-Р! ВОР-Р-Р!». Прибежал хозяин. −${r.hp} ❤️, −${r.authority} 🎖️`
+            : `«Ты чё в моей хате забыл?!» — ${v!.name} застал тебя с поличным. −${r.hp} ❤️, −${r.authority} 🎖️`
+        : r.outcome === 'empty'
+          ? 'Перерыл всё — пусто. Хозяин бедный или хитрый.'
+          : r.outcome === 'item'
+            ? `Под матрасом — ${itemLabel(r.item)}. Твоё.`
+            : r.outcome === 'butts'
+              ? `В банке из-под чая — ${r.butts} 🚬. Прибрал.`
+              : `В носке заначка: ${fmt(r.money)} ₽. Тихо ушёл.`;
+    say({ who, name: r.outcome === 'caught' ? v!.name : 'Шмон по-тихому', text, options: [{ label: 'Ясно' }] });
+  };
 
+  const self = v?.id === p.id;
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
         {err && <div className="center muted">{err}</div>}
-        {!v && !err && <div className="center muted">Стучим в хату…</div>}
+        {!v && !err && <div className="center muted">{walk ? 'Идём по бараку…' : 'Стучим в хату…'}</div>}
         {v && (
           <>
             <div className="arena">
               <Stage
                 loc="cell"
-                look={{ equipped: {}, tattoos: v.tattoos, str: 10, face: v.face, build: v.build, skin: v.skin }}
+                look={{ equipped: v.equipped, tattoos: v.tattoos, str: v.str, face: v.face, build: v.build, skin: v.skin }}
                 mood="idle"
                 furniture={v.furniture}
                 interior={v.interior}
@@ -55,11 +104,24 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
             <div className="grid3" style={{ margin: '10px 0' }}>
               <div className="stat"><span>🎖️</span><b>{fmt(v.authority)}</b><small>авторитет</small></div>
               <div className="stat"><span>🥊</span><b>{v.wins}</b><small>побед</small></div>
-              <div className="stat"><span>🛋️</span><b>{v.furniture.length}</b><small>мебели</small></div>
+              <div className="stat"><span>🛋️</span><b>{v.comfort}</b><small>уют</small></div>
             </div>
-            {v.id !== p.id && (
-              <button className="btn btn-wide" disabled={busy || v.respectedToday} onClick={respect}>
-                {v.respectedToday ? 'Уже уважил сегодня' : '🤝 Уважить (+1 авторитета хозяину)'}
+            {!self && (
+              <div className="visit-acts">
+                <button className="btn" disabled={busy || v.respectedToday} onClick={respect}>
+                  {v.respectedToday ? '✓ Уважил' : '🤝 Уважить'}
+                </button>
+                <button className="btn btn-dark" disabled={busy || v.giftedToday || p.butts < VISIT.giftButts} onClick={gift}>
+                  {v.giftedToday ? '✓ Подогрел' : `🚬 Подогреть · ${VISIT.giftButts}`}
+                </button>
+                <button className="btn btn-red" disabled={busy || p.snoopsLeft <= 0} onClick={snoop}>
+                  🫳 Пошарить · {p.snoopsLeft}
+                </button>
+              </div>
+            )}
+            {walk && (
+              <button className="btn btn-wide" style={{ marginTop: 8 }} onClick={() => load(0, seen)}>
+                🚪 В следующую хату
               </button>
             )}
             <button className="btn btn-wide btn-dark" style={{ marginTop: 8 }} onClick={onClose}>

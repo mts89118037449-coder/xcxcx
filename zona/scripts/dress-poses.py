@@ -16,6 +16,8 @@ LEG_BAND = {'sit': 1.0, 'floor': 1.2}
 # докуда свисают руки ниже пояса (доля роста): в стойках руки у груди
 REACH = {'guard34': 0.0, 'lunge': 0.0, 'push': 0.0, 'crossed': 0.0}
 DEBUG = '--debug' in sys.argv
+ONLY_OUTFITS = '--outfits' in sys.argv  # перегенерировать только комплекты
+ONLY_POSE = next((a[7:] for a in sys.argv if a.startswith('--pose=')), None)
 
 STAND_H = np.asarray(Image.open(os.path.join(ROOT, 'pose', 'stand.png'))).shape[0]
 HEAD_H = int(STAND_H * 0.135)   # голова с шеей
@@ -89,7 +91,7 @@ def regions(pose):
                 feet=feet, boots=boots, box=(int(sy0), int(sy1), int(sx0), int(sx1)), top=int(top))
 
 
-def paint(R, mask, color, pattern=None, gloss=0.0, grow=2, keep=None):
+def paint(R, mask, color, pattern=None, gloss=0.0, grow=2, keep=None, detail=0.0):
     """Ткань поверх тела: без мышечного рельефа, с объёмом к краям и чуть шире силуэта.
     keep — части тела, которые должны остаться поверх ткани (голова, кисти)."""
     im = R['im']
@@ -118,6 +120,13 @@ def paint(R, mask, color, pattern=None, gloss=0.0, grow=2, keep=None):
     folds = ndimage.gaussian_filter(rng.random((H, W)), (2, 5))
     folds = (folds - folds.mean()) / (folds.std() + 1e-6)
     s = s * (1 + 0.05 * folds)
+    if detail:
+        # линии и светотень исходного рисунка проступают сквозь ткань: складки, контуры рук
+        base = im[..., :3].mean(2) / 255.0
+        hp = base - ndimage.gaussian_filter(base, 3)
+        # только настоящие тёмные линии рисунка (контуры рук, сгибы), без мышечного рельефа
+        lines = ndimage.gaussian_filter(np.clip(-hp - 0.12, 0, 0.3), 0.8)
+        s = s * (1 - detail * lines * 2.2)
     c = np.array(color, float)[None, None, :] * s[..., None]
     if pattern is not None:
         c = c * pattern[..., None]
@@ -183,6 +192,110 @@ def items(R):
         'feet_sneakers': paint(R, R['feet'] | (R['boots'] & ndimage.binary_dilation(R['feet'], iterations=8)), (70, 52, 36), keep=boot_keep, grow=3),
     }
     return {k: v for k, v in out.items() if v is not None}
+
+
+# --- Комплекты: одежда с листа комплектов, перенесённая на позы, которых на листе нет ---
+
+def _outfits():
+    """item → set из shared/content.ts (OUTFITS)."""
+    import re
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'shared', 'content.ts'), encoding='utf-8').read()
+    block = src[src.index('export const OUTFITS'):]
+    block = block[: block.index('};')]
+    return dict(re.findall(r"(\w+): \{ set: '(\w+)'", block))
+
+
+OUTFIT_SETS = _outfits()
+_outfit_cache = {}
+
+
+def _sample(set_name):
+    """Цвет и фактура верха, низа и обуви с картинки комплекта (стоя)."""
+    if set_name in _outfit_cache:
+        return _outfit_cache[set_name]
+    path = os.path.join(ROOT, 'outfit', set_name, 'stand.png')
+    a = np.asarray(Image.open(path).convert('RGBA')).astype(float)
+    alpha = a[..., 3] > 200
+    ys, xs = np.nonzero(alpha)
+    y0, y1 = ys.min(), ys.max()
+    h = y1 - y0
+
+    def band(f0, f1, wf=0.34):
+        r0, r1 = int(y0 + h * f0), int(y0 + h * f1)
+        cols = np.nonzero(alpha[r0:r1].any(0))[0]
+        cx = (cols.min() + cols.max()) / 2
+        half = (cols.max() - cols.min()) * wf / 2
+        c0, c1 = int(cx - half), int(cx + half)
+        patch = a[r0:r1, c0:c1, :3]
+        m = alpha[r0:r1, c0:c1]
+        lum = patch.mean(2)
+        # без контуров и кожи: только ткань
+        ok = m & (lum > 30)
+        col = np.median(patch[ok], axis=0) if ok.any() else np.array([80, 80, 80.0])
+        # пятнистая ли ткань (камуфляж): разброс оттенков внутри куска
+        spotty = False
+        if ok.sum() > 50:
+            px = patch[ok]
+            hue = px - px.mean(1, keepdims=True)
+            spotty = float(np.std(lum[ok]) / (lum[ok].mean() + 1e-6)) > 0.2 and float(np.abs(hue).mean()) > 6
+        return col, spotty
+
+    def skinlike(f0, f1):
+        # рукава: смотрим по краям фигуры на уровне плеч/локтей — кожа или ткань
+        r0, r1 = int(y0 + h * f0), int(y0 + h * f1)
+        sl = a[r0:r1][alpha[r0:r1]]
+        cols = np.nonzero(alpha[r0:r1].any(0))[0]
+        edge = np.zeros_like(alpha[r0:r1])
+        w = max(3, int((cols.max() - cols.min()) * 0.14))
+        edge[:, cols.min(): cols.min() + w] = True
+        edge[:, cols.max() - w: cols.max()] = True
+        px = a[r0:r1][edge & alpha[r0:r1]]
+        if not len(px):
+            return False
+        r, g, b = px[:, 0], px[:, 1], px[:, 2]
+        return float(((r > b + 18) & (r > 110)).mean()) > 0.45
+
+    top = band(0.2, 0.42)
+    low = band(0.62, 0.84, 0.5)
+    boot = band(0.94, 0.995, 0.8)
+    res = dict(top=top, low=low, boot=boot, sleeveless=skinlike(0.24, 0.4))
+    _outfit_cache[set_name] = res
+    return res
+
+
+def tile(tex, H, W):
+    th, tw = tex.shape
+    reps = (H // th + 1, W // tw + 1)
+    return np.tile(tex, reps)[:H, :W]
+
+
+def outfit_items(R):
+    out = {}
+    head, upper = R['head'], R['upper']
+    legs_all = R['legs'] | R['shorts']
+    H, W = R['body'].shape
+    for item, set_name in OUTFIT_SETS.items():
+        try:
+            smp = _sample(set_name)
+        except (FileNotFoundError, ValueError):
+            continue
+        tc, tsp = smp['top']
+        lc, lsp = smp['low']
+        bc, _ = smp['boot']
+        top_mask = R['torso'] if smp['sleeveless'] else upper
+        layers = [
+            paint(R, legs_all & ~R['boots'], tuple(lc), camo(R, 5) if lsp else None, keep=head | upper, grow=6, detail=1.0),
+            paint(R, R['boots'], tuple(bc), gloss=0.3, keep=head | upper, grow=3),
+            paint(R, top_mask, tuple(tc), camo(R, 7) if tsp else None, keep=head, grow=1 if smp["sleeveless"] else 4, detail=0.5),
+        ]
+        img = None
+        for l in layers:
+            if l is None:
+                continue
+            img = l if img is None else Image.alpha_composite(img, l)
+        if img is not None:
+            out['outfit_' + item] = img
+    return out
 
 
 # наколки: где на теле и какой рисунок (иконка с листа или простой узор)
@@ -292,12 +405,15 @@ def debug_map(R):
 def main():
     meta = {}
     for pose in POSES:
+        if ONLY_POSE and pose != ONLY_POSE:
+            continue
         R = regions(pose)
         d = os.path.join(ROOT, 'dress', pose)
         os.makedirs(d, exist_ok=True)
         if DEBUG:
             debug_map(R).save(os.path.join(d, '_map.png'))
-        for k, img in {**items(R), **tattoos(R)}.items():
+        layers = outfit_items(R) if ONLY_OUTFITS else {**items(R), **tattoos(R), **outfit_items(R)}
+        for k, img in layers.items():
             img.save(os.path.join(d, k + '.webp'), 'WEBP', quality=82, method=6)
         # голова (для шапки) и ступни (для тени) — доли картинки
         H, W = R['body'].shape
@@ -308,7 +424,11 @@ def main():
             'feet': [round(fx.min() / W, 4), round(fx.max() / W, 4)] if len(fx) else [0.3, 0.7],
         }
         print(pose, 'ok')
-    with open(os.path.join(ROOT, 'dress', 'meta.json'), 'w') as f:
+    path = os.path.join(ROOT, 'dress', 'meta.json')
+    if ONLY_POSE and os.path.exists(path):  # одна поза — дополняем старую разметку
+        with open(path) as f:
+            meta = {**json.load(f), **meta}
+    with open(path, 'w') as f:
         json.dump(meta, f)
 
 
