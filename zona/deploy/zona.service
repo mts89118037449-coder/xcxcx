@@ -1,0 +1,21 @@
+[Unit]
+Description=Zona — Telegram Mini App
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=zona
+Group=zona
+WorkingDirectory=__SRC__
+EnvironmentFile=/etc/zona.env
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server/index.ts
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/zona
+
+[Install]
+WantedBy=multi-user.target

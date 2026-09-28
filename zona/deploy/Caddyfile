@@ -1,0 +1,7 @@
+# HTTPS-сертификат Caddy получает и продлевает сам (нужны открытые порты 80 и 443).
+__DOMAIN__ {
+	encode zstd gzip
+	@art path /art/* /assets/*
+	header @art Cache-Control "public, max-age=604800"
+	reverse_proxy 127.0.0.1:__PORT__
+}

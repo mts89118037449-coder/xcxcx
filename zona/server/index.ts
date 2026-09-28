@@ -51,6 +51,19 @@ app.listen(port, async () => {
       await bot.call('setChatMenuButton', {
         menu_button: { type: 'web_app', text: 'Играть', web_app: { url: publicUrl } },
       });
+      // профиль бота: команды и описание — чтобы не настраивать руками в BotFather
+      await bot.call('setMyCommands', {
+        commands: [
+          { command: 'start', description: 'Играть' },
+          { command: 'paysupport', description: 'Помощь с оплатой' },
+          { command: 'terms', description: 'Условия покупок' },
+        ],
+      });
+      await bot.call('setMyShortDescription', { short_description: 'Тюремная RPG: авторитет, шмот, наколки, боссы, побег. Играй прямо в Telegram.' });
+      await bot.call('setMyDescription', {
+        description:
+          '🔒 Зона — тюремная RPG в Telegram.\n\nЗарабатывай авторитет, обустраивай хату, собирай шмот и наколки, бейся с сокамерниками и боссами, пробуй сбежать.\n\nЖми «Играть».',
+      });
       console.log(`Webhook: ${publicUrl}/tg/webhook`);
     } catch (e) {
       console.error('Не удалось настроить бота:', e);

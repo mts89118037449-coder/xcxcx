@@ -82,6 +82,27 @@ npm start              # сервер: API + webhook + статика на PORT 
 
 База лежит в `data/zona.db` (или в `DB_PATH`). Её нужно бэкапить: там игроки и история платежей.
 
+### Установка на свой сервер одной командой
+
+Ubuntu/Debian, от root. Скрипт `deploy/install.sh` ставит Node.js 22 и Caddy, забирает код, собирает фронтенд,
+кладёт секреты в `/etc/zona.env` (права 600), запускает сервис `zona` (systemd), получает HTTPS-сертификат
+и ставит ночной бэкап базы в `/var/lib/zona/backups` (14 дней). Домен по умолчанию —
+`<ip-через-дефисы>.sslip.io`: он бесплатно указывает на IP сервера, и на него выдаётся настоящий сертификат,
+который требует Telegram. Свой домен — через `DOMAIN=...`.
+
+```bash
+# репозиторий приватный: нужен токен GitHub с доступом только на чтение (Contents: Read-only)
+export GIT_TOKEN=github_pat_...
+curl -fsSL -H "Authorization: Bearer $GIT_TOKEN" \
+  https://raw.githubusercontent.com/mts89118037449-coder/xcxcx/claude/tyuryaga-telegram-port-jignpo/zona/deploy/install.sh -o install.sh
+BOT_TOKEN='токен от BotFather' ADMIN_IDS=<твой telegram id> DOMAIN=<ip-через-дефисы>.sslip.io bash install.sh
+```
+
+Обновление — тот же `bash /opt/zona/zona/deploy/install.sh` (с `GIT_TOKEN`): токен бота и админы берутся из
+`/etc/zona.env`. Логи: `journalctl -u zona -f`. При старте сервер сам ставит webhook, кнопку «Играть»,
+команды и описание бота. Админам из `ADMIN_IDS` доступна `/stats`, приходят уведомления о покупках и
+обращения из `/paysupport`.
+
 ### Локальная разработка без Telegram
 
 ```bash

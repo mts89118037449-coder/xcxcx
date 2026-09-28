@@ -560,11 +560,15 @@ export function createApp(opts: AppOptions) {
 
     const msg = u.message;
     if (!msg) return;
+    const notifyAdmins = (text: string) =>
+      Promise.all(opts.adminIds.map((id) => bot?.call('sendMessage', { chat_id: id, text }).catch(() => null)));
     if (msg.successful_payment) {
       const sp = msg.successful_payment;
       const { pack, duplicate } = creditPayment(sp.telegram_payment_charge_id, sp.invoice_payload, sp.currency, sp.total_amount, t);
       if (!duplicate) {
         await bot?.call('sendMessage', { chat_id: msg.chat.id, text: `✅ Зачислено: ${pack.title}. Возвращайся в игру!` });
+        const who = msg.from ? `${msg.from.first_name ?? ''} (id ${msg.from.id}${msg.from.username ? `, @${msg.from.username}` : ''})` : '?';
+        await notifyAdmins(`💰 Покупка: ${pack.title} — ${sp.total_amount} ⭐\nОт: ${who}`);
       }
       return;
     }
@@ -585,7 +589,13 @@ export function createApp(opts: AppOptions) {
         { reply_markup: { inline_keyboard: [[{ text: '▶️ Играть', web_app: { url: opts.webAppUrl } }]] } },
       );
     } else if (cmd === '/paysupport') {
-      await reply('По вопросам оплаты напиши сюда же с описанием проблемы и датой покупки — ответим в течение 24 часов.');
+      if (args.length && msg.from) {
+        // обращение уходит админам: id, имя и текст
+        await notifyAdmins(`🆘 Поддержка от ${msg.from.first_name ?? ''} (id ${msg.from.id}${msg.from.username ? `, @${msg.from.username}` : ''}):\n${args.join(' ')}`);
+        await reply('Передали администрации. Ответим в течение 24 часов.');
+      } else {
+        await reply('Опиши проблему одной строкой после команды, например:\n/paysupport купил золото 12.10, не пришло');
+      }
     } else if (cmd === '/terms') {
       await reply('Покупки — внутриигровая валюта и статусы без денежной ценности вне игры. Возврат — через /paysupport.');
     } else if (cmd === '/stats' && msg.from && opts.adminIds.includes(msg.from.id)) {
