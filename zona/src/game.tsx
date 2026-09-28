@@ -42,6 +42,7 @@ export interface Game {
   openShells(): void;
   openPlace(place: Place): void;
   openEvent(id?: string): void;
+  openMini(kind: 'cards' | 'race' | 'brew'): void;
 }
 
 export const GameCtx = createContext<Game | null>(null);

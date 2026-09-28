@@ -1,3 +1,4 @@
+import { Leisure } from './Leisure.tsx';
 import { BALANCE, GOLD_PRICES } from '../shared/content.ts';
 import { fmt, timeLeft, useGame } from './game.tsx';
 
@@ -50,16 +51,8 @@ export function EnergySheet({ onClose }: { onClose(): void }) {
         </div>
         <div className="muted small center" style={{ marginTop: 10 }}>У тебя {fmt(p.gold)} 🪙</div>
         <div className="section" style={{ marginTop: 14 }}>Пока ждёшь — бесплатно</div>
-        <div className="free-list">
-          <button onClick={() => { onClose(); go('zone'); }}>
-            <span>🚬</span>Бычки на зоне
-          </button>
-          <button onClick={() => { onClose(); openPlace('church'); }}>
-            <span>⛪</span>Церковь
-          </button>
-          <button onClick={() => { onClose(); openPlace('pullups'); }}>
-            <span>💪</span>Турник
-          </button>
+        <div onClick={onClose}>
+          <Leisure />
         </div>
       </div>
     </div>

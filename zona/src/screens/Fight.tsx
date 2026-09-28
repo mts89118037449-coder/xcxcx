@@ -34,23 +34,8 @@ export function Fight() {
   const pvp = usePvp();
   const openEvent = useEvent();
 
-  const boss = async (bossId: string, name: string) => {
-    const r = await act<FightResult & { reward: { money: number; xp: number; authority: number; gold: number; drop: string | null; item: string | null }; used: string[] }>('boss', { bossId });
-    if (!r) return;
-    const drop = r.reward.drop ? itemById.get(r.reward.drop) : null;
-    showFight({
-      title: name,
-      replay: r,
-      enemy: { name, npc: bossId, ...BOSS_LOOKS[bossId] },
-      lines: r.win
-        ? [
-            `+${fmt(r.reward.money)} ₽ · +${r.reward.xp} опыта · +${r.reward.authority} авторитета`,
-            ...(r.reward.gold ? [`+${r.reward.gold} 🪙`] : []),
-            ...(drop ? [`🎁 Трофей: ${drop.emoji} ${drop.name}!`] : []),
-            ...itemLines(r.used, r.reward.item),
-          ]
-        : [`+${r.reward.xp} опыта за смелость`, ...itemLines(r.used, null)],
-    });
+  const boss = async (bossId: string, _name: string) => {
+    await act('boss', { bossId }); // бой откроется сам — он пошаговый
   };
 
   const hitWorld = async () => {
@@ -159,17 +144,8 @@ export function Fight() {
 
 /** Наезд на сокамерника — вызывается и с кнопки, и из диалога во дворе. */
 export function usePvp() {
-  const { act, showFight } = useGame();
+  const { act } = useGame();
   return async () => {
-      const r = await act<FightResult & { enemy: string; enemyLook: Look; loot: number; authority: number; xp: number; item: string | null; used: string[] }>('pvp');
-      if (!r) return;
-      showFight({
-        title: `Наезд: ${r.enemy}`,
-        replay: r,
-        enemy: { name: r.enemy, look: r.enemyLook },
-        lines: r.win
-          ? [`Отжал ${fmt(r.loot)} ₽`, `+${r.authority} авторитета`, `+${r.xp} опыта`, ...itemLines(r.used, r.item)]
-          : [`${r.authority} авторитета`, 'Отлежись и возвращайся', ...itemLines(r.used, null)],
-      });
+    await act('pvp');
   };
 }

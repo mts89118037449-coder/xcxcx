@@ -1,5 +1,7 @@
-// Бой: удары по очереди, перки с перезарядкой и одноразовые расходники.
-// Чистая функция от бойцов и rng — сервер решает исход, клиент проигрывает запись ходов.
+// Бой: пошаговый, с сохраняемым состоянием. Игрок на своём ходу выбирает: обычный удар,
+// активный перк (у каждого — перезарядка в ходах) или расходник с пояса (не тратит ход).
+// Противник ходит сам. Пассивные перки работают всегда. Автобой — тот же движок,
+// только ходы за игрока выбирает ИИ. Всё решает сервер, клиент проигрывает запись.
 import { consumableById, perkById, PERKS, type Consumable, type Perk, type PerkKind } from '../shared/perks.ts';
 
 export type Rng = () => number;
@@ -40,15 +42,19 @@ export interface FightResult {
   lootBonus: number;
 }
 
-interface Side {
+interface SideState {
   i: 0 | 1;
-  f: Fighter;
+  name: string;
+  atk: number;
+  def: number;
+  crit: number;
+  baseMaxHp: number;
   hp: number;
   maxHp: number;
-  perks: Perk[];
-  items: Consumable[];
+  perks: string[];
+  items: string[]; // ещё не использованные расходники
   used: string[];
-  ready: Map<string, number>; // перк → с какого своего хода готов
+  ready: Record<string, number>; // перк → с какого своего хода готов
   turn: number;
   stunned: boolean;
   bleed: { pct: number; turns: number } | null;
@@ -59,124 +65,128 @@ interface Side {
   critAdd: number;
   critMul: number;
   counterAdd: number;
-  doubleFirst: boolean;
+  doubleNext: boolean;
   lootBonus: number;
 }
 
-function side(i: 0 | 1, f: Fighter): Side {
-  const perks: Perk[] = [];
-  for (const id of f.perks ?? []) {
-    const p = perkById.get(id);
-    if (p && !perks.some((x) => x.id === id)) perks.push(p);
-  }
-  const items: Consumable[] = [];
-  for (const id of f.items ?? []) {
-    const c = consumableById.get(id);
-    if (c && !items.some((x) => x.id === id)) items.push(c);
-  }
+/** Состояние боя — чистый JSON: хранится у игрока между ходами. */
+export interface BattleState {
+  s: [SideState, SideState];
+  rounds: Round[];
+  lines: string[];
+  dealt: number;
+  startHp: [number, number];
+  maxHp: [number, number];
+  done: boolean;
+  exchanges: number;
+}
+
+export type BattleAction = { type: 'hit' } | { type: 'perk'; id: string } | { type: 'item'; id: string };
+
+const NEVER = 1e9;
+const MAX_EXCHANGES = 40;
+
+function perksOf(s: SideState): Perk[] {
+  return s.perks.map((id) => perkById.get(id)).filter((p): p is Perk => !!p);
+}
+const passive = (s: SideState, kind: PerkKind) => perksOf(s).find((p) => p.kind === kind)?.value ?? 0;
+const has = (s: SideState, id: string) => s.perks.includes(id);
+
+/** Можно ли сейчас нажать перк (активный и не на перезарядке). Реактивные — «Не дождётесь» — не нажимаются. */
+export function perkReady(s: SideState, p: Perk): boolean {
+  if (p.cd === 0 || p.id === 'legend_phoenix') return false;
+  return (s.ready[p.id] ?? 0) <= s.turn + 1;
+}
+
+function usePerk(s: SideState, p: Perk) {
+  s.ready[p.id] = p.cd < 0 ? NEVER : s.turn + p.cd;
+}
+
+function sideOf(i: 0 | 1, f: Fighter): SideState {
+  const uniq = (a: string[] = []) => [...new Set(a)];
   return {
-    i, f, hp: f.hp, maxHp: f.maxHp, perks, items, used: [], ready: new Map(), turn: 0,
-    stunned: false, bleed: null, weak: null, blocks: [],
-    dmgMul: 1, atkMul: 1, critAdd: 0, critMul: 1, counterAdd: 0, doubleFirst: false, lootBonus: 0,
+    i, name: f.name, atk: f.atk, def: f.def, crit: f.crit, baseMaxHp: f.maxHp, hp: f.hp, maxHp: f.maxHp,
+    perks: uniq(f.perks).filter((id) => perkById.has(id)),
+    items: uniq(f.items).filter((id) => consumableById.has(id)),
+    used: [], ready: {}, turn: 0, stunned: false, bleed: null, weak: null, blocks: [],
+    dmgMul: 1, atkMul: 1, critAdd: 0, critMul: 1, counterAdd: 0, doubleNext: false, lootBonus: 0,
   };
 }
 
-const passive = (s: Side, kind: PerkKind) => s.perks.find((p) => p.kind === kind)?.value ?? 0;
-const has = (s: Side, id: string) => s.perks.some((p) => p.id === id);
-
-/** Перк этого типа, если он готов на текущем ходу. */
-function readyPerk(s: Side, kind: PerkKind | string): Perk | null {
-  const p = s.perks.find((x) => x.kind === kind || x.id === kind);
-  if (!p || p.cd === 0) return null;
-  if ((s.ready.get(p.id) ?? 0) > s.turn) return null;
-  return p;
-}
-
-function usePerk(s: Side, p: Perk) {
-  s.ready.set(p.id, p.cd < 0 ? Infinity : s.turn + p.cd);
-}
-
-function takeItem(s: Side, kind: Consumable['kind']): Consumable | null {
-  const k = s.items.findIndex((c) => c.kind === kind);
-  if (k < 0) return null;
-  const [c] = s.items.splice(k, 1);
-  s.used.push(c.id);
-  return c;
-}
-
-export function fight(a: Fighter, b: Fighter, rng: Rng, maxRounds = 30): FightResult {
-  const A = side(0, a);
-  const B = side(1, b);
-  const rounds: Round[] = [];
-  const lines: string[] = [];
-  let dealt = 0;
-  const push = (r: Round) => {
-    rounds.push(r);
-    if (r.by === 0) dealt += r.dmg;
+export function newBattle(a: Fighter, b: Fighter): BattleState {
+  const st: BattleState = {
+    s: [sideOf(0, a), sideOf(1, b)],
+    rounds: [],
+    lines: [],
+    dealt: 0,
+    startHp: [a.hp, b.hp],
+    maxHp: [a.maxHp, b.maxHp],
+    done: false,
+    exchanges: 0,
   };
+  // «Железный» противника — пассивно с начала боя; у игрока он нажимается
+  const iron = perkById.get('legend_iron')!;
+  if (has(st.s[1], iron.id)) st.s[1].blocks.push({ pct: 100, n: iron.value, note: `${iron.emoji} ${iron.name}` });
+  return st;
+}
 
-  // Расходники, что действуют с начала боя, и «Железный»
-  for (const [me, foe] of [[A, B], [B, A]] as const) {
-    for (const c of [...me.items]) {
-      let fired = true;
-      switch (c.kind) {
-        case 'stunStart': foe.stunned = true; break;
-        case 'block': me.blocks.push({ pct: 100, n: c.value, note: `${c.emoji} Блок` }); break;
-        case 'dmgBuff': me.dmgMul *= 1 + c.value / 100; break;
-        case 'critBuff': me.critAdd += c.value; break;
-        case 'critDmg': me.critMul *= 1 + c.value / 100; break;
-        case 'hpBuff': {
-          const add = Math.round(me.maxHp * c.value / 100);
-          me.maxHp += add;
-          me.hp += add;
-          break;
-        }
-        case 'weaken': foe.atkMul *= 1 - c.value / 100; break;
-        case 'bleed': foe.bleed = { pct: c.value, turns: 4 }; break;
-        case 'double': me.doubleFirst = true; break;
-        case 'counter': me.counterAdd += c.value; break;
-        case 'loot': me.lootBonus += c.value; break;
-        default: fired = false;
-      }
-      if (fired) {
-        takeItem(me, c.kind);
-        push({ by: me.i, dmg: 0, crit: false, note: `${c.emoji} ${c.name}` });
-      }
-    }
-    const iron = me.perks.find((p) => p.id === 'legend_iron');
-    if (iron) me.blocks.push({ pct: 100, n: iron.value, note: `${iron.emoji} ${iron.name}` });
+/** Ходы, собранные за один вызов (для анимации на клиенте). */
+class Turn {
+  out: Round[] = [];
+  st: BattleState;
+  rng: Rng;
+  constructor(st: BattleState, rng: Rng) {
+    this.st = st;
+    this.rng = rng;
   }
-  const startHp: [number, number] = [A.hp, B.hp];
-  const maxHp: [number, number] = [A.maxHp, B.maxHp];
 
-  /** Смертельный удар: «Не дождётесь» или «Фото мамы» поднимают на ноги. */
-  const survive = (s: Side) => {
-    if (s.hp > 0) return;
-    s.hp = 0;
-    const ph = readyPerk(s, 'legend_phoenix');
-    const item = ph ? null : takeItem(s, 'revive');
-    const pct = ph ? ph.value : item ? item.value : 0;
-    if (!pct) return;
-    if (ph) usePerk(s, ph);
-    s.hp = Math.round(s.maxHp * pct / 100);
-    push({ by: s.i, dmg: 0, crit: false, heal: s.hp, note: ph ? `${ph.emoji} ${ph.name}` : `${item!.emoji} ${item!.name}` });
-  };
+  push(r: Round) {
+    this.out.push(r);
+    this.st.rounds.push(r);
+    if (r.by === 0) this.st.dealt += r.dmg;
+  }
 
-  const heal = (s: Side, amount: number) => {
+  heal(s: SideState, amount: number) {
     const h = Math.max(0, Math.min(s.maxHp - s.hp, Math.round(amount)));
     s.hp += h;
     return h;
-  };
+  }
 
-  /** Один удар. Возвращает, попал ли. */
-  const strike = (me: Side, foe: Side, mult: number, forcedCrit: boolean, note: string | undefined, isCounter = false): boolean => {
+  /** Смертельный удар: «Не дождётесь» или «Фото мамы» поднимают на ноги. */
+  survive(s: SideState) {
+    if (s.hp > 0) return;
+    s.hp = 0;
+    const ph = perksOf(s).find((p) => p.id === 'legend_phoenix' && (s.ready[p.id] ?? 0) <= s.turn + 1);
+    let note = '';
+    let pct = 0;
+    if (ph) {
+      usePerk(s, ph);
+      pct = ph.value;
+      note = `${ph.emoji} ${ph.name}`;
+    } else {
+      const k = s.items.findIndex((id) => consumableById.get(id)!.kind === 'revive');
+      if (k >= 0) {
+        const c = consumableById.get(s.items[k])!;
+        s.items.splice(k, 1);
+        s.used.push(c.id);
+        pct = c.value;
+        note = `${c.emoji} ${c.name}`;
+      }
+    }
+    if (!pct) return;
+    s.hp = Math.round(s.maxHp * pct / 100);
+    this.push({ by: s.i, dmg: 0, crit: false, heal: s.hp, note });
+  }
+
+  strike(me: SideState, foe: SideState, mult: number, forcedCrit: boolean, note: string | undefined, isCounter = false): boolean {
+    const rng = this.rng;
     const dodge = passive(foe, 'dodge') + (has(foe, 'legend_thief') ? 10 : 0);
     if (rng() * 100 < dodge) {
-      push({ by: me.i, dmg: 0, crit: false, miss: true, note: note ? `${note} · 💨` : '💨 Уклон' });
+      this.push({ by: me.i, dmg: 0, crit: false, miss: true, note: note ? `${note} · 💨` : '💨 Уклон' });
       return false;
     }
-    const crit = forcedCrit || rng() * 100 < me.f.crit + me.critAdd;
-    const base = me.f.atk * me.atkMul * (1 - (me.weak?.pct ?? 0) / 100) * (0.85 + rng() * 0.3) - foe.f.def * 0.4;
+    const crit = forcedCrit || rng() * 100 < me.crit + me.critAdd;
+    const base = me.atk * me.atkMul * (1 - (me.weak?.pct ?? 0) / 100) * (0.85 + rng() * 0.3) - foe.def * 0.4;
     let m = mult * me.dmgMul;
     if (crit) m *= (forcedCrit ? 1 : 2) * me.critMul;
     if (me.hp < me.maxHp * 0.4) m *= 1 + passive(me, 'rage') / 100;
@@ -190,128 +200,264 @@ export function fight(a: Fighter, b: Fighter, rng: Rng, maxRounds = 30): FightRe
     }
     foe.hp -= dmg;
     const leech = passive(me, 'leech');
-    const h = leech && dmg ? heal(me, (dmg * leech) / 100) : 0;
-    push({ by: me.i, dmg, crit, ...(h ? { heal: h } : {}), ...(note ? { note } : {}) });
-    lines.push(`${me.f.name}${isCounter ? ' в ответ' : ''} бьёт на ${dmg}${crit ? ' 💥' : ''}${note ? ` (${note})` : ''}`);
-    survive(foe);
+    const h = leech && dmg ? this.heal(me, (dmg * leech) / 100) : 0;
+    this.push({ by: me.i, dmg, crit, ...(h ? { heal: h } : {}), ...(note ? { note } : {}) });
+    this.st.lines.push(`${me.name}${isCounter ? ' в ответ' : ''} бьёт на ${dmg}${crit ? ' 💥' : ''}${note ? ` (${note})` : ''}`);
+    this.survive(foe);
     if (foe.hp > 0 && !isCounter) {
       const ch = passive(foe, 'counter') + foe.counterAdd;
-      if (ch && rng() * 100 < ch) strike(foe, me, 0.8, false, '↩️ Встречка', true);
+      if (ch && rng() * 100 < ch) this.strike(foe, me, 0.8, false, '↩️ Встречка', true);
     }
     return true;
-  };
+  }
 
-  /** Ход бойца. true — бой окончен. */
-  const act = (me: Side, foe: Side): boolean => {
-    me.turn++;
+  /** Начало хода: кровотечение, оглушение. false — ход пропущен или боец выбыл. */
+  begin(me: SideState, foe: SideState): boolean {
     if (me.bleed) {
       const d = Math.max(1, Math.round(me.maxHp * me.bleed.pct / 100));
       me.hp -= d;
-      push({ by: foe.i, dmg: d, crit: false, note: '🩸' });
+      this.push({ by: foe.i, dmg: d, crit: false, note: '🩸' });
       if (--me.bleed.turns <= 0) me.bleed = null;
-      survive(me);
-      if (me.hp <= 0) return true;
+      this.survive(me);
+      if (me.hp <= 0) return false;
     }
     if (me.stunned) {
       me.stunned = false;
-      push({ by: me.i, dmg: 0, crit: false, note: '💫 Пропускает ход' });
+      me.turn++; // пропущенный ход тоже считается для перезарядок
+      this.push({ by: me.i, dmg: 0, crit: false, note: '💫 Пропускает ход' });
       return false;
     }
-    // Лечение — не тратит ход
-    if (me.hp < me.maxHp * 0.5) {
-      const p = readyPerk(me, 'heal');
-      if (p) {
-        usePerk(me, p);
-        const h = heal(me, (me.maxHp * p.value) / 100);
-        if (h) push({ by: me.i, dmg: 0, crit: false, heal: h, note: `${p.emoji} ${p.name}` });
-      }
-    }
-    if (me.hp < me.maxHp * 0.4) {
-      const c = takeItem(me, 'heal');
-      if (c) push({ by: me.i, dmg: 0, crit: false, heal: heal(me, (me.maxHp * c.value) / 100), note: `${c.emoji} ${c.name}` });
-    }
-    // Добивание
-    const ex = readyPerk(me, 'execute');
-    if (ex && foe.hp <= foe.maxHp * ex.value / 100) {
-      usePerk(me, ex);
-      const d = foe.hp;
-      foe.hp = 0;
-      push({ by: me.i, dmg: d, crit: true, note: `${ex.emoji} ${ex.name}` });
-      lines.push(`${me.f.name} добивает`);
-      survive(foe);
-      return foe.hp <= 0;
-    }
-    // Основной удар с перками
-    let mult = 1;
-    let forced = false;
-    const notes: string[] = [];
-    const cr = readyPerk(me, 'crit');
-    if (cr) {
-      usePerk(me, cr);
-      mult *= cr.value;
-      forced = true;
-      notes.push(`${cr.emoji} ${cr.name}`);
-    }
-    const dog = me.perks.find((p) => p.id === 'legend_dog');
-    if (dog && me.turn % dog.cd === 0) {
-      mult *= dog.value;
-      notes.push(`${dog.emoji} ${dog.name}`);
-    }
-    const bl = readyPerk(me, 'block');
-    if (bl) {
-      usePerk(me, bl);
-      me.blocks.push({ pct: bl.value, n: 1, note: `${bl.emoji} Блок` });
-    }
-    const landed = strike(me, foe, mult, forced, notes.join(' · ') || undefined);
-    if (foe.hp <= 0) return true;
-    if (me.hp <= 0) return true; // встречка добила
-    if (landed) {
-      const st = readyPerk(me, 'stun');
-      if (st) {
-        usePerk(me, st);
-        if (rng() * 100 < st.value) {
-          foe.stunned = true;
-          push({ by: me.i, dmg: 0, crit: false, note: `${st.emoji} ${st.name}` });
-        }
-      }
-      const bd = readyPerk(me, 'bleed');
-      if (bd) {
-        usePerk(me, bd);
-        foe.bleed = { pct: bd.value, turns: 3 };
-        push({ by: me.i, dmg: 0, crit: false, note: `${bd.emoji} ${bd.name}` });
-      }
-      const ar = readyPerk(me, 'armor');
-      if (ar) {
-        usePerk(me, ar);
-        foe.weak = { pct: ar.value, turns: 4 };
-        push({ by: me.i, dmg: 0, crit: false, note: `${ar.emoji} ${ar.name}` });
-      }
-    }
-    if (me.weak && --me.weak.turns <= 0) me.weak = null;
-    const db = readyPerk(me, 'double');
-    if (db || (me.doubleFirst && me.turn === 1)) {
-      if (db) usePerk(me, db);
-      strike(me, foe, db && !(me.doubleFirst && me.turn === 1) ? db.value / 100 : 1, false, db ? `${db.emoji} ${db.name}` : '🌀 Второй удар');
-    }
-    return foe.hp <= 0 || me.hp <= 0;
-  };
-
-  for (let round = 1; round <= maxRounds; round++) {
-    if (act(A, B)) break;
-    if (act(B, A)) break;
+    return true;
   }
-  const log = lines.length > 12 ? [...lines.slice(0, 6), '…', ...lines.slice(-5)] : lines;
+
+  end(me: SideState, foe: SideState) {
+    if (me.weak && --me.weak.turns <= 0) me.weak = null;
+    if (me.doubleNext && foe.hp > 0 && me.hp > 0) {
+      me.doubleNext = false;
+      this.strike(me, foe, 1, false, '🌀 Второй удар');
+    }
+  }
+
+  /** Расходник — мгновенно, ход не тратит. */
+  item(me: SideState, foe: SideState, id: string) {
+    const k = me.items.indexOf(id);
+    const c = consumableById.get(id);
+    if (k < 0 || !c) throw new Error('Нет такого расходника');
+    if (c.kind === 'revive') throw new Error('Сработает сам при смертельном ударе');
+    me.items.splice(k, 1);
+    me.used.push(id);
+    let heal = 0;
+    switch (c.kind) {
+      case 'heal': heal = this.heal(me, (me.maxHp * c.value) / 100); break;
+      case 'stunStart': foe.stunned = true; break;
+      case 'block': me.blocks.push({ pct: 100, n: c.value, note: `${c.emoji} Блок` }); break;
+      case 'dmgBuff': me.dmgMul *= 1 + c.value / 100; break;
+      case 'critBuff': me.critAdd += c.value; break;
+      case 'critDmg': me.critMul *= 1 + c.value / 100; break;
+      case 'hpBuff': {
+        const add = Math.round(me.baseMaxHp * c.value / 100);
+        me.maxHp += add;
+        heal = this.heal(me, add);
+        this.st.maxHp[me.i] = me.maxHp;
+        break;
+      }
+      case 'weaken': foe.atkMul *= 1 - c.value / 100; break;
+      case 'bleed': foe.bleed = { pct: c.value, turns: 4 }; break;
+      case 'double': me.doubleNext = true; break;
+      case 'counter': me.counterAdd += c.value; break;
+      case 'loot': me.lootBonus += c.value; break;
+    }
+    this.push({ by: me.i, dmg: 0, crit: false, ...(heal ? { heal } : {}), note: `${c.emoji} ${c.name}` });
+  }
+
+  /** Активный перк или обычный удар. */
+  act(me: SideState, foe: SideState, perk: Perk | null) {
+    const tag = perk ? `${perk.emoji} ${perk.name}` : undefined;
+    me.turn++;
+    if (perk) usePerk(me, perk);
+    switch (perk?.kind === 'legend' ? perk.id : perk?.kind) {
+      case 'heal': {
+        const h = this.heal(me, (me.maxHp * perk!.value) / 100);
+        this.push({ by: me.i, dmg: 0, crit: false, heal: h, note: tag });
+        this.strike(me, foe, 0.5, false, undefined);
+        return;
+      }
+      case 'execute': {
+        const d = foe.hp;
+        foe.hp = 0;
+        this.push({ by: me.i, dmg: d, crit: true, note: tag });
+        this.st.lines.push(`${me.name} добивает`);
+        this.survive(foe);
+        return;
+      }
+      case 'crit':
+        this.strike(me, foe, perk!.value, true, tag);
+        return;
+      case 'legend_dog':
+        this.strike(me, foe, perk!.value, false, tag);
+        return;
+      case 'legend_iron':
+        me.blocks.push({ pct: 100, n: perk!.value, note: `${perk!.emoji} ${perk!.name}` });
+        this.push({ by: me.i, dmg: 0, crit: false, note: tag });
+        this.strike(me, foe, 1, false, undefined);
+        return;
+      case 'block':
+        me.blocks.push({ pct: perk!.value, n: 1, note: `${perk!.emoji} Блок` });
+        this.strike(me, foe, 1, false, tag);
+        return;
+      case 'double':
+        this.strike(me, foe, 1, false, undefined);
+        if (foe.hp > 0 && me.hp > 0) this.strike(me, foe, perk!.value / 100, false, tag);
+        return;
+      case 'stun':
+      case 'bleed':
+      case 'armor': {
+        const landed = this.strike(me, foe, 1, false, tag);
+        if (!landed || foe.hp <= 0) return;
+        if (perk!.kind === 'stun' && this.rng() * 100 < perk!.value) {
+          foe.stunned = true;
+          this.push({ by: me.i, dmg: 0, crit: false, note: '💫 Оглушён' });
+        }
+        if (perk!.kind === 'bleed') foe.bleed = { pct: perk!.value, turns: 3 };
+        if (perk!.kind === 'armor') foe.weak = { pct: perk!.value, turns: 4 };
+        return;
+      }
+      default:
+        this.strike(me, foe, 1, false, undefined);
+    }
+  }
+}
+
+/** Условие, при котором перк вообще имеет смысл нажимать. */
+export function perkUsable(me: SideState, foe: SideState, p: Perk): boolean {
+  if (!perkReady(me, p)) return false;
+  if (p.kind === 'execute') return foe.hp <= foe.maxHp * p.value / 100;
+  if (p.kind === 'heal') return me.hp < me.maxHp;
+  return true;
+}
+
+/** ИИ: какой перк нажать (или null — обычный удар). Для противника и автобоя. */
+function aiPick(me: SideState, foe: SideState): Perk | null {
+  const order = ['execute', 'heal', 'legend_dog', 'crit', 'stun', 'bleed', 'armor', 'double', 'legend_iron', 'block'];
+  const ps = perksOf(me).filter((p) => perkUsable(me, foe, p));
+  for (const key of order) {
+    const p = ps.find((x) => x.kind === key || x.id === key);
+    if (!p) continue;
+    if (p.kind === 'heal' && me.hp >= me.maxHp * 0.5) continue;
+    return p;
+  }
+  return null;
+}
+
+/** ИИ расходников: лечилка — при низком здоровье, остальное — в первые ходы. */
+function aiItems(t: Turn, me: SideState, foe: SideState) {
+  for (const id of [...me.items]) {
+    const c = consumableById.get(id)!;
+    if (c.kind === 'revive') continue;
+    if (c.kind === 'heal' && me.hp >= me.maxHp * 0.4) continue;
+    t.item(me, foe, id);
+  }
+}
+
+function finished(st: BattleState) {
+  const [A, B] = st.s;
+  if (A.hp <= 0 || B.hp <= 0 || st.exchanges >= MAX_EXCHANGES) st.done = true;
+  return st.done;
+}
+
+/** Ход противника, затем — пропуски игрока, если он оглушён (сразу снова ходит противник). */
+function enemyPhase(t: Turn, st: BattleState) {
+  const [A, B] = st.s;
+  for (;;) {
+    if (finished(st)) return;
+    if (t.begin(B, A)) {
+      t.act(B, A, aiPick(B, A));
+      t.end(B, A);
+    }
+    st.exchanges++;
+    if (finished(st)) return;
+    // у игрока в начале хода: кровотечение и оглушение (оглушён — сразу снова ход противника)
+    if (t.begin(A, B)) return;
+    if (finished(st)) return;
+  }
+}
+
+/** Действие игрока (сторона 0). Возвращает новые ходы для анимации. */
+export function battleAct(st: BattleState, action: BattleAction, rng: Rng): Round[] {
+  if (st.done) throw new Error('Бой окончен');
+  const t = new Turn(st, rng);
+  const [A, B] = st.s;
+  if (action.type === 'item') {
+    t.item(A, B, action.id);
+    return t.out;
+  }
+  let perk: Perk | null = null;
+  if (action.type === 'perk') {
+    perk = perkById.get(action.id) ?? null;
+    if (!perk || !A.perks.includes(perk.id)) throw new Error('Нет такого перка');
+    if (!perkUsable(A, B, perk)) throw new Error(perk.kind === 'execute' ? 'Рано добивать' : 'Перк перезаряжается');
+  }
+  // кровотечение и оглушение игрока уже отработали в enemyPhase — тут только ход
+  t.act(A, B, perk);
+  t.end(A, B);
+  enemyPhase(t, st);
+  return t.out;
+}
+
+/** Довести бой до конца автоматически (кнопка «Авто», боты, защита в наездах). */
+export function battleAuto(st: BattleState, rng: Rng): Round[] {
+  const t = new Turn(st, rng);
+  const [A, B] = st.s;
+  let guard = 0;
+  while (!st.done && guard++ < 200) {
+    aiItems(t, A, B);
+    if (finished(st)) break;
+    t.act(A, B, aiPick(A, B));
+    t.end(A, B);
+    enemyPhase(t, st);
+  }
+  return t.out;
+}
+
+export function battleResult(st: BattleState): FightResult {
+  const [A, B] = st.s;
+  const log = st.lines.length > 12 ? [...st.lines.slice(0, 6), '…', ...st.lines.slice(-5)] : st.lines;
   return {
     win: B.hp <= 0 && A.hp > 0,
     log,
-    rounds,
-    startHp,
-    maxHp,
-    damageDealt: Math.min(dealt, startHp[1]),
-    hpLeft: Math.max(0, Math.min(A.hp, a.maxHp)),
+    rounds: st.rounds,
+    startHp: st.startHp,
+    maxHp: st.maxHp,
+    damageDealt: Math.min(st.dealt, st.startHp[1]),
+    hpLeft: Math.max(0, Math.min(A.hp, A.baseMaxHp)),
     used: A.used,
     lootBonus: A.lootBonus,
   };
+}
+
+/** Что показать игроку на панели действий. */
+export function battleControls(st: BattleState) {
+  const [A, B] = st.s;
+  return {
+    hp: [Math.max(0, A.hp), Math.max(0, B.hp)] as [number, number],
+    maxHp: [A.maxHp, B.maxHp] as [number, number],
+    perks: perksOf(A).map((p) => ({
+      id: p.id,
+      passive: p.cd === 0 || p.id === 'legend_phoenix',
+      usable: perkUsable(A, B, p),
+      cdLeft: p.cd === 0 ? 0 : Math.max(0, (A.ready[p.id] ?? 0) - (A.turn + 1)),
+      spent: (A.ready[p.id] ?? 0) >= NEVER,
+    })),
+    items: A.items,
+    done: st.done,
+  };
+}
+
+/** Бой целиком автоматически — для ботов, защиты и тестов. */
+export function fight(a: Fighter, b: Fighter, rng: Rng): FightResult {
+  const st = newBattle(a, b);
+  battleAuto(st, rng);
+  return battleResult(st);
 }
 
 /** Перки для НПС и ботов: чем выше уровень, тем больше и сильнее. */
@@ -329,3 +475,5 @@ export function npcPerks(level: number, seed: number): string[] {
   }
   return out;
 }
+
+export type { Consumable };

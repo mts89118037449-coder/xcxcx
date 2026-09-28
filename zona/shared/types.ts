@@ -63,6 +63,11 @@ export interface PlayerView {
   worldHitReadyAt: number;
   shieldUntil: number;
   refCount: number;
+  battle: BattleView | null;
+  admin: boolean;
+  story: { ch: number; step: number; progress: number };
+  games: { cards: number; race: number; brew: number; brewReadyAt: number; cardsMaxBet: number };
+  god: boolean;
   cell: string[];
   cellShow: Record<string, string>;
   comfort: number;
@@ -170,4 +175,16 @@ export interface ClanView {
   ownerId: number;
   members: { id: number; name: string; level: number; authority: number; face: number | null }[];
   upgradeCost: number | null;
+}
+
+export interface BattleView {
+  kind: 'boss' | 'pvp';
+  enemy: { name: string; npc?: string; look?: Look };
+  rounds: FightReplay['rounds'];
+  startHp: [number, number];
+  hp: [number, number];
+  maxHp: [number, number];
+  perks: { id: string; passive: boolean; usable: boolean; cdLeft: number; spent: boolean }[];
+  items: string[];
+  done: boolean;
 }

@@ -13,6 +13,9 @@ import { Pullups } from './Pullups.tsx';
 import { Medic } from './Medic.tsx';
 import { Escape } from './Escape.tsx';
 import { EventButton, EventStage } from './Events.tsx';
+import { BattleModal } from './Battle.tsx';
+import { AdminPanel } from './Admin.tsx';
+import { BrewGame, CardsGame, RaceGame, type Mini } from './Minigames.tsx';
 import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
@@ -48,6 +51,13 @@ export function App() {
   const [place, setPlace] = useState<'church' | 'medic' | 'escape' | null>(null);
   const [pullOpen, setPullOpen] = useState(false);
   const [eventId, setEventId] = useState<string | null>(null);
+  const [battleOn, setBattleOn] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [mini, setMini] = useState<Mini | null>(null);
+  const hasBattle = !!player?.battle;
+  useEffect(() => {
+    if (hasBattle) setBattleOn(true); // драка началась или игрок вернулся в незаконченную
+  }, [hasBattle]);
   const toastTimer = useRef<number>(0);
   const [fx, setFx] = useState<{ chips: FxChip[]; levelUp: boolean; key: number }>({ chips: [], levelUp: false, key: 0 });
   const fxTimer = useRef<number>(0);
@@ -130,7 +140,7 @@ export function App() {
     setPlace(null);
     window.scrollTo(0, 0);
   };
-  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true), say: setDialog, openShells: () => setShellsOpen(true), openPlace: (pl) => (pl === 'pullups' ? setPullOpen(true) : (setPlace(pl), window.scrollTo(0, 0))), openEvent: (id) => setEventId(id ?? p.event?.id ?? null) };
+  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true), say: setDialog, openShells: () => setShellsOpen(true), openPlace: (pl) => (pl === 'pullups' ? setPullOpen(true) : (setPlace(pl), window.scrollTo(0, 0))), openEvent: (id) => setEventId(id ?? p.event?.id ?? null), openMini: setMini };
   const energyTimer = p.nextEnergyAt ? Math.max(0, p.nextEnergyAt - now) : 0;
 
   return (
@@ -143,6 +153,11 @@ export function App() {
             <span className="muted">
               {p.vipUntil ? '👑 ' : ''}
               {p.rank} · ур. {p.level}
+              {p.admin && (
+                <b className={`god-badge ${p.god ? 'on' : ''}`} onClick={() => setAdminOpen(true)}>
+                  {p.god ? '⚡ БОГ' : '⚙️'}
+                </b>
+              )}
             </span>
           </div>
           <div className="wallet">
@@ -197,6 +212,11 @@ export function App() {
       {toastMsg && <div className={`toast toast-${toastMsg.kind}`}>{toastMsg.text}</div>}
 
       {visiting !== null && <VisitModal id={visiting} onClose={() => setVisiting(null)} />}
+      {mini === 'cards' && <CardsGame onClose={() => setMini(null)} />}
+      {mini === 'race' && <RaceGame onClose={() => setMini(null)} />}
+      {mini === 'brew' && <BrewGame onClose={() => setMini(null)} />}
+      {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
+      {battleOn && <BattleModal onClose={() => setBattleOn(false)} />}
       {eventId && <EventStage id={eventId} onClose={() => setEventId(null)} />}
       {dialog && <DialogBox d={dialog} onClose={() => setDialog(null)} />}
       {pullOpen && <Pullups onClose={() => setPullOpen(false)} />}

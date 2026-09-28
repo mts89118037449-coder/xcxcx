@@ -33,20 +33,37 @@ function rivalLook(enemy: Fighter): Look {
 }
 
 /** Проигрывает бой, пришедший с сервера, удар за ударом. */
-export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: Fighter; replay: FightReplay; onDone(): void }) {
-  const [i, setI] = useState(0);
+export function FightArena({
+  me,
+  enemy,
+  replay,
+  onDone,
+  final = true,
+  startAt = 0,
+}: {
+  me: Fighter;
+  enemy: Fighter;
+  replay: FightReplay;
+  onDone(): void;
+  /** false — бой ещё идёт (пошаговый): без финальных поз, ждём следующих ходов */
+  final?: boolean;
+  /** с какого хода проигрывать (при возвращении в начатый бой) */
+  startAt?: number;
+}) {
+  const [i, setI] = useState(startAt);
   const total = replay.rounds.length;
-  const done = i >= total;
+  const caught = i >= total;
+  const done = caught && final;
 
   useEffect(() => {
-    if (done) {
+    if (caught) {
       onDone();
       return;
     }
     const next = replay.rounds[i];
     const t = setTimeout(() => setI(i + 1), i === 0 ? 350 : next && !next.dmg && !next.miss ? STEP_MS * 0.8 : STEP_MS);
     return () => clearTimeout(t);
-  }, [i, done, onDone]);
+  }, [i, caught, onDone]);
 
   const played = replay.rounds.slice(0, i);
   // здоровье — по записи: урон противнику того, кто действует, лечение — ему самому
@@ -110,7 +127,7 @@ export function FightArena({ me, enemy, replay, onDone }: { me: Fighter; enemy: 
       </div>
     </div>
   );
-  const skip = !done && (
+  const skip = !caught && (
     <button className="arena-skip" onClick={() => setI(total)}>
       Пропустить ⏭
     </button>

@@ -316,6 +316,7 @@ test('церковь и турник — без энергии', () => {
 // --- Перки и расходники ---------------------------------------------------------
 
 import { CONSUMABLES, PERKS, perkById } from '../shared/perks.ts';
+import { battleAct, battleAuto, newBattle } from '../server/combat.ts';
 
 /** Прогон записи боя так же, как это делает клиент: здоровье сходится с сервером. */
 function replayHp(r: g.FightResult): [number, number] {
@@ -351,10 +352,23 @@ test('бой с перками: откат, лечение и запись сх�
     assert.equal(hp[0], r.hpLeft, `бой ${i}`);
     assert.equal(r.win, hp[1] <= 0 && hp[0] > 0);
   }
-  // точный удар раз в cd ходов
-  const r = g.fight(dummy({ hp: 5000, maxHp: 5000, perks: ['crit_1'] }), dummy({ hp: 5000, maxHp: 5000, atk: 1 }), fixed(0.5), 12);
-  const crits = r.rounds.filter((x) => x.by === 0 && x.note?.includes('Точный')).length;
-  assert.equal(crits, Math.ceil(12 / perkById.get('crit_1')!.cd));
+  // перки нажимаются вручную и уходят на перезарядку
+  const st = newBattle(dummy({ hp: 5000, maxHp: 5000, perks: ['crit_1', 'execute_1'], items: ['c_bandage', 'c_insert'] }), dummy({ hp: 5000, maxHp: 5000, atk: 1 }));
+  const cd = perkById.get('crit_1')!.cd;
+  const r1 = battleAct(st, { type: 'perk', id: 'crit_1' }, fixed(0.5));
+  assert.ok(r1.some((x) => x.by === 0 && x.note?.includes('Точный')));
+  assert.throws(() => battleAct(st, { type: 'perk', id: 'crit_1' }, fixed(0.5)), /перезаряжается/);
+  assert.throws(() => battleAct(st, { type: 'perk', id: 'execute_1' }, fixed(0.5)), /Рано/);
+  for (let k = 1; k < cd; k++) battleAct(st, { type: 'hit' }, fixed(0.5));
+  battleAct(st, { type: 'perk', id: 'crit_1' }, fixed(0.5));
+  // расходник — без траты хода
+  const before = st.rounds.length;
+  const it = battleAct(st, { type: 'item', id: 'c_insert' }, fixed(0.5));
+  assert.equal(it.length, 1);
+  assert.equal(st.rounds.length, before + 1);
+  assert.throws(() => battleAct(st, { type: 'item', id: 'c_insert' }, fixed(0.5)), /Нет такого/);
+  battleAuto(st, fixed(0.5));
+  assert.ok(st.done);
 });
 
 test('расходники: срабатывают раз и списываются с пояса', () => {
@@ -482,4 +496,65 @@ test('санчасть и гости', () => {
   g.snoop(p, host, T0, fixed(0.99));
   g.snoop(p, host, T0, fixed(0.99));
   assert.throws(() => g.snoop(p, host, T0, fixed(0.99)), /хватит/);
+});
+
+// --- Сюжет, мини-игры, режим бога ------------------------------------------------
+
+import { STORY } from '../shared/story.ts';
+import { cardValue } from '../shared/minigames.ts';
+
+test('сюжет: шаги двигаются обычными действиями и дают награду', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  assert.throws(() => g.claimStory(p, T0), /не выполнен/);
+  g.doJob(p, 'j_floor', T0, fixed(0.5));
+  const money = p.money;
+  const r = g.claimStory(p, T0);
+  assert.equal(p.money, money + (STORY[0].steps[0].reward.money ?? 0));
+  assert.equal(p.story.step, 1);
+  assert.ok(r.xp > 0);
+  // бычки — следующий шаг
+  p.field = Array.from({ length: 5 }, (_, i) => ({ id: i + 1, x: 0.5, y: 0.5, pack: false }));
+  for (let i = 1; i <= 5; i++) g.pickButt(p, i);
+  assert.equal(p.story.progress, 5);
+});
+
+test('очко, тараканьи бега и чифир: лимиты и расчёт', () => {
+  assert.equal(cardValue(['Т♠', 'К♥']), 21);
+  assert.equal(cardValue(['Т♠', 'Т♥', '9♦']), 21);
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.money = 100_000;
+  const s = g.cardsStart(p, 50, T0, fixed(0.3));
+  assert.ok(s.hand.length === 2);
+  if (!s.done) {
+    assert.equal(s.dealer[1], '?', 'вторая карта блатного скрыта');
+    const end = g.cardsStand(p, T0);
+    assert.ok(['win', 'lose', 'push'].includes(end.result));
+  }
+  assert.equal(p.cards, null);
+  assert.throws(() => g.cardsStart(p, 10, T0, fixed(0.3)), /от/);
+  p.butts = 100;
+  const race = g.roachRace(p, 'borka', 5, T0, fixed(0.1));
+  assert.equal(race.winner, 'borka');
+  assert.equal(race.butts, 5); // ×2 минус ставка
+  const e = p.energy;
+  g.brew(p, 1, T0);
+  assert.equal(p.energy, e + 8);
+  assert.throws(() => g.brew(p, 1, T0 + MIN), /Погоди/);
+});
+
+test('режим бога: без ограничений, выключение возвращает ресурсы', () => {
+  const p = g.newPlayer(1, 'Админ', null, T0);
+  const money = p.money;
+  g.toggleGod(p, T0);
+  assert.ok(p.god.on && p.money >= 100_000_000);
+  p.level = 20;
+  g.fightBoss(p, 'b_warden', T0, fixed(0.5));
+  g.godTopUp(p, T0);
+  assert.deepEqual(p.bossCd, {});
+  g.toggleGod(p, T0);
+  assert.equal(p.money, money);
+  g.adminTool(p, 'level', '15', T0);
+  assert.equal(p.level, 15);
+  g.adminTool(p, 'event', 'cards', T0);
+  assert.equal(p.event?.id, 'cards');
 });

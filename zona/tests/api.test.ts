@@ -82,6 +82,14 @@ test('действия и ошибки', async () => {
   const pvp = await post('/api/action/pvp', auth);
   assert.equal(pvp.status, 200);
   assert.ok(pvp.json.result.enemy);
+  assert.ok(pvp.json.player.battle, 'бой пошаговый: висит у игрока');
+  assert.equal((await post('/api/action/pvp', auth)).status, 400); // второй бой не начать
+  const hit = await post('/api/action/battle', auth, { act: 'hit' });
+  assert.equal(hit.status, 200);
+  assert.ok(hit.json.result.rounds.length > 0);
+  const end = await post('/api/action/battle', auth, { act: 'auto' });
+  assert.equal(end.json.result.done, true);
+  assert.equal(end.json.player.battle, null);
 });
 
 test('общий босс копит урон', async () => {

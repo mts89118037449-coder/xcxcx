@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { GOLD_PRICES, TATTOOS } from '../../shared/content.ts';
-import { CellShop } from '../Cell.tsx';
+import { FURNITURE, GOLD_PRICES, TATTOOS, furnitureById } from '../../shared/content.ts';
+import { CellShop, withPreview } from '../Cell.tsx';
+import { StoryCard } from '../Leisure.tsx';
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
 import { CharacterEditor } from '../Editor.tsx';
 import { InteriorPicker } from '../Interior.tsx';
 import { usePoses } from '../art/sprites.tsx';
-import { fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
+import { BonusList, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
 type Panel = 'look' | 'cell' | null;
 
@@ -17,6 +18,22 @@ export function Home() {
   const poses = usePoses();
   const [anim, animKey, play] = useAnim();
   const [panel, setPanel] = useState<Panel>(p.faceChosen ? null : 'look');
+  const [preview, setPreview] = useState<string | null>(null);
+  const tryOn = preview ? furnitureById.get(preview) : null;
+  const tryIdx = tryOn ? FURNITURE.filter((f) => f.spot === tryOn.spot).indexOf(tryOn) : 0;
+  const tryPrev = tryOn && tryIdx > 0 ? FURNITURE.filter((f) => f.spot === tryOn.spot)[tryIdx - 1] : null;
+  const canBuy = tryOn && p.level >= tryOn.minLevel && (!tryPrev || p.furniture.includes(tryPrev.id));
+  const buyPreview = async () => {
+    if (!tryOn) return;
+    if (tryOn.currency === 'gold' && !confirm(`Поставить «${tryOn.name}» за ${tryOn.price} 🪙?`)) return;
+    if ((await act('furnish', { furnitureId: tryOn.id })) === null) return;
+    setPreview(null);
+    play('act-cheer');
+  };
+  const showPreview = (id: string | null) => {
+    setPreview(id);
+    if (id) window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const dailyReady = now >= p.dailyReadyAt;
   const ink = TATTOOS.filter((t) => p.tattoos.includes(t.id));
   const hurt = p.hp < p.stats.maxHp * 0.3;
@@ -35,14 +52,26 @@ export function Home() {
           look={lookOf(p)}
           bare={bare}
           mood={hurt ? 'hurt' : 'idle'}
-          furniture={p.cell}
+          furniture={withPreview(p.cell, preview)}
           interior={p.interior}
           anim={anim}
           animKey={animKey}
           onClick={() => play('act-cheer')}
         />
         <div className="scene-tag">🏚️ 🛋️{p.comfort} · <span className="pulse" /> {fmt(online)}</div>
-        {dailyReady && (
+        {tryOn && (
+          <div className="try-bar">
+            <span>
+              👀 {tryOn.emoji} {tryOn.name}
+              <BonusList b={tryOn} />
+            </span>
+            <button className={`btn btn-s ${tryOn.currency === 'gold' ? 'btn-gold' : ''}`} disabled={busy || !canBuy} onClick={buyPreview}>
+              {!canBuy ? (p.level < tryOn.minLevel ? `🔒 ур. ${tryOn.minLevel}` : `🔒 ${tryPrev?.name}`) : <Price amount={tryOn.price} currency={tryOn.currency} />}
+            </button>
+            <button className="btn btn-s btn-dark" onClick={() => setPreview(null)}>✕</button>
+          </div>
+        )}
+        {dailyReady && !tryOn && (
           <button className="scene-btn scene-gift" disabled={busy} onClick={daily}>
             📦 Грев
           </button>
@@ -69,11 +98,12 @@ export function Home() {
         </button>
       </div>
 
+      <StoryCard />
       {panel === 'look' && <CharacterEditor />}
       {panel === 'cell' && (
         <>
           <InteriorPicker />
-          <CellShop onChange={() => play('act-cheer')} />
+          <CellShop onChange={() => play('act-cheer')} onPreview={showPreview} />
         </>
       )}
 

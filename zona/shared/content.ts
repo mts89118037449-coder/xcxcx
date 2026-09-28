@@ -422,7 +422,7 @@ export const QUEST_TEMPLATES: QuestTemplate[] = [
 
 // --- Дейлики ----------------------------------------------------------------------
 export type DailyKind = 'job' | 'pvpWin' | 'boss' | 'worldHit' | 'train' | 'quest' | 'spend';
-export type TrackKind = DailyKind | 'butts';
+export type TrackKind = DailyKind | 'butts' | 'event' | 'escape' | 'visit' | 'minigame' | 'furnish' | 'church' | 'yard';
 export const DAILY_KINDS: { kind: DailyKind; label: string; range: [number, number] }[] = [
   { kind: 'job', label: 'Отработать смен', range: [3, 6] },
   { kind: 'pvpWin', label: 'Выиграть наездов', range: [1, 3] },

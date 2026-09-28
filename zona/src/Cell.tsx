@@ -2,8 +2,15 @@ import { useState } from 'react';
 import { FURNITURE, SPOTS, SPOT_BARE, SPOT_NAMES, type Furniture, type Spot } from '../shared/content.ts';
 import { BonusList, Price, useGame } from './game.tsx';
 
-/** Обустройство хаты: по каждому месту лестница улучшений и выбор, что поставить. */
-export function CellShop({ onChange }: { onChange(): void }) {
+/** Хата с примеркой: вещь на своём месте вместо того, что там стоит. */
+export function withPreview(cell: string[], preview: string | null): string[] {
+  const f = preview ? FURNITURE.find((x) => x.id === preview) : null;
+  if (!f) return cell;
+  return [...cell.filter((id) => FURNITURE.find((x) => x.id === id)?.spot !== f.spot), f.id];
+}
+
+/** Обустройство хаты: по каждому месту лестница улучшений и выбор, что поставить. Нажатие на вещь — примерка. */
+export function CellShop({ onChange, onPreview }: { onChange(): void; onPreview(id: string | null): void }) {
   const { p, act, toast, busy } = useGame();
   const [spot, setSpot] = useState<Spot>('wall');
   const ladder = FURNITURE.filter((f) => f.spot === spot);
@@ -13,6 +20,7 @@ export function CellShop({ onChange }: { onChange(): void }) {
   const buy = async (f: Furniture) => {
     if (f.currency === 'gold' && !confirm(`Поставить «${f.name}» за ${f.price} 🪙?`)) return;
     if ((await act('furnish', { furnitureId: f.id })) === null) return;
+    onPreview(null);
     onChange();
     toast(`${f.emoji} ${f.name} — теперь в хате`);
   };
@@ -52,17 +60,17 @@ export function CellShop({ onChange }: { onChange(): void }) {
           const prevOk = i === 0 || owned(ladder[i - 1]);
           const lvlOk = p.level >= f.minLevel;
           return (
-            <div key={f.id} className={`ftile ${have ? 'owned' : ''} ${shown === f.id ? 'shown' : ''} ${f.currency === 'gold' && !have ? 'premium' : ''}`}>
+            <div key={f.id} onClick={() => !have && onPreview(f.id)} className={`ftile ${!have ? 'try' : ''} ${have ? 'owned' : ''} ${shown === f.id ? 'shown' : ''} ${f.currency === 'gold' && !have ? 'premium' : ''}`}>
               <span className="femoji">{f.emoji}</span>
               <b>{f.name}</b>
-              <span className="muted small">ступень {i + 1}</span>
+              <span className="muted small">{have ? `ступень ${i + 1}` : '👀 примерить'}</span>
               <BonusList b={f} />
               {have ? (
                 <button className="btn btn-s btn-dark" disabled={busy || shown === f.id} onClick={() => show(f.id)}>
                   {shown === f.id ? '✓ Стоит' : 'Поставить'}
                 </button>
               ) : (
-                <button className={`btn btn-s ${f.currency === 'gold' ? 'btn-gold' : ''}`} disabled={busy || !prevOk || !lvlOk} onClick={() => buy(f)}>
+                <button className={`btn btn-s ${f.currency === 'gold' ? 'btn-gold' : ''}`} disabled={busy || !prevOk || !lvlOk} onClick={(e) => { e.stopPropagation(); buy(f); }}>
                   {!lvlOk ? `🔒 ур. ${f.minLevel}` : !prevOk ? '🔒 сначала прошлое' : <Price amount={f.price} currency={f.currency} />}
                 </button>
               )}

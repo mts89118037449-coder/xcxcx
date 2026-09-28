@@ -155,12 +155,145 @@ export const EVENTS: GameEvent[] = [
       { label: 'Болеть со скамейки', outcomes: [{ w: 1, text: 'Поорал от души.', energy: 5 }] },
     ],
   },
+  {
+    id: 'chifir_round', who: 'sheet/cast/bandaged', name: 'Сосед по шконке', where: 'any',
+    text: 'Сосед заварил чифир и пускает кружку по кругу.',
+    options: [
+      { label: 'Хлебнуть', outcomes: [{ w: 7, text: 'Горько, но бодрит!', energy: 12 }, { w: 3, text: 'Перебрал. Сердце скачет.', energy: 20, hp: -0.08 }] },
+      { label: 'Добавить своей заварки (3 🚬)', cost: { butts: 3 }, outcomes: [{ w: 1, text: 'Уважение за щедрость. И кружка покрепче.', energy: 15, authority: 2 }] },
+      { label: 'Отказаться', outcomes: [nothing('Не пьёшь — не пей.')] },
+    ],
+  },
+  {
+    id: 'yard_fight', who: 'sheet/cast/brute', name: 'Качок', where: 'yard',
+    text: 'Во дворе двое сцепились. Народ ставит бычки — кто кого.',
+    options: [
+      { label: 'На здорового (5 🚬)', cost: { butts: 5 }, outcomes: [{ w: 6, text: 'Здоровый положил мелкого. Твоё!', butts: 9 }, { w: 4, text: 'Мелкий оказался вёртким. Бычки ушли.' }] },
+      { label: 'На мелкого (5 🚬)', cost: { butts: 5 }, outcomes: [{ w: 3, text: 'Мелкий уложил здоровяка! Куш!', butts: 17 }, { w: 7, text: 'Предсказуемо. Мелкий лёг.' }] },
+      { label: 'Разнять', outcomes: [{ w: 5, text: 'Растащил — оба теперь тебе должны.', authority: 3 }, { w: 5, text: 'Прилетело от обоих.', hp: -0.15, authority: 1 }] },
+    ],
+  },
+  {
+    id: 'phone', who: 'sheet/cast/youngster', name: 'Молодой', where: 'any',
+    text: 'Шёпотом: «Есть мобила. Пять минут — позвонить домой. Сто рублей».',
+    options: [
+      { label: 'Позвонить (1 пайка)', cost: { money: 1 }, outcomes: [{ w: 7, text: 'Голос мамы. Жить хочется.', energy: 25, hp: 0.1 }, { w: 3, text: 'Спалили на шмоне. Мобилу забрали, тебя — в ШИЗО на ночь.', hp: -0.1 }] },
+      { label: 'Сдать молодого куму', outcomes: [{ w: 5, text: 'Кум доволен. А вот хата — нет.', money: 2, authority: -3 }, { w: 5, text: 'Кум отмахнулся. Молодой всё понял.', authority: -2 }] },
+      { label: 'Не надо', outcomes: [nothing('Меньше знаешь — крепче спишь.')] },
+    ],
+  },
+  {
+    id: 'extort', who: 'sheet/cast/officer', name: 'Вертухай', where: 'any',
+    text: '«Что-то у тебя в тумбочке звенит. Поделишься — не замечу».',
+    options: [
+      { label: 'Поделиться (1 пайка)', cost: { money: 1 }, outcomes: [{ w: 1, text: 'Ушёл довольный. Неделю не тронет.', xp: 5 }] },
+      { label: 'Послать', outcomes: [{ w: 5, text: 'Проверил — пусто. Ушёл злой.', authority: 2 }, { w: 5, text: 'Нашёл заначку и забрал с процентами.', money: -2 }] },
+    ],
+  },
+  {
+    id: 'library', who: 'sheet/cast/writer', name: 'Библиотекарь', where: 'any',
+    text: 'В библиотеку завезли книги. «Граф Монте-Кристо» — как про тебя.',
+    options: [
+      { label: 'Взять почитать', outcomes: [{ w: 8, text: 'Зачитался до утра. Умнее стал.', xp: 20 }, { w: 2, text: 'Между страниц — чья-то заначка!', xp: 10, money: 1.5 }] },
+      { label: 'Взять на самокрутки', outcomes: [{ w: 1, text: 'Бумага хорошая. Бычков прибавилось.', butts: 4, authority: -1 }] },
+    ],
+  },
+  {
+    id: 'rat_pet', who: 'sheet/cast/hermit', name: 'Отшельник', where: 'any',
+    text: 'Под шконкой живёт крыса. Отшельник: «Прикорми — умная будет».',
+    options: [
+      { label: 'Прикормить (2 🚬)', cost: { butts: 2 }, outcomes: [{ w: 6, text: 'Крыса притащила монетку. Благодарная!', gold: 1 }, { w: 4, text: 'Сожрала и убежала.' }] },
+      { label: 'Выгнать', outcomes: [nothing('Шваброй её, шваброй.')] },
+    ],
+  },
+  {
+    id: 'concert', who: 'sheet/cast/priest', name: 'Батюшка', where: 'any',
+    text: 'В клубе самодеятельность. Нужен кто-то спеть под гитару.',
+    options: [
+      { label: 'Спеть', outcomes: [{ w: 5, text: 'Зал плакал. Даже кум хлопал.', authority: 4, xp: 10 }, { w: 3, text: 'Нормально. Похлопали.', xp: 8 }, { w: 2, text: 'Освистали. Запустили тапком.', authority: -1, hp: -0.03 }] },
+      { label: 'Сидеть в зале', outcomes: [{ w: 1, text: 'Отдохнул душой.', energy: 8 }] },
+    ],
+  },
+  {
+    id: 'dogs', who: 'sheet/cast/spetsnaz', name: 'Кинолог', where: 'yard',
+    text: 'Кинолог выгуливает овчарок у забора. Одна виляет хвостом тебе.',
+    options: [
+      { label: 'Угостить собаку', outcomes: [{ w: 6, text: 'Подружились. Кинолог разрешил гладить. Пригодится при побеге…', xp: 12 }, { w: 4, text: 'Цапнула за руку.', hp: -0.1 }] },
+      { label: 'Держаться подальше', outcomes: [nothing('Правильно. Это не собака, это служба.')] },
+    ],
+  },
+  {
+    id: 'toothache', who: 'sheet/cast/doctor', name: 'Лепила', where: 'any',
+    text: 'Зуб разболелся — на стенку лезешь. Лепила с плоскогубцами уже тут.',
+    options: [
+      { label: 'Рвать', outcomes: [{ w: 7, text: 'Выдрал с первого раза. Полегчало.', hp: 0.15 }, { w: 3, text: 'Со второго… с третьего…', hp: -0.1 }] },
+      { label: 'Терпеть', outcomes: [{ w: 1, text: 'Ноет весь день. Ни на что сил нет.', energy: -10 }] },
+      { label: 'Золотую коронку (3 🪙)', cost: { gold: 3 }, outcomes: [{ w: 1, text: 'Блестит! Сразу видно — серьёзный человек.', authority: 5, hp: 0.2 }] },
+    ],
+  },
+  {
+    id: 'date', who: 'sheet/cast/guardwoman', name: 'Надзирательница', where: 'any',
+    text: 'Разрешили длительное свидание. Но места в комнате — по очереди.',
+    options: [
+      { label: 'Дать на лапу за очередь (2 пайки)', cost: { money: 2 }, outcomes: [{ w: 1, text: 'Три дня дома, хоть и за решёткой. Как заново родился.', hp: 0.5, energy: 40 }] },
+      { label: 'Ждать своей очереди', outcomes: [{ w: 5, text: 'Дождался! Хоть на пару часов.', energy: 20, hp: 0.2 }, { w: 5, text: 'Очередь сдвинули. Опять ждать.' }] },
+    ],
+  },
+  {
+    id: 'smuggle', who: 'sheet/cast/seller', name: 'Барыга', where: 'any',
+    text: '«Пронеси пакет в третий барак. Что внутри — не твоё дело».',
+    options: [
+      { label: 'Пронести', outcomes: [{ w: 6, text: 'Дошло. Барыга расплатился честно.', money: 3, xp: 8 }, { w: 4, text: 'Шмон на входе. Пакет изъяли, тебе — дубинкой.', hp: -0.2 }] },
+      { label: 'Отказаться', outcomes: [nothing('«Ну, как знаешь». Барыга ушёл искать другого.')] },
+    ],
+  },
+  {
+    id: 'chess', who: 'sheet/cast/oldman', name: 'Старик-шахматист', where: 'yard',
+    text: 'Старик расставил фигуры на лавке: «Партейку? На пять бычков».',
+    options: [
+      { label: 'Играть (5 🚬)', cost: { butts: 5 }, outcomes: [{ w: 3, text: 'Мат в двадцать ходов! Старик уважительно кивнул.', butts: 12, xp: 15 }, { w: 7, text: 'Разгромил за десять ходов. Зато научил.', xp: 10 }] },
+      { label: 'Смотреть', outcomes: [{ w: 1, text: 'Понял пару приёмов.', xp: 5 }] },
+    ],
+  },
+  {
+    id: 'cheat', who: 'sheet/cast/blatnoy', name: 'Блатной', where: 'any',
+    text: 'Заметил, как шулер в углу передёргивает карты новенькому.',
+    options: [
+      { label: 'Разоблачить', outcomes: [{ w: 6, text: 'Шулера прижали. Новенький вернул деньги — и поделился.', money: 1.5, authority: 3 }, { w: 4, text: 'Шулер оказался при заточке.', hp: -0.18, authority: 2 }] },
+      { label: 'Попросить долю за молчание', outcomes: [{ w: 5, text: 'Шулер отстегнул.', money: 2, authority: -1 }, { w: 5, text: 'Шулер позвал своих. Лучше бы молчал.', hp: -0.15 }] },
+      { label: 'Промолчать', outcomes: [nothing('Не твоё дело.')] },
+    ],
+  },
+  {
+    id: 'snow', who: 'sheet/cast/worker', name: 'Бригадир', where: 'yard',
+    text: 'Навалило снега. Бригадир ищет, кто почистит плац.',
+    options: [
+      { label: 'Взять лопату', outcomes: [{ w: 8, text: 'Работа как работа. Бригадир заплатил.', money: 1.2, xp: 6 }, { w: 2, text: 'Под снегом — чей-то потерянный кошелёк!', money: 3 }] },
+      { label: 'Отмазаться', outcomes: [{ w: 6, text: 'Прокатило.' }, { w: 4, text: 'Не прокатило. Чистил двойную норму бесплатно.', energy: -10 }] },
+    ],
+  },
+  {
+    id: 'rumor', who: 'sheet/cast/avtoritet', name: 'Авторитет', where: 'any',
+    text: '«Слышал, кто-то на тебя куму стучит. Хочешь знать кто — сделай одолжение».',
+    options: [
+      { label: 'Сделать одолжение (1 пайка)', cost: { money: 1 }, outcomes: [{ w: 7, text: 'Назвал имя. Теперь ты предупреждён.', authority: 2, xp: 10 }, { w: 3, text: 'Взял деньги, имя — «потом».' }] },
+      { label: 'Мне без разницы', outcomes: [{ w: 1, text: '«Смелый. Или глупый».' }] },
+    ],
+  },
+  {
+    id: 'package_found', who: 'sheet/cast/coverall', name: 'Работяга', where: 'yard',
+    text: 'У забора — перекинутый с воли свёрток. Никто не видел?',
+    options: [
+      { label: 'Схватить и бежать', outcomes: [{ w: 5, text: 'Чай, сигареты и… аптечка!', butts: 8, item: true }, { w: 3, text: 'Пусто, одни газеты.', butts: 1 }, { w: 2, text: 'Вышка увидела. Лёг лицом в снег.', hp: -0.12 }] },
+      { label: 'Пройти мимо', outcomes: [nothing('Может, и правильно.')] },
+    ],
+  },
 ];
 export const eventById = new Map(EVENTS.map((e) => [e.id, e]));
 
 export const EVENT_TIMING = {
-  minGapMin: 20, // между случаями
-  maxGapMin: 45,
+  minGapMin: 12, // между случаями
+  maxGapMin: 30,
   ttlMin: 40, // сколько случай ждёт ответа
   yardCooldownMin: 30, // прогулка по двору — случай сразу
 };

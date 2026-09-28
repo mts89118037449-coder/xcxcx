@@ -1,10 +1,12 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
+import { BREW, CARDS, RACE } from '../shared/minigames.ts';
 import { BALANCE, CHURCH, cellView, comfortOf, CLAN, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
 import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
 import { validateInitData, type TgUser } from './auth.ts';
 import type { Db } from './db.ts';
 import * as g from './game.ts';
+import { battleResult } from './combat.ts';
 import type { Bot, TgUpdate } from './telegram.ts';
 
 export interface AppOptions {
@@ -157,6 +159,17 @@ export function createApp(opts: AppOptions) {
       medBedReadyAt: p.medBedAt + MEDIC.bedCooldownMin * 60_000,
       noteReady: p.noteDay !== g.dayKey(t),
       snoopsLeft: g.snoopsLeft(p, t),
+      battle: g.battleView(p),
+      admin: opts.adminIds.includes(p.id),
+      story: p.story,
+      games: {
+        cards: g.playsLeft(p, 'cards', CARDS.perDay, t),
+        race: g.playsLeft(p, 'race', RACE.perDay, t),
+        brew: g.playsLeft(p, 'brew', BREW.perDay, t),
+        brewReadyAt: (p.minigames.brew?.at ?? 0) + BREW.cooldownMin * 60_000,
+        cardsMaxBet: g.cardsMaxBet(p),
+      },
+      god: p.god.on,
       perks: p.perks,
       belt: p.belt,
       stash: p.stash,
@@ -231,6 +244,14 @@ export function createApp(opts: AppOptions) {
 
   const actions: Record<string, Handler> = {
     look: (p, b) => g.setLook(p, num(b.build), num(b.skin)),
+    story: (p, _b, t) => g.claimStory(p, t),
+    cardsStart: (p, b, t) => g.cardsStart(p, num(b.bet), t, rng),
+    cardsHit: (p, _b, t) => g.cardsHit(p, t),
+    cardsStand: (p, _b, t) => g.cardsStand(p, t),
+    race: (p, b, t) => g.roachRace(p, str(b.pick), num(b.bet), t, rng),
+    brew: (p, b, t) => g.brew(p, num(b.quality), t),
+    adminGod: (p, _b, t) => g.toggleGod(p, t),
+    adminTool: (p, b, t) => g.adminTool(p, str(b.tool), str(b.arg), t),
     cellShow: (p, b) => g.setCellShow(p, str(b.spot), str(b.id)),
     event: (p, b, t) => g.answerEvent(p, num(b.choice), t, rng),
     yard: (p, _b, t) => g.yardWalk(p, t, rng),
@@ -357,7 +378,7 @@ export function createApp(opts: AppOptions) {
     tattoo: (p, b, t) => g.buyTattoo(p, str(b.tattooId), t),
     furnish: (p, b, t) => g.buyFurniture(p, str(b.furnitureId), t),
     face: (p, b) => g.setFace(p, Number(b.face)),
-    boss: (p, b, t) => g.fightBoss(p, str(b.bossId), t, rng),
+    boss: (p, b, t) => g.bossStart(p, str(b.bossId), t),
     daily: (p, _b, t) => g.claimDaily(p, t),
     refill: (p, _b, t) => g.refillEnergy(p, t),
     heal: (p, _b, t) => g.heal(p, t),
@@ -365,9 +386,26 @@ export function createApp(opts: AppOptions) {
     statReset: (p, _b, t) => g.resetStats(p, t),
     pvp: (p, _b, t) => {
       const target = db.opponents(p).find((o) => g.canBeAttacked(o, t)) ?? null;
-      const result = g.pvp(p, target, t, rng);
+      return g.pvpStart(p, target, t, rng);
+    },
+    // ход в текущем бою: удар, перк, расходник или «авто» до конца
+    battle: (p, b, t) => {
+      const kind = str(b.act);
+      const action =
+        kind === 'perk' ? { type: 'perk' as const, id: str(b.id) } : kind === 'item' ? { type: 'item' as const, id: str(b.id) } : kind === 'auto' ? { type: 'auto' as const } : { type: 'hit' as const };
+      const step = g.battleStep(p, action, rng);
+      if (!step.done) return { rounds: step.rounds, battle: g.battleView(p) };
+      const bt = p.battle!;
+      p.battle = null;
+      const result = battleResult(bt.st);
+      if (bt.kind === 'boss') {
+        const r = g.bossFinish(p, bt.bossId!, result, t, rng);
+        return { rounds: step.rounds, done: true, win: r.win, reward: r.reward, used: r.used };
+      }
+      const target = bt.targetId ? db.getPlayer(bt.targetId) : null;
+      const r = g.pvpFinish(p, target, bt.loot, result, t, rng);
       if (target) db.savePlayer(target);
-      return result;
+      return { rounds: step.rounds, done: true, win: r.win, reward: { money: r.loot, xp: r.xp, authority: r.authority, item: r.item, levelUps: r.levelUps }, used: r.used };
     },
     worldHit: (p, _b, t) => {
       const boss = worldBoss(t);
@@ -394,7 +432,11 @@ export function createApp(opts: AppOptions) {
     try {
       const { p, result } = db.transaction(() => {
         const p = loadOrCreate(req.tgUser!, req.startParam ?? null, t);
+        const admin = opts.adminIds.includes(p.id);
+        if (req.params.type.startsWith('admin') && !admin) throw new g.GameError('Только для админа');
+        if (admin && p.god.on) g.godTopUp(p, t);
         const result = handler(p, req.body ?? {}, t);
+        if (admin && p.god.on) g.godTopUp(p, t);
         db.savePlayer(p);
         return { p, result };
       });

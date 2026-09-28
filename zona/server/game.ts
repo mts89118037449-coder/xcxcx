@@ -43,9 +43,11 @@ import {
   type StarPack,
 } from '../shared/content.ts';
 
-import { fight, npcPerks, type Fighter } from './combat.ts';
+import { battleAct, battleAuto, battleControls, battleResult, fight, newBattle, npcPerks, type BattleAction, type BattleState, type Fighter, type FightResult, type Round } from './combat.ts';
+import { STORY } from '../shared/story.ts';
+import { BREW, CARDS, RACE, ROACHES, RANKS, SUITS, cardValue } from '../shared/minigames.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, type Effects } from '../shared/events.ts';
-import { CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
+import { CONSUMABLES as CONSUMABLES_ALL, CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
 
 export { fight, npcPerks };
 export type Rng = () => number;
@@ -106,6 +108,24 @@ export interface Player {
   confessDay: string;
   pullups: { at: number; day: string; n: number };
   snoop: { day: string; n: number };
+  /** Сюжет: глава, шаг и прогресс шага. */
+  story: { ch: number; step: number; progress: number };
+  /** Раздача в очко (скрыта от клиента до конца). */
+  cards: { deck: string[]; hand: string[]; dealer: string[]; bet: number } | null;
+  /** Мини-игры без энергии: сколько раз сыграно сегодня и когда последний раз. */
+  minigames: Record<string, { day: string; n: number; at: number }>;
+  /** Режим бога (только админ): без трат и откатов; реальные ресурсы сохранены и вернутся. */
+  god: { on: boolean; saved: { money: number; gold: number; energy: number; butts: number; chifir: number } | null };
+  /** Текущая драка (пошаговая) — переживает перезапуск приложения. */
+  battle: {
+    kind: 'boss' | 'pvp';
+    bossId: string | null;
+    targetId: number | null;
+    loot: number;
+    enemy: { name: string; npc?: string; look?: Look };
+    st: BattleState;
+    at: number;
+  } | null;
   event: { id: string; until: number } | null;
   eventAt: number;
   yardAt: number;
@@ -191,6 +211,11 @@ export function newPlayer(id: number, name: string, username: string | null, now
     confessDay: '',
     pullups: { at: 0, day: '', n: 0 },
     snoop: { day: '', n: 0 },
+    battle: null,
+    god: { on: false, saved: null },
+    minigames: {},
+    story: { ch: 0, step: 0, progress: 0 },
+    cards: null,
     event: null,
     eventAt: now + 5 * MIN,
     yardAt: 0,
@@ -243,6 +268,11 @@ export function migrate(p: Player): Player {
   p.confessDay ??= '';
   p.pullups ??= { at: 0, day: '', n: 0 };
   p.snoop ??= { day: '', n: 0 };
+  p.battle ??= null;
+  p.god ??= { on: false, saved: null };
+  p.minigames ??= {};
+  p.story ??= { ch: 0, step: 0, progress: 0 };
+  p.cards ??= null;
   p.event ??= null;
   p.eventAt ??= 0;
   p.yardAt ??= 0;
@@ -474,6 +504,7 @@ export function buyFurniture(p: Player, furnitureId: string, now: number) {
   spend(p, f.price, f.currency);
   p.furniture.push(furnitureId);
   delete p.cellShow[f.spot]; // новинку сразу видно
+  track(p, 'furnish');
   log(p, now, `${f.emoji} Обустроил хату: ${f.name}`);
 }
 
@@ -553,21 +584,32 @@ function requireHp(p: Player, now: number) {
   }
 }
 
-export function fightBoss(p: Player, bossId: string, now: number, rng: Rng) {
+function bossFighter(bossId: string): Fighter {
+  const boss = bossById.get(bossId)!;
+  const bossIdx = [...bossById.keys()].indexOf(bossId);
+  return { name: boss.name, hp: boss.hp, maxHp: boss.hp, atk: boss.atk, def: boss.def, crit: 5, perks: npcPerks(boss.minLevel + 2, bossIdx * 7 + 1) };
+}
+
+function noBattle(p: Player) {
+  if (p.battle) throw new GameError('Сначала закончи текущую драку');
+}
+
+/** Начать бой с боссом: энергия списывается сразу, дальше — ходы игрока. */
+export function bossStart(p: Player, bossId: string, now: number) {
   const boss = bossById.get(bossId);
   if (!boss) throw new GameError('Нет такого босса');
+  noBattle(p);
   if (p.level < boss.minLevel) throw new GameError(`Доступно с ${boss.minLevel} уровня`);
   const cd = p.bossCd[bossId] ?? 0;
   if (cd > now) throw new GameError('Босс ещё не оклемался');
   requireHp(p, now);
   spendEnergy(p, boss.energy, now);
+  p.battle = { kind: 'boss', bossId, targetId: null, loot: 0, enemy: { name: boss.name, npc: bossId }, st: newBattle(fighter(p, now), bossFighter(bossId)), at: now };
+  return battleView(p);
+}
 
-  const bossIdx = [...bossById.keys()].indexOf(bossId);
-  const result = fight(
-    fighter(p, now),
-    { name: boss.name, hp: boss.hp, maxHp: boss.hp, atk: boss.atk, def: boss.def, crit: 5, perks: npcPerks(boss.minLevel + 2, bossIdx * 7 + 1) },
-    rng,
-  );
+export function bossFinish(p: Player, bossId: string, result: FightResult, now: number, rng: Rng) {
+  const boss = bossById.get(bossId)!;
   spendItems(p, result.used);
   p.hp = result.hpLeft;
   p.hpAt = now;
@@ -603,6 +645,42 @@ export function fightBoss(p: Player, bossId: string, now: number, rng: Rng) {
     reward.levelUps = addXp(p, reward.xp, now);
   }
   return { ...result, reward };
+}
+
+/** Бой с боссом целиком автоматически (автобой и тесты). */
+export function fightBoss(p: Player, bossId: string, now: number, rng: Rng) {
+  bossStart(p, bossId, now);
+  const st = p.battle!.st;
+  p.battle = null;
+  battleAuto(st, rng);
+  return bossFinish(p, bossId, battleResult(st), now, rng);
+}
+
+/** Что видит клиент: противник, запись ходов, кнопки. */
+export function battleView(p: Player) {
+  const b = p.battle;
+  if (!b) return null;
+  return {
+    kind: b.kind,
+    enemy: b.enemy,
+    rounds: b.st.rounds,
+    startHp: b.st.startHp,
+    ...battleControls(b.st),
+  };
+}
+
+/** Ход игрока в текущем бою. done — бой окончен, награды раздаёт вызывающий (ему нужен противник-игрок). */
+export function battleStep(p: Player, action: BattleAction | { type: 'auto' }, rng: Rng) {
+  const b = p.battle;
+  if (!b) throw new GameError('Ты ни с кем не дерёшься');
+  let rounds: Round[];
+  try {
+    rounds = action.type === 'auto' ? battleAuto(b.st, rng) : battleAct(b.st, action, rng);
+  } catch (e) {
+    if (e instanceof GameError) throw e;
+    throw new GameError(e instanceof Error ? e.message : 'Нельзя');
+  }
+  return { rounds, done: b.st.done };
 }
 
 /** Бот-противник, когда живых соперников подходящего уровня нет. */
@@ -642,13 +720,13 @@ export function canBeAttacked(target: Player, now: number): boolean {
   return target.shieldUntil <= now;
 }
 
-/** Наезд на другого игрока (или бота). Возвращает изменения для обеих сторон. */
-export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
+/** Начать наезд: противник — живой игрок (бьётся сам) или бот. */
+export function pvpStart(p: Player, target: Player | null, now: number, rng: Rng) {
   if (p.pvpAt + BALANCE.pvpCooldownSec * 1000 > now) throw new GameError('Отдышись немного');
+  noBattle(p);
   requireHp(p, now);
   spendEnergy(p, BALANCE.pvpEnergy, now);
   p.pvpAt = now;
-
   let enemy: Fighter;
   let loot: number;
   let enemyLook: Look;
@@ -664,8 +742,12 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
     loot = bot.money;
     enemyLook = bot.look;
   }
+  p.battle = { kind: 'pvp', bossId: null, targetId: target?.id ?? null, loot, enemy: { name: enemy.name, look: enemyLook }, st: newBattle(fighter(p, now), enemy), at: now };
+  return battleView(p);
+}
 
-  const result = fight(fighter(p, now), enemy, rng);
+export function pvpFinish(p: Player, target: Player | null, loot0: number, result: FightResult, now: number, rng: Rng) {
+  let loot = loot0;
   spendItems(p, result.used);
   p.hp = result.hpLeft;
   let item: string | null = null;
@@ -675,6 +757,7 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
   if (result.win) {
     authority = (3 + Math.floor(rng() * 6)) * (weeklyEvent(now).id === 'tournament' ? 2 : 1);
     xp = 8 + p.level * 2;
+    if (target) loot = Math.min(loot, Math.max(0, target.money));
     loot = Math.round(loot * (1 + result.lootBonus / 100));
     p.money += loot;
     p.authority += authority;
@@ -685,7 +768,7 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
     track(p, 'pvpWin');
     p.wins += 1;
     if (target) {
-      target.money -= loot;
+      target.money = Math.max(0, target.money - loot);
       target.losses += 1;
       target.shieldUntil = now + 15 * MIN;
       log(target, now, `🥊 ${p.name} наехал и отжал ${loot} ₽`);
@@ -703,7 +786,17 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
     }
   }
   const levelUps = addXp(p, xp, now);
-  return { ...result, enemy: enemy.name, enemyLook, loot, authority, xp, levelUps, item };
+  return { ...result, loot, authority, xp, levelUps, item };
+}
+
+/** Наезд целиком автоматически (тесты). */
+export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
+  pvpStart(p, target, now, rng);
+  const b = p.battle!;
+  p.battle = null;
+  battleAuto(b.st, rng);
+  const r = pvpFinish(p, target, b.loot, battleResult(b.st), now, rng);
+  return { ...r, enemy: b.enemy.name, enemyLook: b.enemy.look! };
 }
 
 export function claimDaily(p: Player, now: number) {
@@ -881,6 +974,8 @@ export function ensureDaily(p: Player, now: number) {
 }
 
 export function track(p: Player, kind: TrackKind, amount = 1) {
+  const step = STORY[p.story.ch]?.steps[p.story.step];
+  if (step && step.kind === kind) p.story.progress = Math.min(step.n, p.story.progress + amount);
   if (weeklyEvent(Date.now()).goal.kind === kind) {
     ensureWeekly(p, Date.now());
     p.weekly.progress += amount;
@@ -998,6 +1093,7 @@ export function respect(p: Player, target: Player, now: number) {
   // чистим старые записи, чтобы документ не рос
   for (const [k, v] of Object.entries(p.respect)) if (v !== day) delete p.respect[k];
   target.authority += 1;
+  track(p, 'visit');
   log(target, now, `🤝 ${p.name} зашёл в хату и выразил уважение: +1 авторитета`);
   addXp(p, 5, now);
 }
@@ -1010,6 +1106,7 @@ export function gift(p: Player, target: Player, now: number) {
   if (p.butts < VISIT.giftButts) throw new GameError(`Нужно ${VISIT.giftButts} бычков`);
   p.butts -= VISIT.giftButts;
   p.respect[`g${target.id}`] = day;
+  track(p, 'visit');
   target.butts += VISIT.giftButts;
   target.authority += 2;
   p.authority += 1;
@@ -1027,6 +1124,7 @@ export function snoop(p: Player, target: Player, now: number, rng: Rng) {
   if (snoopsLeft(p, now) <= 0) throw new GameError('На сегодня хватит — и так косо смотрят');
   const day = dayKey(now);
   p.snoop = { day, n: (p.snoop.day === day ? p.snoop.n : 0) + 1 };
+  track(p, 'visit');
   // живность сторожит хату
   const guard = target.furniture.includes('f_parrot') ? 0.15 : target.furniture.includes('f_cat') ? 0.08 : 0;
   const r = rng();
@@ -1133,6 +1231,7 @@ export function playShells(p: Player, bet: number, pick: number, now: number, rn
   if (p.money < bet) throw new GameError('Не хватает денег');
   const day = dayKey(now);
   p.shells = { day, n: (p.shells.day === day ? p.shells.n : 0) + 1 };
+  track(p, 'minigame');
   const ball = Math.floor(rng() * 3);
   const win = ball === pick;
   const payout = win ? Math.floor(bet * SHELLS.payout) : 0;
@@ -1183,6 +1282,7 @@ export function claimWeekly(p: Player, tier: number, now: number) {
 export function pray(p: Player, now: number) {
   if (p.prayAt + CHURCH.prayCooldownMin * MIN > now) throw new GameError('Батюшка: «Не торопись, сын мой»');
   p.prayAt = now;
+  track(p, 'church');
   p.blessUntil = Math.max(p.blessUntil, now) + CHURCH.prayBlessMin * MIN;
   addXp(p, 5, now);
 }
@@ -1190,6 +1290,7 @@ export function pray(p: Player, now: number) {
 export function lightCandle(p: Player, now: number) {
   if (p.butts < CHURCH.candleCost) throw new GameError(`Свечка — ${CHURCH.candleCost} бычков`);
   p.butts -= CHURCH.candleCost;
+  track(p, 'church');
   p.blessUntil = Math.max(p.blessUntil, now) + CHURCH.candleBlessMin * MIN;
 }
 
@@ -1197,6 +1298,7 @@ export function confess(p: Player, now: number) {
   const day = dayKey(now);
   if (p.confessDay === day) throw new GameError('Исповедь — раз в день');
   p.confessDay = day;
+  track(p, 'church');
   const max = stats(p, now).maxHp;
   p.hp = Math.min(max, p.hp + Math.round(max * CHURCH.confessHeal));
   p.hpAt = now;
@@ -1216,6 +1318,7 @@ export function pullups(p: Player, reps: number, now: number) {
   const n = Math.max(0, Math.min(PULLUPS.maxReps, Math.floor(reps)));
   const day = dayKey(now);
   p.pullups = { at: now, day, n: (p.pullups.day === day ? p.pullups.n : 0) + 1 };
+  track(p, 'minigame');
   const xp = Math.floor(n / PULLUPS.repsPerXp);
   addXp(p, xp, now);
   return { reps: n, xp };
@@ -1311,6 +1414,7 @@ export function answerEvent(p: Player, choice: number, now: number, rng: Rng) {
   p.butts -= cost.butts ?? 0;
   p.gold -= cost.gold ?? 0;
   p.event = null;
+  track(p, 'event');
   const o = pickWeighted(opt.outcomes, rng);
   const got = applyEffects(p, o, now, rng);
   return { text: o.text, who: ev.who, name: ev.name, ...got };
@@ -1323,6 +1427,7 @@ export function yardWalk(p: Player, now: number, rng: Rng) {
   const keepAt = p.eventAt;
   spawnEvent(p, now, rng, 'yard');
   p.eventAt = keepAt;
+  track(p, 'yard');
   return { id: p.event!.id };
 }
 
@@ -1359,6 +1464,7 @@ export function escapeEnd(p: Player, caught: boolean, now: number, rng: Rng) {
   p.escape.run = null;
   const stages = run.stage;
   p.escape.best = Math.max(p.escape.best, stages);
+  if (stages > 0) track(p, 'escape', stages);
   const r = escapeReward(p.level, stages);
   const k = caught ? 1 : ESCAPE.bailShare;
   const reward = applyEffects(p, { xp: Math.round(r.xp * k), authority: Math.round(r.authority * k), gold: caught ? r.gold : 0, item: r.item && caught }, now, rng);
@@ -1410,4 +1516,217 @@ export function medNote(p: Player, now: number, rng: Rng) {
     return { ok: true, energy: MEDIC.noteEnergy };
   }
   return { ok: false, energy: 0 };
+}
+
+// --- Админ: режим бога и инструменты для тестов --------------------------------
+
+/** Включить/выключить режим бога. При выключении ресурсы возвращаются как были. */
+export function toggleGod(p: Player, now: number) {
+  if (p.god.on) {
+    const sv = p.god.saved;
+    if (sv) Object.assign(p, sv);
+    p.god = { on: false, saved: null };
+  } else {
+    p.god = { on: true, saved: { money: p.money, gold: p.gold, energy: p.energy, butts: p.butts, chifir: p.chifir } };
+    godTopUp(p, now);
+  }
+  return { god: p.god.on };
+}
+
+/** Перед каждым действием бога: всего вдоволь, все откаты сброшены. */
+export function godTopUp(p: Player, now: number) {
+  const s = stats(p, now);
+  p.money = Math.max(p.money, 100_000_000);
+  p.gold = Math.max(p.gold, 1_000_000);
+  p.butts = Math.max(p.butts, 100_000);
+  p.chifir = Math.max(p.chifir, 99);
+  p.energy = Math.max(p.energy, s.maxEnergy + 1000);
+  p.energyAt = now;
+  p.hp = s.maxHp;
+  p.hpAt = now;
+  p.bossCd = {};
+  p.pvpAt = 0;
+  p.worldHitAt = 0;
+  p.escape.cdUntil = 0;
+  p.medBedAt = 0;
+  p.yardAt = 0;
+  p.prayAt = 0;
+  p.confessDay = '';
+  p.noteDay = '';
+  p.dailyAt = 0;
+  p.pullups = { at: 0, day: '', n: 0 };
+  p.shells = { day: '', n: 0 };
+  p.snoop = { day: '', n: 0 };
+  p.respect = {};
+  if (p.quests.active) p.quests.active.endsAt = now;
+  p.minigames = {};
+}
+
+/** Инструменты админа (работают в любом режиме). */
+export function adminTool(p: Player, tool: string, arg: string, now: number) {
+  switch (tool) {
+    case 'level': {
+      const lvl = Math.max(1, Math.min(60, Math.floor(Number(arg)) || 1));
+      p.level = lvl;
+      p.xp = 0;
+      break;
+    }
+    case 'furniture':
+      p.furniture = FURNITURE.map((f) => f.id);
+      break;
+    case 'items':
+      for (const c of CONSUMABLES_ALL) p.stash[c.id] = (p.stash[c.id] ?? 0) + 10;
+      break;
+    case 'gear':
+      for (const it of ITEMS) if (!p.inventory.includes(it.id)) p.inventory.push(it.id);
+      break;
+    case 'event': {
+      const ev = EVENTS.find((e) => e.id === arg) ?? EVENTS[Math.floor(Math.random() * EVENTS.length)];
+      p.event = { id: ev.id, until: now + 60 * MIN };
+      return { id: ev.id };
+    }
+    case 'battleEnd':
+      p.battle = null;
+      break;
+    case 'newbie': {
+      const fresh = newPlayer(p.id, p.name, p.username, now);
+      const keep = { god: p.god, clanId: p.clanId, clanLevel: p.clanLevel, journal: p.journal };
+      Object.assign(p, fresh, keep);
+      p.god = { on: false, saved: null };
+      break;
+    }
+    default:
+      throw new GameError('Нет такого инструмента');
+  }
+  return { ok: true };
+}
+
+// --- Сюжет -----------------------------------------------------------------------
+
+export function claimStory(p: Player, now: number) {
+  const ch = STORY[p.story.ch];
+  const step = ch?.steps[p.story.step];
+  if (!step) throw new GameError('Сюжет пройден');
+  if (p.story.progress < step.n) throw new GameError('Шаг ещё не выполнен');
+  const r = step.reward;
+  p.money += r.money ?? 0;
+  p.gold += r.gold ?? 0;
+  p.butts += r.butts ?? 0;
+  if (r.item) giveItem(p, r.item);
+  const levelUps = r.xp ? addXp(p, r.xp, now) : 0;
+  p.story.step++;
+  p.story.progress = 0;
+  let chapterDone = false;
+  if (p.story.step >= ch.steps.length) {
+    chapterDone = true;
+    log(p, now, `📖 Глава «${ch.name}» пройдена`);
+    p.story = { ch: p.story.ch + 1, step: 0, progress: 0 };
+  }
+  return { money: r.money ?? 0, gold: r.gold ?? 0, butts: r.butts ?? 0, xp: r.xp ?? 0, item: r.item ?? null, levelUps, chapterDone };
+}
+
+// --- Мини-игры ---------------------------------------------------------------------
+
+function playLimit(p: Player, id: string, perDay: number, now: number, cooldownMin = 0) {
+  const day = dayKey(now);
+  const m = p.minigames[id] && p.minigames[id].day === day ? p.minigames[id] : { day, n: 0, at: 0 };
+  if (m.n >= perDay) throw new GameError('На сегодня хватит — приходи завтра');
+  if (cooldownMin && m.at + cooldownMin * MIN > now) throw new GameError('Погоди немного');
+  m.n++;
+  m.at = now;
+  p.minigames[id] = m;
+  track(p, 'minigame');
+}
+
+export function playsLeft(p: Player, id: string, perDay: number, now: number) {
+  const m = p.minigames[id];
+  return m && m.day === dayKey(now) ? Math.max(0, perDay - m.n) : perDay;
+}
+
+export function cardsMaxBet(p: Player) {
+  return CARDS.minBet + p.level * CARDS.betPerLevel;
+}
+
+function cardsView(c: NonNullable<Player['cards']>, reveal: boolean) {
+  return { hand: c.hand, dealer: reveal ? c.dealer : [c.dealer[0], '?'], sum: cardValue(c.hand), dealerSum: reveal ? cardValue(c.dealer) : null, bet: c.bet };
+}
+
+export function cardsStart(p: Player, bet: number, now: number, rng: Rng) {
+  if (p.cards) throw new GameError('Доиграй раздачу');
+  const b = Math.floor(Number(bet));
+  if (!(b >= CARDS.minBet)) throw new GameError(`Ставка от ${CARDS.minBet} ₽`);
+  if (b > cardsMaxBet(p)) throw new GameError(`На твоём уровне — не больше ${cardsMaxBet(p)} ₽`);
+  if (p.money < b) throw new GameError('Не хватает денег');
+  playLimit(p, 'cards', CARDS.perDay, now);
+  p.money -= b;
+  const deck: string[] = [];
+  for (const su of SUITS) for (const r of RANKS) deck.push(r + su);
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  p.cards = { deck, hand: [deck.pop()!, deck.pop()!], dealer: [deck.pop()!, deck.pop()!], bet: b };
+  if (cardValue(p.cards.hand) === 21) return cardsStand(p, now);
+  return { ...cardsView(p.cards, false), done: false };
+}
+
+export function cardsHit(p: Player, now: number) {
+  const c = p.cards;
+  if (!c) throw new GameError('Раздачи нет');
+  c.hand.push(c.deck.pop()!);
+  if (cardValue(c.hand) > 21) {
+    p.cards = null;
+    return { ...cardsView(c, true), done: true, result: 'bust' as const, money: -c.bet };
+  }
+  if (cardValue(c.hand) === 21) return cardsStand(p, now);
+  return { ...cardsView(c, false), done: false };
+}
+
+export function cardsStand(p: Player, _now: number) {
+  const c = p.cards;
+  if (!c) throw new GameError('Раздачи нет');
+  while (cardValue(c.dealer) < 17) c.dealer.push(c.deck.pop()!);
+  p.cards = null;
+  const me = cardValue(c.hand);
+  const him = cardValue(c.dealer);
+  const natural = me === 21 && c.hand.length === 2;
+  let result: 'win' | 'lose' | 'push';
+  if (him > 21 || me > him) result = 'win';
+  else if (me === him) result = 'push';
+  else result = 'lose';
+  const back = result === 'win' ? Math.round(c.bet * (natural ? CARDS.blackjack : CARDS.payout)) : result === 'push' ? c.bet : 0;
+  p.money += back;
+  return { ...cardsView(c, true), done: true, result, money: back - c.bet };
+}
+
+/** Тараканьи бега: победитель выбирается по шансам, клиент показывает забег. */
+export function roachRace(p: Player, pick: string, bet: number, now: number, rng: Rng) {
+  const roach = ROACHES.find((r) => r.id === pick);
+  if (!roach) throw new GameError('Нет такого таракана');
+  if (!RACE.bets.includes(bet)) throw new GameError('Ставка: 3, 5 или 10 бычков');
+  if (p.butts < bet) throw new GameError('Не хватает бычков');
+  playLimit(p, 'race', RACE.perDay, now);
+  p.butts -= bet;
+  let r = rng();
+  let winner = ROACHES[ROACHES.length - 1];
+  for (const x of ROACHES) {
+    if ((r -= x.chance) < 0) {
+      winner = x;
+      break;
+    }
+  }
+  const order = [winner.id, ...ROACHES.filter((x) => x.id !== winner.id).map((x) => x.id).sort(() => rng() - 0.5)];
+  const won = winner.id === roach.id;
+  const payout = won ? Math.round(bet * roach.payout) : 0;
+  p.butts += payout;
+  return { order, winner: winner.id, won, butts: payout - bet };
+}
+
+/** Сварить чифир: quality — насколько точно снял с огня (0..1). */
+export function brew(p: Player, quality: number, now: number) {
+  playLimit(p, 'brew', BREW.perDay, now, BREW.cooldownMin);
+  const q = Math.max(0, Math.min(1, Number(quality) || 0));
+  const energy = Math.round(BREW.minEnergy + (BREW.maxEnergy - BREW.minEnergy) * q);
+  p.energy += energy;
+  return { energy, quality: q };
 }
