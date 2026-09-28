@@ -163,7 +163,8 @@ test('лицо: первый выбор бесплатный, смена за з
   g.setFace(p, 7);
   assert.equal(p.gold, 0);
   assert.throws(() => g.setFace(p, 8), /золота/);
-  assert.throws(() => g.setFace(p, 99), /Нет такого/);
+  p.gold = 100;
+  assert.throws(() => g.setFace(p, 9999), /Нет такого/);
 });
 
 test('дейлики: одинаковые в течение дня, прогресс и награда', () => {

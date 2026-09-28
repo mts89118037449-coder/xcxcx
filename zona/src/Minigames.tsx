@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { BREW, CARDS, RACE, ROACHES } from '../shared/minigames.ts';
-import { useNpc } from './art/sprites.tsx';
+import { NpcPortrait, useNpc } from './art/sprites.tsx';
 import { fmt, timeLeft, useGame } from './game.tsx';
 
 export type Mini = 'cards' | 'race' | 'brew';
@@ -12,7 +12,7 @@ function Table({ who, title, left, children, onClose }: { who: string; title: st
     <div className="modal" onClick={onClose}>
       <div className="modal-body mini" onClick={(e) => e.stopPropagation()}>
         <div className="mini-head">
-          {npc && <img src={npc.url} alt="" />}
+          {npc && <NpcPortrait who={who} className="mini-pic" />}
           <div>
             <b>{title}</b>
             <small>{left}</small>

@@ -185,7 +185,7 @@ export function FightArena({
                 mirror
               />
             ) : foe ? (
-              <ImageG url={foe.url} height={foe.height} mirror={BOSS_MIRROR.has(enemy.npc ?? '')} className="char-breathe" />
+              <ImageG url={foe.url} height={foe.height} mirror className="char-breathe" />
             ) : (
               <CharacterG look={enemy.look} build={enemy.build} mood={done ? (replay.win ? 'hurt' : 'win') : 'idle'} />
             )}

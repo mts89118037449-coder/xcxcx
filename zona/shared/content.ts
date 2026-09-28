@@ -447,7 +447,22 @@ export const CLAN = {
 };
 
 /** Сколько лиц на выбор (картинки public/art/sheet/face/<n>.png). */
-export const FACE_COUNT = 32;
+/** Внешность героя собирается из частей: причёска × борода × форма лица × брови. Номер лица = их комбинация. */
+export const FACE_PARTS = { hair: 8, beard: 6, jaw: 3, brow: 2 };
+export const FACE_COUNT = FACE_PARTS.hair * FACE_PARTS.beard * FACE_PARTS.jaw * FACE_PARTS.brow;
+
+export function faceParts(face: number) {
+  const f = Math.max(0, Math.floor(face)) % FACE_COUNT;
+  const hair = f % FACE_PARTS.hair;
+  const beard = Math.floor(f / FACE_PARTS.hair) % FACE_PARTS.beard;
+  const jaw = Math.floor(f / (FACE_PARTS.hair * FACE_PARTS.beard)) % FACE_PARTS.jaw;
+  const brow = Math.floor(f / (FACE_PARTS.hair * FACE_PARTS.beard * FACE_PARTS.jaw)) % FACE_PARTS.brow;
+  return { hair, beard, jaw, brow };
+}
+
+export function faceOf(parts: { hair: number; beard: number; jaw: number; brow: number }) {
+  return parts.hair + FACE_PARTS.hair * (parts.beard + FACE_PARTS.beard * (parts.jaw + FACE_PARTS.jaw * parts.brow));
+}
 
 export function xpToNext(level: number): number {
   return Math.round(60 * Math.pow(level, 1.6));

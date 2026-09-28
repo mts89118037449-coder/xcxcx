@@ -80,12 +80,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, a
       <g className={walking ? 'yard-walk' : undefined}>
         <Body look={look}>
           {walking ? (
-            // все кадры ходьбы в DOM сразу — иначе слои одежды не успевают загрузиться
-            WALK.map((f) => (
-              <g key={f} style={{ display: f === walkFrame ? 'inline' : 'none' }}>
-                <PoseG name={f} look={look} />
-              </g>
-            ))
+            <PoseG name="walk1" look={look} />
           ) : (
             <PoseG name={busyPose ?? idle} look={look} />
           )}
@@ -174,7 +169,7 @@ function CrowdMember({ name, x, y, scale, onTalk }: { name: string; x: number; y
       }}
     >
       <Place x={x} y={y} scale={scale}>
-        <ImageG url={npc.url} height={npc.height} tone="brightness(0.72) saturate(0.85)" className="char-breathe" />
+        <ImageG url={npc.url} height={npc.height} mirror={x > 180} tone="brightness(0.8) saturate(0.9)" className="char-breathe" />
       </Place>
       {onTalk && (
         <g className="talk-bubble" transform={`translate(${x} ${headY})`}>

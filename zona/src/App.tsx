@@ -147,7 +147,7 @@ export function App() {
     <GameCtx.Provider value={game}>
       <header className="top">
         <div className="top-row">
-          <Face face={p.face} size={40} className="top-face" />
+          <Face face={p.face} skin={p.skin} hat={p.equipped.head} size={40} className="top-face" />
           <div className="who">
             <b>{p.name}</b>
             <span className="muted">

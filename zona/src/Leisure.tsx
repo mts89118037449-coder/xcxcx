@@ -1,5 +1,5 @@
 import { STORY } from '../shared/story.ts';
-import { useNpc } from './art/sprites.tsx';
+import { NpcPortrait, useNpc } from './art/sprites.tsx';
 import { useGame } from './game.tsx';
 
 /** Чем заняться без энергии: плитки с остатком на сегодня. */
@@ -40,7 +40,7 @@ export function StoryCard() {
   const reward = [r.money && `₽${r.money}`, r.xp && `⭐${r.xp}`, r.gold && `🪙${r.gold}`, r.butts && `🚬${r.butts}`, r.item && '🎁'].filter(Boolean).join(' ');
   return (
     <div className={`story ${ready ? 'ready' : ''}`}>
-      {npc && <img src={npc.url} alt="" />}
+      {npc && <NpcPortrait who={ch.who} className="story-pic" />}
       <div className="story-body">
         <small>
           📖 {ch.name} · {p.story.step + 1}/{ch.steps.length}

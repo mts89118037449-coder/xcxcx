@@ -52,7 +52,7 @@ export function Church({ onBack }: { onBack(): void }) {
           {priest && (
             <g className="npc-click" onClick={talk}>
               <Place x={262} y={262} scale={0.9}>
-                <ImageG url={priest.url} height={priest.height} className="char-breathe" />
+                <ImageG url={priest.url} height={priest.height} mirror className="char-breathe" />
               </Place>
               <g className="talk-bubble" transform={`translate(262 ${262 - priest.height * 0.9 - 8})`}>
                 <rect x={-12} y={-10} width={24} height={15} rx={7.5} fill="#f2e6c8" />

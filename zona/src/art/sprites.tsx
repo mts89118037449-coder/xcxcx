@@ -6,6 +6,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { OUTFITS, type OutfitPose } from '../../shared/content.ts';
 import type { Look } from '../../shared/types.ts';
 import { artSize, artUrl, useArt } from './raster.ts';
+import { Rig, RigHead, type RigAnim } from './rig/Rig.tsx';
+import { NPC_RIGS } from './rig/npcs.ts';
 
 export type PoseName =
   | 'stand' | 'stand34' | 'crossed' | 'squat' | 'sit' | 'sit34' | 'lunge' | 'run'
@@ -36,6 +38,8 @@ export interface Npc {
 }
 
 function npcOf(art: Set<string> | null, name: string): Npc | null {
+  // НПС нарисованы тем же ригом, что и герой — единый стиль
+  if (NPC_RIGS[name]) return { url: `rig:${name}`, height: 204 };
   const url = artUrl(art, name);
   if (!url) return null;
   // у каждого листа свой масштаб: эталон — офицер/хозяин в полный рост
@@ -73,6 +77,14 @@ export function poseUrl(name: PoseName) {
 
 /** Картинка в системе координат персонажа, ступнями на y=210, по центру x=60. */
 export function ImageG({ url, height = H, mirror, tone, className }: { url: string; height?: number; mirror?: boolean; tone?: string; className?: string }) {
+  if (url.startsWith('rig:')) {
+    const n = NPC_RIGS[url.slice(4)];
+    return (
+      <g style={tone ? { filter: tone } : undefined}>
+        <Rig look={n.look} anim={n.anim} mirror={mirror} />
+      </g>
+    );
+  }
   const size = artSize(url);
   const h = height;
   const w = size ? (size[0] / size[1]) * h : h * 0.4;
@@ -114,8 +126,8 @@ export function outfitSprite(art: Set<string> | null, look: Look | undefined, na
 }
 
 /** Надет ли комплект — тогда во дворе стоим: у комплектов нет покадровой ходьбы. */
-export function hasOutfit(art: Set<string> | null, look?: Look): boolean {
-  return !!outfitSprite(art, look, 'stand');
+export function hasOutfit(_art: Set<string> | null, _look?: Look): boolean {
+  return false; // риг ходит в любой одежде
 }
 
 /** Где у позы голова — чтобы надеть шапку (доли картинки: x0, y0, x1, y1). */
@@ -152,61 +164,21 @@ export function isDressed(art: Set<string> | null, look?: Look): boolean {
 }
 
 /** Поза игрока в правильном масштабе относительно стоячей — вместе со шмотками и наколками. */
-export function PoseG({ name, mirror, tone, look, noShadow }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean }) {
-  const art = useArt();
-  const outfit = outfitSprite(art, look, name);
-  const url = outfit?.url ?? poseUrl(name);
-  const ref = artSize(outfit?.ref ?? poseUrl('stand'));
-  const size = artSize(url);
-  // на листе комплектов герой коренастее — уменьшаем, чтобы стоял вровень с остальными
-  const h = (ref && size ? (size[1] / ref[1]) * H : H) * (outfit ? 0.78 : 1);
-  const w = size ? (size[0] / size[1]) * h : h * 0.4;
-  const x = 60 - w / 2;
-  const y = 210 - h;
-  const layers = outfit ? [] : dressLayers(art, name, look);
-  // у комплектов голова своя, мелкая — шапка закрывала бы лицо
-  const hat = !outfit && look?.equipped.head ? artUrl(art, `sheet/icons/${look.equipped.head}`) : null;
-  const hb = outfit ? outfitMeta?.[outfit.key] : dressMeta?.[name]?.head;
-  let hatEl = null;
-  if (hat && hb) {
-    const headW = (hb[2] - hb[0]) * w;
-    const headH = (hb[3] - hb[1]) * h;
-    const hsz = artSize(hat);
-    const ratio = hsz ? hsz[1] / hsz[0] : 0.8;
-    // сколько картинки шапки брать сверху: у ушанки без свисающих клапанов, иначе закрывают лицо
-    const keep = HAT_KEEP[look!.equipped.head!] ?? 1;
-    const hw = headW * 1.22;
-    const hh = hw * ratio * keep;
-    const cx = x + ((hb[0] + hb[2]) / 2) * w;
-    // край шапки — на лбу, чуть выше бровей
-    const brow = y + hb[1] * h + headH * 0.3;
-    hatEl = (
-      <svg x={cx - hw / 2} y={brow - hh} width={hw} height={hh} viewBox={`0 0 100 ${100 * ratio * keep}`} preserveAspectRatio="none" overflow="hidden">
-        <image
-          href={hat}
-          width={100}
-          height={100 * ratio}
-          style={look?.equipped.head === 'cap_gold' ? { filter: GOLD_TINT } : undefined}
-        />
-      </svg>
-    );
-  }
+/** Какая анимация рига у старых имён поз. */
+const POSE_ANIM: Record<PoseName, RigAnim> = {
+  stand: 'idle', stand34: 'idle', crossed: 'crossed', squat: 'sit', sit: 'sit', sit34: 'sit', lunge: 'punch', run: 'run',
+  guard: 'guard', guard34: 'guard', guard2: 'guard', guard3: 'guard', walk1: 'walk', walk2: 'walk', walk3: 'walk', walk4: 'walk',
+  push: 'work', lying: 'ko', floor: 'floor',
+};
+
+/** Персонаж игрока: кукла на скелете — одежда, наколки и внешность видны и двигаются вместе с телом. */
+export function PoseG({ name, mirror, tone, look, noShadow, anim }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean; anim?: RigAnim }) {
+  const l = look ?? { equipped: {}, tattoos: [], str: 5 };
+  const a = anim ?? POSE_ANIM[name] ?? 'idle';
   return (
-    <g className="char-breathe">
-      <g transform={mirror ? 'translate(120 0) scale(-1 1)' : undefined} style={tone ? { filter: tone } : undefined}>
-        {/* тень строго под ступнями — иначе фигура «висит» */}
-        {!noShadow && (() => {
-          const f = (!outfit && dressMeta?.[name]?.feet) || [0.2, 0.8];
-          const fx0 = x + f[0] * w;
-          const fx1 = x + f[1] * w;
-          return <ellipse cx={(fx0 + fx1) / 2} cy={209} rx={Math.max(12, (fx1 - fx0) / 2 + 6)} ry={4.5} fill="#000" opacity={0.45} style={{ filter: 'none' }} />;
-        })()}
-        <image href={url} x={x} y={y} width={w} height={h} />
-        {layers.map((u) => (
-          <image key={u} href={u} x={x} y={y} width={w} height={h} />
-        ))}
-        {hatEl}
-      </g>
+    <g style={tone ? { filter: tone } : undefined}>
+      {a === 'sit' && <Stool />}
+      <Rig look={l} anim={a} mirror={mirror} shadow={!noShadow} />
     </g>
   );
 }
@@ -227,20 +199,22 @@ export function faceUrl(art: Set<string> | null, face: number | null | undefined
 }
 
 /** Круглый портрет. */
-export function Face({ face, size = 36, className = '' }: { face: number | null | undefined; size?: number; className?: string }) {
-  const url = faceUrl(useArt(), face);
-  if (!url) return null;
-  return <img className={`face ${className}`} src={url} alt="" style={{ width: size, height: size }} />;
+/** Круглый портрет — голова рига: та же внешность, что у персонажа. */
+export function Face({ face, size = 36, className = '', skin, hat }: { face: number | null | undefined; size?: number; className?: string; skin?: number; hat?: string }) {
+  if (face == null) return null;
+  return (
+    <span className={`face rig-face ${className}`} style={{ width: size, height: size }}>
+      <RigHead look={{ equipped: hat ? { head: hat } : {}, tattoos: [], str: 5, face, skin }} size={size} />
+    </span>
+  );
 }
 
 /** Персонаж-«хозяин» экрана: поясной портрет с репликой. */
 export function NpcBanner({ who, name, text, children }: { who: string; name: string; text: string; children?: ReactNode }) {
-  const url = artUrl(useArt(), `sheet/cast/${who}`);
-  if (!url) return null;
   return (
     <div className="npc-banner">
       <div className="npc-pic">
-        <img src={url} alt={name} />
+        <NpcPortrait who={`sheet/cast/${who}`} />
       </div>
       <div className="npc-say">
         <b>{name}</b>
@@ -248,5 +222,35 @@ export function NpcBanner({ who, name, text, children }: { who: string; name: st
         {children}
       </div>
     </div>
+  );
+}
+
+/** Поясной портрет НПС — тот же риг, крупно по пояс. */
+export function NpcPortrait({ who, className }: { who: string; className?: string }) {
+  const art = useArt();
+  const n = NPC_RIGS[who];
+  if (!n) {
+    const url = artUrl(art, who);
+    return url ? <img className={className} src={url} alt="" /> : null;
+  }
+  return (
+    <svg className={`npc-portrait ${className ?? ''}`} viewBox="18 4 84 118" preserveAspectRatio="xMidYMin slice" aria-hidden>
+      <Rig look={n.look} anim="idle" shadow={false} />
+    </svg>
+  );
+}
+
+/** Табурет под сидящим героем. */
+function Stool() {
+  return (
+    <g>
+      <ellipse cx={58} cy={209} rx={22} ry={3.5} fill="#000" opacity={0.35} />
+      <path d="M 42,166 L 38,209 M 74,166 L 78,209 M 47,166 L 49,204 M 69,166 L 67,204" stroke="#1b130d" strokeWidth={5} strokeLinecap="round" />
+      <path d="M 42,166 L 38,209 M 74,166 L 78,209 M 47,166 L 49,204 M 69,166 L 67,204" stroke="#6a4a2e" strokeWidth={3} strokeLinecap="round" />
+      <path d="M 40,187 L 76,187" stroke="#1b130d" strokeWidth={3.4} />
+      <path d="M 40,187 L 76,187" stroke="#5a3c24" strokeWidth={1.8} />
+      <rect x={34} y={160} width={48} height={8} rx={2} fill="#7a5634" stroke="#1b130d" strokeWidth={1.6} />
+      <rect x={36} y={161} width={44} height={2} fill="#9a7650" />
+    </g>
   );
 }

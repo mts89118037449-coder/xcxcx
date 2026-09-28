@@ -1,7 +1,10 @@
 // Иконки вещей и наколок в той же манере, что персонаж.
 // Вещи рисуются сами по себе (как на витрине), наколки — на участке кожи.
 
-import { OUTFITS, itemById } from '../../shared/content.ts';
+import { itemById } from '../../shared/content.ts';
+import { Rig } from './rig/Rig.tsx';
+
+const RIG_CROP: Record<string, string> = { head: '36 4 50 50', body: '32 54 62 66', legs: '34 108 56 104', feet: '32 186 56 26' };
 import { CharacterG, ItemOnly } from './Character.tsx';
 import { artUrl, useArt } from './raster.ts';
 
@@ -56,8 +59,16 @@ export function ItemIcon({ id, size = 44 }: { id: string; size?: number }) {
   const art = useArt();
   const item = itemById.get(id);
   if (!item) return null;
-  const outfit = OUTFITS[id];
-  const drawn = (outfit && artUrl(art, `sheet/outfit/${outfit.set}/stand`)) || artUrl(art, `sheet/icons/${id}`);
+  // одежда — на той же кукле, что и персонаж, крупным планом
+  if (RIG_CROP[item.slot]) {
+    const crop = id === 'drop_coat' || id === 'body_parka' || id === 'body_gown' ? '26 54 74 110' : RIG_CROP[item.slot];
+    return (
+      <svg className="icon rig-icon" viewBox={id === 'feet_kirza' ? '30 168 60 44' : crop} width={size} height={size} aria-label={item.name}>
+        <Rig look={{ equipped: { [item.slot]: id }, tattoos: [], str: 12, face: 16 }} anim="idle" still shadow={false} />
+      </svg>
+    );
+  }
+  const drawn = artUrl(art, `sheet/icons/${id}`);
   if (drawn) {
     return (
       <span className="icon icon-img" style={{ width: size, height: size }}>
