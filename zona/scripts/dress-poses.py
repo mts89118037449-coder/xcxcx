@@ -412,7 +412,8 @@ def main():
         os.makedirs(d, exist_ok=True)
         if DEBUG:
             debug_map(R).save(os.path.join(d, '_map.png'))
-        layers = outfit_items(R) if ONLY_OUTFITS else {**items(R), **tattoos(R), **outfit_items(R)}
+        # перенос комплектов на позы — только по флагу: рисованные комплекты с листа смотрятся лучше
+        layers = outfit_items(R) if ONLY_OUTFITS else {**items(R), **tattoos(R)}
         for k, img in layers.items():
             img.save(os.path.join(d, k + '.webp'), 'WEBP', quality=82, method=6)
         # голова (для шапки) и ступни (для тени) — доли картинки

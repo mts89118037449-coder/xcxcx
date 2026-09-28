@@ -12,7 +12,8 @@ import { Church } from './Church.tsx';
 import { Pullups } from './Pullups.tsx';
 import { Medic } from './Medic.tsx';
 import { Escape } from './Escape.tsx';
-import { EventButton } from './Events.tsx';
+import { EventButton, EventStage } from './Events.tsx';
+import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
 import { Gear } from './screens/Gear.tsx';
@@ -46,7 +47,18 @@ export function App() {
   const [shellsOpen, setShellsOpen] = useState(false);
   const [place, setPlace] = useState<'church' | 'medic' | 'escape' | null>(null);
   const [pullOpen, setPullOpen] = useState(false);
+  const [eventId, setEventId] = useState<string | null>(null);
   const toastTimer = useRef<number>(0);
+  const [fx, setFx] = useState<{ chips: FxChip[]; levelUp: boolean; key: number }>({ chips: [], levelUp: false, key: 0 });
+  const fxTimer = useRef<number>(0);
+  const showFx = useCallback((result: unknown) => {
+    const g = gainsOf(result);
+    if (!g.chips.length && !g.levelUps) return;
+    setFx((f) => ({ chips: g.chips, levelUp: g.levelUps > 0, key: f.key + 1 }));
+    tg?.HapticFeedback?.notificationOccurred('success');
+    clearTimeout(fxTimer.current);
+    fxTimer.current = window.setTimeout(() => setFx((f) => ({ ...f, chips: [], levelUp: false })), 2400 + g.chips.length * 140);
+  }, []);
   const now = useNow();
 
   const refresh = useCallback(async () => {
@@ -81,6 +93,7 @@ export function App() {
       try {
         const r = await api.action<R>(type, body);
         setPlayer(r.player);
+        showFx(r.result);
         return r.result;
       } catch (e) {
         toast(e instanceof ApiError ? e.message : 'Нет связи с сервером', 'err');
@@ -90,7 +103,7 @@ export function App() {
         setBusy(false);
       }
     },
-    [toast],
+    [toast, showFx],
   );
 
   if (error && !player) {
@@ -117,7 +130,7 @@ export function App() {
     setPlace(null);
     window.scrollTo(0, 0);
   };
-  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true), say: setDialog, openShells: () => setShellsOpen(true), openPlace: (pl) => (pl === 'pullups' ? setPullOpen(true) : (setPlace(pl), window.scrollTo(0, 0))) };
+  const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true), say: setDialog, openShells: () => setShellsOpen(true), openPlace: (pl) => (pl === 'pullups' ? setPullOpen(true) : (setPlace(pl), window.scrollTo(0, 0))), openEvent: (id) => setEventId(id ?? p.event?.id ?? null) };
   const energyTimer = p.nextEnergyAt ? Math.max(0, p.nextEnergyAt - now) : 0;
 
   return (
@@ -180,9 +193,11 @@ export function App() {
       </nav>
 
       <EventButton />
+      <FxLayer key={fx.key} chips={fx.chips} levelUp={fx.levelUp} />
       {toastMsg && <div className={`toast toast-${toastMsg.kind}`}>{toastMsg.text}</div>}
 
       {visiting !== null && <VisitModal id={visiting} onClose={() => setVisiting(null)} />}
+      {eventId && <EventStage id={eventId} onClose={() => setEventId(null)} />}
       {dialog && <DialogBox d={dialog} onClose={() => setDialog(null)} />}
       {pullOpen && <Pullups onClose={() => setPullOpen(false)} />}
       {shellsOpen && <ShellGame onClose={() => setShellsOpen(false)} />}

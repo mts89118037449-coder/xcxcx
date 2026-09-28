@@ -41,6 +41,7 @@ export interface Game {
   say(d: DialogSpec): void;
   openShells(): void;
   openPlace(place: Place): void;
+  openEvent(id?: string): void;
 }
 
 export const GameCtx = createContext<Game | null>(null);

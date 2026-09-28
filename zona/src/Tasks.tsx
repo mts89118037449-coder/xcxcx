@@ -34,9 +34,7 @@ export function Dailies() {
               className="btn btn-s"
               disabled={busy || !ready}
               onClick={async () => {
-                const r = await act<{ bonus: number; items: string[] }>('task', { index: i });
-                const got = r?.items?.length ? ` · ${r.items.map(itemLabel).join(', ')}` : '';
-                if (r) toast(r.bonus ? `Все дела закрыты! +${r.bonus} 🪙 сверху${got}` : `Награда получена${got}`);
+                await act('task', { index: i });
               }}
             >
               {t.claimed ? '✓' : 'Забрать'}
@@ -61,7 +59,7 @@ export function Quests() {
     const r = await act<{ ok: boolean; money: number; gold: number; xp: number; tpl: string; item: string | null }>('questFinish');
     if (!r) return;
     const name = tplById.get(r.tpl)?.name ?? 'Поручение';
-    toast(r.ok ? `${name}: +${fmt(r.money)} ₽, +${r.xp} опыта${r.gold ? `, +${r.gold} 🪙` : ''}${r.item ? `, ${itemLabel(r.item)}` : ''}` : `${name}: спалился. Только +${r.xp} опыта`, r.ok ? 'ok' : 'err');
+    toast(r.ok ? `✅ ${name}` : `🚨 ${name}: спалился`, r.ok ? 'ok' : 'err');
   };
 
   return (
@@ -75,7 +73,6 @@ export function Quests() {
       {a && (
         <Card className="glow">
           <b>⏳ {tplById.get(a.tpl)?.name}</b>
-          <div className="muted small">{tplById.get(a.tpl)?.text}</div>
           <Bar kind="en" value={a.minutes * 60_000 - Math.max(0, left)} max={a.minutes * 60_000} label={left > 0 ? timeLeft(left) : 'Готово'} />
           <div className="row end gap-s">
             {left > 0 ? (
@@ -97,16 +94,15 @@ export function Quests() {
             <div className="row">
               <div className="grow">
                 <b>{tpl?.name}</b>
-                <div className="muted small">{tpl?.text}</div>
                 <div className="muted small">
-                  ⏱ {q.minutes} мин · {fmt(q.money)} ₽ · {q.xp} опыта{q.gold ? ` · ${q.gold} 🪙` : ''} · шанс {Math.round(q.chance * 100)}%
+                  ⏱{q.minutes}м · ₽{fmt(q.money)} · ⭐{q.xp}{q.gold ? ` · 🪙${q.gold}` : ''} · 🎲{Math.round(q.chance * 100)}%
                 </div>
               </div>
               <button
                 className="btn"
                 disabled={busy || !!a}
                 onClick={async () => {
-                  if ((await act('questStart', { key: q.key })) !== null) toast('Пошёл выполнять');
+                  await act('questStart', { key: q.key });
                 }}
               >
                 ⚡{q.energy}

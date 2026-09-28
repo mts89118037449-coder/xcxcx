@@ -38,7 +38,7 @@ export function useTalk() {
         text: now >= p.dailyReadyAt ? 'Тебе, молодой, грев с воли передали. Иди распишись у адвоката.' : pick(DED_TIPS),
         options: [
           ...(now >= p.dailyReadyAt
-            ? [{ label: 'Забрать грев', onPick: async () => { const r = await act<{ money: number; gold: number }>('daily'); if (r) toast(`Грев: +${fmt(r.money)} ₽, +${r.gold} 🪙`); } }]
+            ? [{ label: 'Забрать грев', onPick: async () => { await act('daily'); } }]
             : []),
           { label: 'Ещё что скажешь?', onPick: () => say({ ...specs.ded(), text: pick(DED_TIPS) }) },
           { label: 'Бывай, дед' },
@@ -67,8 +67,8 @@ export function useTalk() {
           {
             label: `Отработать (⚡${job.energy})`,
                         onPick: async () => {
-              const r = await act<{ money: number; xp: number; bonus: boolean }>('job', { jobId: job.id });
-              if (r) toast(`${r.bonus ? '💰 Премия ×2! ' : ''}+${fmt(r.money)} ₽, +${r.xp} опыта`);
+              const r = await act<{ bonus: boolean }>('job', { jobId: job.id });
+              if (r?.bonus) toast('💰 Премия ×2!');
             },
           },
           { label: 'Позже' },
@@ -89,7 +89,7 @@ export function useTalk() {
             label: `${t.label}${t.id === 'money' ? ` (+${fmt(40 + p.level * 10)} ₽)` : ''} — ${t.cost} 🚬`,
             disabled: p.butts < t.cost,
             onPick: async () => {
-              if ((await act('trade', { offer: t.id })) !== null) toast(`Барыга доволен: ${t.label.toLowerCase()}`);
+              await act('trade', { offer: t.id });
             },
           })),
           { label: 'Не сейчас' },

@@ -32,6 +32,8 @@ export function Zone() {
             else if (pl === 'work') go('work');
             else if (pl === 'yard') go('fight');
             else if (pl === 'church') openPlace('church');
+            else if (pl === 'walk') visit(0);
+            else if (pl === 'escape') openPlace('escape');
             else openPlace('medic');
           }}
         >
@@ -61,30 +63,7 @@ export function Zone() {
         </ZoneScene>
         <div className="scene-tag">🗺️ Зона · 🚬 {p.butts}</div>
       </div>
-      <div className="muted small center">
-        {field.length ? 'Тапай по бычкам на земле. Барыге — на обмен.' : 'Бычков пока нет'}
-        {p.nextButtAt ? ` · следующий через ${timeLeft(p.nextButtAt - now)}` : ' · на земле максимум'}
-      </div>
-      <div className="card row">
-        <div>
-          <b>🚪 Обход бараков</b>
-          <div className="muted small">Зайти в чужие хаты: уважить, подогреть или пошарить ({p.snoopsLeft})</div>
-        </div>
-        <button className="btn" onClick={() => visit(0)}>
-          Пройтись
-        </button>
-      </div>
-      <div className="card row">
-        <div>
-          <b>🏃 Побег</b>
-          <div className="muted small">
-            {p.escape.stage !== null ? 'Ты в бегах!' : p.escape.cdUntil > now ? `ШИЗО ещё ${timeLeft(p.escape.cdUntil - now)}` : `Рекорд: ${p.escape.best} из 9 этапов`}
-          </div>
-        </div>
-        <button className="btn btn-red" onClick={() => openPlace('escape')}>
-          {p.escape.stage !== null ? 'Вернуться в бега' : 'К подкопу'}
-        </button>
-      </div>
+      {p.nextButtAt && !field.length && <div className="muted small center">🚬 через {timeLeft(p.nextButtAt - now)}</div>}
       <WeeklyCard />
     </>
   );

@@ -40,12 +40,10 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
 
   const respect = async () => {
     if ((await act('respect', { id: v!.id })) === null) return;
-    toast(`Уважил ${v?.name}. +5 опыта`);
     setV((x) => (x ? { ...x, respectedToday: true, authority: x.authority + 1 } : x));
   };
   const gift = async () => {
     if ((await act('gift', { id: v!.id })) === null) return;
-    toast(`Подогрел хату: −${VISIT.giftButts} 🚬, +1 авторитета`);
     setV((x) => (x ? { ...x, giftedToday: true, authority: x.authority + 2 } : x));
   };
   const snoop = async () => {

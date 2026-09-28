@@ -10,7 +10,7 @@ type Section = 'face' | 'body' | 'name';
 export function CharacterEditor() {
   const { p, act, busy, toast } = useGame();
   const art = useArt();
-  const [open, setOpen] = useState<Section | null>(p.faceChosen ? null : 'face');
+  const [open, setOpen] = useState<Section | null>('face');
   const [name, setName] = useState(p.name);
 
   const tab = (s: Section, label: string) => (

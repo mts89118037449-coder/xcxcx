@@ -8,7 +8,6 @@ import { BOSS_LOOKS, CharacterG } from '../art/Character.tsx';
 import { artUrl, useArt } from '../art/raster.ts';
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
-import { NpcBanner } from '../art/sprites.tsx';
 import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 
 type FightResult = FightReplay;
@@ -81,21 +80,14 @@ export function Fight() {
         </button>
       </div>
       {world && (
-        <NpcBanner who="spetsnaz" name="Командир ОМОНа" text="На централе бунт. Мы заходим через час — успейте отличиться" />
-      )}
-      {world && (
         <Card className="world">
           <div className="row">
             <b>{WORLD_BOSS.emoji} {WORLD_BOSS.name} #{world.gen}</b>
             <span className="muted">{world.participants} бойцов</span>
           </div>
           <Bar kind="boss" value={world.hp} max={world.maxHp} />
-          <div className="muted small">
-            Бьют все игроки сервера. Награда {fmt(WORLD_BOSS.rewardPool.money)} ₽ делится по урону, топ-3 получают{' '}
-            {WORLD_BOSS.topGold.join('/')} 🪙
-          </div>
           <div className="row">
-            <span>Твой урон: <b>{fmt(world.myDamage)}</b></span>
+            <span className="muted small">💰 {fmt(WORLD_BOSS.rewardPool.money)} ₽ по урону · 🗡️ твой: <b>{fmt(world.myDamage)}</b></span>
             <button className="btn btn-red" disabled={busy || !worldReady || lowHp} onClick={hitWorld}>
               {worldReady ? `Ударить ⚡${WORLD_BOSS.energy}` : timeLeft(p.worldHitReadyAt - now)}
             </button>
@@ -116,8 +108,8 @@ export function Fight() {
       <Card>
         <div className="row">
           <div>
-            <b>🥊 Наехать на сокамерника</b>
-            <div className="muted">Соперник твоего уровня. Победа — отжимаешь 10% его денег</div>
+            <b>🥊 Наехать</b>
+            <div className="muted small">💰 10% его денег · 🎖️ авторитет</div>
           </div>
           <button className="btn btn-red" disabled={busy || !pvpReady || lowHp} onClick={pvp}>
             {pvpReady ? `⚡${BALANCE.pvpEnergy}` : timeLeft(p.pvpReadyAt - now)}
@@ -127,48 +119,40 @@ export function Fight() {
         {lowHp && <div className="warn">Здоровья меньше 30% — сначала в санчасть или подожди</div>}
       </Card>
 
-      <h3 className="section">Боссы</h3>
-      {BOSSES.map((b) => {
-        const locked = p.level < b.minLevel;
-        const cd = (p.bossCd[b.id] ?? 0) - now;
-        return (
-          <Card key={b.id} className={locked ? 'locked' : ''}>
-            <div className="row">
-              {artUrl(art, `npc/${b.id}_face`) ? (
-                <img className="boss-face" src={artUrl(art, `npc/${b.id}_face`)!} alt={b.name} />
+      <div className="boss-grid">
+        {BOSSES.map((b) => {
+          const locked = p.level < b.minLevel;
+          const cd = (p.bossCd[b.id] ?? 0) - now;
+          const face = artUrl(art, `npc/${b.id}_face`);
+          return (
+            <div key={b.id} className={`boss-tile ${locked ? 'locked' : ''}`}>
+              {face ? (
+                <img className="boss-portrait" src={face} alt={b.name} />
               ) : (
-                <svg className="boss-face" viewBox="42 0 36 44">
+                <svg className="boss-portrait" viewBox="42 0 36 44">
                   <CharacterG look={BOSS_LOOKS[b.id].look} build={BOSS_LOOKS[b.id].build} />
                 </svg>
               )}
-              <div className="grow">
-                <b>{b.name}</b>
-                <div className="muted small">{b.description}</div>
-                <div className="muted small">
-                  ❤️{fmt(b.hp)} ⚔️{b.atk} 🛡️{b.def} · награда {fmt(b.reward.money[0])}+ ₽
-                  {b.drops.length > 0 && ` · 🎁 ${b.drops.map((d) => itemById.get(d.itemId)?.emoji).join('')}`}
-                </div>
-              </div>
-            </div>
-            <div className="row end gap-s">
+              <b>{b.name}</b>
+              <small>
+                ❤️{fmt(b.hp)} ⚔️{b.atk}
+                {b.drops.length > 0 && ` ${b.drops.map((d) => itemById.get(d.itemId)?.emoji).join('')}`}
+              </small>
               {locked ? (
-                <span className="muted">🔒 с {b.minLevel} уровня</span>
+                <span className="boss-lock">🔒 ур. {b.minLevel}</span>
               ) : cd > 0 ? (
-                <>
-                  <span className="muted">⏳ {timeLeft(cd)}</span>
-                  <button className="btn btn-s btn-gold" disabled={busy} onClick={() => act('bossReset', { bossId: b.id })}>
-                    Сейчас · {GOLD_PRICES.bossReset} 🪙
-                  </button>
-                </>
+                <button className="btn btn-s btn-gold" disabled={busy} onClick={() => act('bossReset', { bossId: b.id })}>
+                  ⏳{timeLeft(cd)} · {GOLD_PRICES.bossReset}🪙
+                </button>
               ) : (
-                <button className="btn btn-red" disabled={busy || lowHp} onClick={() => boss(b.id, b.name)}>
+                <button className="btn btn-s btn-red" disabled={busy || lowHp} onClick={() => boss(b.id, b.name)}>
                   В бой ⚡{b.energy}
                 </button>
               )}
             </div>
-          </Card>
-        );
-      })}
+          );
+        })}
+      </div>
     </>
   );
 }

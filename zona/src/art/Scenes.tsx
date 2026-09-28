@@ -902,7 +902,7 @@ export function ButtG({ x, y, pack, onPick }: { x: number; y: number; pack: bool
   );
 }
 
-export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace(place: 'barrack' | 'kiosk' | 'work' | 'medic' | 'yard' | 'church'): void }) {
+export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace(place: 'barrack' | 'kiosk' | 'work' | 'medic' | 'yard' | 'church' | 'walk' | 'escape'): void }) {
   const tag = (x: number, y: number, label: string, place: Parameters<typeof onPlace>[0], w = 54) => (
     <g className="zone-tag" onClick={() => onPlace(place)} style={{ cursor: 'pointer' }}>
       <rect x={x - w / 2} y={y - 9} width={w} height={13} rx={6.5} fill="#000" opacity={0.65} />
@@ -929,6 +929,16 @@ export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace
       {tag(250, 64, '⚒️ Промка', 'work')}
       {tag(331, 100, '💉 Санчасть', 'medic', 62)}
       {tag(58, 196, '🥊 Во двор', 'yard', 60)}
+      {tag(68, 128, '🚪 По хатам', 'walk', 58)}
+      {/* подкоп у забора — вход в побег */}
+      <g className="zone-tag" onClick={() => onPlace('escape')} style={{ cursor: 'pointer' }}>
+        <ellipse cx={322} cy={250} rx={16} ry={5} fill="#120b06" />
+        <path d="M308,250 C312,244 332,244 336,250" stroke="#5a3e22" strokeWidth={2} fill="none" />
+        <rect x={296} y={226} width={52} height={13} rx={6.5} fill="#5a1410" opacity={0.85} />
+        <text x={322} y={235} fontSize={7.5} textAnchor="middle" fill="#f2e6c8" fontWeight={700}>
+          🕳️ Побег
+        </text>
+      </g>
       {children}
     </Scene>
   );

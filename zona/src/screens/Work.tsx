@@ -1,15 +1,10 @@
-import { itemLabel } from '../Perks.tsx';
 import { GOLD_PRICES, JOBS, STAT_NAMES, trainCost, type Stat } from '../../shared/content.ts';
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
 import { Dailies, Quests } from '../Tasks.tsx';
-import { Card, Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
+import { Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
 
-const STAT_HINT: Record<Stat, string> = {
-  str: '+3 к атаке',
-  agi: '+2 к защите, крит',
-  end: '+12 к здоровью',
-};
+const STAT_ICON: Record<Stat, string> = { str: '💪', agi: '🤸', end: '🫀' };
 
 export function Work() {
   const { p, act, toast, busy } = useGame();
@@ -20,9 +15,7 @@ export function Work() {
     const r = await act<{ money: number; xp: number; levelUps: number; bonus: boolean; item: string | null }>('job', { jobId });
     if (!r) return;
     play(r.levelUps ? 'act-cheer' : 'act-work');
-    toast(
-      `${r.bonus ? '💰 Премия ×2! ' : ''}+${fmt(r.money)} ₽, +${r.xp} опыта${r.item ? ` · нашёл ${itemLabel(r.item)}` : ''}${r.levelUps ? ' · НОВЫЙ УРОВЕНЬ!' : ''}`,
-    );
+    if (r.bonus) toast('💰 Премия ×2!');
   };
 
   const pump = async (type: 'allocate' | 'train', stat: Stat) => {
@@ -35,55 +28,44 @@ export function Work() {
         <Stage onTalk={talk} loc="work" look={lookOf(p)} mood={p.hp < p.stats.maxHp * 0.3 ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
         <div className="scene-tag">⚒️ Промзона</div>
       </div>
+      <div className="job-grid">
+        {JOBS.filter((j, i) => j.minLevel <= p.level || JOBS.findIndex((x) => x.minLevel > p.level) === i).map((j) => {
+          const locked = p.level < j.minLevel;
+          return (
+            <button key={j.id} className={`job-tile ${locked ? 'locked' : ''}`} disabled={locked || busy} onClick={() => work(j.id)}>
+              <span className="job-emoji">{locked ? '🔒' : j.emoji}</span>
+              <b>{j.name}</b>
+              {locked ? <small>ур. {j.minLevel}</small> : <small>₽{fmt(j.money[1])} · ⚡{j.energy}</small>}
+            </button>
+          );
+        })}
+      </div>
       <Dailies />
       <Quests />
-      <h3 className="section">Навыки</h3>
-      <Card>
-        <h3>Прокачка {p.statPoints > 0 && <span className="badge">{p.statPoints} очк.</span>}</h3>
+      <div className="stat-pump">
         {(Object.keys(STAT_NAMES) as Stat[]).map((s) => (
-          <div className="row line" key={s}>
-            <div>
-              <b>{STAT_NAMES[s]}: {p[s]}</b>
-              <div className="muted">{STAT_HINT[s]}</div>
-            </div>
-            <div className="row gap-s">
-              {p.statPoints > 0 && (
-                <button className="btn btn-s" disabled={busy} onClick={() => pump('allocate', s)}>+1</button>
-              )}
+          <div key={s}>
+            <span>{STAT_ICON[s]}</span>
+            <b>{p[s]}</b>
+            <small>{STAT_NAMES[s]}</small>
+            {p.statPoints > 0 ? (
+              <button className="btn btn-s" disabled={busy} onClick={() => pump('allocate', s)}>+1</button>
+            ) : (
               <button className="btn btn-s btn-dark" disabled={busy || p.money < trainCost(p[s])} onClick={() => pump('train', s)}>
-                🏋️ <Price amount={trainCost(p[s])} currency="money" />
+                <Price amount={trainCost(p[s])} currency="money" />
               </button>
-            </div>
+            )}
           </div>
         ))}
-        <button
-          className="btn btn-link"
-          disabled={busy}
-          onClick={() => confirm(`Сбросить навыки за ${GOLD_PRICES.statReset} 🪙? Все вложенные очки вернутся.`) && act('statReset')}
-        >
-          Перераспределить навыки · {GOLD_PRICES.statReset} 🪙
-        </button>
-      </Card>
-
-      <h3 className="section">Работа</h3>
-      {JOBS.map((j) => {
-        const locked = p.level < j.minLevel;
-        return (
-          <Card key={j.id} className={locked ? 'locked' : ''}>
-            <div className="row">
-              <div>
-                <b>{j.emoji} {j.name}</b>
-                <div className="muted">
-                  {locked ? `🔒 с ${j.minLevel} уровня` : `${fmt(j.money[0])}–${fmt(j.money[1])} ₽ · ${j.xp} опыта`}
-                </div>
-              </div>
-              <button className="btn" disabled={locked || busy} onClick={() => work(j.id)}>
-                ⚡{j.energy}
-              </button>
-            </div>
-          </Card>
-        );
-      })}
+      </div>
+      {p.statPoints > 0 && <div className="center"><span className="badge">{p.statPoints} очк. навыков</span></div>}
+      <button
+        className="btn btn-link"
+        disabled={busy}
+        onClick={() => confirm(`Сбросить навыки за ${GOLD_PRICES.statReset} 🪙? Все вложенные очки вернутся.`) && act('statReset')}
+      >
+        ↺ Сброс навыков · {GOLD_PRICES.statReset} 🪙
+      </button>
     </>
   );
 }

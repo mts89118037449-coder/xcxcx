@@ -48,7 +48,6 @@ export function Escape({ onBack }: { onBack(): void }) {
     if (!r) return;
     setEnd(r);
     setPhase('bailed');
-    toast('Тихо вернулся в хату. Никто не заметил');
   };
 
   const passedStages = phase === 'caught' || phase === 'bailed' ? end?.stage ?? 0 : p.escape.stage ?? 0;

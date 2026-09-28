@@ -24,7 +24,7 @@ export function Pullups({ onClose }: { onClose(): void }) {
   useEffect(() => {
     if (phase === 'go' && left <= 0) {
       setPhase('done');
-      act<{ reps: number; xp: number }>('pullups', { reps: repsRef.current }).then((r) => r && toast(`${r.reps} раз · +${r.xp} опыта`));
+      act('pullups', { reps: repsRef.current });
     }
   }, [left, phase, act, toast]);
 

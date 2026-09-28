@@ -23,16 +23,14 @@ export function Medic({ onBack }: { onBack(): void }) {
           label: now >= p.medBedReadyAt ? `Полежать на койке (+${MEDIC.bedHeal * 100}%, бесплатно)` : `Койка занята — ${timeLeft(p.medBedReadyAt - now)}`,
           disabled: !hurt || now < p.medBedReadyAt,
           onPick: async () => {
-            const r = await act<{ hp: number }>('medBed');
-            if (r) toast(`Отлежался: +${r.hp} ❤️`);
+            await act('medBed');
           },
         },
         {
           label: `Укол (+${MEDIC.shotHeal * 100}%) — ${fmt(shot)} ₽`,
           disabled: !hurt || p.money < shot,
           onPick: async () => {
-            const r = await act<{ hp: number }>('medShot');
-            if (r) toast(`Укололи: +${r.hp} ❤️`);
+            await act('medShot');
           },
         },
         {

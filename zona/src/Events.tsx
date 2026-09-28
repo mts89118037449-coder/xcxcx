@@ -1,6 +1,9 @@
 import { eventById } from '../shared/events.ts';
+import { useState } from 'react';
 import { itemLabel } from './Perks.tsx';
-import { fmt, useGame } from './game.tsx';
+import { CellScene, Place, YardScene } from './art/Scenes.tsx';
+import { ImageG, PoseG, useNpc } from './art/sprites.tsx';
+import { fmt, lookOf, useGame } from './game.tsx';
 
 interface Got {
   text: string;
@@ -32,34 +35,94 @@ export function gotLine(g: Omit<Got, 'text' | 'who' | 'name'>): string {
   return parts.join(' · ');
 }
 
-/** Открыть текущий случай: персонаж, ситуация, варианты — и итог следующей репликой. */
+/** Открыть случай (текущий или только что выпавший во дворе) — сценой. */
 export function useEvent() {
-  const { p, act, say } = useGame();
-  return (id?: string) => {
-    const ev = eventById.get(id ?? p.event?.id ?? '');
-    if (!ev) return;
-    const ration = 30 + p.level * 15;
-    say({
-      who: ev.who,
-      name: ev.name,
-      text: ev.text,
-      options: ev.options.map((o, i) => {
-        const cost = o.cost ?? {};
-        const money = Math.round((cost.money ?? 0) * ration);
-        const label = o.label.replace(/\(\d+(?:[.,]\d+)? пайк[аи]?\)/, `(${fmt(money)} ₽)`);
-        return {
-          label,
-          disabled: p.money < money || p.butts < (cost.butts ?? 0) || p.gold < (cost.gold ?? 0),
-          onPick: async () => {
-            const r = await act<Got>('event', { choice: i });
-            if (!r) return;
-            const line = gotLine(r);
-            say({ who: r.who, name: r.name, text: `${r.text}${line ? `\n\n${line}` : ''}`, options: [{ label: 'Ясно' }] });
-          },
-        };
-      }),
-    });
+  const { openEvent } = useGame();
+  return (id?: string) => openEvent(id);
+}
+
+/** Случай сценой: персонаж в хате или во дворе, реплика облачком, выбор крупными кнопками, исход — реакцией и наградами. */
+export function EventStage({ id, onClose }: { id: string; onClose(): void }) {
+  const { p, act, busy } = useGame();
+  const ev = eventById.get(id);
+  const npc = useNpc(ev?.who ?? '');
+  const [res, setRes] = useState<Got | null>(null);
+  const [anim, setAnim] = useState('');
+  if (!ev) return null;
+  const ration = 30 + p.level * 15;
+  const score = (r: Got) => r.money + r.butts * 20 + r.gold * 50 + r.xp + r.authority * 10 + r.energy + r.hp / 5 + (r.item ? 50 : 0);
+  const isBad = (r: Got) => r.hp < 0 || r.money < 0 || r.butts < 0 || r.authority < 0;
+  const bad = !!res && isBad(res);
+  const good = !!res && !bad && score(res) > 0;
+
+  const pick = async (i: number) => {
+    const r = await act<Got>('event', { choice: i });
+    if (!r) return;
+    setRes(r);
+    setAnim(isBad(r) ? 'got-hit' : score(r) > 0 ? 'act-cheer' : '');
   };
+  const hero = (
+    <Place x={112} y={268} scale={0.92} key={anim} className={`pose ${anim}`}>
+      <PoseG name="stand" look={lookOf(p)} />
+    </Place>
+  );
+  const who = npc && (
+    <Place x={262} y={268} scale={0.92}>
+      <ImageG url={npc.url} height={npc.height} mirror className="char-breathe" />
+    </Place>
+  );
+  const scene =
+    ev.where === 'yard' ? (
+      <YardScene>
+        {hero}
+        {who}
+      </YardScene>
+    ) : (
+      <CellScene furniture={p.cell} interior={p.interior}>
+        {hero}
+        {who}
+      </CellScene>
+    );
+
+  return (
+    <div className="modal ev-modal" onClick={() => res && onClose()}>
+      <div className="modal-body ev-body" onClick={(e) => e.stopPropagation()}>
+        <div className="arena ev-arena">
+          {scene}
+          <div className={`ev-bubble ${res ? (bad ? 'bad' : good ? 'good' : '') : ''}`} key={res ? 'r' : 'q'}>
+            <b>{ev.name}</b>
+            {res ? res.text : ev.text}
+          </div>
+          {res && (bad || good) && <div className={`ev-stamp ${bad ? 'bad' : 'good'}`}>{bad ? '✖' : '✔'}</div>}
+        </div>
+        {!res ? (
+          <div className="ev-opts">
+            {ev.options.map((o, i) => {
+              const cost = o.cost ?? {};
+              const money = Math.round((cost.money ?? 0) * ration);
+              const label = o.label.replace(/\s*\([^)]*\)\s*$/, '');
+              const tag = money ? `${fmt(money)} ₽` : cost.butts ? `${cost.butts} 🚬` : cost.gold ? `${cost.gold} 🪙` : '';
+              return (
+                <button
+                  key={i}
+                  className={`ev-opt ${i === ev.options.length - 1 && ev.options.length > 1 && !o.cost ? 'ev-opt-dim' : ''}`}
+                  disabled={busy || p.money < money || p.butts < (cost.butts ?? 0) || p.gold < (cost.gold ?? 0)}
+                  onClick={() => pick(i)}
+                >
+                  {label}
+                  {tag && <small>{tag}</small>}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <button className="btn btn-wide" onClick={onClose}>
+            Дальше
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /** Мигающий «!» — на зоне что-то случилось. */

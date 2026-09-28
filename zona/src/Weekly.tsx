@@ -26,8 +26,7 @@ export function WeeklyCard() {
               className={`week-tier ${ready ? 'ready' : ''} ${done ? 'done' : ''}`}
               disabled={!ready}
               onClick={async () => {
-                const res = await act<{ items: string[] }>('weekly', { tier: i });
-                if (res) toast(`Награда недели: +${fmt(r.money)} ₽, +${r.gold} 🪙 · ${res.items.map(itemLabel).join(', ')}`);
+                await act('weekly', { tier: i });
               }}
             >
               <span>{done ? '✅' : ['📦', '🎁', '💰'][i]}</span>
