@@ -10,7 +10,7 @@ import esrgan  # noqa: E402  нейро-апскейл, если задан ESRG
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'public', 'art', 'sheet')
 
-def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False, trim=(0, 0), grey_gaps=False):
+def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False, trim=(0, 0), grey_gaps=False, contrast=0):
     x0, y0, x1, y1 = box
     im = src.crop(box)
     a = np.asarray(im).astype(int)
@@ -39,6 +39,20 @@ def cut(src, box, path, scale=3, keep_share=0.04, tol=22, open_thin=False, trim=
         if gn2:
             gs = ndimage.sum(grey, glab2, range(1, gn2 + 1))
             fg &= ~np.isin(glab2, [i + 1 for i in range(gn2) if gs[i] >= 20])
+    if contrast:
+        # фигура в полоску цвета фона (роба): одежда — всё, что заметно светлее или темнее фона
+        lumd = np.abs(a.mean(2) - bgc.mean())
+        m = (lumd > contrast) | (sat > 25)
+        m = ndimage.binary_closing(m, structure=np.ones((3, 3)), iterations=2)
+        m = ndimage.binary_fill_holes(m)
+        # просвет между ногами — крупное пятно цвета фона; серые полосы робы — тонкие, их оставляем
+        flat = (lumd < 12) & (sat < 10)
+        flab, fn = ndimage.label(flat)
+        if fn:
+            fs = ndimage.sum(flat, flab, range(1, fn + 1))
+            m &= ~np.isin(flab, [i + 1 for i in range(fn) if fs[i] >= 90])
+        m = ndimage.binary_opening(m, structure=np.ones((2, 2)))
+        fg = m
     # обрезки соседних фигур у краёв кадра
     if trim[0]:
         fg[:, : trim[0]] = False

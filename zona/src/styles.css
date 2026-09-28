@@ -1578,7 +1578,7 @@ main {
 @keyframes esc-truck { from { transform: translateX(0); } to { transform: translateX(520px); } }
 .esc-alarm { animation: esc-alarm 0.6s infinite alternate; opacity: 0; }
 @keyframes esc-alarm { to { opacity: 0.22; } }
-.event-btn { position: fixed; left: 50%; top: 162px; transform: translateX(-50%); white-space: nowrap; z-index: 30; padding: 9px 14px; border-radius: 22px; border: 1px solid var(--gold); background: linear-gradient(#3a2a12, #221a0e); color: var(--gold); font-weight: 700; font-size: 12.5px; box-shadow: 0 4px 16px #000a, 0 0 12px #f2c14e55; }
+.event-btn { position: fixed; right: 10px; bottom: 84px; white-space: nowrap; z-index: 30; padding: 7px 12px; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; border-radius: 22px; border: 1px solid var(--gold); background: linear-gradient(#3a2a12, #221a0e); color: var(--gold); font-weight: 700; font-size: 12.5px; box-shadow: 0 4px 16px #000a, 0 0 12px #f2c14e55; }
 .event-btn .pulse-ring { position: absolute; inset: -4px; border-radius: 26px; border: 2px solid var(--gold); animation: ring 1.4s infinite; pointer-events: none; }
 .dialog-body p { white-space: pre-line; }
 .visit-acts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }

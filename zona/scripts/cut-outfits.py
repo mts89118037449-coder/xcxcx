@@ -29,6 +29,11 @@ def sheet_c(cells):
     for name, box in cells.items():
         # тельняшка, роба и полосатая — серые, как фон: не вырезаем серые просветы
         grey = name.split('/')[0] in ('c_telnyashka', 'c_stripes', 'c_tank')
+        # полосатая роба почти сливается с фоном — режем по контрасту и чуть шире кадр
+        if name.startswith('c_stripes/'):
+            x0, y0, x1, y1 = box
+            cp.cut(src, (x0 - 6, y0, x1 + 4, y1 + 2), f'outfit/{name}', scale=3, keep_share=0.3, contrast=22)
+            continue
         cp.cut(src, tuple(box), f'outfit/{name}', scale=3, keep_share=0.3, grey_gaps=not grey, open_thin=True)
 
 
