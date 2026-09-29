@@ -18,6 +18,17 @@ export interface ClanRow {
   level: number;
 }
 
+export interface Lot {
+  id: number;
+  seller_id: number;
+  seller_name: string;
+  kind: 'item' | 'mat' | 'gear';
+  ref: string;
+  qty: number;
+  price: number;
+  created_at: number;
+}
+
 export interface WorldBossRow {
   id: number;
   gen: number;
@@ -76,6 +87,17 @@ export function openDb(file: string) {
       damage INTEGER NOT NULL,
       PRIMARY KEY (boss_id, player_id)
     );
+    -- барахолка: лоты игроков
+    CREATE TABLE IF NOT EXISTS market (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seller_id INTEGER NOT NULL,
+      seller_name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      ref TEXT NOT NULL,
+      qty INTEGER NOT NULL,
+      price INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
     -- общее состояние зоны: общак и прочее, JSON по ключу
     CREATE TABLE IF NOT EXISTS kv (
       key TEXT PRIMARY KEY,
@@ -89,6 +111,11 @@ export function openDb(file: string) {
   db.exec('CREATE INDEX IF NOT EXISTS players_clan ON players(clan_id)');
 
   const q = {
+    lotAdd: db.prepare('INSERT INTO market (seller_id, seller_name, kind, ref, qty, price, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+    lotGet: db.prepare('SELECT * FROM market WHERE id = ?'),
+    lotDel: db.prepare('DELETE FROM market WHERE id = ?'),
+    lots: db.prepare('SELECT * FROM market ORDER BY id DESC LIMIT 80'),
+    lotsBy: db.prepare('SELECT COUNT(*) AS n FROM market WHERE seller_id = ?'),
     kvGet: db.prepare('SELECT value FROM kv WHERE key = ?'),
     kvSet: db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
     get: db.prepare('SELECT data FROM players WHERE id = ?'),
@@ -150,6 +177,21 @@ export function openDb(file: string) {
         db.exec('ROLLBACK');
         throw e;
       }
+    },
+    lotAdd(l: Omit<Lot, 'id'>): number {
+      return Number(q.lotAdd.run(l.seller_id, l.seller_name, l.kind, l.ref, l.qty, l.price, l.created_at).lastInsertRowid);
+    },
+    lotGet(id: number): Lot | null {
+      return (q.lotGet.get(id) as Lot | undefined) ?? null;
+    },
+    lotDel(id: number) {
+      q.lotDel.run(id);
+    },
+    lots(): Lot[] {
+      return q.lots.all() as unknown as Lot[];
+    },
+    lotsBy(sellerId: number): number {
+      return (q.lotsBy.get(sellerId) as { n: number }).n;
     },
     kvGet<T>(key: string, fallback: T): T {
       const row = q.kvGet.get(key) as { value: string } | undefined;

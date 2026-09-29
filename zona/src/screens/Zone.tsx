@@ -8,6 +8,7 @@ import { WeeklyCard } from '../Weekly.tsx';
 import { GameTiles, PlaceTiles } from '../Leisure.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { DebtCard, FactionCards, ObshakCard } from '../Factions.tsx';
+import { Market } from '../Market.tsx';
 
 /** Вся зона: здания ведут на экраны, по земле валяются бычки, барыга меняет их. */
 export function Zone() {
@@ -17,7 +18,7 @@ export function Zone() {
   const [taken, setTaken] = useState<number[]>([]);
   const [pops, setPops] = useState<{ id: number; x: number; y: number; n: number }[]>([]);
   const field = p.field.filter((b) => !taken.includes(b.id));
-  const [seg, setSeg] = useSeg('zone', 'games', ['games', 'places', 'people', 'week'] as const);
+  const [seg, setSeg] = useSeg('zone', 'games', ['games', 'places', 'people', 'market', 'week'] as const);
 
   const pickUp = async (b: (typeof p.field)[number]) => {
     setTaken((t) => [...t, b.id]);
@@ -75,6 +76,7 @@ export function Zone() {
           { id: 'games', icon: '🎲', label: 'Игры' },
           { id: 'places', icon: '📍', label: 'Места' },
           { id: 'people', icon: '👥', label: 'Люди' },
+          { id: 'market', icon: '🛒', label: 'Рынок' },
           { id: 'week', icon: '📅', label: 'Неделя' },
         ]}
       />
@@ -87,6 +89,7 @@ export function Zone() {
           <FactionCards />
         </>
       )}
+      {seg === 'market' && <Market />}
       {seg === 'week' && <WeeklyCard />}
     </>
   );

@@ -367,6 +367,44 @@ export function createApp(opts: AppOptions) {
       return r;
     },
     craft: (p, b, t) => g.craft(p, str(b.recipe), t),
+    lotPut: (p, b, t) => {
+      const kind = str(b.kind) as g.GoodsKind;
+      const ref = str(b.ref);
+      const qty = Math.floor(num(b.qty));
+      const price = Math.floor(num(b.price));
+      if (!(price >= 1 && price <= g.MARKET.maxPrice)) throw new g.GameError('Странная цена');
+      if (db.lotsBy(p.id) >= g.MARKET.maxLots) throw new g.GameError(`Не больше ${g.MARKET.maxLots} лотов на прилавке`);
+      g.takeGoods(p, kind, ref, qty);
+      return { id: db.lotAdd({ seller_id: p.id, seller_name: p.name, kind, ref, qty, price, created_at: t }) };
+    },
+    lotTake: (p, b) => {
+      const lot = db.lotGet(num(b.id));
+      if (!lot || lot.seller_id !== p.id) throw new g.GameError('Нет такого лота');
+      db.lotDel(lot.id);
+      g.giveGoods(p, lot.kind, lot.ref, lot.qty);
+    },
+    lotBuy: (p, b, t) => {
+      const lot = db.lotGet(num(b.id));
+      if (!lot) throw new g.GameError('Уже купили');
+      if (lot.seller_id === p.id) throw new g.GameError('Своё не покупают');
+      if (lot.kind === 'gear' && p.inventory.includes(lot.ref)) throw new g.GameError('Такая вещь уже есть');
+      if (p.money < lot.price) throw new g.GameError('Не хватает денег');
+      const seller = db.getPlayer(lot.seller_id);
+      p.money -= lot.price;
+      g.giveGoods(p, lot.kind, lot.ref, lot.qty);
+      db.lotDel(lot.id);
+      const fee = Math.floor(lot.price * g.MARKET.fee);
+      if (seller) {
+        seller.money += lot.price - fee;
+        g.log(seller, t, `🛒 ${p.name} купил твой лот за ${lot.price} ₽ (−${fee} ₽ в общак)`);
+        db.savePlayer(seller);
+      }
+      // процент с барахолки идёт на общак
+      const ob = db.kvGet<g.Obshak>('obshak', { total: 0, log: [] });
+      ob.total += fee;
+      db.kvSet('obshak', ob);
+      return { kind: lot.kind, ref: lot.ref, qty: lot.qty, price: lot.price };
+    },
     loanTake: (p, b, t) => g.loanTake(p, num(b.rations), t),
     loanPay: (p, b, t) => g.loanPay(p, num(b.amount), t),
     obshakAsk: (p, _b, t) => {
@@ -541,6 +579,10 @@ export function createApp(opts: AppOptions) {
       if (e instanceof g.GameError) return res.status(400).json({ error: e.message });
       throw e;
     }
+  });
+
+  api.post('/market', (_req, res) => {
+    res.json({ lots: db.lots() });
   });
 
   api.post('/top', (_req, res) => {

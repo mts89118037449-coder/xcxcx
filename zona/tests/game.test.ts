@@ -1018,3 +1018,34 @@ test('ремесло: материалы с промки, рецепты, «Ма
   p.rep.work = REP_THRESHOLDS[3];
   assert.deepEqual(g.giveMats(p, { wire: 2 }), { wire: 4 });
 });
+
+test('барахолка: товар уходит с прилавка и возвращается, надетое не продать', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.stash = { c_bandage: 3 };
+  p.belt = ['c_bandage'];
+  g.takeGoods(p, 'item', 'c_bandage', 2);
+  assert.equal(p.stash.c_bandage, 1);
+  g.takeGoods(p, 'item', 'c_bandage', 1);
+  assert.equal(p.stash.c_bandage, undefined);
+  assert.ok(!p.belt.includes('c_bandage'));
+  assert.throws(() => g.takeGoods(p, 'item', 'c_bandage', 1), /нет/);
+  p.mats = { wire: 3 };
+  assert.throws(() => g.takeGoods(p, 'mat', 'wire', 4), /нет/);
+  assert.throws(() => g.takeGoods(p, 'mat', 'gold', 1), /нет/);
+  g.takeGoods(p, 'mat', 'wire', 3);
+  p.inventory = ['body_robe', 'cap_knit'];
+  p.equipped.body = 'body_robe';
+  assert.throws(() => g.takeGoods(p, 'gear', 'body_robe', 1), /сними/);
+  p.upgrades.cap_knit = 2;
+  g.takeGoods(p, 'gear', 'cap_knit', 1);
+  assert.ok(!p.inventory.includes('cap_knit'));
+  assert.equal(p.upgrades.cap_knit, undefined);
+  const q = g.newPlayer(2, 'Покупатель', null, T0);
+  g.giveGoods(q, 'gear', 'cap_knit', 1);
+  g.giveGoods(q, 'mat', 'wire', 3);
+  g.giveGoods(q, 'item', 'c_bandage', 2);
+  assert.ok(q.inventory.includes('cap_knit'));
+  assert.equal(q.mats.wire, 3);
+  assert.equal(q.stash.c_bandage, 2 + (g.newPlayer(3, 'x', null, T0).stash.c_bandage ?? 0));
+  assert.throws(() => g.takeGoods(p, 'item', 'c_sand', 0), /Сколько/);
+});

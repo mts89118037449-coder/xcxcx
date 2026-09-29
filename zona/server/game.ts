@@ -55,7 +55,7 @@ import { chapterOf } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
-import { CRAFT, MATS, PLACE_MATS, recipeById, type MatId } from '../shared/craft.ts';
+import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
 import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
 import { CONSUMABLES as CONSUMABLES_ALL, CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
@@ -1739,6 +1739,39 @@ export function craft(p: Player, recipeId: string, now: number) {
   const rep = gainRep(p, 'work', CRAFT.repPerCraft);
   addXp(p, 3 + r.minLevel, now);
   return { item: r.out.item ?? null, gear: r.out.gear ?? null, n: r.out.n ?? 1, rep };
+}
+
+// --- Барахолка -------------------------------------------------------------------------
+
+export type GoodsKind = 'item' | 'mat' | 'gear';
+export const MARKET = { maxLots: 5, fee: 0.05, maxPrice: 50_000_000, maxQty: 99 };
+
+/** Забрать товар у продавца на прилавок. */
+export function takeGoods(p: Player, kind: GoodsKind, ref: string, qty: number) {
+  if (!(qty >= 1 && qty <= MARKET.maxQty && Number.isInteger(qty))) throw new GameError('Сколько штук?');
+  if (kind === 'item') {
+    if ((p.stash[ref] ?? 0) < qty) throw new GameError('Столько нет');
+    p.stash[ref] -= qty;
+    if (!p.stash[ref]) {
+      delete p.stash[ref];
+      p.belt = p.belt.filter((x) => x !== ref);
+    }
+  } else if (kind === 'mat') {
+    if (!matById.has(ref as MatId) || (p.mats[ref as MatId] ?? 0) < qty) throw new GameError('Столько нет');
+    p.mats[ref as MatId]! -= qty;
+  } else if (kind === 'gear') {
+    if (qty !== 1 || !p.inventory.includes(ref)) throw new GameError('Этого у тебя нет');
+    if (Object.values(p.equipped).includes(ref)) throw new GameError('Сначала сними');
+    p.inventory = p.inventory.filter((x) => x !== ref);
+    delete p.upgrades[ref];
+  } else throw new GameError('Такое не продаётся');
+}
+
+/** Отдать товар покупателю (или вернуть продавцу при снятии). */
+export function giveGoods(p: Player, kind: GoodsKind, ref: string, qty: number) {
+  if (kind === 'item') giveItem(p, ref, qty);
+  else if (kind === 'mat') p.mats[ref as MatId] = (p.mats[ref as MatId] ?? 0) + qty;
+  else if (!p.inventory.includes(ref)) p.inventory.push(ref);
 }
 
 // --- Долги ---------------------------------------------------------------------------

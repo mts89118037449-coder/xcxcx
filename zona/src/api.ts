@@ -2,6 +2,17 @@ import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/t
 
 export const tg = window.Telegram?.WebApp;
 
+export interface MarketLot {
+  id: number;
+  seller_id: number;
+  seller_name: string;
+  kind: 'item' | 'mat' | 'gear';
+  ref: string;
+  qty: number;
+  price: number;
+  created_at: number;
+}
+
 function authHeader(): string {
   if (tg?.initData) return `tma ${tg.initData}`;
   // Отладка в браузере: /?dev=42 — работает, только если сервер запущен с DEV_AUTH=1.
@@ -28,6 +39,7 @@ export const api = {
     post<{ ok: true; result: R; player: PlayerView }>(`/action/${type}`, body),
   top: () =>
     post<{ top: { id: number; name: string; level: number; authority: number; rank: string; face: number | null; tag: string | null }[]; online: number; total: number }>('/top'),
+  market: () => post<{ lots: MarketLot[] }>('/market'),
   world: () => post<{ world: WorldBossView; online: number }>('/world'),
   visit: (id: number, skip: number[] = []) => post<{ visit: VisitView }>('/visit', { id, skip }),
   clans: () => post<{ clans: { id: number; name: string; tag: string; level: number; members: number; authority: number }[] }>('/clans'),
