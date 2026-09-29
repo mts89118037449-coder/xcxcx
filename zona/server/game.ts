@@ -39,6 +39,7 @@ import {
   type Item,
   jobById,
   packById,
+  offerOfDay,
   tattooById,
   trainCost,
   xpToNext,
@@ -59,6 +60,7 @@ import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type M
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
+import { PASS, SEASON_PTS, cosmeticById, passReward, seasonIndex, seasonTheme } from '../shared/season.ts';
 import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
 import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
@@ -205,6 +207,12 @@ export interface Player {
   /** за какие уровни этого игрока уже заплатили тому, кто подтянул */
   refPaid: number[];
   parcels: { day: string; n: number };
+  /** сезон: очки, забранные уровни пропуска, куплен ли пропуск */
+  season: { id: number; pts: number; free: number[]; paid: number[]; pass: boolean };
+  cosmetics: string[];
+  frame: string | null;
+  title: string | null;
+  offerDay: number;
   starsSpent: number;
   journal: JournalEntry[];
   createdAt: number;
@@ -311,6 +319,11 @@ export function newPlayer(id: number, name: string, username: string | null, now
     refCount: 0,
     refPaid: [],
     parcels: { day: '', n: 0 },
+    season: { id: seasonIndex(now), pts: 0, free: [], paid: [], pass: false },
+    cosmetics: [],
+    frame: null,
+    title: null,
+    offerDay: -1,
     starsSpent: 0,
     perks: ['crit_1'],
     belt: ['c_bandage', 'c_sand'],
@@ -368,6 +381,11 @@ export function migrate(p: Player): Player {
   p.chat ??= { at: 0, day: '', n: 0 };
   p.refPaid ??= [];
   p.parcels ??= { day: '', n: 0 };
+  p.season ??= { id: seasonIndex(Date.now()), pts: 0, free: [], paid: [], pass: false };
+  p.cosmetics ??= [];
+  p.frame ??= null;
+  p.title ??= null;
+  p.offerDay ??= -1;
   p.debt ??= null;
   p.mats ??= {};
   p.yardAt ??= 0;
@@ -1147,11 +1165,56 @@ export function resetStats(p: Player, now: number) {
 }
 
 /** Может ли игрок купить пакет (стартовый — один раз). */
-export function checkPack(p: Player, packId: string): StarPack {
+export function checkPack(p: Player, packId: string, now = Date.now()): StarPack {
   const pack = packById.get(packId);
   if (!pack) throw new GameError('Нет такого товара');
   if (pack.id === 'starter' && p.starterBought) throw new GameError('Стартовый набор уже куплен');
+  if (pack.pass) {
+    ensureSeason(p, now);
+    if (p.season.pass) throw new GameError('Пропуск этого сезона уже есть');
+  }
+  if (pack.cosmetic && p.cosmetics.includes(pack.cosmetic)) throw new GameError('Это уже твоё');
+  if (pack.offer) {
+    if (offerOfDay(now).id !== pack.id) throw new GameError('Предложение закончилось');
+    if (p.offerDay === dayNum(now)) throw new GameError('Сегодня уже брал');
+  }
   return pack;
+}
+
+const dayNum = (now: number) => Math.floor((now + 3 * 3600_000) / 86_400_000);
+
+/** Забрать уровень пропуска: бесплатная дорожка — всем, платная — с пропуском. */
+export function seasonClaim(p: Player, level: number, paid: boolean, now: number, rng: Rng) {
+  ensureSeason(p, now);
+  if (!(level >= 1 && level <= PASS.levels)) throw new GameError('Нет такого уровня');
+  if (p.season.pts < level * PASS.perLevel) throw new GameError('Уровень ещё не открыт');
+  if (paid && !p.season.pass) throw new GameError('Нужен пропуск сезона');
+  const list = paid ? p.season.paid : p.season.free;
+  if (list.includes(level)) throw new GameError('Уже забрал');
+  list.push(level);
+  const r = passReward(level, paid);
+  if (r.rations) p.money += r.rations * ration(p);
+  if (r.butts) p.butts += r.butts;
+  if (r.gold) p.gold += r.gold;
+  if (r.item) giveItem(p, r.item);
+  if (r.chifir) p.chifir += r.chifir;
+  if (r.mats) for (let i = 0; i < r.mats; i++) giveMats(p, { [rollMat(rng)]: 1 });
+  if (r.cosmetic && !p.cosmetics.includes(r.cosmetic)) p.cosmetics.push(r.cosmetic);
+  if (r.gear && !p.inventory.includes(r.gear)) p.inventory.push(r.gear);
+  return { ...r, money: r.rations ? r.rations * ration(p) : 0 };
+}
+
+/** Надеть рамку или титул (или снять — id пустой). */
+export function wearCosmetic(p: Player, kind: 'frame' | 'title', id: string) {
+  if (!id) {
+    if (kind === 'frame') p.frame = null;
+    else p.title = null;
+    return;
+  }
+  const c = cosmeticById.get(id);
+  if (!c || c.kind !== kind || !p.cosmetics.includes(id)) throw new GameError('Этого у тебя нет');
+  if (kind === 'frame') p.frame = id;
+  else p.title = id;
 }
 
 /** Зачисление оплаченного пакета. Идемпотентность обеспечивает вызывающий код. */
@@ -1162,6 +1225,13 @@ export function applyPack(p: Player, pack: StarPack, now: number) {
   }
   if (pack.chifir) p.chifir += pack.chifir;
   if (pack.id === 'starter') p.starterBought = true;
+  if (pack.pass) {
+    ensureSeason(p, now);
+    p.season.pass = true;
+  }
+  if (pack.cosmetic && !p.cosmetics.includes(pack.cosmetic)) p.cosmetics.push(pack.cosmetic);
+  if (pack.offer) p.offerDay = dayNum(now);
+  if (pack.items) for (const [id, n] of Object.entries(pack.items)) giveItem(p, id, n);
   p.starsSpent += pack.stars;
   log(p, now, `⭐ Покупка: ${pack.title}. Спасибо за поддержку!`);
 }
@@ -1425,7 +1495,19 @@ export function warPoints(p: Player, now: number, pts: number) {
   p.war.pts += pts;
 }
 
+/** Новый месяц — новый сезон: очки и пропуск обнуляются. */
+export function ensureSeason(p: Player, now: number) {
+  const id = seasonIndex(now);
+  if (p.season.id !== id) p.season = { id, pts: 0, free: [], paid: [], pass: false };
+}
+
 export function track(p: Player, kind: TrackKind, amount = 1) {
+  const sp = SEASON_PTS[kind];
+  if (sp) {
+    const t = Date.now();
+    ensureSeason(p, t);
+    p.season.pts += sp * amount * (seasonTheme(p.season.id).focus === kind ? 2 : 1);
+  }
   if (p.clanId && CLAN_WAR.points[kind]) warPoints(p, Date.now(), CLAN_WAR.points[kind] * amount);
   const step = chapterOf(p.story.ch, p.mast)?.steps[p.story.step];
   if (step && step.kind === kind) p.story.progress = Math.min(step.n, p.story.progress + amount);

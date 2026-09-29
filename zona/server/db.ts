@@ -116,6 +116,9 @@ export function openDb(file: string) {
     );
   `);
 
+  // Рамка и титул в чате появились позже
+  const chatCols = db.prepare('PRAGMA table_info(chat)').all() as { name: string }[];
+  if (!chatCols.some((c) => c.name === 'frame')) db.exec('ALTER TABLE chat ADD COLUMN frame TEXT; ALTER TABLE chat ADD COLUMN title TEXT');
   // Колонка клана появилась позже — добавляем в старые базы.
   const cols = db.prepare('PRAGMA table_info(players)').all() as { name: string }[];
   if (!cols.some((c) => c.name === 'clan_id')) db.exec('ALTER TABLE players ADD COLUMN clan_id INTEGER');
@@ -128,8 +131,11 @@ export function openDb(file: string) {
     lots: db.prepare('SELECT * FROM market ORDER BY id DESC LIMIT 80'),
     lotsBy: db.prepare('SELECT COUNT(*) AS n FROM market WHERE seller_id = ?'),
     refs: db.prepare("SELECT id, name, level FROM players WHERE json_extract(data, '$.refBy') = ? ORDER BY level DESC LIMIT 50"),
-    chatAdd: db.prepare('INSERT INTO chat (channel, pid, name, face, phrase, at) VALUES (?, ?, ?, ?, ?, ?)'),
-    chatList: db.prepare('SELECT id, pid, name, face, phrase, at FROM chat WHERE channel = ? ORDER BY id DESC LIMIT ?'),
+    chatAdd: db.prepare('INSERT INTO chat (channel, pid, name, face, phrase, at, frame, title) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
+    chatList: db.prepare('SELECT id, pid, name, face, phrase, at, frame, title FROM chat WHERE channel = ? ORDER BY id DESC LIMIT ?'),
+    seasonTop: db.prepare(
+      "SELECT id, name, json_extract(data, '$.face') AS face, json_extract(data, '$.frame') AS frame, json_extract(data, '$.season.pts') AS pts FROM players WHERE json_extract(data, '$.season.id') = ? AND json_extract(data, '$.season.pts') > 0 ORDER BY pts DESC LIMIT 20",
+    ),
     chatTrim: db.prepare('DELETE FROM chat WHERE channel = ? AND id < ?'),
     kvGet: db.prepare('SELECT value FROM kv WHERE key = ?'),
     kvSet: db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
@@ -208,8 +214,8 @@ export function openDb(file: string) {
     lotsBy(sellerId: number): number {
       return (q.lotsBy.get(sellerId) as { n: number }).n;
     },
-    chatAdd(channel: string, pid: number, name: string, face: number | null, phrase: string, at: number) {
-      const id = Number(q.chatAdd.run(channel, pid, name, face, phrase, at).lastInsertRowid);
+    chatAdd(channel: string, pid: number, name: string, face: number | null, phrase: string, at: number, frame: string | null = null, title: string | null = null) {
+      const id = Number(q.chatAdd.run(channel, pid, name, face, phrase, at, frame, title).lastInsertRowid);
       // храним только хвост: старое чистим
       if (id % 50 === 0) q.chatTrim.run(channel, id - 500);
       return id;
@@ -218,7 +224,10 @@ export function openDb(file: string) {
       return q.refs.all(id) as { id: number; name: string; level: number }[];
     },
     chatList(channel: string, limit: number) {
-      return (q.chatList.all(channel, limit) as { id: number; pid: number; name: string; face: number | null; phrase: string; at: number }[]).reverse();
+      return (q.chatList.all(channel, limit) as { id: number; pid: number; name: string; face: number | null; phrase: string; at: number; frame: string | null; title: string | null }[]).reverse();
+    },
+    seasonTop(season: number) {
+      return q.seasonTop.all(season) as { id: number; name: string; face: number | null; frame: string | null; pts: number }[];
     },
     kvGet<T>(key: string, fallback: T): T {
       const row = q.kvGet.get(key) as { value: string } | undefined;

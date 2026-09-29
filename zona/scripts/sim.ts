@@ -1,6 +1,7 @@
 // Симуляция экономики: бот-игрок играет по настоящим серверным правилам N дней.
 // Запуск: node --disable-warning=ExperimentalWarning scripts/sim.ts [дней] [seed]
 // Профили: казуал (3 захода в день), активный (8) и задрот (16). Никто не донатит.
+import { PASS } from '../shared/season.ts';
 import * as g from '../server/game.ts';
 import { BOSSES, FURNITURE, ITEMS, JOBS, TATTOOS, trainCost, type Item } from '../shared/content.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
@@ -207,12 +208,12 @@ function simulate(profile: (typeof PROFILES)[number]) {
       income: { ...income },
     });
   }
-  return { days, tries, gold };
+  return { days, tries, gold, seasonPerDay: p.season.pts / DAYS };
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
 for (const pr of PROFILES) {
-  const { days, tries, gold } = simulate(pr);
+  const { days, tries, gold, seasonPerDay } = simulate(pr);
   console.log(`\n=== ${pr.name}: ${pr.sessions} заходов в день ===`);
   console.log('день  ур   деньги   золото бычки  атк  защ   хп  боссов лучший босс          шмот мебель наколки срок');
   for (const [i, d] of days.entries()) {
@@ -224,5 +225,6 @@ for (const pr of PROFILES) {
   const last = days[days.length - 1].income;
   console.log(`золото за ${DAYS} дн. по источникам:`, Object.entries(gold).map(([k, v]) => `${k} ${v}`).join(' · '));
   console.log('боссы (побед/попыток):', Object.entries(tries).map(([k, [n, w]]) => `${k} ${w}/${n}`).join(' · '));
+  console.log(`очки сезона: ~${Math.round(seasonPerDay)} в день → уровень пропуска за 30 дней ≈ ${Math.min(PASS.levels, Math.floor((seasonPerDay * 30) / PASS.perLevel))}/${PASS.levels}`);
   console.log('доходы и траты за последний день:', Object.entries(last).map(([k, v]) => `${k} ${fmt(v)}`).join(' · '));
 }

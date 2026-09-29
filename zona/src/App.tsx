@@ -10,6 +10,7 @@ import { EventButton, EventStage } from './Events.tsx';
 import { BattleModal } from './Battle.tsx';
 import type { Mini } from './Minigames.tsx';
 import { MAST_RULES } from '../shared/term.ts';
+import { frameClass } from './Season.tsx';
 import { placeById, type PlaceId } from '../shared/places.ts';
 import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Place as PlaceT, type Tab } from './game.tsx';
@@ -175,7 +176,7 @@ export function App() {
     <GameCtx.Provider value={game}>
       <header className="top">
         <div className="top-row">
-          <div className="top-face-wrap" onClick={() => go('gear')}>
+          <div className={`top-face-wrap ${frameClass(p.frame)}`} onClick={() => go('gear')}>
             <Face face={p.face} skin={p.skin} hat={p.equipped.head} size={48} className="top-face" />
             <b className="top-lvl">{p.level}</b>
           </div>

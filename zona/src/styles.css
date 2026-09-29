@@ -2138,3 +2138,43 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .ref-steps { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; font-size: 12.5px; }
 .ref-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .ref-list button { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 3px 8px; color: var(--text); font-size: 12px; }
+
+/* рамки аватара */
+.frame-gold, .frame-fire, .frame-ice, .frame-blood, .frame-season { border-radius: 14px; }
+.frame-gold { box-shadow: 0 0 0 3px #e0b84a, 0 0 10px #e0b84a88; }
+.frame-fire { box-shadow: 0 0 0 3px #ff6a2a, 0 0 12px #ff3a0a; animation: fire-glow 1.2s ease-in-out infinite alternate; }
+.frame-ice { box-shadow: 0 0 0 3px #9fdcff, 0 0 12px #6ac0ff88; }
+.frame-blood { box-shadow: 0 0 0 3px #a8141a, 0 0 10px #ff2a2a66; }
+.frame-season { box-shadow: 0 0 0 3px #b07aff, 0 0 12px #8a4aff99; animation: fire-glow 2s ease-in-out infinite alternate; }
+@keyframes fire-glow { from { filter: brightness(1); } to { filter: brightness(1.25); } }
+.mini-frame { display: inline-flex; border-radius: 10px; }
+.chat-title { font-style: normal; font-weight: 600; color: #c9a0ff; font-size: 11px; }
+
+/* сезон */
+.season-head { display: flex; gap: 10px; align-items: center; margin: 10px 0 6px; padding: 12px; border-radius: 16px; background: linear-gradient(135deg, #2a1a3a, #1a1410); border: 1px solid #5a3a8a; }
+.season-emoji { font-size: 40px; }
+.season-head b { display: block; font-size: 18px; }
+.season-head small { display: block; font-size: 11.5px; }
+.season-bar { position: relative; height: 16px; border-radius: 8px; background: #0006; overflow: hidden; margin-bottom: 8px; }
+.season-bar div { height: 100%; background: linear-gradient(90deg, #6a3ab8, #b07aff); }
+.season-bar span { position: absolute; inset: 0; text-align: center; font-size: 10.5px; line-height: 16px; font-weight: 800; color: #fff; }
+.pass { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px; }
+.pass-col { flex: none; width: 70px; display: flex; flex-direction: column; gap: 4px; align-items: stretch; opacity: 0.55; }
+.pass-col.open { opacity: 1; }
+.pass-col > small { text-align: center; font-weight: 800; color: var(--muted); }
+.pass-col.big > small { color: var(--gold); }
+.pass-cell { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); min-height: 64px; }
+.pass-cell span { font-size: 22px; }
+.pass-cell i { font-style: normal; font-size: 9.5px; line-height: 1.1; text-align: center; color: var(--muted); }
+.pass-cell.paid { border-color: #6a4ab8; background: linear-gradient(#2a1f3e, #1e1828); }
+.pass-cell.paid.locked { filter: grayscale(0.6); }
+.pass-cell.got { opacity: 0.45; }
+.pass-col.open .pass-cell:not(.got):not(:disabled) { box-shadow: 0 0 0 2px var(--accent); }
+.offer { border-color: #c9302c !important; background: linear-gradient(#3a1a14, #221210) !important; }
+.offer-tag { display: block; color: #ff8a6a; font-weight: 800; font-size: 11.5px; }
+.cosmetics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 6px 0 12px; }
+.cos { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); text-align: center; }
+.cos.on { border-color: var(--accent); }
+.cos small { font-size: 11.5px; }
+.cos-frame { display: inline-flex; margin: 4px; }
+.cos-title { font-weight: 800; color: #c9a0ff; min-height: 52px; display: grid; place-items: center; font-size: 14px; }

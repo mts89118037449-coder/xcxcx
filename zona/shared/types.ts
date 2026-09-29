@@ -97,6 +97,11 @@ export interface PlayerView {
   mats: Partial<Record<string, number>>;
   clanHitReadyAt: number;
   parcelsLeft: number;
+  season: { id: number; pts: number; free: number[]; paid: number[]; pass: boolean; name: string; emoji: string; desc: string; focus: string; endsAt: number };
+  cosmetics: string[];
+  frame: string | null;
+  title: string | null;
+  offer: { id: string; bought: boolean };
   war: { week: number; pts: number };
   warClaimed: number;
   week: number;

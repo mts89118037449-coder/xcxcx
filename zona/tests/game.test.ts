@@ -1251,3 +1251,47 @@ test('грев посылкой и цепочка кентов', async () => {
   b.level = 25;
   assert.deepEqual(g.refDue(b).map((m) => m.gold), [REFERRAL.milestones[2].gold]);
 });
+
+test('сезон: очки, тема ×2, пропуск, предложение дня, косметика, новый месяц', async () => {
+  const { PASS, seasonIndex, seasonTheme, passReward } = await import('../shared/season.ts');
+  const { packById, offerOfDay, itemById } = await import('../shared/content.ts');
+  const now = Date.now();
+  const p = g.newPlayer(1, 'Тест', null, now);
+  const th = seasonTheme(seasonIndex(now));
+  g.track(p, th.focus);
+  const one = p.season.pts;
+  assert.ok(one >= 2, 'тема месяца даёт вдвое');
+  // все награды пропуска существуют
+  for (let L = 1; L <= PASS.levels; L++) for (const paid of [false, true]) {
+    const r = passReward(L, paid);
+    if (r.gear) assert.ok(itemById.has(r.gear));
+  }
+  assert.throws(() => g.seasonClaim(p, 1, false, now, fixed(0.1)), /не открыт/);
+  p.season.pts = PASS.perLevel * 10;
+  g.seasonClaim(p, 1, false, now, fixed(0.1));
+  assert.throws(() => g.seasonClaim(p, 1, false, now, fixed(0.1)), /Уже/);
+  assert.throws(() => g.seasonClaim(p, 1, true, now, fixed(0.1)), /пропуск/);
+  // покупка пропуска
+  const pass = g.checkPack(p, 'season_pass', now);
+  g.applyPack(p, pass, now);
+  assert.throws(() => g.checkPack(p, 'season_pass', now), /уже/);
+  g.seasonClaim(p, 10, true, now, fixed(0.1));
+  assert.ok(p.cosmetics.includes('frame_season'));
+  g.wearCosmetic(p, 'frame', 'frame_season');
+  assert.equal(p.frame, 'frame_season');
+  assert.throws(() => g.wearCosmetic(p, 'frame', 'frame_gold'), /нет/);
+  // косметика и предложение дня
+  g.applyPack(p, packById.get('cos_frame_gold')!, now);
+  assert.throws(() => g.checkPack(p, 'cos_frame_gold', now), /твоё/);
+  const off = offerOfDay(now);
+  const other = [...packById.values()].find((x) => x.offer && x.id !== off.id)!;
+  assert.throws(() => g.checkPack(p, other.id, now), /закончилось/);
+  g.applyPack(p, g.checkPack(p, off.id, now), now);
+  assert.throws(() => g.checkPack(p, off.id, now), /брал/);
+  // новый месяц — всё с нуля
+  const later = now + 32 * 86_400_000;
+  g.ensureSeason(p, later);
+  assert.equal(p.season.pts, 0);
+  assert.equal(p.season.pass, false);
+  assert.ok(p.cosmetics.includes('frame_season'), 'косметика остаётся');
+});

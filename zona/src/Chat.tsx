@@ -3,6 +3,7 @@ import { PHRASE_GROUPS, phraseById } from '../shared/chat.ts';
 import { api } from './api.ts';
 import { Face } from './art/sprites.tsx';
 import { useGame } from './game.tsx';
+import { frameClass, titleOf } from './Season.tsx';
 
 type Msg = Awaited<ReturnType<typeof api.chat>>['messages'][number];
 
@@ -45,12 +46,17 @@ export function ChatPanel() {
         {msgs?.map((m) => (
           <div key={m.id} className={`chat-msg ${m.pid === p.id ? 'me' : ''}`}>
             {m.pid !== p.id && (
-              <button className="chat-face" onClick={() => visit(m.pid)}>
+              <button className={`chat-face ${frameClass(m.frame)}`} onClick={() => visit(m.pid)}>
                 <Face face={m.face} size={32} />
               </button>
             )}
             <div className="chat-bubble">
-              {m.pid !== p.id && <b>{m.name}</b>}
+              {m.pid !== p.id && (
+                <b>
+                  {m.name}
+                  {titleOf(m.title) && <em className="chat-title"> · {titleOf(m.title)}</em>}
+                </b>
+              )}
               <span>{phraseById.get(m.phrase)?.text ?? '…'}</span>
               <small>{time(m.at)}</small>
             </div>

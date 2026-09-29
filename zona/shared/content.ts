@@ -74,6 +74,13 @@ export interface StarPack {
   vipDays?: number;
   chifir?: number;
   badge?: string;
+  /** платный пропуск текущего сезона */
+  pass?: boolean;
+  /** косметика: рамка или титул */
+  cosmetic?: string;
+  /** предложение дня: доступно только в свой день ротации, раз в день */
+  offer?: boolean;
+  items?: Record<string, number>;
 }
 
 export const SLOT_NAMES: Record<Slot, string> = {
@@ -157,6 +164,8 @@ export const ITEMS: Item[] = [
   { id: 'charm_dogtag', name: 'Армейский жетон', emoji: '🏷️', slot: 'charm', minLevel: 2, price: 500, currency: 'money', hp: 12, crit: 1 },
   { id: 'charm_watch', name: 'Часы «Командирские»', emoji: '⌚', slot: 'charm', minLevel: 6, price: 3200, currency: 'money', energy: 10, money: 6 },
   { id: 'charm_fiksa', name: 'Золотая фикса', emoji: '🦷', slot: 'charm', minLevel: 9, price: 70, currency: 'gold', crit: 5, money: 12 },
+  // Знак сезона — с последнего уровня платного пропуска
+  { id: 'charm_season', name: 'Знак сезона', emoji: '🎖️', slot: 'charm', minLevel: 1, price: 0, currency: 'money', bossOnly: true, crit: 6, money: 15, energy: 12, hp: 30 },
   // Только ремеслом (в ларьке нет — как и боссовые)
   { id: 'craft_beads', name: 'Чётки из мякиша', emoji: '📿', slot: 'charm', minLevel: 4, price: 0, currency: 'money', bossOnly: true, crafted: true, crit: 4, money: 7 },
   { id: 'craft_mouthpiece', name: 'Наборный мундштук', emoji: '🚬', slot: 'charm', minLevel: 8, price: 0, currency: 'money', bossOnly: true, crafted: true, crit: 5, money: 12, energy: 6 },
@@ -571,6 +580,18 @@ export const STAR_PACKS: StarPack[] = [
   { id: 'gold_m', title: '350 золота', description: '+17% бонус', stars: 150, gold: 350, badge: 'Хит' },
   { id: 'gold_l', title: '1300 золота', description: '+30% бонус', stars: 500, gold: 1300 },
   { id: 'gold_xl', title: '3000 золота', description: '+50% бонус', stars: 1000, gold: 3000, badge: 'Выгодно' },
+  { id: 'season_pass', title: 'Пропуск сезона', description: 'Платная дорожка сезона: золото, чифир, рамка, титул и знак сезона', stars: 250, pass: true, badge: 'Сезон' },
+  { id: 'cos_frame_gold', title: 'Золотая рамка', description: 'Рамка аватара — видна в чате, хатах и рейтинге', stars: 120, cosmetic: 'frame_gold' },
+  { id: 'cos_frame_fire', title: 'Огненная рамка', description: 'Рамка аватара с языками пламени', stars: 150, cosmetic: 'frame_fire' },
+  { id: 'cos_frame_ice', title: 'Ледяная рамка', description: 'Рамка аватара — холодный блеск', stars: 150, cosmetic: 'frame_ice' },
+  { id: 'cos_frame_blood', title: 'Кровавая рамка', description: 'Рамка аватара для тех, кто в крови не боится', stars: 150, cosmetic: 'frame_blood' },
+  { id: 'cos_title_legend', title: 'Титул «Легенда зоны»', description: 'Подпись под именем в чате и в хате', stars: 200, cosmetic: 'title_legend' },
+  { id: 'cos_title_boss', title: 'Титул «Хозяин положения»', description: 'Подпись под именем в чате и в хате', stars: 200, cosmetic: 'title_boss' },
+  // предложения дня: по одному в день по кругу
+  { id: 'offer_chifir', title: 'Грев энергии', description: '5 кружек чифира + 60 золота. Только сегодня', stars: 99, chifir: 5, gold: 60, offer: true, badge: '−40%' },
+  { id: 'offer_gold', title: 'Мешок рыжья', description: '600 золота вместо 350. Только сегодня', stars: 150, gold: 600, offer: true, badge: '×1.7' },
+  { id: 'offer_vip', title: 'Блатной на неделю', description: 'VIP на 7 дней + 100 золота. Только сегодня', stars: 120, vipDays: 7, gold: 100, offer: true, badge: 'Выгодно' },
+  { id: 'offer_fight', title: 'Боевой набор', description: '3 аптечки, 3 адреналина, 3 самогона + 50 золота. Только сегодня', stars: 110, gold: 50, items: { c_medkit: 3, c_adrenaline: 3, c_vodka: 3 }, offer: true, badge: 'Набор' },
   { id: 'vip_30', title: 'Блатной статус · 30 дней', description: 'x2 восстановление энергии, +20% денег, +30 макс. энергии, 10 золота в день', stars: 300, vipDays: 30, badge: 'VIP' },
 ];
 
@@ -775,6 +796,12 @@ export const tattooById = new Map(TATTOOS.map((t) => [t.id, t]));
 export const jobById = new Map(JOBS.map((j) => [j.id, j]));
 export const bossById = new Map(BOSSES.map((b) => [b.id, b]));
 export const packById = new Map(STAR_PACKS.map((p) => [p.id, p]));
+export const OFFERS = STAR_PACKS.filter((p) => p.offer);
+/** Предложение дня: по кругу, день — по Москве. */
+export function offerOfDay(now: number): StarPack {
+  const day = Math.floor((now + 3 * 3600_000) / 86_400_000);
+  return OFFERS[day % OFFERS.length];
+}
 export const furnitureById = new Map(FURNITURE.map((f) => [f.id, f]));
 
 // --- Бычки и барыга ---------------------------------------------------------------

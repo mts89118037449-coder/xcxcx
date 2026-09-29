@@ -2,11 +2,12 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
 import { OBSHAK } from '../shared/factions.ts';
 import { CHAT } from '../shared/chat.ts';
+import { seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT_RULES, PARCEL, REFERRAL, hutById, type HutId } from '../shared/clans.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SHIZO, SPEED } from '../shared/minigames2.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { NOTIFY, termDays } from '../shared/term.ts';
-import { BALANCE, CHURCH, cellView, comfortOf, CLAN, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
+import { BALANCE, CHURCH, cellView, comfortOf, CLAN, offerOfDay, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
 import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
 import { validateInitData, type TgUser } from './auth.ts';
 import type { Db } from './db.ts';
@@ -239,6 +240,15 @@ export function createApp(opts: AppOptions) {
       rep: p.rep,
       debt: p.debt,
       mats: p.mats,
+      season: (() => {
+        g.ensureSeason(p, t);
+        const th = seasonTheme(p.season.id);
+        return { ...p.season, name: th.name, emoji: th.emoji, desc: th.desc, focus: th.focusLabel, endsAt: seasonEndsAt(t) };
+      })(),
+      cosmetics: p.cosmetics,
+      frame: p.frame,
+      title: p.title,
+      offer: { id: offerOfDay(t).id, bought: p.offerDay === Math.floor((t + 3 * 3600_000) / 86_400_000) },
       parcelsLeft: p.parcels.day === g.dayKey(t) ? Math.max(0, PARCEL.perDay - p.parcels.n) : PARCEL.perDay,
       clanHitReadyAt: p.clanHitAt + CLAN_BOSS.cooldownSec * 1000,
       war: p.war,
@@ -477,8 +487,10 @@ export function createApp(opts: AppOptions) {
       const channel = str(b.channel) === 'clan' ? 'clan' : 'all';
       if (channel === 'clan' && !p.clanId) throw new g.GameError('Ты не в клане');
       g.chatSay(p, str(b.phrase), t);
-      return { id: db.chatAdd(channel === 'clan' ? `clan:${p.clanId}` : 'all', p.id, p.name, p.face ?? null, str(b.phrase), t) };
+      return { id: db.chatAdd(channel === 'clan' ? `clan:${p.clanId}` : 'all', p.id, p.name, p.face ?? null, str(b.phrase), t, p.frame, p.title) };
     },
+    seasonClaim: (p, b, t) => g.seasonClaim(p, Math.floor(num(b.level)), b.paid === true, t, rng),
+    wear: (p, b) => g.wearCosmetic(p, str(b.kind) === 'title' ? 'title' : 'frame', str(b.id)),
     ringJoin: (p, _b, t) => withRing(p, t, (ring) => g.ringJoin(p, ring, t)),
     ringBet: (p, b, t) => withRing(p, t, (ring) => g.ringBet(p, ring, str(b.side) as 'a' | 'b', num(b.amount), t)),
     obshakGive: (p, b, t) => {
@@ -773,6 +785,10 @@ export function createApp(opts: AppOptions) {
       if (e instanceof g.GameError) return res.status(400).json({ error: e.message });
       throw e;
     }
+  });
+
+  api.post('/season', (_req, res) => {
+    res.json({ top: db.seasonTop(seasonIndex(now())) });
   });
 
   api.post('/refs', (req: AuthedRequest, res) => {
