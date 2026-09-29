@@ -702,3 +702,185 @@ export function Dog() {
     </g>
   );
 }
+
+// --- Полка, плитка, нычка, фото ------------------------------------------------------
+
+/** Полка на стене между шконкой и окном. */
+export function Shelf({ kind }: { kind: string }) {
+  const books = ['#7a2a22', '#2a4a6a', '#3a5a2a', '#8a6a2a', '#5a2a4a', '#2a2a2a'];
+  const carved = kind === 'f_shelf_carved';
+  return (
+    <g transform="translate(172 128)">
+      <rect x={1} y={2} width={68} height={6} fill="#000" opacity={0.3} />
+      <rect width={68} height={6} fill={carved ? '#6a3a1c' : kind === 'f_shelf_board' ? '#8a7454' : 'url(#sc-wood)'} stroke="#2a1a0e" strokeWidth={0.8} />
+      {carved && <path d="M2,3 H66" stroke="#c49a48" strokeWidth={0.8} strokeDasharray="3 2" />}
+      {kind === 'f_shelf_board' ? (
+        <>
+          <path d="M6,6 L10,14 M62,6 L58,14" stroke="#555" strokeWidth={1.4} />
+          <rect x={8} y={-10} width={14} height={10} fill="#d8cfb8" transform="rotate(-8 15 -5)" />
+          <rect x={30} y={-14} width={8} height={14} fill="#c8c4b8" stroke="#555" strokeWidth={0.5} />
+          <ellipse cx={52} cy={-3} rx={7} ry={3} fill="#9aa0a4" />
+        </>
+      ) : (
+        <>
+          {/* книги */}
+          {Array.from({ length: kind === 'f_shelf_books' ? 7 : 4 }, (_, k) => {
+            const h = 14 + ((k * 5) % 7);
+            return <rect key={k} x={4 + k * 5.4} y={-h} width={4.8} height={h} fill={books[k % books.length]} stroke="#1a120a" strokeWidth={0.4} />;
+          })}
+          {kind === 'f_shelf_books' && <rect x={44} y={-9} width={20} height={9} fill="#5a2a22" transform="rotate(-4 54 -4)" />}
+        </>
+      )}
+      {(kind === 'f_shelf_trophy' || carved) && (
+        <g>
+          <g transform="translate(34 -20)">
+            <path d="M0,0 H12 C12,8 9,11 6,11 C3,11 0,8 0,0 Z" fill="#d6ae4a" stroke="#6a5010" strokeWidth={0.6} />
+            <path d="M0,2 C-4,2 -4,7 1,7 M12,2 C16,2 16,7 11,7" stroke="#d6ae4a" strokeWidth={1} fill="none" />
+            <rect x={4.5} y={11} width={3} height={5} fill="#b8902e" />
+            <rect x={2} y={16} width={8} height={4} fill="#4a2a14" />
+          </g>
+          <g transform="translate(52 -24)">
+            <rect width={16} height={20} fill="#efe8d0" stroke="#b8902e" strokeWidth={1.2} />
+            <path d="M3,6 H13 M3,10 H13 M3,14 H10" stroke="#8a2a22" strokeWidth={0.6} />
+          </g>
+        </g>
+      )}
+      {carved && (
+        <g transform="translate(46 -12)">
+          <rect width={20} height={12} fill="#7a4a24" stroke="#2a1a0e" strokeWidth={0.6} />
+          <path d="M10,0 V12" stroke="#2a1a0e" strokeWidth={0.6} />
+          <circle cx={5} cy={6} r={2} fill="#efe8d0" />
+          <circle cx={15} cy={6} r={2} fill="#1a1a1a" />
+        </g>
+      )}
+    </g>
+  );
+}
+
+/** Плитка/кипятильник на полу между шконкой и столом. */
+export function Stove({ kind, onTable }: { kind: string; onTable: boolean }) {
+  return (
+    <g transform={onTable ? 'translate(250 156)' : 'translate(200 206)'}>
+      <rect x={-4} y={26} width={46} height={6} fill="#000" opacity={0.4} filter="url(#sc-blur-s)" />
+      {kind === 'f_boiler' && (
+        <g transform="translate(8 0)">
+          <rect x={0} y={6} width={18} height={24} rx={3} fill="#bcd6dc" opacity={0.7} stroke="#8aa" strokeWidth={0.6} />
+          <rect x={1} y={12} width={16} height={17} rx={2} fill="#6a4a1a" opacity={0.7} />
+          <path d="M9,-10 V14 C4,16 14,18 9,22" stroke="#555" strokeWidth={1.4} fill="none" />
+          <path d="M9,-10 C14,-16 24,-8 30,-2" stroke="#222" strokeWidth={1} fill="none" />
+          <path className="steam" d="M5,4 Q2,-4 6,-12" stroke="#fff" strokeWidth={1.4} fill="none" opacity={0.5} />
+        </g>
+      )}
+      {kind === 'f_hotplate' && (
+        <g>
+          <rect x={0} y={18} width={34} height={12} rx={2} fill="#e8e4da" stroke="#555" strokeWidth={0.6} />
+          <ellipse cx={17} cy={18} rx={12} ry={3} fill="#3a3a3a" />
+          <path d="M8,18 C6,6 28,6 26,18 Z" fill="#c9302c" stroke="#5a1010" strokeWidth={0.6} />
+          <path d="M26,12 L33,6" stroke="#c9302c" strokeWidth={2.4} />
+          <circle cx={17} cy={7} r={2} fill="#1a1a1a" />
+          <path className="steam" d="M33,4 Q30,-4 34,-12" stroke="#fff" strokeWidth={1.4} fill="none" opacity={0.5} />
+        </g>
+      )}
+      {kind === 'f_microwave' && (
+        <g>
+          <rect x={-2} y={22} width={42} height={8} fill="#5a3d22" />
+          <rect x={0} y={0} width={40} height={22} rx={2} fill="#e8e8e2" stroke="#555" strokeWidth={0.7} />
+          <rect x={3} y={3} width={26} height={16} rx={1} fill="#2a2e30" />
+          <rect x={4} y={4} width={24} height={14} fill="#f0d070" opacity={0.25} className="lamp-flicker" />
+          <rect x={31} y={4} width={6} height={4} fill="#3a8a3a" />
+          {[10, 14].map((y) => <circle key={y} cx={34} cy={y} r={1.2} fill="#555" />)}
+        </g>
+      )}
+      {kind === 'f_coffee' && (
+        <g>
+          <rect x={-2} y={22} width={42} height={8} fill="#3a2416" />
+          <rect x={6} y={-8} width={26} height={30} rx={3} fill="#2a2a2e" stroke="#111" strokeWidth={0.7} />
+          <rect x={9} y={-5} width={20} height={6} rx={1} fill="#c9a040" />
+          <rect x={14} y={4} width={10} height={4} fill="#555" />
+          <rect x={15} y={12} width={8} height={9} rx={1} fill="#f1efe6" />
+          <path className="steam" d="M19,10 Q16,4 20,-2" stroke="#fff" strokeWidth={1.2} fill="none" opacity={0.5} />
+        </g>
+      )}
+    </g>
+  );
+}
+
+/** Нычка: в стене, под половицей, в матрасе или сейф под шконкой. */
+export function Stash({ kind }: { kind: string }) {
+  if (kind === 'f_stash_brick')
+    return (
+      <g transform="translate(196 178)">
+        <rect width={20} height={10} fill="url(#sc-bricks)" stroke="#2a1a10" strokeWidth={0.6} transform="rotate(-6 10 5)" />
+        <rect x={2} y={2} width={16} height={7} fill="#1a120c" opacity={0.6} />
+        <path d="M6,6 L9,4 L12,6" stroke="#d6ae4a" strokeWidth={1} fill="none" />
+      </g>
+    );
+  if (kind === 'f_stash_floor')
+    return (
+      <g transform="translate(174 248)">
+        <path d="M0,0 L40,0 L42,6 L2,6 Z" fill="#1a0f0a" />
+        <path d="M0,0 L40,0 L44,-10 L4,-10 Z" fill="#6a3a24" stroke="#2c130d" strokeWidth={0.8} />
+        <rect x={12} y={1} width={10} height={4} fill="#d6ae4a" />
+        <rect x={24} y={1} width={8} height={4} fill="#3a7a3a" />
+      </g>
+    );
+  if (kind === 'f_stash_mattress')
+    return (
+      <g transform="translate(120 162)">
+        <path d="M0,0 C4,-3 10,-3 14,0 L14,8 L0,8 Z" fill="#6a5a3a" />
+        <rect x={2} y={-5} width={10} height={6} fill="#3a7a3a" stroke="#1a3a1a" strokeWidth={0.5} transform="rotate(-10 7 -2)" />
+        <path d="M-2,4 L16,4" stroke="#d8d2c2" strokeWidth={0.8} strokeDasharray="1.5 1.5" />
+      </g>
+    );
+  return (
+    <g transform="translate(112 196)">
+      <rect x={-2} y={36} width={46} height={6} fill="#000" opacity={0.45} filter="url(#sc-blur-s)" />
+      <rect width={40} height={36} rx={2} fill="#3a4448" stroke="#111" strokeWidth={1} />
+      <rect x={4} y={4} width={32} height={28} rx={1} fill="#4a565a" stroke="#222" strokeWidth={0.6} />
+      <circle cx={20} cy={18} r={6} fill="#8a9296" stroke="#222" strokeWidth={0.8} />
+      <path d="M20,12 V14 M20,22 V24 M14,18 H16 M24,18 H26" stroke="#222" strokeWidth={0.8} />
+      <rect x={30} y={14} width={3} height={9} rx={1} fill="#c9a040" />
+    </g>
+  );
+}
+
+/** Фото на стене над полкой. */
+export function Photos({ kind, tv }: { kind: string; tv: boolean }) {
+  // с большим телевизором на стене фото уходят в угол ковра над шконкой
+  const [ox, oy] = tv ? [-68, 22] : [0, 0];
+  const photo = (x: number, y: number, r: number, tint: string, key: number) => (
+    <g key={key} transform={`translate(${x} ${y}) rotate(${r})`}>
+      <rect x={0.8} y={1} width={16} height={20} fill="#000" opacity={0.3} />
+      <rect width={16} height={20} fill="#f1ebd8" />
+      <rect x={2} y={2} width={12} height={13} fill={tint} />
+      <circle cx={8} cy={7} r={2.6} fill="#8a6a50" />
+      <path d="M4,15 C4,10 12,10 12,15 Z" fill="#4a4a50" />
+      <path d="M7,-1 L9,-1 L9,2 L7,2 Z" fill="#c9c2a8" opacity={0.8} />
+    </g>
+  );
+  if (kind === 'f_photo_frame')
+    return (
+      <g transform={`translate(${186 + ox} ${62 + oy})`}>
+        <rect x={2} y={2} width={40} height={48} fill="#000" opacity={0.3} />
+        <rect width={40} height={48} fill="#c49a48" stroke="#6a5010" strokeWidth={1} />
+        <rect x={5} y={5} width={30} height={38} fill="#c9b89a" />
+        <circle cx={20} cy={18} r={7} fill="#9a7a5a" />
+        <path d="M9,43 C10,30 30,30 31,43 Z" fill="#3a3a44" />
+        <path d="M13,16 C14,8 26,8 27,16 L27,22 C24,19 16,19 13,22 Z" fill="#6a4a2a" />
+      </g>
+    );
+  const n = kind === 'f_photo_mom' ? 1 : kind === 'f_photo_family' ? 3 : 4;
+  const tints = ['#b8a88a', '#9ab0b8', '#c0a0a0', '#a8b890'];
+  return (
+    <g>
+      {Array.from({ length: n }, (_, i) => photo(180 + ox + i * 15, 70 + oy + (i % 2) * 8, i % 2 ? 6 : -5, tints[i], i))}
+      {kind === 'f_photo_girl' && (
+        <g transform={`translate(${212 + ox} ${96 + oy})`}>
+          <rect width={20} height={13} fill="#efe8d0" stroke="#aaa" strokeWidth={0.5} />
+          <path d="M0,0 L10,7 L20,0" stroke="#aaa" strokeWidth={0.5} fill="none" />
+          <path d="M8,4 C8,2 10,2 10,4 C10,2 12,2 12,4 C12,6 10,7 10,8 C10,7 8,6 8,4 Z" fill="#c9302c" />
+        </g>
+      )}
+    </g>
+  );
+}

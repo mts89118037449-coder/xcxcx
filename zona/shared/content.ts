@@ -336,7 +336,7 @@ export const BOSSES: Boss[] = [...BOSS_LIST].sort((x, y) => x.minLevel - y.minLe
 // В каждом месте — лестница улучшений: следующую ступень можно купить, только когда есть предыдущая.
 // Бонусы всех купленных ступеней складываются, а в сцене стоит выбранная (по умолчанию — лучшая),
 // или ничего — голые стены тоже стиль.
-export type Spot = 'bed' | 'wall' | 'light' | 'tech' | 'table' | 'floor' | 'window' | 'corner' | 'sport' | 'pet' | 'music' | 'deco';
+export type Spot = 'bed' | 'wall' | 'light' | 'tech' | 'table' | 'floor' | 'window' | 'corner' | 'sport' | 'pet' | 'music' | 'deco' | 'shelf' | 'stove' | 'stash' | 'photo';
 
 export interface Furniture extends Bonus {
   id: string;
@@ -361,6 +361,10 @@ export const SPOT_NAMES: Record<Spot, string> = {
   pet: 'Живность',
   music: 'Музыка',
   deco: 'Декор',
+  shelf: 'Полка',
+  stove: 'Плитка',
+  stash: 'Нычка',
+  photo: 'Фото',
 };
 
 /** Что стоит в месте, пока ничего не куплено. */
@@ -377,6 +381,10 @@ export const SPOT_BARE: Record<Spot, string> = {
   pet: 'Только ворона за окном',
   music: 'Свист сквозь зубы',
   deco: 'Голый потолок',
+  shelf: 'Всё на полу',
+  stove: 'Чай из-под крана',
+  stash: 'Всё на виду',
+  photo: 'Никого не ждёшь',
 };
 
 export const FURNITURE: Furniture[] = [
@@ -435,6 +443,26 @@ export const FURNITURE: Furniture[] = [
   { id: 'f_tape', name: 'Магнитофон «Весна»', emoji: '📼', spot: 'music', minLevel: 12, price: 17000, currency: 'money', energy: 12, money: 5 },
   { id: 'f_hifi', name: 'Музыкальный центр', emoji: '🔊', spot: 'music', minLevel: 16, price: 170, currency: 'gold', energy: 18, money: 8, crit: 2 },
 
+  // Полка
+  { id: 'f_shelf_board', name: 'Доска на гвоздях', emoji: '🪵', spot: 'shelf', minLevel: 4, price: 800, currency: 'money', energy: 3 },
+  { id: 'f_shelf_books', name: 'Полка с книгами', emoji: '📚', spot: 'shelf', minLevel: 9, price: 6000, currency: 'money', money: 4, energy: 4 },
+  { id: 'f_shelf_trophy', name: 'Грамоты и кубки', emoji: '🏆', spot: 'shelf', minLevel: 14, price: 20000, currency: 'money', crit: 2, money: 5 },
+  { id: 'f_shelf_carved', name: 'Резная полка с нардами', emoji: '🎲', spot: 'shelf', minLevel: 18, price: 140, currency: 'gold', crit: 3, money: 10 },
+  // Плитка
+  { id: 'f_boiler', name: 'Кипятильник в банке', emoji: '🫙', spot: 'stove', minLevel: 2, price: 400, currency: 'money', energy: 5 },
+  { id: 'f_hotplate', name: 'Плитка с чайником', emoji: '🫖', spot: 'stove', minLevel: 7, price: 4500, currency: 'money', energy: 8, hp: 15 },
+  { id: 'f_microwave', name: 'Микроволновка', emoji: '📦', spot: 'stove', minLevel: 13, price: 16000, currency: 'money', energy: 12, hp: 25 },
+  { id: 'f_coffee', name: 'Кофемашина', emoji: '☕', spot: 'stove', minLevel: 17, price: 160, currency: 'gold', energy: 20, money: 6 },
+  // Нычка
+  { id: 'f_stash_brick', name: 'Нычка в стене', emoji: '🧱', spot: 'stash', minLevel: 3, price: 600, currency: 'money', money: 4 },
+  { id: 'f_stash_floor', name: 'Тайник под половицей', emoji: '🪚', spot: 'stash', minLevel: 8, price: 5000, currency: 'money', money: 6 },
+  { id: 'f_stash_mattress', name: 'Заначка в матрасе', emoji: '💰', spot: 'stash', minLevel: 12, price: 14000, currency: 'money', money: 8, def: 3 },
+  { id: 'f_stash_safe', name: 'Сейф под шконкой', emoji: '🔐', spot: 'stash', minLevel: 18, price: 170, currency: 'gold', money: 14 },
+  // Фото
+  { id: 'f_photo_mom', name: 'Фото мамы', emoji: '🖼️', spot: 'photo', minLevel: 1, price: 150, currency: 'money', hp: 10 },
+  { id: 'f_photo_family', name: 'Семейные фото', emoji: '👨‍👩‍👦', spot: 'photo', minLevel: 6, price: 3000, currency: 'money', hp: 20, energy: 4 },
+  { id: 'f_photo_girl', name: 'Письма и фото любимой', emoji: '💌', spot: 'photo', minLevel: 11, price: 12000, currency: 'money', energy: 8, crit: 1 },
+  { id: 'f_photo_frame', name: 'Портрет в золотой раме', emoji: '🖼', spot: 'photo', minLevel: 16, price: 120, currency: 'gold', hp: 40, crit: 2 },
   { id: 'f_laundry', name: 'Верёвка с бельём', emoji: '🧺', spot: 'deco', minLevel: 2, price: 250, currency: 'money', hp: 8 },
   { id: 'f_pennants', name: 'Вымпелы «Спартак»', emoji: '🚩', spot: 'deco', minLevel: 6, price: 2800, currency: 'money', crit: 1, energy: 3 },
   { id: 'f_cuckoo', name: 'Часы с кукушкой', emoji: '🕰️', spot: 'deco', minLevel: 10, price: 13000, currency: 'money', energy: 8, money: 4 },
@@ -468,6 +496,53 @@ export function cellView(owned: string[], show: Partial<Record<Spot, string>> = 
     if (best) out.push(best.id);
   }
   return out;
+}
+
+/** Тема хаты: если в сцене стоят вещи одного стиля — бонус сверху. Каждая группа — одно место (любая из вещей). */
+export interface CellTheme {
+  id: string;
+  name: string;
+  emoji: string;
+  need: number;
+  groups: string[][];
+  bonus: Bonus;
+}
+
+export const CELL_THEMES: CellTheme[] = [
+  {
+    id: 'home', name: 'Как дома', emoji: '🏠', need: 4, bonus: { energy: 15, hp: 30 },
+    groups: [['f_blanket', 'f_featherbed'], ['f_samovar', 'f_table'], ['f_cat'], ['f_curtains', 'f_plant'], ['f_rug', 'f_floorcarpet'], ['f_photo_family', 'f_photo_mom'], ['f_cuckoo'], ['f_hotplate', 'f_boiler']],
+  },
+  {
+    id: 'gym', name: 'Качалка', emoji: '🏋️', need: 4, bonus: { atk: 8, hp: 40 },
+    groups: [['f_gym', 'f_bag', 'f_bench'], ['f_pennants'], ['f_radio', 'f_tape'], ['f_fridge'], ['f_mattress'], ['f_shelf_trophy'], ['f_poster', 'f_calendar']],
+  },
+  {
+    id: 'reader', name: 'Изба-читальня', emoji: '📚', need: 4, bonus: { energy: 10, money: 6 },
+    groups: [['f_shelf_books', 'f_shelf_board'], ['f_shade', 'f_newspaper'], ['f_tumba', 'f_table'], ['f_radio'], ['f_plant'], ['f_photo_mom', 'f_photo_girl'], ['f_guitar']],
+  },
+  {
+    id: 'holy', name: 'Святой угол', emoji: '⛪', need: 4, bonus: { crit: 3, def: 8 },
+    groups: [['f_icons'], ['f_shade'], ['f_plant', 'f_drapes'], ['f_tumba'], ['f_photo_frame', 'f_photo_mom'], ['f_stool'], ['f_cuckoo']],
+  },
+  {
+    id: 'music', name: 'Музыкальная хата', emoji: '🎸', need: 4, bonus: { energy: 15, crit: 2 },
+    groups: [['f_hifi', 'f_tape', 'f_bayan', 'f_guitar'], ['f_poster'], ['f_garland'], ['f_parrot'], ['f_lcd', 'f_tv'], ['f_pennants']],
+  },
+  {
+    id: 'boss', name: 'Блатная хата', emoji: '👑', need: 5, bonus: { money: 12, crit: 3 },
+    groups: [['f_bed_vip'], ['f_painting', 'f_carpet_silk'], ['f_chandelier'], ['f_plasma', 'f_console'], ['f_bar'], ['f_bearskin'], ['f_drapes'], ['f_stash_safe'], ['f_coffee'], ['f_shelf_carved']],
+  },
+];
+
+/** Сколько групп темы собрано в том, что стоит в хате. */
+export function themeCount(t: CellTheme, shown: string[]): number {
+  return t.groups.filter((g) => g.some((id) => shown.includes(id))).length;
+}
+
+/** Активные темы хаты. */
+export function activeThemes(shown: string[]): CellTheme[] {
+  return CELL_THEMES.filter((t) => themeCount(t, shown) >= t.need);
 }
 
 // Общий босс для всего сервера: его бьют все игроки онлайн, награду делят по урону.

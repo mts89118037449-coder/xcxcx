@@ -46,6 +46,8 @@ import {
   type Slot,
   type Stat,
   type StarPack,
+  activeThemes,
+  cellView,
 } from '../shared/content.ts';
 
 import { battleAct, battleAuto, battleControls, battleResult, fight, newBattle, npcPerks, type BattleAction, type BattleState, type Fighter, type FightResult, type Round } from './combat.ts';
@@ -354,6 +356,8 @@ function bonuses(p: Player): Required<Bonus> {
     const f = furnitureById.get(id);
     if (f) add(f);
   }
+  // тема хаты: вещи одного стиля в сцене
+  for (const t of activeThemes(cellView(p.furniture, p.cellShow))) add(t.bonus);
   // комплекты: за две вещи и за полный набор
   const ids = new Set(worn.map((i) => i.id));
   for (const set of SETS) {

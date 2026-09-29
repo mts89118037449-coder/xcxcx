@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FURNITURE, SPOTS, SPOT_BARE, SPOT_NAMES, type Furniture, type Spot } from '../shared/content.ts';
+import { CELL_THEMES, FURNITURE, SPOTS, SPOT_BARE, SPOT_NAMES, furnitureById, themeCount, type Furniture, type Spot } from '../shared/content.ts';
 import { BonusList, Price, useGame } from './game.tsx';
 
 /** Хата с примеркой: вещь на своём месте вместо того, что там стоит. */
@@ -79,6 +79,31 @@ export function CellShop({ onChange, onPreview }: { onChange(): void; onPreview(
         })}
       </div>
       <div className="muted small center">Бонусы всех купленных ступеней складываются, даже если вещь убрана.</div>
+      <h3 className="section">Стиль хаты</h3>
+      <div className="muted small">Поставь вещи одного стиля — хата даст бонус сверху. Считается то, что стоит в сцене.</div>
+      <div className="themes">
+        {CELL_THEMES.map((t) => {
+          const n = themeCount(t, p.cell);
+          const on = n >= t.need;
+          const missing = t.groups.filter((g) => !g.some((id) => p.cell.includes(id))).map((g) => furnitureById.get(g[g.length - 1])?.emoji ?? '');
+          return (
+            <div key={t.id} className={`theme ${on ? 'on' : ''}`}>
+              <span className="theme-emoji">{t.emoji}</span>
+              <div className="grow">
+                <b>{t.name}</b>
+                <div className="theme-bar">
+                  <div style={{ width: `${Math.min(1, n / t.need) * 100}%` }} />
+                  <span>
+                    {n}/{t.need}
+                  </span>
+                </div>
+                {!on && <small className="muted">не хватает: {missing.slice(0, 6).join(' ')}</small>}
+              </div>
+              <BonusList b={t.bonus} />
+            </div>
+          );
+        })}
+      </div>
     </>
   );
 }

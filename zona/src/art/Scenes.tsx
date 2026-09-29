@@ -6,7 +6,7 @@
 
 import type { ReactNode } from 'react';
 import { FURNITURE, interiorById, type Spot } from '../../shared/content.ts';
-import { BearSkin, Canopy, Deco, Dog, Drapes, Featherbed, FloorCarpet, Garland, Light, MiniBar, Music, Painting, Pet, Poster, Samovar, SilkCarpet, Sport, Stool, WallTv } from './CellDecor.tsx';
+import { BearSkin, Canopy, Deco, Dog, Drapes, Featherbed, FloorCarpet, Garland, Light, MiniBar, Music, Painting, Pet, Photos, Poster, Samovar, Shelf, SilkCarpet, Sport, Stash, Stool, Stove, WallTv } from './CellDecor.tsx';
 
 const W = 360;
 const H = 280;
@@ -313,6 +313,9 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
       )}
 
       {f.deco && <Deco kind={f.deco} />}
+      {f.photo && <Photos kind={f.photo} tv={f.tech === 'f_lcd' || f.tech === 'f_plasma' || f.tech === 'f_console'} />}
+      {f.shelf && <Shelf kind={f.shelf} />}
+      {f.stash === 'f_stash_brick' && <Stash kind={f.stash} />}
       {/* Шконка с тенью */}
       <rect x={8} y={214} width={158} height={24} fill="#000" opacity={0.45} filter="url(#sc-blur)" />
       <g>
@@ -369,6 +372,8 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
         </g>
       )}
 
+      {f.stash && f.stash !== 'f_stash_brick' && <Stash kind={f.stash} />}
+      {f.stove && <Stove kind={f.stove} onTable={!!f.table && f.table !== 'f_tumba' && f.tech !== 'f_radio' && f.tech !== 'f_tv'} />}
       {f.pet === 'f_dog' && <Dog />}
       {f.corner === 'f_stool' && <Stool />}
       {f.corner === 'f_bar' && <MiniBar />}

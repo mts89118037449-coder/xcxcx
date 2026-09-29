@@ -885,3 +885,21 @@ test('сюжет: 12 глав, у седьмой — своя версия дл�
   const r = g.claimStory(p, T0);
   assert.equal(r.money, 8000);
 });
+
+test('хата: 16 мест, стиль хаты даёт бонус за то, что стоит в сцене', async () => {
+  const { CELL_THEMES, SPOTS, FURNITURE, furnitureById } = await import('../shared/content.ts');
+  assert.equal(SPOTS.length, 16);
+  for (const s of SPOTS) assert.ok(FURNITURE.filter((f) => f.spot === s).length >= 2, s);
+  for (const t of CELL_THEMES) {
+    for (const grp of t.groups) for (const id of grp) assert.ok(furnitureById.has(id), `${t.id}: ${id}`);
+    assert.ok(t.need <= t.groups.length);
+  }
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.furniture = ['f_mattress', 'f_blanket', 'f_tumba', 'f_table', 'f_roach', 'f_cat'];
+  const before = g.stats(p, T0).maxEnergy;
+  p.furniture.push('f_curtains'); // одеяло, стол, кот, занавески — «Как дома» собрана
+  assert.equal(g.stats(p, T0).maxEnergy - before, 15);
+  // убрал кота из сцены — тема распалась
+  p.cellShow.pet = 'f_roach';
+  assert.equal(g.stats(p, T0).maxEnergy, before);
+});
