@@ -38,6 +38,13 @@ export function GameTiles() {
         { icon: '🎲', name: 'Кости', left: p.games.dice, on: () => openMini('dice') },
         { icon: '💪', name: 'Армрестлинг', left: p.games.arm, on: () => openMini('arm') },
         { icon: '🎯', name: 'Мишень', left: p.games.darts, on: () => openMini('darts') },
+        { icon: '🎲', name: 'Нарды', left: p.games.nardy, on: () => openMini('nardy'), wait: false },
+        { icon: '🁫', name: 'Домино', left: p.games.domino, on: () => openMini('domino') },
+        { icon: '♟️', name: 'Этюд', left: p.games.chess, on: () => openMini('chess') },
+        { icon: '⚡', name: 'Чифир на скорость', left: p.games.speed, on: () => openMini('speed') },
+        { icon: '📦', name: 'Конвейер', left: p.games.conveyor, on: () => openMini('conveyor') },
+        { icon: '📿', name: 'Чётки', left: p.games.beads, on: () => openMini('beads'), wait: p.games.beadsReadyAt > now },
+        { icon: '🎣', name: 'Рыбалка', left: p.games.fish, on: () => openMini('fish') },
       ]}
     />
   );

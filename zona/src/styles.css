@@ -2022,3 +2022,51 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .lot-qty { gap: 8px; align-items: center; }
 .lot-qty span { width: 64px; color: var(--muted); font-size: 13px; }
 .lot-qty b { min-width: 28px; text-align: center; }
+
+/* мини-игры 2 */
+.bets { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin: 8px 0; }
+.die2 { font-size: 26px; line-height: 1; margin: 0 1px; }
+.nardy-board { width: 100%; display: block; border-radius: 10px; }
+.nardy-piece { transition: cx 0.4s, cy 0.4s; filter: drop-shadow(0 1px 1px #0008); }
+.nardy-roll { display: flex; justify-content: space-between; align-items: center; margin: 8px 2px; }
+.nardy-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 6px; }
+.domino-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.domino-chain { display: flex; align-items: center; justify-content: center; gap: 2px; min-height: 48px; padding: 6px; border-radius: 10px; background: #1f4a2e; overflow: hidden; }
+.domino-end { font-size: 12px; color: #ffe066; padding: 0 4px; }
+.domino-hand { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 10px 0; }
+.domino-slot { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.bone { display: flex; flex-direction: column; width: 30px; height: 58px; padding: 2px; border-radius: 6px; border: 1px solid #333; background: #f4f1ea; opacity: 0.55; }
+.bone.on { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
+.bone:disabled { cursor: default; }
+.bone.small { width: 20px; height: 38px; opacity: 1; }
+.bone-half { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); place-items: center; }
+.bone-half + .bone-half { border-top: 1px solid #999; }
+.bone-half i { width: 4px; height: 4px; border-radius: 50%; background: #1a1a1a; }
+.bone.small .bone-half i { width: 3px; height: 3px; }
+.bone-side { font-size: 10px; border: none; background: none; color: var(--muted); padding: 0; }
+.chess { display: grid; grid-template-columns: repeat(8, 1fr); width: 100%; max-width: 320px; margin: 6px auto; border: 3px solid #4a2a10; border-radius: 4px; }
+.sq { position: relative; aspect-ratio: 1; border: none; padding: 0; display: grid; place-items: center; font-size: 26px; line-height: 1; }
+.sq.light { background: #eedab4; }
+.sq.dark { background: #a77a4e; }
+.sq.sel { box-shadow: inset 0 0 0 3px #3a8ae0; }
+.sq.last { box-shadow: inset 0 0 0 3px #e0a03a; }
+.sq .w { color: #fff; text-shadow: 0 0 2px #000, 0 0 1px #000; }
+.sq .b { color: #1a1a1a; }
+.sq i { position: absolute; font-size: 8px; font-style: normal; color: #0008; }
+.sq .rk { left: 2px; top: 1px; }
+.sq .fl { right: 2px; bottom: 1px; }
+.speed-mug { width: 100%; height: 160px; margin: 6px 0; border-radius: 16px; border: 1px solid var(--line); background: #2a2214; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--text); }
+.speed-mug span { font-size: 56px; }
+.speed-mug.boil { background: #7a1a14; animation: pulse 0.4s infinite; }
+.speed-mug b { font-size: 16px; }
+.belt { position: relative; height: 90px; margin: 6px 0; border-radius: 12px; background: #3a3a36; overflow: hidden; }
+.belt-line { position: absolute; left: 0; right: 0; top: 50px; height: 26px; background: repeating-linear-gradient(90deg, #1f1f1c 0 20px, #2c2c28 20px 40px); }
+.belt-item { position: absolute; top: 18px; width: 48px; height: 48px; margin-left: -24px; border: none; background: none; font-size: 34px; padding: 0; touch-action: manipulation; }
+.belt-item.ok { opacity: 0; transform: translateY(-30px); transition: 0.3s; }
+.belt-item.err { filter: grayscale(1) brightness(0.5); }
+.beads { width: 200px; display: block; margin: 6px auto; touch-action: manipulation; }
+.fish { width: 100%; display: block; border-radius: 10px; margin: 6px 0; }
+.fish-catch { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 6px 0; }
+.fish-catch span { padding: 4px 10px; border-radius: 10px; background: #2a3a22; color: #9fe29a; font-weight: 700; font-size: 13px; }
+.fish-catch span.no { background: #3a2220; color: #ff8a7a; }
+.bone-half i.off { background: none; }

@@ -53,6 +53,7 @@ import {
 import { battleAct, battleAuto, battleControls, battleResult, fight, newBattle, npcPerks, type BattleAction, type BattleState, type Fighter, type FightResult, type Round } from './combat.ts';
 import { chapterOf } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
+import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
@@ -125,6 +126,12 @@ export interface Player {
   cards: { deck: string[]; hand: string[]; dealer: string[]; bet: number } | null;
   /** Мини-игры без энергии: сколько раз сыграно сегодня и когда последний раз. */
   minigames: Record<string, { day: string; n: number; at: number }>;
+  /** партии в нарды и домино, текущий этюд */
+  tables: {
+    nardy?: { bet: number; me: number; him: number; dice: [number, number]; hisLast: [number, number] | null };
+    domino?: { bet: number; hand: Tile[]; ai: Tile[]; bone: Tile[]; chain: Tile[]; last: string };
+    chess?: string;
+  };
   /** Режим бога (только админ): без трат и откатов; реальные ресурсы сохранены и вернутся. */
   god: { on: boolean; saved: { money: number; gold: number; energy: number; butts: number; chifir: number } | null };
   /** Текущая драка (пошаговая) — переживает перезапуск приложения. */
@@ -249,6 +256,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     battle: null,
     god: { on: false, saved: null },
     minigames: {},
+    tables: {},
     story: { ch: 0, step: 0, progress: 0 },
     cards: null,
     event: null,
@@ -326,6 +334,7 @@ export function migrate(p: Player): Player {
   p.battle ??= null;
   p.god ??= { on: false, saved: null };
   p.minigames ??= {};
+  p.tables ??= {};
   p.story ??= { ch: 0, step: 0, progress: 0 };
   p.cards ??= null;
   p.event ??= null;
@@ -2267,6 +2276,248 @@ export function darts(p: Player, accs: unknown, now: number) {
   const butts = Math.floor(score / DARTS.buttsPer);
   p.butts += butts;
   return { points, score, butts };
+}
+
+// --- Нарды ----------------------------------------------------------------------------
+
+const die = (rng: Rng) => 1 + Math.floor(rng() * 6);
+
+function shuffle<T>(a: T[], rng: Rng): T[] {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+const tableBet = (p: Player, bet: number, min: number, perLevel: number) => {
+  const b = Math.floor(Number(bet));
+  const max = min + p.level * perLevel;
+  if (!(b >= min)) throw new GameError(`Ставка от ${min} ₽`);
+  if (b > max) throw new GameError(`На твоём уровне — не больше ${max} ₽`);
+  if (p.money < b) throw new GameError('Не хватает денег');
+  return b;
+};
+
+/** Цыган ходит жадно: берёт то, что дальше продвинет. */
+function nardyAi(pos: number, d: [number, number]): number {
+  return Math.max(...(['a', 'b', 'sum'] as NardyPick[]).map((k) => nardyLand(pos, nardyStep(d, k))));
+}
+
+export function nardyStart(p: Player, bet: number, now: number, rng: Rng) {
+  if (p.tables.nardy) throw new GameError('Партия уже идёт');
+  const b = tableBet(p, bet, NARDY.minBet, NARDY.betPerLevel);
+  playLimit(p, 'nardy', NARDY.perDay, now);
+  p.money -= b;
+  // цыган ходит первым
+  const his: [number, number] = [die(rng), die(rng)];
+  p.tables.nardy = { bet: b, me: 0, him: nardyAi(0, his), dice: [die(rng), die(rng)], hisLast: his };
+  return p.tables.nardy;
+}
+
+export function nardyMove(p: Player, pick: NardyPick, rng: Rng) {
+  const g = p.tables.nardy;
+  if (!g) throw new GameError('Партии нет');
+  if (!['a', 'b', 'sum'].includes(pick)) throw new GameError('Нет такого хода');
+  g.me = nardyLand(g.me, nardyStep(g.dice, pick));
+  let result: 'win' | 'lose' | null = null;
+  if (g.me >= NARDY.finish) result = 'win';
+  else {
+    g.hisLast = [die(rng), die(rng)];
+    g.him = nardyAi(g.him, g.hisLast);
+    if (g.him >= NARDY.finish) result = 'lose';
+    else g.dice = [die(rng), die(rng)];
+  }
+  const state = { ...g };
+  let money = 0;
+  if (result) {
+    money = result === 'win' ? g.bet * NARDY.payout : 0;
+    p.money += money;
+    delete p.tables.nardy;
+  }
+  return { state, result, money };
+}
+
+// --- Домино ----------------------------------------------------------------------------
+
+const ends = (chain: Tile[]): [number, number] => [chain[0][0], chain[chain.length - 1][1]];
+const pips = (h: Tile[]) => h.reduce((s, t) => s + t[0] + t[1], 0);
+
+/** Положить кость к цепочке: слева или справа, развернув как надо. */
+function lay(chain: Tile[], t: Tile, side: 'l' | 'r'): boolean {
+  if (!chain.length) {
+    chain.push(t);
+    return true;
+  }
+  const [l, r] = ends(chain);
+  if (side === 'l' && fits(t, l)) {
+    chain.unshift(t[1] === l ? t : [t[1], t[0]]);
+    return true;
+  }
+  if (side === 'r' && fits(t, r)) {
+    chain.push(t[0] === r ? t : [t[1], t[0]]);
+    return true;
+  }
+  return false;
+}
+
+/** Ход «козла» (соперника): самая тяжёлая подходящая, иначе берёт из базара. */
+function dominoAi(d: NonNullable<Player['tables']['domino']>): string {
+  for (;;) {
+    const [l, r] = ends(d.chain);
+    const opts = d.ai.map((t, i) => ({ t, i })).filter(({ t }) => fits(t, l) || fits(t, r));
+    if (opts.length) {
+      opts.sort((a, b) => b.t[0] + b.t[1] - (a.t[0] + a.t[1]));
+      const { t, i } = opts[0];
+      d.ai.splice(i, 1);
+      lay(d.chain, t, fits(t, r) ? 'r' : 'l');
+      return `положил ${t[0]}:${t[1]}`;
+    }
+    if (!d.bone.length) return 'пропустил';
+    d.ai.push(d.bone.pop()!);
+  }
+}
+
+function dominoEnd(p: Player): { result: 'win' | 'lose'; money: number } | null {
+  const d = p.tables.domino!;
+  let result: 'win' | 'lose' | null = null;
+  if (!d.hand.length) result = 'win';
+  else if (!d.ai.length) result = 'lose';
+  else {
+    const [l, r] = ends(d.chain);
+    const stuck = (h: Tile[]) => !h.some((t) => fits(t, l) || fits(t, r));
+    // рыба: ходить некому — побеждает тот, у кого меньше очков на руках
+    if (!d.bone.length && stuck(d.hand) && stuck(d.ai)) result = pips(d.hand) < pips(d.ai) ? 'win' : 'lose';
+  }
+  if (!result) return null;
+  const money = result === 'win' ? d.bet * DOMINO.payout : 0;
+  p.money += money;
+  delete p.tables.domino;
+  return { result, money };
+}
+
+export function dominoStart(p: Player, bet: number, now: number, rng: Rng) {
+  if (p.tables.domino) throw new GameError('Партия уже идёт');
+  const b = tableBet(p, bet, DOMINO.minBet, DOMINO.betPerLevel);
+  playLimit(p, 'domino', DOMINO.perDay, now);
+  p.money -= b;
+  const deck = shuffle(allTiles(), rng);
+  const d = { bet: b, hand: deck.splice(0, DOMINO.hand), ai: deck.splice(0, DOMINO.hand), bone: deck, chain: [] as Tile[], last: '' };
+  // первым ходит соперник — кладёт самую тяжёлую
+  d.ai.sort((x, y) => y[0] + y[1] - (x[0] + x[1]));
+  d.chain.push(d.ai.shift()!);
+  d.last = `начал с ${d.chain[0][0]}:${d.chain[0][1]}`;
+  p.tables.domino = d;
+  return { state: d };
+}
+
+/** Ход игрока: положить кость (index, side) или взять из базара (index = -1). */
+export function dominoMove(p: Player, index: number, side: 'l' | 'r') {
+  const d = p.tables.domino;
+  if (!d) throw new GameError('Партии нет');
+  const [l, r] = ends(d.chain);
+  const canPlay = d.hand.some((t) => fits(t, l) || fits(t, r));
+  if (index === -1) {
+    if (canPlay) throw new GameError('Есть чем ходить');
+    if (d.bone.length) {
+      d.hand.push(d.bone.pop()!);
+      return { state: { ...d }, end: dominoEnd(p) };
+    }
+    // базар пуст — пропуск хода
+  } else {
+    const t = d.hand[index];
+    if (!t || !lay(d.chain, t, side)) throw new GameError('Эта кость сюда не ляжет');
+    d.hand.splice(index, 1);
+    const end = dominoEnd(p);
+    if (end) return { state: { ...d }, end };
+  }
+  d.last = dominoAi(d);
+  return { state: { ...d }, end: dominoEnd(p) };
+}
+
+// --- Шахматный этюд -------------------------------------------------------------------------
+
+export function chessPuzzle(p: Player, now: number, rng: Rng) {
+  if (!p.tables.chess) {
+    if (playsLeft(p, 'chess', CHESS.perDay, now) <= 0) throw new GameError('На сегодня этюдов хватит');
+    p.tables.chess = PUZZLES[Math.floor(rng() * PUZZLES.length)].id;
+  }
+  return { id: p.tables.chess };
+}
+
+export function chessSolve(p: Player, from: string, to: string, now: number) {
+  const pz = p.tables.chess ? puzzleById.get(p.tables.chess) : null;
+  if (!pz) throw new GameError('Этюда нет');
+  playLimit(p, 'chess', CHESS.perDay, now);
+  delete p.tables.chess;
+  const ok = isMateMove(pz.pieces, String(from), String(to));
+  const out = { ok, xp: 0, butts: 0, levelUps: 0 };
+  if (ok) {
+    out.xp = CHESS.xp + p.level;
+    out.butts = CHESS.butts;
+    p.butts += out.butts;
+    out.levelUps = addXp(p, out.xp, now);
+  }
+  return out;
+}
+
+// --- Ловкость -------------------------------------------------------------------------------
+
+export function speedChifir(p: Player, ms: number, now: number) {
+  playLimit(p, 'speed', SPEED.perDay, now);
+  const butts = speedButts(Number(ms));
+  p.butts += butts;
+  return { butts, ms: Math.round(Number(ms) || 0) };
+}
+
+export function beltShift(p: Player, good: number, missed: number, now: number) {
+  playLimit(p, 'conveyor', BELT.perDay, now);
+  const g0 = Math.max(0, Math.min(BELT.maxItems, Math.floor(Number(good) || 0)));
+  const m0 = Math.max(0, Math.min(BELT.maxItems, Math.floor(Number(missed) || 0)));
+  const money = Math.max(0, Math.round((g0 * BELT.payPerGood - m0 * BELT.finePerMiss) * ration(p)));
+  p.money += money;
+  const rep = money > 0 ? gainRep(p, 'work', BELT.rep) : 0;
+  return { money, good: g0, missed: m0, rep };
+}
+
+export function beadsPlay(p: Player, accs: unknown, now: number) {
+  const list = Array.isArray(accs) ? accs.slice(0, BEADS.beads).map((a) => Math.max(0, Math.min(1, Number(a) || 0))) : [];
+  if (list.length !== BEADS.beads) throw new GameError('Перебери все бусины');
+  playLimit(p, 'beads', BEADS.perDay, now, BEADS.cooldownMin);
+  const q = list.reduce((a, b) => a + b, 0) / list.length;
+  const energy = Math.round(BEADS.maxEnergy * q);
+  const xp = Math.round(BEADS.maxXp * q);
+  p.energy += energy;
+  const levelUps = addXp(p, xp, now);
+  return { quality: q, energy, xp, levelUps };
+}
+
+export function fishing(p: Player, accs: unknown, now: number, rng: Rng) {
+  const list = Array.isArray(accs) ? accs.slice(0, FISH.casts).map((a) => Math.max(0, Math.min(1, Number(a) || 0))) : [];
+  if (list.length !== FISH.casts) throw new GameError('Три заброса');
+  playLimit(p, 'fish', FISH.perDay, now);
+  const catches = list.map((a) => {
+    if (a >= FISH.good) {
+      const r = rng();
+      if (r < 0.35) {
+        const item = rollConsumable(rng);
+        giveItem(p, item);
+        return { kind: 'item' as const, id: item };
+      }
+      if (r < 0.7) {
+        const m = rollMat(rng);
+        giveMats(p, { [m]: 1 });
+        return { kind: 'mat' as const, id: m };
+      }
+      p.butts += 5;
+      return { kind: 'butts' as const, n: 5 };
+    }
+    if (a >= FISH.ok) {
+      p.butts += 2;
+      return { kind: 'butts' as const, n: 2 };
+    }
+    return { kind: 'none' as const };
+  });
+  return { catches };
 }
 
 /** Сварить чифир: quality — насколько точно снял с огня (0..1). */

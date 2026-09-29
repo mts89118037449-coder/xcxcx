@@ -1049,3 +1049,57 @@ test('барахолка: товар уходит с прилавка и воз�
   assert.equal(q.stash.c_bandage, 2 + (g.newPlayer(3, 'x', null, T0).stash.c_bandage ?? 0));
   assert.throws(() => g.takeGoods(p, 'item', 'c_sand', 0), /Сколько/);
 });
+
+test('мини-игры 2: нарды, домино, этюд и ловкость', async () => {
+  const { NARDY, PUZZLES, legalMoves, isMateMove, nardyLand, SPEED } = await import('../shared/minigames2.ts');
+  // этюды: у каждого есть мат в один ход, стартовая позиция без шаха
+  for (const pz of PUZZLES) assert.ok(legalMoves(pz.pieces, true).some(([s, t]) => isMateMove(pz.pieces, s, t)), pz.id);
+  assert.equal(nardyLand(5, 2), 2); // ловушка на 7 — назад на 5
+  assert.equal(nardyLand(2, 2), 7); // мостик на 4 — вперёд на 3
+
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.level = 10;
+  p.money = 100_000;
+  let seed = 1;
+  const rng: g.Rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  // нарды доигрываются до конца, ставка списана, выигрыш вдвое
+  g.nardyStart(p, 500, T0, rng);
+  assert.equal(p.money, 99_500);
+  assert.throws(() => g.nardyStart(p, 500, T0, rng), /идёт/);
+  let r;
+  for (let i = 0; i < 60 && p.tables.nardy; i++) r = g.nardyMove(p, 'sum', rng);
+  assert.ok(r && r.result);
+  assert.equal(p.money, 99_500 + (r!.result === 'win' ? 500 * NARDY.payout : 0));
+
+  // домино доигрывается: ходим первой подходящей, иначе берём
+  g.dominoStart(p, 500, T0, rng);
+  let end = null;
+  for (let i = 0; i < 80 && p.tables.domino; i++) {
+    const d = p.tables.domino!;
+    const l = d.chain[0][0];
+    const rr = d.chain[d.chain.length - 1][1];
+    const k = d.hand.findIndex((t) => t[0] === l || t[1] === l || t[0] === rr || t[1] === rr);
+    const res = k < 0 ? g.dominoMove(p, -1, 'r') : g.dominoMove(p, k, d.hand[k][0] === rr || d.hand[k][1] === rr ? 'r' : 'l');
+    end = res.end ?? end;
+  }
+  assert.ok(end, 'партия закончилась');
+  assert.equal(p.tables.domino, undefined);
+
+  // этюд: правильный ход — награда, неправильный — пусто
+  const pz = g.chessPuzzle(p, T0, fixed(0));
+  assert.equal(pz.id, PUZZLES[0].id);
+  assert.equal(g.chessSolve(p, 'a1', 'a8', T0).ok, true);
+  g.chessPuzzle(p, T0, fixed(0));
+  assert.equal(g.chessSolve(p, 'a1', 'a7', T0).ok, false);
+
+  // ловкость: фальстарт ничего не даёт, результаты режутся
+  assert.equal(g.speedChifir(p, 50, T0).butts, 0);
+  assert.equal(g.speedChifir(p, 200, T0).butts, SPEED.tiers[0].butts);
+  const belt = g.beltShift(p, 10_000, 0, T0);
+  assert.equal(belt.good, 30);
+  assert.throws(() => g.beadsPlay(p, [1, 1], T0), /бусины/);
+  const beads = g.beadsPlay(p, Array(10).fill(5), T0);
+  assert.equal(beads.quality, 1);
+  const fish = g.fishing(p, [1, 0.6, 0], T0, fixed(0.9));
+  assert.deepEqual(fish.catches.map((c) => c.kind), ['butts', 'butts', 'none']);
+});

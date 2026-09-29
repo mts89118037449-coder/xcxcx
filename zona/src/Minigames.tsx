@@ -5,10 +5,10 @@ import { NPC_RIGS } from './art/rig/npcs.ts';
 import { NpcPortrait, useNpc } from './art/sprites.tsx';
 import { fmt, lookOf, timeLeft, useGame } from './game.tsx';
 
-export type Mini = 'cards' | 'race' | 'brew' | 'dice' | 'arm' | 'darts';
+export type Mini = 'cards' | 'race' | 'brew' | 'dice' | 'arm' | 'darts' | 'nardy' | 'domino' | 'chess' | 'speed' | 'conveyor' | 'beads' | 'fish';
 
 /** Окно мини-игры: персонаж сверху, игровой стол, кнопки. */
-function Table({ who, title, left, children, onClose }: { who: string; title: string; left: string; children: React.ReactNode; onClose(): void }) {
+export function Table({ who, title, left, children, onClose }: { who: string; title: string; left: string; children: React.ReactNode; onClose(): void }) {
   const npc = useNpc(who);
   return (
     <div className="modal" onClick={onClose}>

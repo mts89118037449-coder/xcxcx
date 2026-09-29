@@ -75,7 +75,15 @@ export interface PlayerView {
   hodkaBonus: number;
   intro: number;
   notifyOn: boolean;
-  games: { cards: number; race: number; brew: number; brewReadyAt: number; cardsMaxBet: number; dice: number; diceMaxBet: number; arm: number; darts: number };
+  games: {
+    cards: number; race: number; brew: number; brewReadyAt: number; cardsMaxBet: number; dice: number; diceMaxBet: number; arm: number; darts: number;
+    nardy: number; domino: number; chess: number; speed: number; conveyor: number; beads: number; beadsReadyAt: number; fish: number; tableMaxBet: number;
+  };
+  tables: {
+    nardy?: { bet: number; me: number; him: number; dice: [number, number]; hisLast: [number, number] | null };
+    domino?: { bet: number; hand: [number, number][]; ai: [number, number][]; bone: [number, number][]; chain: [number, number][]; last: string };
+    chess?: string;
+  };
   god: boolean;
   cell: string[];
   cellShow: Record<string, string>;

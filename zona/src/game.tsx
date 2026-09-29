@@ -43,7 +43,7 @@ export interface Game {
   openShells(): void;
   openPlace(place: Place): void;
   openEvent(id?: string): void;
-  openMini(kind: 'cards' | 'race' | 'brew' | 'dice' | 'arm' | 'darts'): void;
+  openMini(kind: import('./Minigames.tsx').Mini): void;
 }
 
 export const GameCtx = createContext<Game | null>(null);

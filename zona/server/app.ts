@@ -1,6 +1,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
 import { OBSHAK } from '../shared/factions.ts';
+import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SPEED } from '../shared/minigames2.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { NOTIFY, termDays } from '../shared/term.ts';
 import { BALANCE, CHURCH, cellView, comfortOf, CLAN, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
@@ -190,7 +191,17 @@ export function createApp(opts: AppOptions) {
         diceMaxBet: g.diceMaxBet(p),
         arm: g.playsLeft(p, 'arm', ARM.perDay, t),
         darts: g.playsLeft(p, 'darts', DARTS.perDay, t),
+        nardy: g.playsLeft(p, 'nardy', NARDY.perDay, t),
+        domino: g.playsLeft(p, 'domino', DOMINO.perDay, t),
+        chess: g.playsLeft(p, 'chess', CHESS.perDay, t),
+        speed: g.playsLeft(p, 'speed', SPEED.perDay, t),
+        conveyor: g.playsLeft(p, 'conveyor', BELT.perDay, t),
+        beads: g.playsLeft(p, 'beads', BEADS.perDay, t),
+        beadsReadyAt: (p.minigames.beads?.at ?? 0) + BEADS.cooldownMin * 60_000,
+        fish: g.playsLeft(p, 'fish', FISH.perDay, t),
+        tableMaxBet: NARDY.minBet + p.level * NARDY.betPerLevel,
       },
+      tables: p.tables,
       god: p.god.on,
       perks: p.perks,
       belt: p.belt,
@@ -323,6 +334,16 @@ export function createApp(opts: AppOptions) {
     dice: (p, b, t) => g.dice(p, num(b.bet), t, rng),
     arm: (p, b, t) => g.armWrestle(p, str(b.rival), num(b.taps), t, rng),
     darts: (p, b, t) => g.darts(p, b.accs, t),
+    nardyStart: (p, b, t) => g.nardyStart(p, num(b.bet), t, rng),
+    nardyMove: (p, b) => g.nardyMove(p, str(b.pick) as 'a' | 'b' | 'sum', rng),
+    dominoStart: (p, b, t) => g.dominoStart(p, num(b.bet), t, rng),
+    dominoMove: (p, b) => g.dominoMove(p, Math.floor(num(b.index)), str(b.side) === 'l' ? 'l' : 'r'),
+    chessPuzzle: (p, _b, t) => g.chessPuzzle(p, t, rng),
+    chessSolve: (p, b, t) => g.chessSolve(p, str(b.from), str(b.to), t),
+    speed: (p, b, t) => g.speedChifir(p, num(b.ms), t),
+    conveyor: (p, b, t) => g.beltShift(p, num(b.good), num(b.missed), t),
+    beads: (p, b, t) => g.beadsPlay(p, b.accs, t),
+    fish: (p, b, t) => g.fishing(p, b.accs, t, rng),
     adminGod: (p, _b, t) => g.toggleGod(p, t),
     adminTool: (p, b, t) => g.adminTool(p, str(b.tool), str(b.arg), t),
     cellShow: (p, b) => g.setCellShow(p, str(b.spot), str(b.id)),

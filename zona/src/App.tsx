@@ -39,6 +39,13 @@ const BrewGame = named(() => import('./Minigames.tsx'), 'BrewGame');
 const DiceGame = named(() => import('./Minigames.tsx'), 'DiceGame');
 const ArmGame = named(() => import('./Minigames.tsx'), 'ArmGame');
 const DartsGame = named(() => import('./Minigames.tsx'), 'DartsGame');
+const NardyGame = named(() => import('./Minigames2.tsx'), 'NardyGame');
+const DominoGame = named(() => import('./Minigames2.tsx'), 'DominoGame');
+const ChessGame = named(() => import('./Minigames2.tsx'), 'ChessGame');
+const SpeedGame = named(() => import('./Minigames2.tsx'), 'SpeedGame');
+const ConveyorGame = named(() => import('./Minigames2.tsx'), 'ConveyorGame');
+const BeadsGame = named(() => import('./Minigames2.tsx'), 'BeadsGame');
+const FishGame = named(() => import('./Minigames2.tsx'), 'FishGame');
 
 const TABS: { id: Tab; icon: string; label: string; also?: Tab[] }[] = [
   { id: 'home', icon: '🏚️', label: 'Хата' },
@@ -245,6 +252,13 @@ export function App() {
       {mini === 'dice' && <DiceGame onClose={() => setMini(null)} />}
       {mini === 'arm' && <ArmGame onClose={() => setMini(null)} />}
       {mini === 'darts' && <DartsGame onClose={() => setMini(null)} />}
+      {mini === 'nardy' && <NardyGame onClose={() => setMini(null)} />}
+      {mini === 'domino' && <DominoGame onClose={() => setMini(null)} />}
+      {mini === 'chess' && <ChessGame onClose={() => setMini(null)} />}
+      {mini === 'speed' && <SpeedGame onClose={() => setMini(null)} />}
+      {mini === 'conveyor' && <ConveyorGame onClose={() => setMini(null)} />}
+      {mini === 'beads' && <BeadsGame onClose={() => setMini(null)} />}
+      {mini === 'fish' && <FishGame onClose={() => setMini(null)} />}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
       {introOn && <IntroOverlay onDone={() => setIntroOn(false)} />}
       {!introOn && !mastAsked && !p.mast && p.level >= MAST_RULES.minLevel && <MastPicker onClose={() => setMastAsked(true)} />}
