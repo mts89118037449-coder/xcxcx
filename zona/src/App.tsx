@@ -151,23 +151,24 @@ export function App() {
             <b className="top-lvl">{p.level}</b>
           </div>
           <div className="who">
-            <b>
-              {p.vipUntil ? '👑 ' : ''}
-              {p.name}
-            </b>
-            <span className="muted">
-              {p.rank}
+            <div className="who-name">
+              <b>
+                {p.vipUntil ? '👑 ' : ''}
+                {p.name}
+              </b>
               {p.admin && (
-                <b className={`god-badge ${p.god ? 'on' : ''}`} onClick={() => setAdminOpen(true)}>
-                  {p.god ? '⚡ БОГ' : '⚙️'}
-                </b>
+                <button className={`god-chip ${p.god ? 'on' : ''}`} onClick={() => setAdminOpen(true)}>
+                  {p.god ? '⚡ бог' : '⚙️'}
+                </button>
               )}
-            </span>
-          </div>
-          <div className="wallet">
-            <span className="coin">{fmtShort(p.money)} ₽</span>
-            <span className="coin" onClick={() => go('zone')}>{fmtShort(p.butts)} 🚬</span>
-            <span className="coin gold" onClick={() => go('shop')}>{fmtShort(p.gold)} 🪙<b className="plus">+</b></span>
+            </div>
+            <div className="wallet">
+              <span className="coin">{fmtShort(p.money)} ₽</span>
+              <span className="coin" onClick={() => go('zone')}>{fmtShort(p.butts)} 🚬</span>
+              <span className="coin gold" onClick={() => go('shop')}>
+                {fmtShort(p.gold)} 🪙<b className="plus">+</b>
+              </span>
+            </div>
           </div>
           <button className={`shop-btn ${tab === 'shop' ? 'on' : ''}`} onClick={() => go('shop')} aria-label="Ларёк">
             ⭐

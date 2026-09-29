@@ -1,35 +1,30 @@
 import { useEffect, useState } from 'react';
-import { OUTFITS } from '../../shared/content.ts';
+import { ITEMS } from '../../shared/content.ts';
 import type { FightReplay, Look } from '../../shared/types.ts';
 import { Bar, fmt } from '../game.tsx';
-import { CharacterG } from './Character.tsx';
-import { Face, ImageG, PoseG, useBoss, usePoses, useRival } from './sprites.tsx';
-import { artUrl, characterLayers, useArt } from './raster.ts';
+import { RigHead } from './rig/Rig.tsx';
+import { NPC_RIGS } from './rig/npcs.ts';
+import { PoseG } from './sprites.tsx';
 import { Place, YardScene } from './Scenes.tsx';
-import { Body, RasterFigure } from './Stage.tsx';
+import { Body } from './Stage.tsx';
 
 export interface Fighter {
   name: string;
   look: Look;
-  build?: number;
-  /** id босса — для растровой картинки npc/<id> */
+  /** id босса — кукла sheet/boss/<id> */
   npc?: string;
 }
 
 const STEP_MS = 480;
 
-/** Боссы, нарисованные вполоборота вправо — отражаем, чтобы смотрели на героя. */
-const BOSS_MIRROR = new Set<string>();
+const RIVAL_TOPS = ITEMS.filter((i) => i.slot === 'body' && !i.bossOnly).map((i) => i.id);
 
-const RIVAL_OUTFITS = Object.keys(OUTFITS).filter((id) => OUTFITS[id].poses.includes('guard'));
-
-/** Если у соперника нет комплекта — одеваем по имени, чтобы все были разные, но постоянные. */
+/** Сопернику без верха подбираем шмотку по имени — все разные, но постоянные. */
 function rivalLook(enemy: Fighter): Look {
-  const body = enemy.look.equipped.body;
-  if (body && OUTFITS[body]?.poses.includes('guard')) return enemy.look;
+  if (enemy.look.equipped.body) return enemy.look;
   let h = 0;
   for (const ch of enemy.name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return { ...enemy.look, equipped: { ...enemy.look.equipped, body: RIVAL_OUTFITS[h % RIVAL_OUTFITS.length] } };
+  return { ...enemy.look, equipped: { ...enemy.look.equipped, body: RIVAL_TOPS[h % RIVAL_TOPS.length] } };
 }
 
 /** Проигрывает бой, пришедший с сервера, удар за ударом. */
@@ -79,10 +74,10 @@ export function FightArena({
   const strike = !!last && (last.miss || (last.dmg > 0 && last.note !== '🩸'));
   const hurt = !!last && last.dmg > 0;
 
-  const poses = usePoses();
   const hitCls = last?.crit ? 'got-crit' : 'got-hit';
-  const meCls = done ? (replay.win ? 'act-cheer' : poses ? '' : 'ko') : !last ? '' : last.by === 0 ? (strike ? 'lunge-r' : '') : hurt ? hitCls : '';
-  const enemyCls = done ? (replay.win ? (poses && !enemy.npc ? '' : 'ko-r') : 'act-cheer') : !last ? '' : last.by === 1 ? (strike ? 'lunge-l' : '') : hurt ? hitCls : '';
+  // победа и нокаут — анимации рига; здесь только толчки при ударах
+  const meCls = done ? '' : !last ? '' : last.by === 0 ? (strike ? 'lunge-r' : '') : hurt ? hitCls : '';
+  const enemyCls = done ? '' : !last ? '' : last.by === 1 ? (strike ? 'lunge-l' : '') : hurt ? hitCls : '';
   const popX = last?.by === 0 ? 256 : 104;
   // всплывашки: урон — над целью, лечение и перк — над тем, кто действует
   const notes = last && !done && (
@@ -100,28 +95,17 @@ export function FightArena({
     </>
   );
 
-  const myMood = done ? (replay.win ? 'win' : 'hurt') : myHp < replay.maxHp[0] * 0.3 ? 'hurt' : 'idle';
-  const art = useArt();
-  const rival = useRival(enemy.name);
-  const bossArt = useBoss(enemy.npc);
-  const foe = enemy.npc ? bossArt : rival;
-  const bg = artUrl(art, 'bg/arena');
-  const enemyFace = enemy.npc ? artUrl(art, `npc/${enemy.npc}_face`) : null;
-  const meLayers = characterLayers(art, 'fight', me.look, { hurt: myMood === 'hurt' });
-  // Противник-босс — отдельная картинка; противник-игрок — те же слои, отражённые.
-  const enemyNpc = enemy.npc ? artUrl(art, `npc/${enemy.npc}`) : null;
-  const enemyLayers = enemy.npc ? (enemyNpc ? [enemyNpc] : null) : characterLayers(art, 'fight', enemy.look, { hurt: done && replay.win });
-  const raster = bg && meLayers && enemyLayers;
-
+  // противник — всегда кукла рига: босс в своём наряде, зэк — в своём шмоте
+  const enemyLook = enemy.npc ? (NPC_RIGS[`sheet/boss/${enemy.npc}`]?.look ?? enemy.look) : rivalLook(enemy);
   const hp = (
     <div className="arena-hp">
       <div>
-        <Face face={me.look.face} size={22} className="arena-face" />
+        <RigHead look={me.look} size={24} className="arena-face" />
         {me.name}
         <Bar kind="hp" value={myHp} max={replay.maxHp[0]} label={fmt(myHp)} />
       </div>
       <div>
-        {enemyFace ? <img className="arena-face" src={enemyFace} alt="" /> : <Face face={enemy.look.face} size={22} className="arena-face" />}
+        <RigHead look={enemyLook} size={24} className="arena-face flip" />
         {enemy.name}
         <Bar kind="hp" value={enemyHp} max={replay.maxHp[1]} label={fmt(enemyHp)} />
       </div>
@@ -133,58 +117,26 @@ export function FightArena({
     </button>
   );
 
-  if (raster) {
-    return (
-      <div className="arena">
-        <div className="scene raster">
-          <img className="raster-layer" src={bg} alt="" />
-          <RasterFigure layers={meLayers} className={meCls} key={`me${i}`} />
-          <RasterFigure layers={enemyLayers} className={enemyCls} key={`en${i}`} mirror={!enemy.npc} />
-          {last && !done && (last.dmg > 0 || last.miss) && (
-            <div key={`d${i}`} className={`dmg-html ${last.by === 0 ? 'right' : 'left'} ${last.crit ? 'crit' : ''}`}>
-              {last.miss ? 'мимо' : `−${last.dmg}${last.crit ? '!' : ''}`}
-            </div>
-          )}
-          {notes}
-          <div className="scene-fx" />
-        </div>
-        {hp}
-        {skip}
-      </div>
-    );
-  }
-
   return (
     <div className="arena">
       <YardScene tower={false}>
           <Place x={104} y={266} scale={0.98} key={`me${i}`} className={`pose ${meCls}`}>
-            {poses ? (
-              <Body look={me.look}>
-                {done && !replay.win ? (
-                  // лёжа — та же одетая фигура, опрокинутая на землю головой к сопернику
-                  <PoseG name="lying" anim="ko" look={me.look} />
-                ) : (
-                  <PoseG name="guard34" anim={done ? 'cheer' : !last ? 'guard' : last.by === 0 ? (strike ? (last.crit || i % 3 === 2 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'} look={me.look} />
-                )}
-              </Body>
-            ) : (
-              <CharacterG look={me.look} mood={myMood} />
-            )}
+            <Body look={me.look}>
+              {done && !replay.win ? (
+                // лёжа — та же одетая фигура, опрокинутая на землю головой к сопернику
+                <PoseG name="lying" anim="ko" look={me.look} />
+              ) : (
+                <PoseG name="guard34" anim={done ? 'cheer' : !last ? 'guard' : last.by === 0 ? (strike ? (last.crit || i % 3 === 2 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'} look={me.look} />
+              )}
+            </Body>
           </Place>
           <Place x={256} y={266} scale={0.98} key={`en${i}`} className={`pose ${enemyCls}`}>
-            {!enemy.npc && poses ? (
-              // соперник-зэк — такой же герой в своём комплекте, развёрнут лицом к нам
-              <PoseG
-                name="guard34"
-                anim={done ? (replay.win ? 'ko' : 'taunt') : !last ? 'guard' : last.by === 1 ? (strike ? (last.crit || i % 3 === 1 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'}
-                look={rivalLook(enemy)}
-                mirror
-              />
-            ) : foe ? (
-              <ImageG url={foe.url} height={foe.height} mirror className="char-breathe" />
-            ) : (
-              <CharacterG look={enemy.look} build={enemy.build} mood={done ? (replay.win ? 'hurt' : 'win') : 'idle'} />
-            )}
+            <PoseG
+              name="guard34"
+              anim={done ? (replay.win ? 'ko' : 'taunt') : !last ? 'guard' : last.by === 1 ? (strike ? (last.crit || i % 3 === 1 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'}
+              look={enemyLook}
+              mirror
+            />
           </Place>
           {last && !done && (last.dmg > 0 || last.miss) && (
             <text key={`d${i}`} className="dmg-pop" x={popX} y={84} textAnchor="middle" fontSize={last.crit ? 26 : 18} fill={last.miss ? '#9fd3ff' : last.crit ? '#ffcf5a' : '#fff'}>

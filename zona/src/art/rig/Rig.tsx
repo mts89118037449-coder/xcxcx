@@ -950,6 +950,14 @@ export function Weapon({ id }: { id?: string }) {
           <rect x={4} y={10} width={3.2} height={13} rx={1.4} transform="rotate(-30 5.6 11)" fill="#8a5a32" stroke={INK} strokeWidth={0.6} />
         </g>
       );
+    case 'wpn_axe':
+      return (
+        <g transform="translate(0 6) rotate(-100)">
+          <rect x={-1.6} y={-6} width={3.2} height={30} rx={1.2} fill="#8a5a32" stroke={INK} strokeWidth={0.6} />
+          <path d="M -1.6,16 L -9,13 C -12,17 -12,24 -9,28 L -1.6,24 Z" fill="#9aa0a6" stroke={INK} strokeWidth={0.7} />
+          <path d="M -9,13.6 C -11.2,17.6 -11.2,23.6 -9,27.4" fill="none" stroke="#e8ecf0" strokeWidth={0.8} />
+        </g>
+      );
     case 'drop_baton':
       return (
         <g transform="translate(0 6) rotate(-100)">
@@ -1178,6 +1186,12 @@ export function RigBody({ look, pose, uid, mirror, shadow = true, bare, prop, ti
           <Weapon id={look.equipped.weapon} />
           {look.equipped.charm === 'charm_beads' && <path d="M -4.4,-1 C -2,1 2,1 4.2,-1" fill="none" stroke="#8a3a1e" strokeWidth={1.6} strokeDasharray="1.4 0.8" />}
           {look.equipped.charm === 'charm_ring' && <circle cx={3.8} cy={pose.fist > 0.5 ? 5 : 8} r={1.3} fill="#e8c35a" stroke={INK} strokeWidth={0.4} />}
+          {look.equipped.charm === 'drop_ring_thief' && (
+            <g>
+              <circle cx={3.8} cy={pose.fist > 0.5 ? 5 : 8} r={1.8} fill="#e8c35a" stroke={INK} strokeWidth={0.4} />
+              <circle cx={3.8} cy={pose.fist > 0.5 ? 5 : 8} r={0.9} fill="#b8242a" />
+            </g>
+          )}
         </g>
       )}
     </g>

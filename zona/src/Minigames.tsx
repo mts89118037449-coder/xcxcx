@@ -249,7 +249,7 @@ export function DiceGame({ onClose }: { onClose(): void }) {
   const max = p.games.diceMaxBet;
   const bets = [DICE.minBet, Math.round(max / 4 / 50) * 50, Math.round(max / 2 / 50) * 50, max].filter((b, i, a) => b >= DICE.minBet && a.indexOf(b) === i);
   const [bet, setBet] = useState(bets[0]);
-  const [res, setRes] = useState<{ me: number[]; him: number[]; result: 'win' | 'lose' | 'push'; money: number } | null>(null);
+  const [res, setRes] = useState<{ me: number[]; him: number[]; result: 'win' | 'lose'; money: number } | null>(null);
   const [rolling, setRolling] = useState(false);
   const [face, setFace] = useState([3, 5, 2, 6]);
   useEffect(() => {
@@ -260,7 +260,7 @@ export function DiceGame({ onClose }: { onClose(): void }) {
   const roll = async () => {
     setRes(null);
     setRolling(true);
-    const [r] = await Promise.all([act<{ me: number[]; him: number[]; result: 'win' | 'lose' | 'push'; money: number }>('dice', { bet }), new Promise((ok) => setTimeout(ok, 750))]);
+    const [r] = await Promise.all([act<{ me: number[]; him: number[]; result: 'win' | 'lose'; money: number }>('dice', { bet }), new Promise((ok) => setTimeout(ok, 750))]);
     setRolling(false);
     if (r) setRes(r);
   };
@@ -277,8 +277,8 @@ export function DiceGame({ onClose }: { onClose(): void }) {
           {res && !rolling
             ? res.result === 'win'
               ? `🏆 Твоя! +${fmt(res.money)} ₽${res.me[0] === res.me[1] ? ' · дубль ×3' : ''}`
-              : res.result === 'push'
-                ? '🤝 Поровну — ставка назад'
+              : res.me[0] + res.me[1] === res.him[0] + res.him[1]
+                ? '🤝 Поровну — а ничья за цыганом'
                 : '💀 У цыгана больше'
             : rolling
               ? 'Трясёт в кружке…'

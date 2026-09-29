@@ -71,6 +71,8 @@ export const TOPS: Record<string, TopWear> = {
   body_orange: { color: '#d8661e', sleeves: 'long', neck: 'crew', hem: 2, bulk: 1, buttons: true, pockets: true },
   body_sheepskin: { color: '#8a5a32', sleeves: 'long', neck: 'fur', hem: 22, bulk: 4, buttons: true, lining: '#eadcc0', pockets: true },
   body_crimson: { color: '#a0184a', sleeves: 'long', neck: 'collar', hem: 8, bulk: 2, buttons: true, lining: '#2a2a2e', pockets: true },
+  body_kevlar: { color: '#4a5038', sleeves: 'long', sleeveColor: '#2a2c2e', neck: 'crew', hem: 2, bulk: 5, pockets: true, belt: '#1c1c14' },
+  drop_greatcoat: { color: '#3a4636', sleeves: 'long', neck: 'collar', hem: 30, bulk: 5, buttons: true, epaulets: true, belt: '#8a6a2a', lining: '#c8a24a' },
   // только у НПС
   npc_whitecoat: { color: '#e6e6e0', sleeves: 'long', neck: 'collar', hem: 34, bulk: 2, buttons: true, pockets: true, legs: { color: '#3c4a56' } },
   npc_cassock: { color: '#18181a', sleeves: 'long', neck: 'crew', hem: 70, bulk: 3, buttons: true, legs: { color: '#18181a' } },
@@ -104,6 +106,9 @@ export const HATS: Record<string, HeadWear> = {
   cap_bandana: { kind: 'cap8', color: '#2a2a30' },
   cap_gold: { kind: 'capgold', color: '#1c1c1e', color2: '#d9a53a' },
   drop_crown: { kind: 'crown', color: '#d9a53a', color2: '#b83a3a' },
+  cap_kevlar: { kind: 'helmet', color: '#3e4632' },
+  drop_cap_general: { kind: 'furazhka', color: '#2e3a2a', color2: '#c8a24a' },
+  drop_helmet: { kind: 'helmet', color: '#15171a' },
   cap_baseball: { kind: 'baseball', color: '#1e2a44', color2: '#e8e8e8' },
   cap_vdv: { kind: 'beret', color: '#3a6ab8' },
   cap_mink: { kind: 'mink', color: '#4a3424' },

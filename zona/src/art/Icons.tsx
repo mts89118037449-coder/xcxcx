@@ -5,7 +5,7 @@ import { itemById } from '../../shared/content.ts';
 import { Rig, Weapon } from './rig/Rig.tsx';
 
 /** Талисманы без нарисованной иконки — эмодзи. */
-const EMOJI_ONLY = new Set(['charm_dogtag', 'charm_watch', 'charm_fiksa']);
+const EMOJI_ONLY = new Set(['charm_dogtag', 'charm_watch', 'charm_fiksa', 'drop_folder', 'drop_ring_thief']);
 import { TattooGlyph } from './rig/tattoos.tsx';
 
 const RIG_CROP: Record<string, string> = { head: '36 4 50 50', body: '32 54 62 66', legs: '34 108 56 104', feet: '32 186 56 26' };

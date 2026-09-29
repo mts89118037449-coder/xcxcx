@@ -50,5 +50,9 @@ export const NPC_RIGS: Record<string, NpcRig> = {
   'sheet/boss/b_rat': { look: L({ body: 'body_smock', legs: 'legs_pants', feet: 'feet_slippers', weapon: 'wpn_spoon' }, f(4, 1, 1, 1), { build: 0 }), anim: 'guard' },
   'sheet/boss/b_guard': { look: L({ body: 'npc_guard', feet: 'feet_kirza', head: 'hat_police', weapon: 'drop_baton' }, f(2, 3, 0, 1), { build: 1 }), anim: 'guard' },
   'sheet/boss/b_chief': { look: L({ body: 'npc_black', feet: 'feet_kirza', head: 'hat_police', weapon: 'drop_baton' }, f(0, 2, 2, 1), { build: 2, str: 50 }), anim: 'guard' },
+  'sheet/boss/b_kum': { look: L({ body: 'npc_suit', feet: 'feet_lacquer', charm: 'charm_watch', weapon: 'wpn_razor' }, f(3, 3, 1, 1), { build: 1, str: 40 }), anim: 'guard' },
+  'sheet/boss/b_general': { look: L({ body: 'drop_greatcoat', feet: 'feet_kirza', head: 'drop_cap_general', weapon: 'drop_baton' }, f(7, 3, 2, 1), { build: 2, str: 50 }), anim: 'guard' },
+  'sheet/boss/b_thief': { look: L({ body: 'body_crimson', legs: 'legs_black', feet: 'feet_lacquer', head: 'cap_mink', charm: 'drop_ring_thief', weapon: 'wpn_golden' }, f(6, 2, 2, 1), { build: 1, str: 45, tattoos: ['t_stars', 't_church', 't_rings', 't_epaulets'], skin: 1 }), anim: 'guard' },
+  'sheet/boss/b_typhoon': { look: L({ body: 'npc_black', feet: 'feet_kirza', head: 'drop_helmet', weapon: 'drop_baton' }, f(1, 1, 2, 1), { build: 2, str: 60 }), anim: 'guard' },
   'sheet/boss/b_warden': { look: L({ body: 'npc_general', feet: 'feet_kirza', head: 'hat_police', charm: 'charm_ring' }, f(3, 3, 2, 1), { build: 2, str: 40 }), anim: 'guard' },
 };

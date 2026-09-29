@@ -115,6 +115,15 @@ test('ежедневный бонус и серия', () => {
   assert.equal(r.streak, 2);
   const late = g.claimDaily(p, T0 + 25 * 60 * MIN + 72 * 60 * MIN);
   assert.equal(late.streak, 1);
+  // седьмой день — большой грев, восьмой — снова первый
+  const q = g.newPlayer(2, 'Тест', null, T0);
+  let t = T0;
+  const got: number[] = [];
+  for (let i = 0; i < 8; i++) {
+    t += 25 * 3600_000;
+    got.push(g.claimDaily(q, t).gold);
+  }
+  assert.deepEqual(got, [1, 1, 1, 1, 1, 1, 10, 1]);
 });
 
 test('стартовый набор продаётся один раз', () => {
@@ -599,9 +608,13 @@ test('кости: ставка списывается, выигрыш вдвое
   assert.deepEqual(r.me, [6, 6]);
   assert.equal(r.result, 'win');
   assert.equal(r.money, 100 * DICE.doublePayout - 100);
+  // ничья — в пользу цыгана: одинаковые кубики у обоих
+  const tie = g.dice(p, 100, T0, fixed(0.5));
+  assert.equal(tie.result, 'lose');
+  assert.equal(tie.money, -100);
   assert.throws(() => g.dice(p, 10, T0, fixed(0.5)), /Ставка от/);
   assert.throws(() => g.dice(p, g.diceMaxBet(p) + 1, T0, fixed(0.5)), /не больше/);
-  for (let k = 1; k < DICE.perDay; k++) g.dice(p, 100, T0, fixed(0.5));
+  for (let k = 2; k < DICE.perDay; k++) g.dice(p, 100, T0, fixed(0.5));
   assert.throws(() => g.dice(p, 100, T0, fixed(0.5)), /хватит/);
 });
 
@@ -628,4 +641,20 @@ test('мишень: очки по кольцам, бычки за очки, ро
   assert.equal(p.butts, butts + Math.floor(125 / DARTS.buttsPer));
   assert.throws(() => g.darts(p, [1], T0), /три броска/);
   assert.throws(() => g.darts(p, 'x', T0), /три броска/);
+});
+
+test('золото с босса — только за первую победу в сутки', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.level = 20;
+  p.str = 200;
+  p.end = 200;
+  p.energy = 500;
+  p.hp = g.stats(p, T0).maxHp;
+  const first = g.fightBoss(p, 'b_rat', T0, fixed(0.99));
+  assert.ok(first.win);
+  p.bossCd = {};
+  p.hp = g.stats(p, T0).maxHp;
+  const second = g.fightBoss(p, 'b_rat', T0 + 60_000, fixed(0.99));
+  assert.ok(second.win);
+  assert.equal(second.reward.gold, 0);
 });

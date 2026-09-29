@@ -117,6 +117,7 @@ export function Home() {
       )}
       {panel === 'me' && (
         <>
+          <div className="rank-line">🎖️ {p.rank} · ур. {p.level}</div>
           <div className="stat-row">
             <div><span>⚔️</span>{p.stats.atk}<small>атака</small></div>
             <div><span>🛡️</span>{p.stats.def}<small>защита</small></div>

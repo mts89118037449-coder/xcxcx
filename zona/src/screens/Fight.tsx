@@ -4,8 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { BALANCE, BOSSES, GOLD_PRICES, WORLD_BOSS, itemById } from '../../shared/content.ts';
 import type { FightReplay, Look, WorldBossView } from '../../shared/types.ts';
 import { api } from '../api.ts';
-import { BOSS_LOOKS, CharacterG } from '../art/Character.tsx';
-import { artUrl, useArt } from '../art/raster.ts';
+import { NpcPortrait } from '../art/sprites.tsx';
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
 import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
@@ -38,7 +37,6 @@ export function Fight() {
   const talk = useTalk();
   const [world, setWorld] = useState<WorldBossView | null>(null);
   const [anim, animKey, play] = useAnim();
-  const art = useArt();
 
   const loadWorld = useCallback(() => {
     api.world().then((r) => setWorld(r.world)).catch(() => {});
@@ -134,16 +132,9 @@ export function Fight() {
         {BOSSES.map((b) => {
           const locked = p.level < b.minLevel;
           const cd = (p.bossCd[b.id] ?? 0) - now;
-          const face = artUrl(art, `npc/${b.id}_face`);
           return (
             <div key={b.id} className={`boss-tile ${locked ? 'locked' : ''}`}>
-              {face ? (
-                <img className="boss-portrait" src={face} alt={b.name} />
-              ) : (
-                <svg className="boss-portrait" viewBox="42 0 36 44">
-                  <CharacterG look={BOSS_LOOKS[b.id].look} build={BOSS_LOOKS[b.id].build} />
-                </svg>
-              )}
+              <NpcPortrait who={`sheet/boss/${b.id}`} className="boss-portrait" />
               <b>{b.name}</b>
               <small>
                 ❤️{fmt(b.hp)} ⚔️{b.atk}

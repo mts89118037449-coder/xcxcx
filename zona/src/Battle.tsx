@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { itemById } from '../shared/content.ts';
 import { consumableById, perkById } from '../shared/perks.ts';
 import type { BattleView, FightReplay } from '../shared/types.ts';
-import { BOSS_LOOKS } from './art/Character.tsx';
+import { NPC_RIGS } from './art/rig/npcs.ts';
 import { FightArena } from './art/FightArena.tsx';
 import { itemLabel } from './Perks.tsx';
 import { lookOf, useGame } from './game.tsx';
@@ -45,7 +45,7 @@ export function BattleModal({ onClose }: { onClose(): void }) {
   };
 
   const enemy = view.enemy.npc
-    ? { name: view.enemy.name, npc: view.enemy.npc, ...BOSS_LOOKS[view.enemy.npc] }
+    ? { name: view.enemy.name, npc: view.enemy.npc, look: NPC_RIGS[`sheet/boss/${view.enemy.npc}`]?.look ?? { equipped: {}, tattoos: [], str: 10 } }
     : { name: view.enemy.name, look: view.enemy.look ?? { equipped: {}, tattoos: [], str: 10 } };
   const replay: FightReplay = { win: !!final?.win, log: [], rounds, startHp: view.startHp, maxHp: view.maxHp };
   const over = !!final;

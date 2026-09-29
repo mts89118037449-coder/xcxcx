@@ -143,6 +143,8 @@ export interface Player {
   belt: string[];
   stash: Record<string, number>;
   bossCd: Record<string, number>;
+  /** день последнего золота с босса: золото — только за первую победу в сутки */
+  bossGold: Record<string, string>;
   pvpAt: number;
   shieldUntil: number;
   worldHitAt: number;
@@ -228,6 +230,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     clanLevel: 0,
     respect: {},
     bossCd: {},
+    bossGold: {},
     pvpAt: 0,
     shieldUntil: 0,
     worldHitAt: 0,
@@ -248,6 +251,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
 /** Досоздаёт поля, которых не было в старых сохранениях. */
 export function migrate(p: Player): Player {
   p.furniture ??= [];
+  p.bossGold ??= {};
   p.cellShow ??= {};
   p.face ??= p.id % FACE_COUNT;
   p.faceChosen ??= false;
@@ -624,7 +628,9 @@ export function bossFinish(p: Player, bossId: string, result: FightResult, now: 
     }
     reward.xp = boss.reward.xp;
     reward.authority = boss.reward.authority;
-    reward.gold = roll(rng, boss.reward.gold);
+    // золото — только за первую победу над этим боссом за сутки, иначе фарм обесценивает донат
+    reward.gold = p.bossGold[bossId] === dayKey(now) ? 0 : roll(rng, boss.reward.gold);
+    if (reward.gold > 0) p.bossGold[bossId] = dayKey(now);
     for (const d of boss.drops) {
       if (!p.inventory.includes(d.itemId) && rng() < d.chance) {
         reward.drop = d.itemId;
@@ -802,7 +808,8 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
 export function claimDaily(p: Player, now: number) {
   const day = 24 * 60 * MIN;
   if (now - p.dailyAt < day) throw new GameError('Сегодня уже получал');
-  p.dailyStreak = now - p.dailyAt < 2 * day ? Math.min(p.dailyStreak + 1, 7) : 1;
+  // серия идёт по кругу 1…7: большой грев на седьмой день, потом новая неделя
+  p.dailyStreak = now - p.dailyAt < 2 * day ? (p.dailyStreak % 7) + 1 : 1;
   p.dailyAt = now;
   const money = BALANCE.dailyBase * p.dailyStreak + p.level * 20;
   const gold = p.dailyStreak === 7 ? 10 : 1;
@@ -1740,8 +1747,9 @@ export function dice(p: Player, bet: number, now: number, rng: Rng) {
   const him = [roll(), roll()];
   const sm = me[0] + me[1];
   const sh = him[0] + him[1];
-  const result: 'win' | 'lose' | 'push' = sm > sh ? 'win' : sm < sh ? 'lose' : 'push';
-  const back = result === 'win' ? b * (me[0] === me[1] ? DICE.doublePayout : DICE.payout) : result === 'push' ? b : 0;
+  // ничья — в пользу цыгана: иначе игра выгодна игроку (+7,6% к ставке)
+  const result: 'win' | 'lose' = sm > sh ? 'win' : 'lose';
+  const back = result === 'win' ? b * (me[0] === me[1] ? DICE.doublePayout : DICE.payout) : 0;
   p.money += back;
   return { me, him, result, money: back - b };
 }

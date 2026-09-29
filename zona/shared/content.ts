@@ -95,6 +95,7 @@ export const ITEMS: Item[] = [
   { id: 'cap_baseball', name: 'Бейсболка', emoji: '🧢', slot: 'head', minLevel: 3, price: 600, currency: 'money', def: 4, crit: 1 },
   { id: 'cap_vdv', name: 'Голубой берет', emoji: '🪖', slot: 'head', minLevel: 9, price: 5200, currency: 'money', def: 10, hp: 20, crit: 2 },
   { id: 'cap_mink', name: 'Норковая формовка', emoji: '🎩', slot: 'head', minLevel: 12, price: 150, currency: 'gold', def: 18, hp: 50, money: 10 },
+  { id: 'cap_kevlar', name: 'Каска', emoji: '⛑️', slot: 'head', minLevel: 22, price: 55000, currency: 'money', def: 28, hp: 70, crit: 2 },
   // Тело
   { id: 'body_tank', name: 'Майка-алкоголичка', emoji: '🎽', slot: 'body', minLevel: 1, price: 80, currency: 'money', def: 1, hp: 5 },
   { id: 'body_telnyashka', name: 'Тельняшка', emoji: '🎽', slot: 'body', minLevel: 3, price: 700, currency: 'money', def: 3, hp: 15 },
@@ -119,6 +120,7 @@ export const ITEMS: Item[] = [
   { id: 'body_olympic', name: 'Олимпийка', emoji: '🧥', slot: 'body', minLevel: 8, price: 5200, currency: 'money', def: 11, hp: 38, crit: 2 },
   { id: 'body_sheepskin', name: 'Дублёнка', emoji: '🧥', slot: 'body', minLevel: 13, price: 19000, currency: 'money', def: 22, hp: 70, energy: 5 },
   { id: 'body_crimson', name: 'Малиновый пиджак', emoji: '🥻', slot: 'body', minLevel: 11, price: 220, currency: 'gold', def: 22, hp: 70, money: 20, crit: 3 },
+  { id: 'body_kevlar', name: 'Бронежилет', emoji: '🦺', slot: 'body', minLevel: 20, price: 65000, currency: 'money', def: 34, hp: 130 },
   // Штаны
   { id: 'legs_pants', name: 'Казённые штаны', emoji: '👖', slot: 'legs', minLevel: 1, price: 120, currency: 'money', def: 2 },
   { id: 'legs_cargo', name: 'Камуфляж', emoji: '👖', slot: 'legs', minLevel: 7, price: 3000, currency: 'money', def: 8, hp: 15 },
@@ -142,6 +144,7 @@ export const ITEMS: Item[] = [
   { id: 'wpn_pipe', name: 'Обрезок трубы', emoji: '🔧', slot: 'weapon', minLevel: 6, price: 3600, currency: 'money', atk: 14 },
   { id: 'wpn_razor', name: 'Опасная бритва', emoji: '🪒', slot: 'weapon', minLevel: 11, price: 12500, currency: 'money', atk: 22, crit: 5 },
   { id: 'wpn_nunchaku', name: 'Нунчаки из ножек табурета', emoji: '🥢', slot: 'weapon', minLevel: 13, price: 170, currency: 'gold', atk: 32, crit: 6 },
+  { id: 'wpn_axe', name: 'Топорик с промки', emoji: '🪓', slot: 'weapon', minLevel: 18, price: 48000, currency: 'money', atk: 44, crit: 5 },
   // Талисманы
   { id: 'charm_beads', name: 'Чётки', emoji: '📿', slot: 'charm', minLevel: 3, price: 900, currency: 'money', crit: 3, money: 5 },
   { id: 'charm_ring', name: 'Печатка', emoji: '💍', slot: 'charm', minLevel: 10, price: 12000, currency: 'money', crit: 5, money: 10 },
@@ -154,6 +157,11 @@ export const ITEMS: Item[] = [
   { id: 'drop_baton', name: 'Дубинка начкара', emoji: '🏏', slot: 'weapon', minLevel: 1, price: 0, currency: 'money', bossOnly: true, atk: 26, crit: 5 },
   { id: 'drop_uniform', name: 'Форма вертухая', emoji: '👮', slot: 'body', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 22, hp: 70, crit: 4 },
   { id: 'drop_coat', name: 'Тулуп хозяина', emoji: '🧥', slot: 'body', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 26, hp: 90 },
+  { id: 'drop_folder', name: 'Папка кума', emoji: '🗂️', slot: 'charm', minLevel: 1, price: 0, currency: 'money', bossOnly: true, crit: 8, money: 25, energy: 15 },
+  { id: 'drop_greatcoat', name: 'Генеральская шинель', emoji: '🧥', slot: 'body', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 42, hp: 160, crit: 4 },
+  { id: 'drop_cap_general', name: 'Генеральская фуражка', emoji: '🎖️', slot: 'head', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 34, hp: 100, crit: 6 },
+  { id: 'drop_ring_thief', name: 'Перстень вора', emoji: '💍', slot: 'charm', minLevel: 1, price: 0, currency: 'money', bossOnly: true, crit: 12, money: 30, energy: 20 },
+  { id: 'drop_helmet', name: 'Шлем «Тайфуна»', emoji: '🪖', slot: 'head', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 48, hp: 150, crit: 5 },
   { id: 'drop_crown', name: 'Корона смотрящего', emoji: '👑', slot: 'head', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 24, hp: 70, crit: 6 },
 ];
 
@@ -203,8 +211,32 @@ export const BOSSES: Boss[] = [
   {
     id: 'b_warden', name: 'Хозяин зоны', emoji: '🎖️', description: 'Начальник колонии. За ним стоит вся система.',
     minLevel: 13, hp: 4000, atk: 90, def: 40, energy: 50, cooldownMin: 240,
-    reward: { money: [4000, 6500], xp: 500, authority: 100, gold: [2, 6] },
+    reward: { money: [4000, 6500], xp: 500, authority: 100, gold: [1, 3] },
     drops: [{ itemId: 'drop_coat', chance: 0.1 }, { itemId: 'drop_crown', chance: 0.04 }],
+  },
+  {
+    id: 'b_kum', name: 'Кум', emoji: '🕵️', description: 'Оперчасть. Знает про тебя всё и хочет знать больше.',
+    minLevel: 17, hp: 5800, atk: 140, def: 60, energy: 60, cooldownMin: 300,
+    reward: { money: [5000, 8000], xp: 700, authority: 180, gold: [1, 3] },
+    drops: [{ itemId: 'drop_folder', chance: 0.06 }],
+  },
+  {
+    id: 'b_general', name: 'Генерал ФСИН', emoji: '⭐', description: 'Приехал с проверкой. Лампасы, шинель и свита.',
+    minLevel: 21, hp: 7200, atk: 165, def: 90, energy: 70, cooldownMin: 360,
+    reward: { money: [8000, 12000], xp: 1000, authority: 300, gold: [2, 3] },
+    drops: [{ itemId: 'drop_greatcoat', chance: 0.05 }, { itemId: 'drop_cap_general', chance: 0.05 }],
+  },
+  {
+    id: 'b_thief', name: 'Вор в законе', emoji: '💍', description: 'Коронованный. Его слово — закон для всей зоны.',
+    minLevel: 26, hp: 9000, atk: 205, def: 110, energy: 80, cooldownMin: 480,
+    reward: { money: [12000, 18000], xp: 1500, authority: 500, gold: [2, 4] },
+    drops: [{ itemId: 'drop_ring_thief', chance: 0.05 }],
+  },
+  {
+    id: 'b_typhoon', name: 'Спецназ «Тайфун»', emoji: '🪖', description: 'Подавление бунта. Щиты, дубинки, никаких разговоров.',
+    minLevel: 32, hp: 11500, atk: 240, def: 130, energy: 100, cooldownMin: 720,
+    reward: { money: [18000, 26000], xp: 2400, authority: 900, gold: [3, 5] },
+    drops: [{ itemId: 'drop_helmet', chance: 0.05 }],
   },
 ];
 
