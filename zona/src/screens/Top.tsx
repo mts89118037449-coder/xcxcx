@@ -5,6 +5,7 @@ import { Face } from '../art/sprites.tsx';
 import { NpcBanner } from '../art/sprites.tsx';
 import { Clans } from '../Clans.tsx';
 import { ChatPanel } from '../Chat.tsx';
+import { REFERRAL } from '../../shared/clans.ts';
 import { Card, fmt, useGame } from '../game.tsx';
 import { FightNav } from './Fight.tsx';
 
@@ -14,6 +15,10 @@ export function Top() {
   const { p, botUsername, toast, visit } = useGame();
   const [view, setView] = useState<'top' | 'clans' | 'chat'>('top');
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [refs, setRefs] = useState<{ id: number; name: string; level: number }[] | null>(null);
+  useEffect(() => {
+    api.refs().then((r) => setRefs(r.refs)).catch(() => setRefs([]));
+  }, []);
   const [total, setTotal] = useState(0);
 
   useEffect(() => {
@@ -74,6 +79,23 @@ export function Top() {
             </div>
             <button className="btn" onClick={invite}>Позвать</button>
           </div>
+          <div className="ref-steps">
+            {REFERRAL.milestones.map((m) => (
+              <span key={m.level}>
+                кент дорос до {m.level} ур. → <b>+{m.gold} 🪙</b>
+              </span>
+            ))}
+            <small className="muted">и {Math.round(REFERRAL.grandShare * 100)}% от этого — тому, кто подтянул тебя</small>
+          </div>
+          {refs && refs.length > 0 && (
+            <div className="ref-list">
+              {refs.map((r) => (
+                <button key={r.id} onClick={() => visit(r.id)}>
+                  {r.name} <small>ур. {r.level}</small>
+                </button>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 

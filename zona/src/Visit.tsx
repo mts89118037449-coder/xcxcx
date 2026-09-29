@@ -5,6 +5,9 @@ import { api, ApiError } from './api.ts';
 import { Stage } from './art/Stage.tsx';
 import { Face } from './art/sprites.tsx';
 import { itemLabel } from './Perks.tsx';
+import { PARCEL } from '../shared/clans.ts';
+import { MATS } from '../shared/craft.ts';
+import { consumableById } from '../shared/perks.ts';
 import { fmt, useGame } from './game.tsx';
 
 type Snoop =
@@ -45,6 +48,13 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
   const gift = async () => {
     if ((await act('gift', { id: v!.id })) === null) return;
     setV((x) => (x ? { ...x, giftedToday: true, authority: x.authority + 2 } : x));
+  };
+  const [parcelOpen, setParcelOpen] = useState(false);
+  const sendParcel = async (kind: 'item' | 'mat', ref: string) => {
+    const r = await act<{ label: string; qty: number; left: number }>('parcel', { id: v!.id, kind, ref, qty: 1 });
+    if (!r) return;
+    toast(`📦 ${r.label} ушёл к ${v!.name} · посылок осталось ${r.left}`);
+    setParcelOpen(false);
   };
   const snoop = async () => {
     const r = await act<Snoop>('snoop', { id: v!.id });
@@ -115,6 +125,30 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
                 <button className="btn btn-red" disabled={busy || p.snoopsLeft <= 0} onClick={snoop}>
                   🫳 Пошарить · {p.snoopsLeft}
                 </button>
+                <button className="btn btn-dark" disabled={busy || p.parcelsLeft <= 0 || p.level < PARCEL.minLevel} onClick={() => setParcelOpen(!parcelOpen)}>
+                  📦 Грев посылкой · {p.parcelsLeft}
+                </button>
+              </div>
+            )}
+            {parcelOpen && !self && (
+              <div className="parcel-pick">
+                <small className="muted">Что отправить? По одной штуке, {PARCEL.perDay} посылки в день.</small>
+                <div className="sell-grid">
+                  {Object.entries(p.stash)
+                    .filter(([, n]) => n > 0)
+                    .map(([ref, n]) => (
+                      <button key={ref} className="sell-tile" disabled={busy} onClick={() => sendParcel('item', ref)} title={itemLabel(ref)}>
+                        <span className="lot-emoji">{consumableById.get(ref)?.emoji}</span>
+                        <i>{n}</i>
+                      </button>
+                    ))}
+                  {MATS.filter((m) => (p.mats[m.id] ?? 0) > 0).map((m) => (
+                    <button key={m.id} className="sell-tile" disabled={busy} onClick={() => sendParcel('mat', m.id)} title={m.name}>
+                      <span className="lot-emoji">{m.emoji}</span>
+                      <i>{p.mats[m.id]}</i>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {walk && (

@@ -57,7 +57,7 @@ import { SHIZO, SHIZO_CARDS, shizoCardById, type ShizoStat } from '../shared/min
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
-import { CLAN_BOSS, CLAN_WAR, HUT, RING, type HutId } from '../shared/clans.ts';
+import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
 import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
 import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
@@ -202,6 +202,9 @@ export interface Player {
   worldHitAt: number;
   refBy: number | null;
   refCount: number;
+  /** за какие уровни этого игрока уже заплатили тому, кто подтянул */
+  refPaid: number[];
+  parcels: { day: string; n: number };
   starsSpent: number;
   journal: JournalEntry[];
   createdAt: number;
@@ -306,6 +309,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     worldHitAt: 0,
     refBy: null,
     refCount: 0,
+    refPaid: [],
+    parcels: { day: '', n: 0 },
     starsSpent: 0,
     perks: ['crit_1'],
     belt: ['c_bandage', 'c_sand'],
@@ -361,6 +366,8 @@ export function migrate(p: Player): Player {
   p.rep ??= { brat: 0, work: 0, admin: 0 };
   p.obshakAskAt ??= 0;
   p.chat ??= { at: 0, day: '', n: 0 };
+  p.refPaid ??= [];
+  p.parcels ??= { day: '', n: 0 };
   p.debt ??= null;
   p.mats ??= {};
   p.yardAt ??= 0;
@@ -1560,6 +1567,31 @@ export function gift(p: Player, target: Player, now: number) {
   p.authority += 1;
   log(target, now, `🚬 ${p.name} подогрел хату: +${VISIT.giftButts} бычков, +2 авторитета`);
   addXp(p, 8, now);
+}
+
+/** Грев посылкой: расходник или материалы из своих запасов, три посылки в день. */
+export function sendParcel(p: Player, target: Player, kind: 'item' | 'mat', ref: string, qty: number, now: number) {
+  if (p.id === target.id) throw new GameError('Себе не греют');
+  if (p.level < PARCEL.minLevel) throw new GameError(`Посылки — с ${PARCEL.minLevel} уровня`);
+  if (kind !== 'item' && kind !== 'mat') throw new GameError('Такое не шлют');
+  if (qty > (kind === 'item' ? PARCEL.maxItems : PARCEL.maxMats)) throw new GameError('Слишком много в одну посылку');
+  const day = dayKey(now);
+  if (p.parcels.day !== day) p.parcels = { day, n: 0 };
+  if (p.parcels.n >= PARCEL.perDay) throw new GameError('На сегодня посылок хватит');
+  takeGoods(p, kind, ref, qty);
+  giveGoods(target, kind, ref, qty);
+  p.parcels.n++;
+  p.authority += 1;
+  track(p, 'visit');
+  const label = kind === 'item' ? (consumableById.get(ref)?.name ?? ref) : (matById.get(ref as MatId)?.name ?? ref);
+  log(target, now, `📦 ${p.name} прислал грев: ${label} ×${qty}`);
+  return { label, qty, left: PARCEL.perDay - p.parcels.n };
+}
+
+/** Какие вехи подтянутого ещё не оплачены тому, кто подтянул. */
+export function refDue(p: Player): { level: number; gold: number }[] {
+  if (!p.refBy) return [];
+  return REFERRAL.milestones.filter((m) => p.level >= m.level && !p.refPaid.includes(m.level));
 }
 
 export function snoopsLeft(p: Player, now: number) {

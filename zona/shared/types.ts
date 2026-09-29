@@ -96,6 +96,7 @@ export interface PlayerView {
   loanLimit: number;
   mats: Partial<Record<string, number>>;
   clanHitReadyAt: number;
+  parcelsLeft: number;
   war: { week: number; pts: number };
   warClaimed: number;
   week: number;

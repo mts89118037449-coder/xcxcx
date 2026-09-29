@@ -1223,3 +1223,31 @@ test('чат: только готовые фразы, откат и дневно
   for (let i = 1; i < CHAT.perDay; i++) g.chatSay(p, 'gg', (t += CHAT.cooldownSec * 1000));
   assert.throws(() => g.chatSay(p, 'gg', (t += CHAT.cooldownSec * 1000)), /наговорился/);
 });
+
+test('грев посылкой и цепочка кентов', async () => {
+  const { PARCEL, REFERRAL } = await import('../shared/clans.ts');
+  const a = g.newPlayer(1, 'Отправитель', null, T0);
+  const b = g.newPlayer(2, 'Получатель', null, T0);
+  assert.throws(() => g.sendParcel(a, b, 'item', 'c_bandage', 1, T0), /уровня/);
+  a.level = 5;
+  a.stash = { c_bandage: 5 };
+  a.mats = { wire: 10 };
+  const b0 = b.stash.c_bandage ?? 0;
+  g.sendParcel(a, b, 'item', 'c_bandage', 1, T0);
+  assert.equal(b.stash.c_bandage, b0 + 1);
+  assert.throws(() => g.sendParcel(a, b, 'mat', 'wire', 6, T0), /много/);
+  g.sendParcel(a, b, 'mat', 'wire', 5, T0);
+  assert.equal(b.mats.wire, 5);
+  for (let i = 2; i < PARCEL.perDay; i++) g.sendParcel(a, b, 'item', 'c_bandage', 1, T0);
+  assert.throws(() => g.sendParcel(a, b, 'item', 'c_bandage', 1, T0), /хватит/);
+  assert.throws(() => g.sendParcel(a, a, 'item', 'c_bandage', 1, T0), /Себе/);
+  // вехи кентов
+  assert.deepEqual(g.refDue(b), []);
+  b.refBy = 1;
+  b.level = 12;
+  assert.deepEqual(g.refDue(b).map((m) => m.level), [5, 10]);
+  b.refPaid = [5, 10];
+  assert.deepEqual(g.refDue(b), []);
+  b.level = 25;
+  assert.deepEqual(g.refDue(b).map((m) => m.gold), [REFERRAL.milestones[2].gold]);
+});

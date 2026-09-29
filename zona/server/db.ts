@@ -127,6 +127,7 @@ export function openDb(file: string) {
     lotDel: db.prepare('DELETE FROM market WHERE id = ?'),
     lots: db.prepare('SELECT * FROM market ORDER BY id DESC LIMIT 80'),
     lotsBy: db.prepare('SELECT COUNT(*) AS n FROM market WHERE seller_id = ?'),
+    refs: db.prepare("SELECT id, name, level FROM players WHERE json_extract(data, '$.refBy') = ? ORDER BY level DESC LIMIT 50"),
     chatAdd: db.prepare('INSERT INTO chat (channel, pid, name, face, phrase, at) VALUES (?, ?, ?, ?, ?, ?)'),
     chatList: db.prepare('SELECT id, pid, name, face, phrase, at FROM chat WHERE channel = ? ORDER BY id DESC LIMIT ?'),
     chatTrim: db.prepare('DELETE FROM chat WHERE channel = ? AND id < ?'),
@@ -212,6 +213,9 @@ export function openDb(file: string) {
       // храним только хвост: старое чистим
       if (id % 50 === 0) q.chatTrim.run(channel, id - 500);
       return id;
+    },
+    referrals(id: number) {
+      return q.refs.all(id) as { id: number; name: string; level: number }[];
     },
     chatList(channel: string, limit: number) {
       return (q.chatList.all(channel, limit) as { id: number; pid: number; name: string; face: number | null; phrase: string; at: number }[]).reverse();

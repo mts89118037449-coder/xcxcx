@@ -2,7 +2,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
 import { OBSHAK } from '../shared/factions.ts';
 import { CHAT } from '../shared/chat.ts';
-import { CLAN_BOSS, CLAN_WAR, HUT_RULES, hutById, type HutId } from '../shared/clans.ts';
+import { CLAN_BOSS, CLAN_WAR, HUT_RULES, PARCEL, REFERRAL, hutById, type HutId } from '../shared/clans.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SHIZO, SPEED } from '../shared/minigames2.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { NOTIFY, termDays } from '../shared/term.ts';
@@ -109,6 +109,28 @@ export function createApp(opts: AppOptions) {
     Object.entries(warTable(week))
       .map(([id, pts]) => ({ id: Number(id), pts }))
       .sort((a, b) => b.pts - a.pts);
+
+  /** Подтянутый вырос: золото тому, кто подтянул, и доля — тому, кто подтянул его. */
+  function payReferral(p: g.Player, t: number) {
+    const due = g.refDue(p);
+    if (!due.length) return;
+    const ref = db.getPlayer(p.refBy!);
+    for (const m of due) {
+      p.refPaid.push(m.level);
+      if (!ref) continue;
+      ref.gold += m.gold;
+      g.log(ref, t, `🤝 ${p.name} дорос до ${m.level} уровня: +${m.gold} 🪙`);
+      notifyPlayer(ref.id, `🤝 Твой кент ${p.name} дорос до ${m.level} уровня — тебе ${m.gold} золота`);
+      const grand = ref.refBy ? db.getPlayer(ref.refBy) : null;
+      if (grand && grand.id !== p.id) {
+        const share = Math.round(m.gold * REFERRAL.grandShare);
+        grand.gold += share;
+        g.log(grand, t, `🤝 Кент твоего кента (${p.name}) дорос до ${m.level} уровня: +${share} 🪙`);
+        db.savePlayer(grand);
+      }
+    }
+    if (ref) db.savePlayer(ref);
+  }
 
   /** Ринг: провести бой, если пора, и сделать действие. Банк с тотализатора — на общак. */
   function withRing<T>(p: g.Player | null, t: number, fn: (ring: g.Ring) => T): T {
@@ -217,6 +239,7 @@ export function createApp(opts: AppOptions) {
       rep: p.rep,
       debt: p.debt,
       mats: p.mats,
+      parcelsLeft: p.parcels.day === g.dayKey(t) ? Math.max(0, PARCEL.perDay - p.parcels.n) : PARCEL.perDay,
       clanHitReadyAt: p.clanHitAt + CLAN_BOSS.cooldownSec * 1000,
       war: p.war,
       warClaimed: p.warClaimed,
@@ -421,6 +444,14 @@ export function createApp(opts: AppOptions) {
       if (!target) throw new g.GameError('Нет такого игрока');
       g.gift(p, target, t);
       db.savePlayer(target);
+    },
+    parcel: (p, b, t) => {
+      const target = db.getPlayer(num(b.id));
+      if (!target) throw new g.GameError('Нет такого игрока');
+      const r = g.sendParcel(p, target, str(b.kind) as 'item' | 'mat', str(b.ref), Math.floor(num(b.qty)), t);
+      db.savePlayer(target);
+      notifyPlayer(target.id, `📦 ${p.name} прислал тебе грев: ${r.label} ×${r.qty}`);
+      return r;
     },
     snoop: (p, b, t) => {
       const target = db.getPlayer(num(b.id));
@@ -732,6 +763,7 @@ export function createApp(opts: AppOptions) {
         // очки войны кланов — в недельную таблицу клана
         const war1 = p.war.week === week ? p.war.pts : 0;
         if (p.clanId && war1 > war0) addWar(p.clanId, week, war1 - war0);
+        payReferral(p, t);
         if (admin && p.god.on) g.godTopUp(p, t);
         db.savePlayer(p);
         return { p, result };
@@ -741,6 +773,10 @@ export function createApp(opts: AppOptions) {
       if (e instanceof g.GameError) return res.status(400).json({ error: e.message });
       throw e;
     }
+  });
+
+  api.post('/refs', (req: AuthedRequest, res) => {
+    res.json({ refs: db.referrals(req.tgUser!.id) });
   });
 
   api.post('/chat', (req: AuthedRequest, res) => {

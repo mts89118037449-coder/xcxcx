@@ -46,3 +46,16 @@ export const RING = {
   winnerAuthority: 5,
   last: 6,
 };
+
+/** Грев посылкой: расходник или материалы из своих запасов. Деньги не шлются — чтобы не качать твинков. */
+export const PARCEL = { perDay: 3, maxItems: 3, maxMats: 5, minLevel: 3 };
+
+/** Цепочка кентов: подтянутый вырос — тебе золото, и тому, кто подтянул тебя, — доля. */
+export const REFERRAL = {
+  milestones: [
+    { level: 5, gold: 20 },
+    { level: 10, gold: 40 },
+    { level: 20, gold: 80 },
+  ],
+  grandShare: 0.25,
+};
