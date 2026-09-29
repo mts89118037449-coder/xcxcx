@@ -538,3 +538,167 @@ export function Pet({ kind }: { kind: string }) {
     </g>
   );
 }
+
+/** Музыка: гитара и баян лежат на шконке, магнитофон и музыкальный центр — под ней. */
+export function Music({ kind }: { kind: string }) {
+  if (kind === 'f_guitar')
+    return (
+      <g transform="translate(66 138) rotate(-8)">
+        <ellipse cx={10} cy={10} rx={10.5} ry={8} fill="#a8622a" stroke="#2a1608" strokeWidth={1} />
+        <ellipse cx={24} cy={10} rx={8} ry={6.4} fill="#a8622a" stroke="#2a1608" strokeWidth={1} />
+        <ellipse cx={16} cy={10} rx={6} ry={5.4} fill="#a8622a" />
+        <circle cx={18} cy={10} r={3} fill="#2a1608" />
+        <rect x={31} y={8} width={30} height={4} fill="#4a2a14" stroke="#1a0e06" strokeWidth={0.6} />
+        <path d="M61,7 L68,5.6 L68,14.4 L61,13 Z" fill="#3a2010" />
+        <path d="M6,10 H63" stroke="#e8e0c8" strokeWidth={0.35} />
+        <path d="M44,8 C42,3 38,4 40,8 C38,12 42,13 44,12 M44,8 L48,3 M44,12 L48,16" stroke="#c0302c" strokeWidth={1.4} fill="none" />
+        <ellipse cx={10} cy={7} rx={6} ry={2.4} fill="#fff" opacity={0.18} />
+      </g>
+    );
+  if (kind === 'f_bayan')
+    return (
+      <g transform="translate(70 124)">
+        <rect x={0} y={4} width={12} height={24} rx={2} fill="#2a2a2e" stroke="#0e0e10" strokeWidth={0.8} />
+        {[8, 13, 18, 23].map((y) => (
+          <circle key={y} cx={6} cy={y} r={1.4} fill="#e8e4d8" />
+        ))}
+        <rect x={12} y={6} width={26} height={20} fill="#8a1c22" />
+        {[15, 19, 23, 27, 31, 35].map((x) => (
+          <path key={x} d={`M${x},6 V26`} stroke="#3a0a0e" strokeWidth={1.2} />
+        ))}
+        <path d="M12,6 H38 M12,26 H38" stroke="#e8c35a" strokeWidth={1} />
+        <rect x={38} y={2} width={16} height={28} rx={2} fill="#1e1e22" stroke="#0e0e10" strokeWidth={0.8} />
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <rect key={i} x={41} y={5 + i * 4} width={10} height={2.6} rx={0.6} fill={i % 2 ? '#1a1a1a' : '#f2eee4'} stroke="#555" strokeWidth={0.3} />
+        ))}
+        <path d="M2,4 C10,-4 44,-6 52,2" stroke="#5a3a1c" strokeWidth={1.4} fill="none" />
+      </g>
+    );
+  if (kind === 'f_tape')
+    return (
+      <g transform="translate(76 186)">
+        <rect x={-2} y={26} width={54} height={5} fill="#000" opacity={0.4} />
+        <path d="M12,0 C12,-6 38,-6 38,0" stroke="#2a2a2e" strokeWidth={2} fill="none" />
+        <rect width={50} height={28} rx={3} fill="#b8bcc0" stroke="#3a3e44" strokeWidth={1} />
+        <rect x={3} y={3} width={24} height={14} rx={1.6} fill="#1e2226" />
+        <g className="reel" style={{ transformOrigin: '10px 10px' }}>
+          <circle cx={10} cy={10} r={4.4} fill="#e8e4d8" />
+          <path d="M10,6 V14 M6,10 H14" stroke="#555" strokeWidth={1} />
+        </g>
+        <g className="reel" style={{ transformOrigin: '20px 10px' }}>
+          <circle cx={20} cy={10} r={4.4} fill="#e8e4d8" />
+          <path d="M20,6 V14 M16,10 H24" stroke="#555" strokeWidth={1} />
+        </g>
+        <circle cx={39} cy={11} r={8} fill="#2a2e32" />
+        <circle cx={39} cy={11} r={6} fill="none" stroke="#555a60" strokeDasharray="1 1" />
+        {[4, 10, 16, 22].map((x) => (
+          <rect key={x} x={x} y={20} width={4} height={5} rx={0.6} fill="#3a3e44" />
+        ))}
+        <text x={39} y={25.5} fontSize={3.2} textAnchor="middle" fill="#c0302c" fontWeight="bold">
+          ВЕСНА
+        </text>
+      </g>
+    );
+  // музыкальный центр с колонками и эквалайзером
+  return (
+    <g transform="translate(40 182)">
+      <rect x={-2} y={30} width={108} height={5} fill="#000" opacity={0.4} />
+      {[0, 80].map((x) => (
+        <g key={x} transform={`translate(${x} 0)`}>
+          <rect width={24} height={32} rx={2} fill="#1a1a1e" stroke="#3a3a40" strokeWidth={0.8} />
+          <circle cx={12} cy={10} r={6} fill="#2a2a30" stroke="#55555c" strokeWidth={0.8} />
+          <circle cx={12} cy={23} r={4.4} fill="#2a2a30" stroke="#55555c" strokeWidth={0.8} />
+          <circle cx={12} cy={10} r={2} fill="#101014" />
+        </g>
+      ))}
+      <rect x={28} y={4} width={48} height={28} rx={2} fill="#2a2a30" stroke="#55555c" strokeWidth={0.8} />
+      <rect x={32} y={8} width={40} height={10} rx={1} fill="#0a1a2a" />
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+        <rect key={i} className={`eq eq-${i % 4}`} x={34 + i * 4.6} y={9} width={3} height={8} fill={i % 3 ? '#4ac2ff' : '#7affc2'} style={{ transformOrigin: `0 17px` }} />
+      ))}
+      <rect x={34} y={21} width={36} height={6} rx={1} fill="#1a1a1e" />
+      <circle cx={66} cy={24} r={1.2} fill="#ff5a4a" />
+    </g>
+  );
+}
+
+/** Под потолком: бельё на верёвке, вымпелы, часы с кукушкой, рога. */
+export function Deco({ kind }: { kind: string }) {
+  if (kind === 'f_laundry')
+    return (
+      <g>
+        <path d="M14,12 Q80,24 148,14" stroke="#c8b890" strokeWidth={1} fill="none" />
+        <g className="sway">
+          <path d="M34,16 L48,17 L50,22 L46,22 L46,34 L36,33 L36,21 L32,21 Z" fill="#dcd6c4" stroke="#6a6450" strokeWidth={0.6} />
+          <path d="M66,19 L78,19.4 L77,28 L72,26 L67,28 Z" fill="#3a4a66" stroke="#1e2638" strokeWidth={0.6} />
+          <path d="M96,19.6 L100,19.4 L101,32 L96,33 L94,30 L97,29 Z M108,19 L112,19 L113,31 L108,32 L106,29 L109,28 Z" fill="#8a2a24" stroke="#3a0e0a" strokeWidth={0.5} />
+          <path d="M124,17 L138,15.4 L138,27 L124,28 Z" fill="#e8e4d8" stroke="#6a6450" strokeWidth={0.6} />
+          <path d="M127,17 V28 M131,16.6 V27.6 M135,16.2 V27.2" stroke="#c0302c" strokeWidth={0.8} />
+        </g>
+      </g>
+    );
+  if (kind === 'f_pennants')
+    return (
+      <g>
+        <path d="M12,8 Q80,24 150,10" stroke="#3a2a1c" strokeWidth={0.8} fill="none" />
+        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => {
+          const x = 18 + i * 15;
+          const y = 8 + Math.sin((i / 8) * Math.PI) * 8;
+          return <path key={i} d={`M${x},${y} L${x + 11},${y + 0.4} L${x + 5.6},${y + 12} Z`} fill={i % 2 ? '#f2eee4' : '#b8242a'} stroke="#3a0e0a" strokeWidth={0.4} />;
+        })}
+        <g transform="translate(64 0)">
+          <path d="M0,24 L28,24 L28,40 L14,52 L0,40 Z" fill="#b8242a" stroke="#e8c35a" strokeWidth={1} />
+          <path d="M5,28 L23,28 L23,38 L14,46 L5,38 Z" fill="#f2eee4" />
+          <path d="M9,32 L19,32 L19,37 L14,42 L9,37 Z" fill="#b8242a" />
+          <text x={14} y={36.8} fontSize={4.6} textAnchor="middle" fill="#fff" fontWeight="bold">
+            С
+          </text>
+        </g>
+      </g>
+    );
+  if (kind === 'f_cuckoo')
+    return (
+      <g transform="translate(152 1) scale(0.82)">
+        <path d="M-2,12 L14,0 L30,12 Z" fill="#4a2a14" stroke="#1a0e06" strokeWidth={0.8} />
+        <rect x={1} y={12} width={26} height={24} fill="#7a4a24" stroke="#1a0e06" strokeWidth={0.8} />
+        <rect x={11} y={13} width={6} height={5} fill="#1a0e06" />
+        <circle cx={14} cy={27} r={7} fill="#efe6cc" stroke="#1a0e06" strokeWidth={0.6} />
+        <path d="M14,27 V22.6 M14,27 L17,28.4" stroke="#1a0e06" strokeWidth={0.8} />
+        <path d="M-1,12 L4,4 M29,12 L24,4" stroke="#6a3a1a" strokeWidth={1.4} />
+        <g className="pendulum" style={{ transformOrigin: '14px 36px' }}>
+          <path d="M14,36 V52" stroke="#c8a24a" strokeWidth={0.8} />
+          <circle cx={14} cy={53} r={2.6} fill="#c8a24a" />
+        </g>
+        <path d="M8,36 V46 M20,36 V44" stroke="#8a8e94" strokeWidth={0.5} />
+        <path d="M6.6,46 L9.4,46 L9,51 L7,51 Z M18.6,44 L21.4,44 L21,49 L19,49 Z" fill="#6a4a1a" />
+      </g>
+    );
+  // рога на деревянном щите
+  return (
+    <g transform="translate(182 4)">
+      <path d="M-6,14 C-6,6 6,6 6,14 L6,26 C6,30 -6,30 -6,26 Z" fill="#6a3a1a" stroke="#1a0e06" strokeWidth={0.8} />
+      <path d="M-3,12 C-10,6 -16,0 -28,-2 M-14,3 L-18,-6 M-20,0 L-28,-8 M3,12 C10,6 16,0 28,-2 M14,3 L18,-6 M20,0 L28,-8" stroke="#1a0e06" strokeWidth={4.4} strokeLinecap="round" fill="none" />
+      <path d="M-3,12 C-10,6 -16,0 -28,-2 M-14,3 L-18,-6 M-20,0 L-28,-8 M3,12 C10,6 16,0 28,-2 M14,3 L18,-6 M20,0 L28,-8" stroke="#e8dcbc" strokeWidth={2.6} strokeLinecap="round" fill="none" />
+      <circle cx={0} cy={18} r={2} fill="#c8a24a" />
+    </g>
+  );
+}
+
+/** Пёс Мухтар дремлет у шконки и виляет хвостом. */
+export function Dog() {
+  return (
+    <g transform="translate(96 238)">
+      <ellipse cx={24} cy={20} rx={28} ry={5} fill="#000" opacity={0.35} />
+      <path d="M-2,14 C-10,10 -12,4 -8,2" className="dog-tail" stroke="#8a5a2a" strokeWidth={3.6} strokeLinecap="round" fill="none" />
+      <ellipse cx={18} cy={12} rx={20} ry={8} fill="#8a5a2a" stroke="#2a1608" strokeWidth={1} />
+      <ellipse cx={14} cy={9} rx={10} ry={4} fill="#1e1410" opacity={0.7} />
+      <path d="M30,18 L44,18 M4,18 L16,18" stroke="#6a4020" strokeWidth={4} strokeLinecap="round" />
+      <ellipse cx={44} cy={8} rx={8} ry={6.4} fill="#9a6a34" stroke="#2a1608" strokeWidth={1} />
+      <path d="M48,10 C54,10 56,13 53,15 C50,16 47,14 47,12 Z" fill="#9a6a34" stroke="#2a1608" strokeWidth={0.8} />
+      <circle cx={54} cy={12} r={1.2} fill="#111" />
+      <path d="M38,4 C36,-2 40,-4 42,2 Z" fill="#5a3a1a" stroke="#2a1608" strokeWidth={0.8} />
+      <path d="M44,8 q1.4,1 2.8,0" stroke="#111" strokeWidth={0.8} fill="none" />
+      <path d="M37,13 H43" stroke="#b8242a" strokeWidth={1.6} />
+    </g>
+  );
+}

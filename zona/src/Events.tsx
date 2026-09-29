@@ -2,7 +2,7 @@ import { eventById } from '../shared/events.ts';
 import { useState } from 'react';
 import { itemLabel } from './Perks.tsx';
 import { CellScene, Place, YardScene } from './art/Scenes.tsx';
-import { ImageG, PoseG, useNpc } from './art/sprites.tsx';
+import { ImageG, PoseG, useNpc, NpcPortrait } from './art/sprites.tsx';
 import { fmt, lookOf, useGame } from './game.tsx';
 
 interface Got {
@@ -133,8 +133,11 @@ export function EventButton() {
   const ev = eventById.get(p.event.id);
   if (!ev) return null;
   return (
-    <button className="event-btn" onClick={() => open()}>
-      <span className="pulse-ring" />❗ {ev.name}
+    // кружок с лицом того, кто ждёт: не закрывает кнопки внизу экрана
+    <button className="event-btn" onClick={() => open()} aria-label={ev.name}>
+      <span className="pulse-ring" />
+      <NpcPortrait who={ev.who} className="event-face" tight />
+      <b className="event-mark">!</b>
     </button>
   );
 }

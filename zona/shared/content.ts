@@ -212,7 +212,7 @@ export const BOSSES: Boss[] = [
 // В каждом месте — лестница улучшений: следующую ступень можно купить, только когда есть предыдущая.
 // Бонусы всех купленных ступеней складываются, а в сцене стоит выбранная (по умолчанию — лучшая),
 // или ничего — голые стены тоже стиль.
-export type Spot = 'bed' | 'wall' | 'light' | 'tech' | 'table' | 'floor' | 'window' | 'corner' | 'sport' | 'pet';
+export type Spot = 'bed' | 'wall' | 'light' | 'tech' | 'table' | 'floor' | 'window' | 'corner' | 'sport' | 'pet' | 'music' | 'deco';
 
 export interface Furniture extends Bonus {
   id: string;
@@ -235,6 +235,8 @@ export const SPOT_NAMES: Record<Spot, string> = {
   corner: 'Угол',
   sport: 'Спорт',
   pet: 'Живность',
+  music: 'Музыка',
+  deco: 'Декор',
 };
 
 /** Что стоит в месте, пока ничего не куплено. */
@@ -249,6 +251,8 @@ export const SPOT_BARE: Record<Spot, string> = {
   corner: 'Паутина',
   sport: 'Отжимания от пола',
   pet: 'Только ворона за окном',
+  music: 'Свист сквозь зубы',
+  deco: 'Голый потолок',
 };
 
 export const FURNITURE: Furniture[] = [
@@ -300,6 +304,17 @@ export const FURNITURE: Furniture[] = [
   { id: 'f_roach', name: 'Таракан Борька', emoji: '🪳', spot: 'pet', minLevel: 1, price: 100, currency: 'money', crit: 1 },
   { id: 'f_cat', name: 'Кот Васька', emoji: '🐈', spot: 'pet', minLevel: 7, price: 4000, currency: 'money', hp: 20, money: 3 },
   { id: 'f_parrot', name: 'Попугай Кеша', emoji: '🦜', spot: 'pet', minLevel: 11, price: 60, currency: 'gold', money: 6, energy: 5 },
+  { id: 'f_dog', name: 'Пёс Мухтар', emoji: '🐕', spot: 'pet', minLevel: 17, price: 160, currency: 'gold', def: 8, hp: 40, money: 5 },
+
+  { id: 'f_guitar', name: 'Гитара с бантом', emoji: '🎸', spot: 'music', minLevel: 3, price: 1100, currency: 'money', energy: 4 },
+  { id: 'f_bayan', name: 'Баян', emoji: '🪗', spot: 'music', minLevel: 8, price: 6500, currency: 'money', energy: 8, money: 3 },
+  { id: 'f_tape', name: 'Магнитофон «Весна»', emoji: '📼', spot: 'music', minLevel: 12, price: 17000, currency: 'money', energy: 12, money: 5 },
+  { id: 'f_hifi', name: 'Музыкальный центр', emoji: '🔊', spot: 'music', minLevel: 16, price: 170, currency: 'gold', energy: 18, money: 8, crit: 2 },
+
+  { id: 'f_laundry', name: 'Верёвка с бельём', emoji: '🧺', spot: 'deco', minLevel: 2, price: 250, currency: 'money', hp: 8 },
+  { id: 'f_pennants', name: 'Вымпелы «Спартак»', emoji: '🚩', spot: 'deco', minLevel: 6, price: 2800, currency: 'money', crit: 1, energy: 3 },
+  { id: 'f_cuckoo', name: 'Часы с кукушкой', emoji: '🕰️', spot: 'deco', minLevel: 10, price: 13000, currency: 'money', energy: 8, money: 4 },
+  { id: 'f_antlers', name: 'Оленьи рога', emoji: '🦌', spot: 'deco', minLevel: 15, price: 130, currency: 'gold', def: 6, crit: 3 },
 ];
 
 export const SPOTS = Object.keys(SPOT_NAMES) as Spot[];
