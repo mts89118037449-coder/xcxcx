@@ -2,10 +2,14 @@
 // Вещи рисуются сами по себе (как на витрине), наколки — на участке кожи.
 
 import { itemById } from '../../shared/content.ts';
-import { Rig } from './rig/Rig.tsx';
+import { Rig, Weapon } from './rig/Rig.tsx';
+
+/** Талисманы без нарисованной иконки — эмодзи. */
+const EMOJI_ONLY = new Set(['charm_dogtag', 'charm_watch', 'charm_fiksa']);
+import { TattooGlyph } from './rig/tattoos.tsx';
 
 const RIG_CROP: Record<string, string> = { head: '36 4 50 50', body: '32 54 62 66', legs: '34 108 56 104', feet: '32 186 56 26' };
-import { CharacterG, ItemOnly } from './Character.tsx';
+import { ItemOnly } from './Character.tsx';
 import { artUrl, useArt } from './raster.ts';
 
 /** Золотые версии вещей — тонируем рисунок с листа. */
@@ -45,15 +49,6 @@ function cropFor(id: string, slot: string): string {
   }
 }
 
-export const TATTOO_CROP: Record<string, string> = {
-  t_cat: '18 100 24 26',
-  t_spider: '20 44 26 26',
-  t_church: '44 48 32 28',
-  t_stars: '36 44 48 20',
-  t_rose: '78 98 24 30',
-  t_tiger: '76 50 24 22',
-  t_eagle: '42 80 36 26',
-};
 
 export function ItemIcon({ id, size = 44 }: { id: string; size?: number }) {
   const art = useArt();
@@ -69,6 +64,23 @@ export function ItemIcon({ id, size = 44 }: { id: string; size?: number }) {
     );
   }
   const drawn = artUrl(art, `sheet/icons/${id}`);
+  if (!drawn && item.slot === 'weapon') {
+    // оружие рига: то же, что в руке у персонажа
+    return (
+      <svg className="icon" viewBox="-14 -18 28 28" width={size} height={size} aria-label={item.name}>
+        <g transform="rotate(55) scale(0.95)">
+          <Weapon id={id} />
+        </g>
+      </svg>
+    );
+  }
+  if (!drawn && EMOJI_ONLY.has(id)) {
+    return (
+      <span className="icon" style={{ width: size, height: size, fontSize: size * 0.62, display: 'inline-grid', placeItems: 'center' }} aria-label={item.name}>
+        {item.emoji}
+      </span>
+    );
+  }
   if (drawn) {
     return (
       <span className="icon icon-img" style={{ width: size, height: size }}>
@@ -84,17 +96,20 @@ export function ItemIcon({ id, size = 44 }: { id: string; size?: number }) {
 }
 
 export function TattooIcon({ id, size = 44 }: { id: string; size?: number }) {
-  const drawn = artUrl(useArt(), `sheet/tattoo/${id}`);
-  if (drawn) {
-    return (
-      <span className="icon icon-img" style={{ width: size, height: size }}>
-        <img src={drawn} alt="" />
-      </span>
-    );
-  }
+  // тот же рисунок, что набит на риге, — на участке кожи
   return (
-    <svg className="icon" viewBox={TATTOO_CROP[id] ?? '40 40 40 40'} width={size} height={size}>
-      <CharacterG look={{ equipped: { legs: 'legs_pants' }, tattoos: [id], str: 10 }} />
+    <svg className="icon" viewBox="-13 -13 26 26" width={size} height={size}>
+      <circle r={12.4} fill="#d9a888" stroke="#1b130d" strokeWidth={0.8} />
+      <circle r={12.4} fill="url(#tat-skin)" />
+      <defs>
+        <radialGradient id="tat-skin" cx="0.62" cy="0.36" r="0.8">
+          <stop offset="0" stopColor="#fff" stopOpacity={0.22} />
+          <stop offset="1" stopColor="#000" stopOpacity={0.22} />
+        </radialGradient>
+      </defs>
+      <g opacity={0.9}>
+        <TattooGlyph id={id} />
+      </g>
     </svg>
   );
 }

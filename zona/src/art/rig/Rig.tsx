@@ -5,6 +5,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { faceParts } from '../../../shared/content.ts';
 import type { Look } from '../../../shared/types.ts';
+import { TATTOO_ART, Rings, armSlots } from './tattoos.tsx';
 import { FEET, HAIR_COLORS, HATS, LEGS, SKIN_TONES, TOPS, type LegWear, type Pattern, type TopWear } from './wear.ts';
 
 // --- Матрицы -------------------------------------------------------------------
@@ -64,7 +65,18 @@ function mix(a: Pose, b: Pose, t: number): Pose {
 }
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
-export type RigAnim = 'idle' | 'walk' | 'run' | 'sit' | 'floor' | 'guard' | 'punch' | 'hit' | 'ko' | 'cheer' | 'work' | 'crossed' | 'pullup';
+export type RigAnim =
+  | 'idle' | 'walk' | 'run' | 'sit' | 'floor' | 'guard' | 'punch' | 'hit' | 'ko' | 'cheer' | 'work' | 'crossed' | 'pullup'
+  | 'smoke' | 'drink' | 'eat' | 'think' | 'stretch' | 'wave' | 'flex' | 'squat' | 'pushup' | 'sleep' | 'dance' | 'taunt' | 'kick' | 'dodge' | 'cold';
+
+/** Что персонаж держит в руках в этой анимации. */
+export const ANIM_PROP: Partial<Record<RigAnim, 'cig' | 'mug' | 'bowl' | 'zzz'>> = { smoke: 'cig', drink: 'mug', eat: 'bowl', sleep: 'zzz' };
+
+/** Бытовые движения, которыми персонаж сам себя занимает, пока стоит без дела (длительность в мс). */
+const FIDGETS: [RigAnim, number][] = [['smoke', 4400], ['think', 3600], ['drink', 3400], ['stretch', 2600], ['wave', 2000], ['flex', 2200], ['cold', 2600]];
+
+/** Плавная «ступенька» 0→1 на отрезке [a, b]. */
+const step = (x: number, a: number, b: number) => ease(Math.max(0, Math.min(1, (x - a) / (b - a))));
 
 /** Поза в момент t (мс с начала анимации). */
 export function poseAt(anim: RigAnim, t: number): Pose {
@@ -137,6 +149,93 @@ export function poseAt(anim: RigAnim, t: number): Pose {
     case 'work': {
       const b = Math.sin(s * 5.2);
       return { ...P0, y: 6, lean: -18 + b * 4, nH: -22, nK: 20, fH: 18, fK: 6, nS: -62 + b * 14, nE: -34, fS: -52 + b * 14, fE: -40, fist: 1, head: 8 };
+    }
+    case 'smoke': {
+      // затяжка: рука ко рту, выдох, рука вниз
+      const c = s % 4.4;
+      const up = step(c, 0, 0.6) - step(c, 1.8, 2.4);
+      const b = Math.sin(s * 2.1);
+      return { ...P0, y: b * 0.5, lean: 1, nS: lerp(-12, -36, up), nE: lerp(-64, -134, up), nW: lerp(-10, -16, up), fS: 8, fE: -14, head: lerp(2, -4, up), mouth: c > 2.4 && c < 3.2 ? 0.7 : 0, brow: 0.2 };
+    }
+    case 'drink': {
+      const c = s % 3.4;
+      const up = step(c, 0, 0.7) - step(c, 2.2, 2.9);
+      return { ...P0, nS: lerp(-14, -40, up), nE: lerp(-70, -128, up), nW: -6, fS: 6, fE: -16, head: lerp(0, -10, up), lean: lerp(0, 3, up) };
+    }
+    case 'eat': {
+      // сидя: миска в дальней руке, ложка — от миски ко рту
+      const b = Math.sin(s * 1.9);
+      const up = (1 - Math.cos(s * 3.2)) / 2;
+      return { ...poseAt('sit', t), lean: -6 + b * 0.5, fS: -24, fE: -84, fW: -30, nS: lerp(-26, -36, up), nE: lerp(-76, -132, up), nW: -10, fist: 1, head: lerp(10, 2, up), mouth: up > 0.85 ? 0.6 : 0 };
+    }
+    case 'think': {
+      const b = Math.sin(s * 1.3);
+      return { ...P0, y: b * 0.4, nS: -22, nE: -128, nW: -26, fist: 1, fS: 10, fE: -40, head: 5 + b * 2, lean: 2, brow: 0.5 + b * 0.3 };
+    }
+    case 'stretch': {
+      const k = step(s, 0, 0.6) - step(s, 1.8, 2.5);
+      return { ...P0, y: -1.5 * k, lean: 4 * k, nS: lerp(-3, -168, k), nE: lerp(-10, -20, k), fS: lerp(6, -160, k), fE: lerp(-12, -26, k), head: -8 * k, mouth: k > 0.7 ? 1 : 0, brow: -0.4 * k };
+    }
+    case 'wave': {
+      const k = step(s, 0, 0.3) - step(s, 1.6, 2);
+      return { ...P0, nS: lerp(-3, -150, k), nE: lerp(-10, -34 + 22 * Math.sin(s * 14), k), nW: 10 * Math.sin(s * 14) * k, mouth: k > 0.5 ? 0.6 : 0, head: -3 * k };
+    }
+    case 'flex': {
+      // «двойной бицепс» — похвастаться обновкой
+      const k = step(s, 0, 0.35) - step(s, 1.7, 2.2);
+      const b = Math.sin(s * 9) * 3 * k;
+      return { ...P0, lean: -3 * k, nS: lerp(-3, -84, k), nE: lerp(-10, -112 + b, k), fS: lerp(6, -96, k), fE: lerp(-12, -104 - b, k), fist: k > 0.3 ? 1 : 0, brow: k, head: -4 * k, nH: -8, fH: 10 };
+    }
+    case 'cold': {
+      // обхватил себя руками и дрожит
+      const tr = Math.sin(s * 40) * 0.8;
+      return { ...P0, y: 2, lean: -4 + tr * 0.4, nS: -4, nE: -100, nW: -10, fS: 8, fE: -34, fist: 1, head: 8 + tr, brow: -0.8, nH: -2, fH: 2 };
+    }
+    case 'squat': {
+      const k = (1 - Math.cos(s * 3.6)) / 2;
+      return { ...P0, x: -14 * k, y: 44 * k, lean: -22 * k, nH: -84 * k, nK: 124 * k, fH: -80 * k, fK: 120 * k, nS: -84 * k, nE: -8, fS: -90 * k, fE: -6, fist: 1, head: 8 * k, brow: k };
+    }
+    case 'pushup': {
+      // тело прямое, опора на носки и ладони; вниз — локти назад
+      const k = (1 - Math.cos(s * 3.8)) / 2;
+      const root = lerp(64, 76, k);
+      return { ...P0, x: 16, y: lerp(56, 70, k), root, nS: lerp(-root, 38 - root, k), nE: lerp(0, -48, k), fS: lerp(-root - 4, 34 - root, k), fE: lerp(0, -44, k), nW: 70 - root / 2, fW: 70 - root / 2, nH: 0, nK: 0, fH: 2, fK: 0, head: -28, brow: 0.6 + k * 0.4, fist: 0 };
+    }
+    case 'sleep': {
+      const b = Math.sin(s * 1.4);
+      return { ...P0, root: -88, y: 86, x: 34, lean: b * 1.2, nS: 8, nE: -26, nW: -10, fS: -6, fE: -40, nH: -4, nK: 22, fH: -10, fK: 30, head: -6, brow: -0.2 };
+    }
+    case 'dance': {
+      const ph = s * Math.PI * 2 * 1.3;
+      const b = Math.abs(Math.sin(ph));
+      return {
+        ...P0,
+        y: -b * 4 + 2,
+        lean: 6 * Math.sin(ph),
+        nS: -100 + 40 * Math.sin(ph), nE: -40, fS: -60 - 40 * Math.sin(ph), fE: -60,
+        nH: -40 * Math.max(0, Math.sin(ph)), nK: 60 * Math.max(0, Math.sin(ph)),
+        fH: -40 * Math.max(0, -Math.sin(ph)), fK: 60 * Math.max(0, -Math.sin(ph)),
+        head: 6 * Math.sin(ph * 0.5), mouth: 1, fist: 1,
+      };
+    }
+    case 'taunt': {
+      // «иди сюда»: ладонь вверх, пальцы подманивают
+      const b = Math.sin(s * 7);
+      return { ...poseAt('guard', t), lean: 4, nS: -70, nE: -30, nW: -40 + 24 * b, fist: 0, head: -8, brow: 1, mouth: Math.sin(s * 1.6) > 0.6 ? 1 : 0 };
+    }
+    case 'kick': {
+      // прямой удар ногой и возврат в стойку
+      const g = poseAt('guard', t);
+      const hit: Pose = { ...g, x: 4, lean: 16, nH: -96, nK: 6, nA: -30, fH: 8, fK: 12, nS: -30, nE: -110, fS: -20, fE: -120, head: 4, mouth: 1 };
+      const k = s < 0.14 ? ease(s / 0.14) : s < 0.34 ? 1 : s < 0.6 ? 1 - ease((s - 0.34) / 0.26) : 0;
+      return mix(g, hit, k);
+    }
+    case 'dodge': {
+      // уклон назад: корпус отклоняется, удар проходит мимо
+      const g = poseAt('guard', t);
+      const out: Pose = { ...g, x: -8, lean: 24, head: -10, nH: -30, nK: 18, fH: 24, fK: 24, y: 9 };
+      const k = s < 0.12 ? ease(s / 0.12) : s < 0.4 ? 1 : s < 0.7 ? 1 - ease((s - 0.4) / 0.3) : 0;
+      return mix(g, out, k);
     }
     case 'pullup': {
       const b = (Math.sin(s * 4) + 1) / 2;
@@ -238,6 +337,15 @@ function PatternDef({ id, p, c1, c2 }: { id: string; p: Pattern; c1: string; c2:
           <path d="M0,1 H4 M1,0 V4" stroke={shade(c1, -0.2)} strokeWidth={0.7} />
         </pattern>
       );
+    case 'check':
+      return (
+        <pattern id={id} width={8} height={8} patternUnits="userSpaceOnUse">
+          <rect width={8} height={8} fill={c1} />
+          <rect width={8} height={2.6} y={2.7} fill={c2} opacity={0.45} />
+          <rect width={2.6} height={8} x={2.7} fill={c2} opacity={0.45} />
+          <path d="M 0,7.5 H 8 M 7.5,0 V 8" stroke={shade(c1, 0.3)} strokeWidth={0.5} />
+        </pattern>
+      );
     case 'fur':
       return (
         <pattern id={id} width={6} height={6} patternUnits="userSpaceOnUse">
@@ -299,7 +407,7 @@ function cr(pts: Pt[], closed = false): string {
 type Station = [number, number, number];
 
 const UPPER_ARM: Station[] = [[0, 6, 6], [0.18, 6.7, 6.2], [0.45, 6.2, 6], [0.75, 5.1, 5], [1, 4.4, 4.3]];
-const FOREARM: Station[] = [[0, 4.4, 4.3], [0.22, 4.7, 5.1], [0.55, 3.9, 3.9], [0.85, 3.1, 3.1], [1, 2.9, 2.9]];
+const FOREARM: Station[] = [[0, 4.4, 4.3], [0.22, 4.7, 5.1], [0.55, 3.9, 3.9], [0.85, 3.2, 3.2], [1, 3, 3]];
 const THIGH: Station[] = [[0, 8.2, 8.3], [0.25, 8.7, 8], [0.6, 7.3, 6.8], [0.88, 5.9, 5.6], [1, 5.6, 5.4]];
 const SHIN: Station[] = [[0, 5.5, 5.4], [0.12, 5.2, 6.2], [0.32, 4.6, 6.4], [0.65, 3.8, 4.2], [1, 3.2, 3.4]];
 // ткань не повторяет мышцы — ровнее
@@ -520,6 +628,8 @@ function Head({ look, pose, uid, skin }: { look: Look; pose: Pose; uid: string; 
           <path d="M 8.4,-3 C 10,-2.6 11.6,-2.8 12.4,-3.4" fill="none" stroke={skin.shade} strokeWidth={0.8} strokeLinecap="round" />
         </g>
       )}
+      {look.equipped.charm === 'charm_fiksa' &&
+        (pose.mouth > 0.5 ? <rect x={10.2} y={-5.1} width={1.6} height={1.3} rx={0.3} fill="#f0c850" stroke={INK} strokeWidth={0.3} /> : <path d="M 10.2,-4.3 L 11.8,-4.5" stroke="#f0c850" strokeWidth={1} strokeLinecap="round" />)}
       <Beard kind={fp.beard} color={hairC} jaw={fp.jaw} clip={clip} />
       {!hat && <Hair kind={fp.hair} color={hairC} />}
       {/* ухо поверх волос */}
@@ -690,6 +800,25 @@ function Hat({ h }: { h: (typeof HATS)[string] }) {
           <path d="M -12,-22 C -3,-26 8,-27 18,-24 L 18,-21 C 8,-24 -3,-23 -12,-19 Z" fill={shade(h.color, -0.3)} stroke={INK} strokeWidth={1} />
         </g>
       );
+    case 'baseball':
+      return (
+        <g>
+          <path d="M -12,-25 C -13.4,-36 -4,-43 5,-43 C 14.6,-43 18.6,-35.6 17,-27 C 8,-29.6 -3,-29 -12,-25 Z" fill={h.color} stroke={INK} strokeWidth={1.4} />
+          <path d="M 7,-28.6 C 14,-29.6 22,-28.4 26,-25.6 C 20,-23.4 12,-24 6.4,-25.6 Z" fill={shade(h.color, -0.25)} stroke={INK} strokeWidth={1.2} />
+          <path d="M 5,-43 L 4,-29 M -4,-41 L -3.4,-28.4" stroke={shade(h.color, 0.25)} strokeWidth={0.7} />
+          <path d="M 7.6,-37 L 11.6,-37 M 9.6,-39 L 9.6,-33" stroke={h.color2} strokeWidth={1.6} strokeLinecap="round" />
+          <circle cx={5} cy={-43} r={1.2} fill={shade(h.color, 0.3)} />
+        </g>
+      );
+    case 'mink':
+      // норковая формовка: высокий меховой цилиндр
+      return (
+        <g>
+          <path d="M -12,-24 C -13.4,-31 -12.6,-40 -9.6,-45 C -2,-48.6 9,-48.6 15.4,-45 C 17.6,-39 17.8,-31 16.8,-24.6 C 8,-27.4 -3,-27.4 -12,-24 Z" fill={h.color} stroke={INK} strokeWidth={1.4} />
+          <path d="M -9.6,-45 C -2,-42.4 9,-42.4 15.4,-45" fill="none" stroke={shade(h.color, -0.35)} strokeWidth={1} />
+          <path d="M -9,-40 L -8,-36 M -5,-41 L -4.4,-37 M -1,-41.4 L -0.6,-37 M 3,-41.4 L 3.2,-37 M 7,-41 L 7.2,-36.6 M 11,-40.4 L 11,-36 M 14.4,-39 L 14.2,-35 M -10,-32 L -9,-28.4 M -4,-33 L -3.6,-29 M 2,-33.4 L 2.2,-29.4 M 8,-33 L 8,-29 M 13.6,-32 L 13.4,-28" stroke={shade(h.color, 0.25)} strokeWidth={0.8} strokeLinecap="round" />
+        </g>
+      );
     case 'crown':
       return (
         <g>
@@ -707,17 +836,21 @@ function Hat({ h }: { h: (typeof HATS)[string] }) {
 
 /** Кисть: запястье в 0,0, пальцы вниз, большой палец спереди. Кулак — с костяшками. */
 function handPart(fist: number): Omit<Part, 'm'> {
-  const sh = 'M -20,-6 L -1.6,-6 C -2.2,2 -2.4,9 -1.2,20 L -20,20 Z';
+  const sh = 'M -20,-6 L -1.8,-6 C -2.6,2 -2.8,9 -1.6,20 L -20,20 Z';
   return fist > 0.5
     ? {
-        d: 'M -4.6,-0.6 C -6,2.4 -6.4,7.6 -4.4,10.6 C -2.2,13 3,12.8 5.4,10.6 C 7.4,8.6 7.4,4.8 6.2,2.6 C 5.6,1.2 5,0 4.6,-0.6 Z',
+        // кулак: тыльная сторона сзади, костяшки внизу-спереди, большой палец поперёк пальцев
+        d: 'M -3.2,-0.8 C -4.4,1.8 -5.8,5.4 -5.2,8.8 C -4.6,11.4 -2.4,12.8 0.6,12.8 C 3.6,12.8 6,11.6 6.6,9.2 C 7.2,6.8 6.8,4 5.6,2.6 C 4.6,1.4 3.6,0.4 3,-0.8 Z',
         sh,
-        ln: 'M 3.4,3.8 C 4.8,3.9 5.8,4.3 6.5,5 M 3.2,6.8 C 4.6,6.9 5.8,7.3 6.5,8 M 2.8,9.6 C 3.9,9.8 4.9,10 5.7,10.5 M -2.6,4.6 C -0.4,3.6 2.2,4 3.6,5.8',
+        hl: 'M -2.6,10.4 C -0.6,11.6 2.4,11.6 4.4,10.6',
+        ln: 'M 6.5,5.2 C 5.2,5.2 3.8,5 2.8,4.6 M 6.6,7.8 C 5.2,8 3.8,7.8 2.6,7.4 M 6,10.4 C 4.8,10.6 3.4,10.4 2.4,10 M -2.2,5.8 C -0.2,4 2.6,3.8 4.4,5.2 M -4.6,9.6 C -2.8,10.4 -0.8,10.6 1,10.2',
       }
     : {
-        d: 'M -4.4,-0.6 C -5.4,3 -5.6,7 -5,10.6 C -4.6,13.6 -3.2,15.8 -1.2,15.9 C 0.8,16 2.2,14.6 2.8,12.4 C 3.4,10.4 3.8,8.8 4.3,7.6 C 5.6,7 6.8,5.6 6.6,4.2 C 6.3,3 5,3.2 4.3,4 L 4.2,-0.6 Z',
+        // расслабленная кисть: пальцы чуть согнуты к ладони, большой палец спереди
+        d: 'M -3,-0.8 C -3.6,1.6 -4.8,3.6 -5,6.4 C -5.2,9.6 -4.4,12.8 -2.8,14.8 C -1.8,16 -0.2,16.2 0.8,15.2 C 1.6,14.4 1.6,13.2 1,12.2 C 1.4,11.6 2.2,10.8 2.6,10 C 3.6,10 4.6,9.4 4.8,8.2 C 5,6.8 4.2,5.2 3.4,3.8 C 3.2,2.4 3.1,1 3,-0.8 Z',
         sh,
-        ln: 'M -3,9.6 C -2.8,12 -2.3,14 -1.6,15.2 M -0.8,10 C -0.4,12.4 0.2,14 0.8,14.8 M 4.2,4.6 C 3.4,6 2.6,6.8 1.8,7.2',
+        hl: 'M -3.6,4 C -4,7 -3.6,10 -2.6,12.4',
+        ln: 'M -3.8,9.2 C -3.2,11.6 -2.2,13.6 -0.8,14.8 M -1.8,9.6 C -1.2,11.2 -0.4,12.4 0.6,13.2 M 2.6,10 C 1.8,8.6 1.8,6.4 2.8,4.8',
       };
 }
 
@@ -753,7 +886,7 @@ function footPart(kind: string): Omit<Part, 'm'> {
   };
 }
 
-function Weapon({ id }: { id?: string }) {
+export function Weapon({ id }: { id?: string }) {
   switch (id) {
     case 'wpn_spoon':
       return (
@@ -785,6 +918,36 @@ function Weapon({ id }: { id?: string }) {
           <rect x={-1.8} y={-5} width={3.6} height={8} rx={1} fill="#6a3a1a" stroke={INK} strokeWidth={0.6} />
           <rect x={-3} y={2.6} width={6} height={1.6} fill="#d9a53a" />
           <path d="M -1.6,4 C -2,12 -1,20 0,26 C 1.4,20 2,12 1.6,4 Z" fill="#e8c35a" stroke={INK} strokeWidth={0.6} />
+        </g>
+      );
+    case 'wpn_toothbrush':
+      return (
+        <g transform="translate(0 6) rotate(-100)">
+          <rect x={-1.1} y={-4} width={2.2} height={16} rx={1} fill="#3a8ad8" stroke={INK} strokeWidth={0.6} />
+          <path d="M -1,12 L 0,20 L 1,12 Z" fill="#dfe3e8" stroke={INK} strokeWidth={0.6} />
+        </g>
+      );
+    case 'wpn_pipe':
+      return (
+        <g transform="translate(0 6) rotate(-100)">
+          <rect x={-2.2} y={-6} width={4.4} height={30} rx={0.8} fill="#6e747a" stroke={INK} strokeWidth={0.7} />
+          <rect x={-2.8} y={20} width={5.6} height={4} rx={0.6} fill="#555a60" stroke={INK} strokeWidth={0.6} />
+          <path d="M -1.2,-4 V 18" stroke="#9aa0a6" strokeWidth={0.8} />
+        </g>
+      );
+    case 'wpn_razor':
+      return (
+        <g transform="translate(0 6) rotate(-100)">
+          <rect x={-1.4} y={-5} width={2.8} height={10} rx={1} fill="#1e1c1c" stroke={INK} strokeWidth={0.6} />
+          <path d="M -1.2,5 L 3.4,5 L 3,16 C 2,17 -1,17 -1.2,15 Z" fill="#d8dde2" stroke={INK} strokeWidth={0.6} />
+        </g>
+      );
+    case 'wpn_nunchaku':
+      return (
+        <g transform="translate(0 6) rotate(-100)">
+          <rect x={-1.6} y={-5} width={3.2} height={13} rx={1.4} fill="#8a5a32" stroke={INK} strokeWidth={0.6} />
+          <path d="M 0,8 C 1,11 3,12 5,12" fill="none" stroke="#9aa0a6" strokeWidth={0.9} strokeDasharray="1 0.6" />
+          <rect x={4} y={10} width={3.2} height={13} rx={1.4} transform="rotate(-30 5.6 11)" fill="#8a5a32" stroke={INK} strokeWidth={0.6} />
         </g>
       );
     case 'drop_baton':
@@ -830,31 +993,81 @@ export interface RigProps {
   /** начало анимации — чтобы разовые (удар) шли с начала */
   startKey?: string | number;
   bare?: boolean;
+  /** стоя без дела — иногда закурить, попить чаю, потянуться (по умолчанию да) */
+  fidget?: boolean;
 }
 
-export function Rig({ look, anim = 'idle', mirror, still, shadow = true, startKey, bare }: RigProps) {
+export function Rig({ look, anim = 'idle', mirror, still, shadow = true, startKey, bare, fidget = true }: RigProps) {
   const uid = useRef(`rg${++uidSeq}`).current;
   const t = useClock(!still);
-  const t0 = useRef(performance.now());
-  const prev = useRef<{ anim: RigAnim; pose: Pose; at: number } | null>(null);
+  const now = performance.now();
+  // бытовое движение поверх «idle»: у каждого своё расписание, чтобы толпа не двигалась хором
+  const fid = useRef<{ anim: RigAnim; until: number } | null>(null);
+  const nextFid = useRef(now + 2500 + Math.random() * 9000);
+  if (anim !== 'idle' || still || !fidget) {
+    fid.current = null;
+  } else if (fid.current && now > fid.current.until) {
+    fid.current = null;
+    nextFid.current = now + 7000 + Math.random() * 12000;
+  } else if (!fid.current && now > nextFid.current) {
+    const [a, d] = FIDGETS[Math.floor(Math.random() * FIDGETS.length)];
+    fid.current = { anim: a, until: now + d };
+  }
+  const eff: RigAnim = fid.current?.anim ?? anim;
+  const t0 = useRef(now);
+  const prev = useRef<{ anim: RigAnim; pose: Pose; at: number; dur: number } | null>(null);
   const lastPose = useRef<Pose>(P0);
   const keyRef = useRef<string | number | undefined>(startKey);
-  if (keyRef.current !== startKey || prev.current?.anim !== anim) {
-    // смена анимации: плавно перетекаем из последней позы
-    if (prev.current && prev.current.anim !== anim) prev.current = { anim, pose: lastPose.current, at: performance.now() };
-    if (!prev.current) prev.current = { anim, pose: P0, at: -1e9 };
+  if (keyRef.current !== startKey || prev.current?.anim !== eff) {
+    // смена анимации: плавно перетекаем из последней позы (в бытовые движения — медленнее)
+    const dur = fid.current || prev.current?.anim !== anim ? 360 : 180;
+    if (prev.current && prev.current.anim !== eff) prev.current = { anim: eff, pose: lastPose.current, at: now, dur };
+    if (!prev.current) prev.current = { anim: eff, pose: P0, at: -1e9, dur };
     keyRef.current = startKey;
-    t0.current = performance.now();
+    t0.current = now;
   }
   const local = still ? 0 : t - t0.current;
-  let pose = poseAt(anim, Math.max(0, local));
-  const blend = prev.current ? (performance.now() - prev.current.at) / 180 : 1;
+  let pose = poseAt(eff, Math.max(0, local));
+  const blend = prev.current ? (now - prev.current.at) / prev.current.dur : 1;
   if (prev.current && blend < 1) pose = mix(prev.current.pose, pose, ease(Math.max(0, blend)));
   lastPose.current = pose;
-  return <RigBody look={look} pose={pose} uid={uid} mirror={mirror} shadow={shadow} bare={bare} />;
+  return <RigBody look={look} pose={pose} uid={uid} mirror={mirror} shadow={shadow} bare={bare} prop={ANIM_PROP[eff]} time={local} />;
 }
 
-export function RigBody({ look, pose, uid, mirror, shadow = true, bare }: { look: Look; pose: Pose; uid: string; mirror?: boolean; shadow?: boolean; bare?: boolean }) {
+/** Предмет в руке: сигарета, кружка, миска с ложкой. */
+function HandProp({ kind, near, fist }: { kind: 'cig' | 'mug' | 'bowl'; near: boolean; fist: boolean }) {
+  if (kind === 'cig' && near)
+    return (
+      <g transform={`translate(${fist ? 3 : 1.4} ${fist ? 8 : 12.6}) rotate(-72)`}>
+        <rect x={0} y={-0.75} width={7.4} height={1.5} rx={0.4} fill="#efeae0" stroke={INK} strokeWidth={0.4} />
+        <rect x={0} y={-0.75} width={2.2} height={1.5} fill="#c8894a" />
+        <circle cx={7.5} cy={0} r={0.8} fill="#ff7a2a" />
+      </g>
+    );
+  if (kind === 'mug' && near)
+    return (
+      <g transform="translate(1.6 5.6)">
+        <path d="M 0,-4 L 7.4,-4 L 7.4,4 C 7.4,5.6 0,5.6 0,4 Z" fill="#8a8e94" stroke={INK} strokeWidth={0.8} />
+        <path d="M 7.4,-2 C 10.4,-2 10.4,2.4 7.4,2.4" fill="none" stroke={INK} strokeWidth={1} />
+        <path d="M 0.4,-3.2 L 7,-3.2" stroke="#3a2210" strokeWidth={1.2} />
+      </g>
+    );
+  if (kind === 'bowl' && !near)
+    return <path d="M -7,8 C -6,15 10,15 11,8 Z" fill="#9aa0a6" stroke={INK} strokeWidth={0.9} />;
+  if (kind === 'bowl' && near)
+    return (
+      <g transform="translate(2 8) rotate(-80)">
+        <rect x={-0.6} y={-1} width={1.2} height={10} rx={0.6} fill="#c3c7cc" stroke={INK} strokeWidth={0.4} />
+        <ellipse cx={0} cy={10} rx={1.6} ry={2.4} fill="#d4d8dc" stroke={INK} strokeWidth={0.4} />
+      </g>
+    );
+  return null;
+}
+
+/** Точка в системе координат части → координаты рига. */
+const apply = (m: M, x: number, y: number): Pt => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+
+export function RigBody({ look, pose, uid, mirror, shadow = true, bare, prop, time = 0 }: { look: Look; pose: Pose; uid: string; mirror?: boolean; shadow?: boolean; bare?: boolean; prop?: (typeof ANIM_PROP)[RigAnim]; time?: number }) {
   const skin = SKIN_TONES[look.skin ?? 0] ?? SKIN_TONES[0];
   const build = [0.9, 1, 1.12][look.build ?? 1] ?? 1;
   const muscle = Math.min(1.25, 0.92 + (look.str ?? 5) * 0.006);
@@ -946,8 +1159,22 @@ export function RigBody({ look, pose, uid, mirror, shadow = true, bare }: { look
           }
         />
       )}
+      {!near && prop === 'bowl' && (
+        <g transform={mat(a.w)}>
+          <HandProp kind="bowl" near={false} fist={false} />
+        </g>
+      )}
       {near && (
         <g transform={mat(a.w)}>
+          {look.tattoos.includes('t_rings') && <Rings fist={pose.fist > 0.5} />}
+          {look.equipped.charm === 'charm_watch' && (
+            <g>
+              <rect x={-3.6} y={-2.2} width={7.4} height={3} rx={0.8} fill="#2a2420" stroke={INK} strokeWidth={0.5} />
+              <rect x={1.6} y={-3.4} width={3.6} height={5.2} rx={1} fill="#c8b070" stroke={INK} strokeWidth={0.6} />
+              <rect x={2.2} y={-2.8} width={2.4} height={4} rx={0.6} fill="#f2ecd8" />
+            </g>
+          )}
+          {prop && prop !== 'zzz' && <HandProp kind={prop} near fist={pose.fist > 0.5} />}
           <Weapon id={look.equipped.weapon} />
           {look.equipped.charm === 'charm_beads' && <path d="M -4.4,-1 C -2,1 2,1 4.2,-1" fill="none" stroke="#8a3a1e" strokeWidth={1.6} strokeDasharray="1.4 0.8" />}
           {look.equipped.charm === 'charm_ring' && <circle cx={3.8} cy={pose.fist > 0.5 ? 5 : 8} r={1.3} fill="#e8c35a" stroke={INK} strokeWidth={0.4} />}
@@ -1053,6 +1280,13 @@ export function RigBody({ look, pose, uid, mirror, shadow = true, bare }: { look
             <path d={`M ${k(-9.6)},-40 C ${k(-11)},-32 ${k(-10.6)},-24 ${k(-9.8)},-16`} strokeWidth={0.8} opacity={0.7} />
             <path d={`M ${k(11)},-44 C ${k(14)},-40 ${k(16)},-36 ${k(15.6)},-33`} stroke="#fff" strokeOpacity={0.22} strokeWidth={1.4} />
             <ChestTattoo look={look} bw={body.bw} />
+            {look.equipped.charm === 'charm_dogtag' && (
+              <g>
+                <path d={`M ${k(-5)},-49 C ${k(-4)},-40 ${k(6)},-40 ${k(8)},-49`} fill="none" stroke="#9aa0a6" strokeWidth={0.9} strokeDasharray="1 0.5" />
+                <rect x={k(1.4) - 2} y={-41.4} width={4} height={5.6} rx={1.4} fill="#b8bcc2" stroke={INK} strokeWidth={0.6} />
+                <path d={`M ${k(1.4) - 1},-39.6 h 2 M ${k(1.4) - 1},-38 h 2`} stroke="#6a6e74" strokeWidth={0.4} />
+              </g>
+            )}
             {look.equipped.charm === 'charm_cross' && (
               <g>
                 <path d={`M -5,-49 C -4,-38 6,-38 8,-49`} fill="none" stroke="#e8c35a" strokeWidth={1.1} />
@@ -1077,6 +1311,37 @@ export function RigBody({ look, pose, uid, mirror, shadow = true, bare }: { look
     </g>,
   );
   parts.push(<g key="na">{drawArm(m.n, true)}</g>);
+  if (prop === 'cig') {
+    // дым от сигареты и выдох: колечки поднимаются и тают
+    const [hx, hy] = apply(m.n.w, 4, 6);
+    parts.push(
+      <g key="smoke" fill="#e8e6e0">
+        {[0, 1, 2].map((i) => {
+          const ph = ((time / 1000 + i * 0.7) % 2.1) / 2.1;
+          return <circle key={i} cx={hx + Math.sin(ph * 6 + i) * 2.4} cy={hy - 6 - ph * 22} r={1 + ph * 3.2} opacity={(1 - ph) * 0.45} />;
+        })}
+        {pose.mouth > 0.5 && (() => {
+          const [mx, my] = apply(m.head, 12, -4);
+          return <ellipse cx={mx + 6} cy={my - 1} rx={5} ry={2.6} opacity={0.5} />;
+        })()}
+      </g>,
+    );
+  }
+  if (prop === 'zzz') {
+    const [zx, zy] = apply(m.head, 4, -30);
+    parts.push(
+      <g key="zzz" fill="#dfe6ff" fontWeight={700} fontFamily="sans-serif">
+        {[0, 1, 2].map((i) => {
+          const ph = ((time / 1000 + i * 0.9) % 2.7) / 2.7;
+          return (
+            <text key={i} x={zx + 4 + ph * 12} y={zy - 4 - ph * 18} fontSize={6 + ph * 5} opacity={Math.sin(ph * Math.PI)} transform={mirror ? `scale(-1 1) translate(${-2 * (zx + 4 + ph * 12)} 0)` : undefined}>
+              z
+            </text>
+          );
+        })}
+      </g>,
+    );
+  }
 
   return (
     <g transform={mirror ? 'translate(120 0) scale(-1 1)' : undefined}>
@@ -1147,54 +1412,30 @@ function TopLayer({ top, m, uid, d, sh, skirt, bw, bulk }: { top: TopWear; m: Ma
 
 // --- Наколки ---------------------------------------------------------------------------------
 
-const TAT = '#2b3f5c';
-
 function ChestTattoo({ look, bw }: { look: Look; bw: number }) {
   const t = look.tattoos;
+  const at = (id: string, x: number, y: number, sx = 1, sy = sx) => t.includes(id) && <g transform={`translate(${x * bw} ${y}) scale(${sx} ${sy})`}>{TATTOO_ART[id].art}</g>;
   return (
-    <g opacity={0.8}>
-      {t.includes('t_church') && (
-        <g transform={`translate(${2 * bw} -34)`}>
-          <path d="M -7,6 L -7,-2 L -4,-5 L -1,-2 L -1,6 M 1,6 L 1,-4 L 4,-8 L 7,-4 L 7,6 M -8,6 L 8,6" fill="none" stroke={TAT} strokeWidth={0.9} />
-          <path d="M -4,-7 L -4,-9 M 4,-10 L 4,-13 M 3,-11.5 H 5" stroke={TAT} strokeWidth={0.8} />
-        </g>
-      )}
-      {t.includes('t_stars') &&
-        [-10 * bw, 13 * bw].map((x) => (
-          <path key={x} transform={`translate(${x} -45) scale(0.9)`} d="M 0,-3 L 0.9,-0.9 L 3,-0.9 L 1.3,0.5 L 2,2.8 L 0,1.4 L -2,2.8 L -1.3,0.5 L -3,-0.9 L -0.9,-0.9 Z" fill={TAT} />
-        ))}
-      {t.includes('t_eagle') && (
-        <g transform={`translate(${2 * bw} -14)`}>
-          <path d="M -10,-2 C -6,-6 -3,-4 0,0 C 3,-4 6,-6 10,-2 C 6,-2 3,0 0,3 C -3,0 -6,-2 -10,-2 Z" fill="none" stroke={TAT} strokeWidth={0.9} />
-        </g>
-      )}
+    <g opacity={0.85}>
+      {at('t_church', 3, -35.6, 0.95)}
+      {at('t_stars', -5.6, -43.6, 0.72)}
+      {at('t_stars', 12.4, -44, 0.52, 0.66)}
+      {at('t_eagle', 3.4, -13.6, 0.82)}
     </g>
   );
 }
 
 function ArmTattoo({ look, a, near, covered }: { look: Look; a: Mats['n']; near: boolean; covered: string }) {
-  const t = look.tattoos;
   if (covered === 'long') return null;
-  const up = near ? (t.includes('t_spider') ? 'spider' : t.includes('t_tiger') ? 'tiger' : null) : t.includes('t_rose') ? 'rose' : t.includes('t_cat') ? 'cat' : null;
-  const fore = covered === 'none' || covered === 'short' ? (near ? (t.includes('t_cat') ? 'cat' : null) : t.includes('t_tiger') ? 'tiger' : null) : null;
-  const glyph = (k: string | null) => {
-    switch (k) {
-      case 'spider':
-        return <path d="M -3,-3 L 3,3 M 3,-3 L -3,3 M 0,-4 L 0,4 M -4,0 L 4,0" stroke={TAT} strokeWidth={0.7} fill="none" />;
-      case 'tiger':
-        return <path d="M -3,-2 C -1,-4 1,-4 3,-2 C 3,1 1,3 0,3 C -1,3 -3,1 -3,-2 Z M -1.5,-1 L -0.5,0 M 1.5,-1 L 0.5,0" stroke={TAT} strokeWidth={0.7} fill="none" />;
-      case 'rose':
-        return <path d="M 0,-2 C 2,-3 3,-1 1,1 C -1,2 -3,0 -1,-2 C 0,-3 1,-2 0,-1 M 0,1 L 0,5 M 0,3 L 2,2" stroke={TAT} strokeWidth={0.7} fill="none" />;
-      case 'cat':
-        return <path d="M -2.5,2 L -2.5,-2 L -1,-0.5 L 1,-0.5 L 2.5,-2 L 2.5,2 C 1,3.5 -1,3.5 -2.5,2 Z" stroke={TAT} strokeWidth={0.7} fill="none" />;
-      default:
-        return null;
-    }
-  };
+  const slots = armSlots(look.tattoos);
+  const up = slots[near ? 'nu' : 'fu'];
+  const fore = slots[near ? 'nf' : 'ff'];
+  const upOk = covered !== 'short';
   return (
-    <g opacity={0.8}>
-      {covered !== 'short' && up && <g transform={`${mat(a.s)} translate(1 18)`}>{glyph(up)}</g>}
-      {fore && <g transform={`${mat(a.e)} translate(0.5 12)`}>{glyph(fore)}</g>}
+    <g opacity={0.85}>
+      {upOk && look.tattoos.includes('t_epaulets') && <g transform={`${mat(a.s)} translate(0.8 2.6) scale(0.9)`}>{TATTOO_ART.t_epaulets.art}</g>}
+      {upOk && up && <g transform={`${mat(a.s)} translate(0.6 ${look.tattoos.includes('t_epaulets') ? 15 : 13}) scale(0.9)`}>{TATTOO_ART[up].art}</g>}
+      {fore && <g transform={`${mat(a.e)} translate(0.4 11) scale(${fore === 't_dagger' ? 0.9 : 0.78})`}>{TATTOO_ART[fore].art}</g>}
     </g>
   );
 }

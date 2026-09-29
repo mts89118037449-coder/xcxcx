@@ -82,7 +82,7 @@ export function FightArena({
   const poses = usePoses();
   const hitCls = last?.crit ? 'got-crit' : 'got-hit';
   const meCls = done ? (replay.win ? 'act-cheer' : poses ? '' : 'ko') : !last ? '' : last.by === 0 ? (strike ? 'lunge-r' : '') : hurt ? hitCls : '';
-  const enemyCls = done ? (replay.win ? 'ko-r' : 'act-cheer') : !last ? '' : last.by === 1 ? (strike ? 'lunge-l' : '') : hurt ? hitCls : '';
+  const enemyCls = done ? (replay.win ? (poses && !enemy.npc ? '' : 'ko-r') : 'act-cheer') : !last ? '' : last.by === 1 ? (strike ? 'lunge-l' : '') : hurt ? hitCls : '';
   const popX = last?.by === 0 ? 256 : 104;
   // всплывашки: урон — над целью, лечение и перк — над тем, кто действует
   const notes = last && !done && (
@@ -162,14 +162,9 @@ export function FightArena({
               <Body look={me.look}>
                 {done && !replay.win ? (
                   // лёжа — та же одетая фигура, опрокинутая на землю головой к сопернику
-                  <g>
-                    <ellipse cx={40} cy={209} rx={70} ry={6} fill="#000" opacity={0.4} />
-                    <g transform="translate(-100 -34) rotate(90 60 208)">
-                      <PoseG name="stand" look={me.look} noShadow />
-                    </g>
-                  </g>
+                  <PoseG name="lying" anim="ko" look={me.look} />
                 ) : (
-                  <PoseG name={done ? 'crossed' : last?.by === 0 && strike ? 'lunge' : 'guard34'} look={me.look} />
+                  <PoseG name="guard34" anim={done ? 'cheer' : !last ? 'guard' : last.by === 0 ? (strike ? (last.crit || i % 3 === 2 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'} look={me.look} />
                 )}
               </Body>
             ) : (
@@ -180,7 +175,8 @@ export function FightArena({
             {!enemy.npc && poses ? (
               // соперник-зэк — такой же герой в своём комплекте, развёрнут лицом к нам
               <PoseG
-                name={done ? (replay.win ? 'guard34' : 'crossed') : last?.by === 1 && strike ? 'lunge' : 'guard34'}
+                name="guard34"
+                anim={done ? (replay.win ? 'ko' : 'taunt') : !last ? 'guard' : last.by === 1 ? (strike ? (last.crit || i % 3 === 1 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'}
                 look={rivalLook(enemy)}
                 mirror
               />

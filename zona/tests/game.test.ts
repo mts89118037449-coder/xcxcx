@@ -332,10 +332,11 @@ function replayHp(r: g.FightResult): [number, number] {
 
 const dummy = (o: Partial<g.Fighter> = {}): g.Fighter => ({ name: 'X', hp: 500, maxHp: 500, atk: 40, def: 10, crit: 0, ...o });
 
-test('перков 100, расходников 20, уровни растут со ступенью', () => {
+test('перков 100, расходников 25, уровни растут со ступенью', () => {
   assert.equal(PERKS.length, 100);
   assert.equal(new Set(PERKS.map((p) => p.id)).size, 100);
-  assert.equal(CONSUMABLES.length, 20);
+  assert.equal(CONSUMABLES.length, 25);
+  assert.equal(new Set(CONSUMABLES.map((c) => c.id)).size, 25);
   assert.ok(perkById.get('crit_2')!.minLevel > perkById.get('crit_1')!.minLevel);
   assert.ok(PERKS.every((p) => p.minLevel >= 1 && p.minLevel <= 50));
 });
@@ -517,6 +518,30 @@ test('сюжет: шаги двигаются обычными действия�
   p.field = Array.from({ length: 5 }, (_, i) => ({ id: i + 1, x: 0.5, y: 0.5, pack: false }));
   for (let i = 1; i <= 5; i++) g.pickButt(p, i);
   assert.equal(p.story.progress, 5);
+});
+
+test('сюжет: финал главы может выдать шмотку в инвентарь', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  const ch = STORY.findIndex((c) => c.steps.some((st) => st.reward.gear));
+  const si = STORY[ch].steps.findIndex((st) => st.reward.gear);
+  const gear = STORY[ch].steps[si].reward.gear!;
+  p.story = { ch, step: si, progress: STORY[ch].steps[si].n };
+  const r = g.claimStory(p, T0);
+  assert.equal(r.gear, gear);
+  assert.ok(p.inventory.includes(gear));
+});
+
+test('новый контент: у каждого случая и главы есть кукла НПС, вещи и наколки нарисованы', async () => {
+  const { NPC_RIGS } = await import('../src/art/rig/npcs.ts');
+  const { TOPS, LEGS, FEET, HATS } = await import('../src/art/rig/wear.ts');
+  const { ITEMS, TATTOOS } = await import('../shared/content.ts');
+  for (const e of EVENTS) assert.ok(NPC_RIGS[e.who], `нет НПС ${e.who} у случая ${e.id}`);
+  for (const c of STORY) assert.ok(NPC_RIGS[c.who], `нет НПС ${c.who} у главы ${c.id}`);
+  assert.equal(new Set(EVENTS.map((e) => e.id)).size, EVENTS.length);
+  const table = { body: TOPS, legs: LEGS, feet: FEET, head: HATS } as Record<string, Record<string, unknown>>;
+  for (const it of ITEMS) if (table[it.slot]) assert.ok(table[it.slot][it.id], `вещь ${it.id} не описана для рига`);
+  assert.equal(new Set(ITEMS.map((i) => i.id)).size, ITEMS.length);
+  assert.equal(new Set(TATTOOS.map((t) => t.id)).size, TATTOOS.length);
 });
 
 test('очко, тараканьи бега и чифир: лимиты и расчёт', () => {

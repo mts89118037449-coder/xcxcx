@@ -10,6 +10,7 @@ import type { Look } from '../../shared/types.ts';
 import { CharacterG, type Mood } from './Character.tsx';
 import { artUrl, characterLayers, useArt, type Pose } from './raster.ts';
 import { CellScene, Place, WorkScene, YardScene, type InteriorIds } from './Scenes.tsx';
+import type { RigAnim } from './rig/Rig.tsx';
 import { ImageG, PoseG, WALK, hasOutfit, isDressed, useFlipbook, useNpc, usePoses, type PoseName } from './sprites.tsx';
 
 type Loc = 'cell' | 'work' | 'yard';
@@ -47,13 +48,14 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, a
   const layers = own ?? standIn;
 
   // Короткая «рабочая» поза после действия, потом снова обычная.
-  const [busyPose, setBusyPose] = useState<PoseName | null>(null);
+  const [busyPose, setBusyPose] = useState<RigAnim | null>(null);
   useEffect(() => {
     if (!animKey) return;
-    const pose: PoseName | null = anim === 'act-work' ? 'push' : anim === 'lunge-r' ? 'lunge' : anim === 'act-cheer' && loc !== 'cell' ? 'crossed' : null;
+    const pose: RigAnim | null =
+      anim === 'act-work' ? 'work' : anim === 'lunge-r' ? (Math.random() < 0.35 ? 'kick' : 'punch') : anim === 'act-cheer' ? 'cheer' : anim === 'act-dress' ? 'flex' : null;
     if (!pose) return;
     setBusyPose(pose);
-    const t = setTimeout(() => setBusyPose(null), 1100);
+    const t = setTimeout(() => setBusyPose(null), pose === 'flex' ? 2100 : 1200);
     return () => clearTimeout(t);
   }, [animKey, anim, loc]);
   const walking = loc === 'yard' && poses && !busyPose && !hasOutfit(art, look);
@@ -82,7 +84,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, a
           {walking ? (
             <PoseG name="walk1" look={look} />
           ) : (
-            <PoseG name={busyPose ?? idle} look={look} />
+            <PoseG name={idle} anim={busyPose ?? undefined} look={look} />
           )}
         </Body>
       </g>

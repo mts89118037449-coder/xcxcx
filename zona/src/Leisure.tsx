@@ -37,7 +37,7 @@ export function StoryCard() {
   if (!ch || !step) return null;
   const ready = p.story.progress >= step.n;
   const r = step.reward;
-  const reward = [r.money && `₽${r.money}`, r.xp && `⭐${r.xp}`, r.gold && `🪙${r.gold}`, r.butts && `🚬${r.butts}`, r.item && '🎁'].filter(Boolean).join(' ');
+  const reward = [r.money && `₽${r.money}`, r.xp && `⭐${r.xp}`, r.gold && `🪙${r.gold}`, r.butts && `🚬${r.butts}`, r.item && '🎁', r.gear && '👕'].filter(Boolean).join(' ');
   return (
     <div className={`story ${ready ? 'ready' : ''}`}>
       {npc && <NpcPortrait who={ch.who} className="story-pic" />}

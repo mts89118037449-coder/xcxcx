@@ -1,7 +1,7 @@
 // Как выглядит каждая вещь на риге. Одежда описана не картинкой, а свойствами (цвет, фактура,
 // длина рукава, воротник, подол) — поэтому садится на любую позу и двигается вместе с телом.
 
-export type Pattern = 'none' | 'hstripes' | 'wstripes' | 'camo' | 'quilt' | 'denim' | 'burlap' | 'puffer' | 'fur';
+export type Pattern = 'none' | 'hstripes' | 'wstripes' | 'camo' | 'quilt' | 'denim' | 'burlap' | 'puffer' | 'fur' | 'check';
 
 export interface TopWear {
   color: string;
@@ -40,7 +40,7 @@ export interface FeetWear {
 }
 
 export interface HeadWear {
-  kind: 'beanie' | 'ushanka' | 'cap8' | 'capgold' | 'crown' | 'furazhka' | 'beret' | 'chef' | 'helmet';
+  kind: 'beanie' | 'ushanka' | 'cap8' | 'capgold' | 'crown' | 'furazhka' | 'beret' | 'chef' | 'helmet' | 'baseball' | 'mink';
   color: string;
   color2?: string;
 }
@@ -65,6 +65,12 @@ export const TOPS: Record<string, TopWear> = {
   body_tracksuit: { color: '#27459a', sleeves: 'long', neck: 'zip', hem: 0, bulk: 1, zip: true, stripesSleeve: '#f2f2f2', legs: { color: '#27459a', stripe: '#f2f2f2' } },
   drop_uniform: { color: '#5a6248', sleeves: 'long', neck: 'collar', hem: 4, bulk: 2, buttons: true, epaulets: true, belt: '#2a1e14', pockets: true, legs: { color: '#4e5640' } },
   drop_coat: { color: '#7a5634', pattern: 'fur', sleeves: 'long', neck: 'fur', hem: 34, bulk: 5, lining: '#e6dcc4', belt: '#3a2618' },
+  body_hoodie: { color: '#5a5c60', sleeves: 'long', neck: 'hood', hem: 2, bulk: 2, pockets: true },
+  body_flannel: { color: '#8a2a24', pattern: 'check', pattern2: '#1e1a1a', sleeves: 'long', neck: 'collar', hem: 2, bulk: 1, buttons: true, pockets: true },
+  body_olympic: { color: '#8e1c22', sleeves: 'long', neck: 'zip', hem: 0, bulk: 1, zip: true, stripesSleeve: '#f2f2f2' },
+  body_orange: { color: '#d8661e', sleeves: 'long', neck: 'crew', hem: 2, bulk: 1, buttons: true, pockets: true },
+  body_sheepskin: { color: '#8a5a32', sleeves: 'long', neck: 'fur', hem: 22, bulk: 4, buttons: true, lining: '#eadcc0', pockets: true },
+  body_crimson: { color: '#a0184a', sleeves: 'long', neck: 'collar', hem: 8, bulk: 2, buttons: true, lining: '#2a2a2e', pockets: true },
   // только у НПС
   npc_whitecoat: { color: '#e6e6e0', sleeves: 'long', neck: 'collar', hem: 34, bulk: 2, buttons: true, pockets: true, legs: { color: '#3c4a56' } },
   npc_cassock: { color: '#18181a', sleeves: 'long', neck: 'crew', hem: 70, bulk: 3, buttons: true, legs: { color: '#18181a' } },
@@ -79,12 +85,17 @@ export const LEGS: Record<string, LegWear> = {
   legs_pants: { color: '#3a3c40' },
   legs_cargo: { color: '#6a6c4a', pattern: 'camo', pattern2: '#454530', pockets: true },
   legs_jeans: { color: '#1e1e22', stripe: '#e8e8e8' },
+  legs_varenki: { color: '#7090b6', pattern: 'denim', pockets: true },
+  legs_wadded: { color: '#3a4048', pattern: 'quilt' },
+  legs_black: { color: '#19191b', pockets: true },
 };
 
 export const FEET: Record<string, FeetWear> = {
   feet_slippers: { kind: 'slippers', color: '#6a4a34' },
   feet_kirza: { kind: 'boots', color: '#1c1a18', sole: '#0c0c0c' },
   feet_sneakers: { kind: 'shoes', color: '#3a2c22', sole: '#141210' },
+  feet_valenki: { kind: 'boots', color: '#8a8480' },
+  feet_lacquer: { kind: 'shoes', color: '#0e0e10', sole: '#3a2a1c' },
 };
 
 export const HATS: Record<string, HeadWear> = {
@@ -93,6 +104,9 @@ export const HATS: Record<string, HeadWear> = {
   cap_bandana: { kind: 'cap8', color: '#2a2a30' },
   cap_gold: { kind: 'capgold', color: '#1c1c1e', color2: '#d9a53a' },
   drop_crown: { kind: 'crown', color: '#d9a53a', color2: '#b83a3a' },
+  cap_baseball: { kind: 'baseball', color: '#1e2a44', color2: '#e8e8e8' },
+  cap_vdv: { kind: 'beret', color: '#3a6ab8' },
+  cap_mink: { kind: 'mink', color: '#4a3424' },
   hat_police: { kind: 'furazhka', color: '#2e3a4a', color2: '#b83a3a' },
   hat_beret: { kind: 'beret', color: '#6a1e22' },
   hat_chef: { kind: 'chef', color: '#f2f0ea' },

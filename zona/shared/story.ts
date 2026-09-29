@@ -6,7 +6,7 @@ export interface StoryStep {
   text: string;
   kind: TrackKind;
   n: number;
-  reward: { money?: number; xp?: number; gold?: number; butts?: number; item?: string };
+  reward: { money?: number; xp?: number; gold?: number; butts?: number; item?: string; gear?: string };
 }
 
 export interface StoryChapter {
@@ -71,6 +71,34 @@ export const STORY: StoryChapter[] = [
       { text: 'Сыграй в мини-игры 20 раз', kind: 'minigame', n: 20, reward: { gold: 10, item: 'c_bribe' } },
       { text: 'Выполни 10 поручений', kind: 'quest', n: 10, reward: { money: 10000, gold: 10 } },
       { text: 'Завали 20 боссов', kind: 'boss', n: 20, reward: { xp: 1000, gold: 30, item: 'c_icon' } },
+    ],
+  },
+  {
+    id: 'ink',
+    who: 'sheet/cast/kolshik',
+    name: 'Масть',
+    intro: 'Кольщик: «Наколку надо заслужить. Покажи, кто ты есть, — и я набью тебе историю».',
+    steps: [
+      { text: 'Потренируйся 5 раз', kind: 'train', n: 5, reward: { money: 1500, xp: 40 } },
+      { text: 'Реши 10 случаев', kind: 'event', n: 10, reward: { butts: 20, item: 'c_razor' } },
+      { text: 'Сходи в церковь 3 раза', kind: 'church', n: 3, reward: { xp: 80, gold: 5 } },
+      { text: 'Прогуляйся по двору 10 раз', kind: 'yard', n: 10, reward: { money: 3000, gear: 'charm_dogtag' } },
+      { text: 'Выиграй 15 наездов', kind: 'pvpWin', n: 15, reward: { xp: 300, gold: 10, item: 'c_goldtooth' } },
+      { text: 'Сыграй в мини-игры 15 раз', kind: 'minigame', n: 15, reward: { money: 8000, gear: 'cap_vdv' } },
+    ],
+  },
+  {
+    id: 'gypsy',
+    who: 'sheet/cast/gypsy',
+    name: 'Цыганское счастье',
+    intro: 'Цыган: «Вижу, фартовый ты. Пойдёшь со мной — будешь при золоте. Или без зубов».',
+    steps: [
+      { text: 'Собери 60 бычков', kind: 'butts', n: 60, reward: { money: 4000, item: 'c_letter' } },
+      { text: 'Загляни в 10 чужих хат', kind: 'visit', n: 10, reward: { xp: 150, butts: 15 } },
+      { text: 'Сыграй в мини-игры 30 раз', kind: 'minigame', n: 30, reward: { gold: 15, gear: 'charm_fiksa' } },
+      { text: 'Пройди в побеге 40 этапов суммарно', kind: 'escape', n: 40, reward: { xp: 500, item: 'c_photo' } },
+      { text: 'Выполни 20 поручений', kind: 'quest', n: 20, reward: { money: 20000, gold: 10 } },
+      { text: 'Завали 40 боссов', kind: 'boss', n: 40, reward: { xp: 2000, gold: 50, gear: 'body_crimson' } },
     ],
   },
 ];

@@ -136,6 +136,11 @@ export const CONSUMABLES: Consumable[] = [
   { id: 'c_spring', name: 'Пружина от шконки', emoji: '🌀', kind: 'double', value: 1, desc: 'Первый ход — два удара', price: 550, currency: 'money', rarity: 'common' },
   { id: 'c_razor', name: 'Лезвие за губой', emoji: '🪒', kind: 'counter', value: 30, desc: '+30% шанса встречного удара', price: 0, currency: 'money', rarity: 'rare' },
   { id: 'c_letter', name: 'Малява от вора', emoji: '✉️', kind: 'loot', value: 50, desc: '+50% денег за победу', price: 0, currency: 'money', rarity: 'rare' },
+  { id: 'c_tea', name: 'Пачка чая', emoji: '🍵', kind: 'heal', value: 12, desc: 'Лечит 12% при здоровье ниже 40%', price: 150, currency: 'money', rarity: 'common' },
+  { id: 'c_wraps', name: 'Обмотка на кулаки', emoji: '🧤', kind: 'dmgBuff', value: 10, desc: '+10% урона на весь бой', price: 350, currency: 'money', rarity: 'common' },
+  { id: 'c_garlic', name: 'Чеснок натощак', emoji: '🧄', kind: 'weaken', value: 12, desc: 'Атака противника −12%: дышит — и тому плохо', price: 300, currency: 'money', rarity: 'common' },
+  { id: 'c_mirror', name: 'Осколок зеркала', emoji: '🪞', kind: 'stunStart', value: 1, desc: 'Солнечный зайчик в глаза — противник пропускает ход', price: 0, currency: 'money', rarity: 'rare' },
+  { id: 'c_pills', name: 'Колёса из санчасти', emoji: '💊', kind: 'critDmg', value: 50, desc: 'Криты бьют на 50% сильнее', price: 9, currency: 'gold', rarity: 'rare' },
   { id: 'c_icon', name: 'Иконка-оберег', emoji: '📿', kind: 'hpBuff', value: 30, desc: '+30% здоровья на бой', price: 14, currency: 'gold', rarity: 'epic' },
 ];
 

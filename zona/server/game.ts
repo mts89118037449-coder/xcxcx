@@ -1613,6 +1613,7 @@ export function claimStory(p: Player, now: number) {
   p.gold += r.gold ?? 0;
   p.butts += r.butts ?? 0;
   if (r.item) giveItem(p, r.item);
+  if (r.gear && itemById.has(r.gear) && !p.inventory.includes(r.gear)) p.inventory.push(r.gear);
   const levelUps = r.xp ? addXp(p, r.xp, now) : 0;
   p.story.step++;
   p.story.progress = 0;
@@ -1622,7 +1623,7 @@ export function claimStory(p: Player, now: number) {
     log(p, now, `📖 Глава «${ch.name}» пройдена`);
     p.story = { ch: p.story.ch + 1, step: 0, progress: 0 };
   }
-  return { money: r.money ?? 0, gold: r.gold ?? 0, butts: r.butts ?? 0, xp: r.xp ?? 0, item: r.item ?? null, levelUps, chapterDone };
+  return { money: r.money ?? 0, gold: r.gold ?? 0, butts: r.butts ?? 0, xp: r.xp ?? 0, item: r.item ?? null, gear: r.gear ?? null, levelUps, chapterDone };
 }
 
 // --- Мини-игры ---------------------------------------------------------------------
