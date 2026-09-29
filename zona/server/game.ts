@@ -58,6 +58,7 @@ import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, RING, type HutId } from '../shared/clans.ts';
+import { CHAT, phraseById } from '../shared/chat.ts';
 import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
 import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
@@ -156,6 +157,8 @@ export interface Player {
   /** репутация у братвы, работяг и администрации */
   rep: Record<FactionId, number>;
   obshakAskAt: number;
+  /** чат: когда писал и сколько за день */
+  chat: { at: number; day: string; n: number };
   /** материалы для ремесла */
   mats: Partial<Record<MatId, number>>;
   /** долг барыге или катале; счётчик тикает после due */
@@ -274,6 +277,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     placeCd: {},
     rep: { brat: 0, work: 0, admin: 0 },
     obshakAskAt: 0,
+    chat: { at: 0, day: '', n: 0 },
     debt: null,
     mats: {},
     yardAt: 0,
@@ -356,6 +360,7 @@ export function migrate(p: Player): Player {
   p.placeCd ??= {};
   p.rep ??= { brat: 0, work: 0, admin: 0 };
   p.obshakAskAt ??= 0;
+  p.chat ??= { at: 0, day: '', n: 0 };
   p.debt ??= null;
   p.mats ??= {};
   p.yardAt ??= 0;
@@ -1177,6 +1182,19 @@ export function clanBossHit(p: Player, now: number, rng: Rng) {
   const s = stats(p, now);
   const crit = rng() * 100 < s.crit;
   return { damage: Math.round(s.atk * 4 * (0.85 + rng() * 0.3) * (crit ? 2 : 1)), crit };
+}
+
+// --- Чат ------------------------------------------------------------------------------
+
+/** Можно ли сказать фразу: только готовые, не чаще раза в несколько секунд и с дневным лимитом. */
+export function chatSay(p: Player, phrase: string, now: number) {
+  if (!phraseById.has(phrase)) throw new GameError('Такой фразы нет');
+  if (p.chat.at + CHAT.cooldownSec * 1000 > now) throw new GameError('Не части');
+  const day = dayKey(now);
+  if (p.chat.day !== day) p.chat = { at: 0, day, n: 0 };
+  if (p.chat.n >= CHAT.perDay) throw new GameError('На сегодня наговорился');
+  p.chat.at = now;
+  p.chat.n++;
 }
 
 // --- Ринг ----------------------------------------------------------------------------

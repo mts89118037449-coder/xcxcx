@@ -2119,3 +2119,18 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .ring-done { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--muted); }
 .ring-done span.w { color: var(--gold); font-weight: 800; }
 .ring-done i { margin-left: auto; font-style: normal; color: var(--accent); }
+
+/* чат барака */
+.chat { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.chat-box { height: 330px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 14px; background: #15120d; border: 1px solid var(--line); }
+.chat-msg { display: flex; gap: 6px; align-items: flex-end; }
+.chat-msg.me { justify-content: flex-end; }
+.chat-face { border: none; background: none; padding: 0; }
+.chat-bubble { max-width: 78%; padding: 6px 10px; border-radius: 14px 14px 14px 4px; background: #2a2418; display: flex; flex-direction: column; }
+.chat-msg.me .chat-bubble { border-radius: 14px 14px 4px 14px; background: #4a3a14; }
+.chat-bubble b { font-size: 12px; color: var(--gold); }
+.chat-bubble span { font-size: 14px; }
+.chat-bubble small { font-size: 10px; color: var(--muted); align-self: flex-end; }
+.chat-phrases { display: flex; flex-wrap: wrap; gap: 6px; }
+.chat-phrase { padding: 7px 10px; border-radius: 12px; border: 1px solid #6b5520; background: linear-gradient(#3a2e18, #2a2214); color: var(--text); font-size: 13px; text-align: left; }
+.chat-phrase:disabled { opacity: 0.5; }

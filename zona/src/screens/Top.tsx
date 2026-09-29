@@ -4,6 +4,7 @@ import { api, tg } from '../api.ts';
 import { Face } from '../art/sprites.tsx';
 import { NpcBanner } from '../art/sprites.tsx';
 import { Clans } from '../Clans.tsx';
+import { ChatPanel } from '../Chat.tsx';
 import { Card, fmt, useGame } from '../game.tsx';
 import { FightNav } from './Fight.tsx';
 
@@ -11,7 +12,7 @@ type Row = Awaited<ReturnType<typeof api.top>>['top'][number];
 
 export function Top() {
   const { p, botUsername, toast, visit } = useGame();
-  const [view, setView] = useState<'top' | 'clans'>('top');
+  const [view, setView] = useState<'top' | 'clans' | 'chat'>('top');
   const [rows, setRows] = useState<Row[] | null>(null);
   const [total, setTotal] = useState(0);
 
@@ -36,8 +37,18 @@ export function Top() {
     <div className="seg">
       <button className={view === 'top' ? 'active' : ''} onClick={() => setView('top')}>Рейтинг</button>
       <button className={view === 'clans' ? 'active' : ''} onClick={() => setView('clans')}>Кланы</button>
+      <button className={view === 'chat' ? 'active' : ''} onClick={() => setView('chat')}>Чат</button>
     </div>
   );
+  if (view === 'chat') {
+    return (
+      <>
+        {nav}
+        {seg}
+        <ChatPanel />
+      </>
+    );
+  }
   if (view === 'clans') {
     return (
       <>

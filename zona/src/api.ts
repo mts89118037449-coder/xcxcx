@@ -40,6 +40,7 @@ export const api = {
   top: () =>
     post<{ top: { id: number; name: string; level: number; authority: number; rank: string; face: number | null; tag: string | null }[]; online: number; total: number }>('/top'),
   market: () => post<{ lots: MarketLot[] }>('/market'),
+  chat: (channel: 'all' | 'clan') => post<{ messages: { id: number; pid: number; name: string; face: number | null; phrase: string; at: number }[] }>('/chat', { channel }),
   ring: () => post<{ ring: import('./Ring.tsx').RingView; now: number }>('/ring'),
   world: () => post<{ world: WorldBossView; online: number }>('/world'),
   visit: (id: number, skip: number[] = []) => post<{ visit: VisitView }>('/visit', { id, skip }),

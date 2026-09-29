@@ -1212,3 +1212,14 @@ test('ринг: очередь, ставки зрителей, тотализа�
   g.ringResolve(r2, T0 + 10 * MIN, (id) => (id === 2 ? null : db.get(id)!), () => {}, fixed(0.5));
   assert.equal(fan1.money, m1 + 500);
 });
+
+test('чат: только готовые фразы, откат и дневной лимит', async () => {
+  const { CHAT } = await import('../shared/chat.ts');
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  assert.throws(() => g.chatSay(p, 'мат-перемат', T0), /нет/);
+  g.chatSay(p, 'hi', T0);
+  assert.throws(() => g.chatSay(p, 'hi', T0 + 1000), /части/);
+  let t = T0;
+  for (let i = 1; i < CHAT.perDay; i++) g.chatSay(p, 'gg', (t += CHAT.cooldownSec * 1000));
+  assert.throws(() => g.chatSay(p, 'gg', (t += CHAT.cooldownSec * 1000)), /наговорился/);
+});

@@ -98,6 +98,17 @@ export function openDb(file: string) {
       price INTEGER NOT NULL,
       created_at INTEGER NOT NULL
     );
+    -- чат барака: только готовые фразы
+    CREATE TABLE IF NOT EXISTS chat (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      channel TEXT NOT NULL,
+      pid INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      face INTEGER,
+      phrase TEXT NOT NULL,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS chat_channel ON chat(channel, id);
     -- общее состояние зоны: общак и прочее, JSON по ключу
     CREATE TABLE IF NOT EXISTS kv (
       key TEXT PRIMARY KEY,
@@ -116,6 +127,9 @@ export function openDb(file: string) {
     lotDel: db.prepare('DELETE FROM market WHERE id = ?'),
     lots: db.prepare('SELECT * FROM market ORDER BY id DESC LIMIT 80'),
     lotsBy: db.prepare('SELECT COUNT(*) AS n FROM market WHERE seller_id = ?'),
+    chatAdd: db.prepare('INSERT INTO chat (channel, pid, name, face, phrase, at) VALUES (?, ?, ?, ?, ?, ?)'),
+    chatList: db.prepare('SELECT id, pid, name, face, phrase, at FROM chat WHERE channel = ? ORDER BY id DESC LIMIT ?'),
+    chatTrim: db.prepare('DELETE FROM chat WHERE channel = ? AND id < ?'),
     kvGet: db.prepare('SELECT value FROM kv WHERE key = ?'),
     kvSet: db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
     get: db.prepare('SELECT data FROM players WHERE id = ?'),
@@ -192,6 +206,15 @@ export function openDb(file: string) {
     },
     lotsBy(sellerId: number): number {
       return (q.lotsBy.get(sellerId) as { n: number }).n;
+    },
+    chatAdd(channel: string, pid: number, name: string, face: number | null, phrase: string, at: number) {
+      const id = Number(q.chatAdd.run(channel, pid, name, face, phrase, at).lastInsertRowid);
+      // храним только хвост: старое чистим
+      if (id % 50 === 0) q.chatTrim.run(channel, id - 500);
+      return id;
+    },
+    chatList(channel: string, limit: number) {
+      return (q.chatList.all(channel, limit) as { id: number; pid: number; name: string; face: number | null; phrase: string; at: number }[]).reverse();
     },
     kvGet<T>(key: string, fallback: T): T {
       const row = q.kvGet.get(key) as { value: string } | undefined;

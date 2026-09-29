@@ -1,6 +1,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
 import { OBSHAK } from '../shared/factions.ts';
+import { CHAT } from '../shared/chat.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT_RULES, hutById, type HutId } from '../shared/clans.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SHIZO, SPEED } from '../shared/minigames2.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
@@ -441,6 +442,12 @@ export function createApp(opts: AppOptions) {
     weekly: (p, b, t) => g.claimWeekly(p, num(b.tier), t),
     pray: (p, _b, t) => g.pray(p, t),
     place: (p, b, t) => g.placeDo(p, String(b.place), String(b.act), t, rng),
+    chatSay: (p, b, t) => {
+      const channel = str(b.channel) === 'clan' ? 'clan' : 'all';
+      if (channel === 'clan' && !p.clanId) throw new g.GameError('Ты не в клане');
+      g.chatSay(p, str(b.phrase), t);
+      return { id: db.chatAdd(channel === 'clan' ? `clan:${p.clanId}` : 'all', p.id, p.name, p.face ?? null, str(b.phrase), t) };
+    },
     ringJoin: (p, _b, t) => withRing(p, t, (ring) => g.ringJoin(p, ring, t)),
     ringBet: (p, b, t) => withRing(p, t, (ring) => g.ringBet(p, ring, str(b.side) as 'a' | 'b', num(b.amount), t)),
     obshakGive: (p, b, t) => {
@@ -734,6 +741,17 @@ export function createApp(opts: AppOptions) {
       if (e instanceof g.GameError) return res.status(400).json({ error: e.message });
       throw e;
     }
+  });
+
+  api.post('/chat', (req: AuthedRequest, res) => {
+    const clanChat = req.body?.channel === 'clan';
+    let channel = 'all';
+    if (clanChat) {
+      const p = db.getPlayer(req.tgUser!.id);
+      if (!p?.clanId) return res.json({ messages: [] });
+      channel = `clan:${p.clanId}`;
+    }
+    res.json({ messages: db.chatList(channel, CHAT.keep) });
   });
 
   api.post('/ring', (req: AuthedRequest, res) => {
