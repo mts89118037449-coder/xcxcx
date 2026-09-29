@@ -109,6 +109,26 @@ export function createApp(opts: AppOptions) {
       .map(([id, pts]) => ({ id: Number(id), pts }))
       .sort((a, b) => b.pts - a.pts);
 
+  /** Ринг: провести бой, если пора, и сделать действие. Банк с тотализатора — на общак. */
+  function withRing<T>(p: g.Player | null, t: number, fn: (ring: g.Ring) => T): T {
+    const ring = db.kvGet<g.Ring>('ring', g.emptyRing());
+    const cut = g.ringResolve(
+      ring,
+      t,
+      (id) => (p && id === p.id ? p : db.getPlayer(id)),
+      (x) => x !== p && db.savePlayer(x),
+      rng,
+    );
+    if (cut > 0) {
+      const ob = db.kvGet<g.Obshak>('obshak', { total: 0, log: [] });
+      ob.total += cut;
+      db.kvSet('obshak', ob);
+    }
+    const r = fn(ring);
+    db.kvSet('ring', ring);
+    return r;
+  }
+
   /** Босс клана на сегодня: новый каждый день, толщина от числа участников и уровня. */
   function clanBossToday(clanId: number, t: number): ClanState {
     const st = clanState(clanId);
@@ -421,6 +441,8 @@ export function createApp(opts: AppOptions) {
     weekly: (p, b, t) => g.claimWeekly(p, num(b.tier), t),
     pray: (p, _b, t) => g.pray(p, t),
     place: (p, b, t) => g.placeDo(p, String(b.place), String(b.act), t, rng),
+    ringJoin: (p, _b, t) => withRing(p, t, (ring) => g.ringJoin(p, ring, t)),
+    ringBet: (p, b, t) => withRing(p, t, (ring) => g.ringBet(p, ring, str(b.side) as 'a' | 'b', num(b.amount), t)),
     obshakGive: (p, b, t) => {
       const ob = db.kvGet<g.Obshak>('obshak', { total: 0, log: [] });
       const r = g.obshakGive(p, ob, num(b.rations), t);
@@ -712,6 +734,17 @@ export function createApp(opts: AppOptions) {
       if (e instanceof g.GameError) return res.status(400).json({ error: e.message });
       throw e;
     }
+  });
+
+  api.post('/ring', (req: AuthedRequest, res) => {
+    const t = now();
+    const ring = db.transaction(() => {
+      const p = db.getPlayer(req.tgUser!.id);
+      const r = withRing(p, t, (x) => x);
+      if (p) db.savePlayer(p);
+      return r;
+    });
+    res.json({ ring, now: t });
   });
 
   api.post('/market', (_req, res) => {

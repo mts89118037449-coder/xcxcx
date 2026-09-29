@@ -2097,3 +2097,25 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .hut-row small { display: block; font-size: 11.5px; }
 .hut-emoji { font-size: 26px; }
 .clan-war { display: flex; flex-direction: column; gap: 6px; }
+
+/* ринг */
+.ring { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.ring-vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: start; padding: 10px; border-radius: 16px; background: radial-gradient(circle at 50% 30%, #4a1a14, #1d1210); border: 1px solid #7a2a1a; }
+.ring-corner { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.ring-corner b { font-size: 14px; }
+.ring-corner small { color: var(--muted); font-size: 11px; }
+.ring-corner i { font-style: normal; font-size: 11.5px; color: var(--gold); }
+.ring-corner em { font-style: normal; font-size: 11px; color: #9fe29a; }
+.ring-mid { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 18px; }
+.ring-mid span { font-size: 24px; font-weight: 900; color: #ff6a4a; }
+.ring-mid small { font-size: 11px; text-align: center; }
+.ring-bet { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ring-bet span { font-size: 13px; color: var(--muted); }
+.ring-bet .chip { border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 4px 10px; color: var(--text); }
+.ring-bet .chip.active { background: var(--accent); color: #1a1408; }
+.ring-empty { padding: 18px; text-align: center; border-radius: 14px; background: var(--card); color: var(--muted); }
+.block { display: block; }
+.ring-last { display: flex; flex-direction: column; gap: 4px; }
+.ring-done { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--muted); }
+.ring-done span.w { color: var(--gold); font-weight: 800; }
+.ring-done i { margin-left: auto; font-style: normal; color: var(--accent); }

@@ -32,3 +32,17 @@ export const CLAN_WAR = {
   rewards: [30, 20, 10],
   treasury: [50000, 25000, 10000],
 };
+
+/** Ринг: живые бои по очереди. Пока бой не начался — зрители ставят на бойцов. */
+export const RING = {
+  minLevel: 3,
+  /** взнос за выход, в пайках: победитель забирает оба */
+  feeRations: 1,
+  delayMin: 2,
+  minBet: 50,
+  betPerLevel: 150,
+  /** доля с тотализатора — на общак */
+  cut: 0.1,
+  winnerAuthority: 5,
+  last: 6,
+};

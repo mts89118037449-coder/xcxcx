@@ -1162,3 +1162,53 @@ test('клан: постройки хаты дают бонусы, очки во
   assert.ok(h.damage > 0);
   assert.throws(() => g.clanBossHit(p, T0 + 1000, fixed(0.5)), /не готов/);
 });
+
+test('ринг: очередь, ставки зрителей, тотализатор и доля на общак', async () => {
+  const { RING } = await import('../shared/clans.ts');
+  const db = new Map<number, g.Player>();
+  const mk = (id: number, lvl: number) => {
+    const x = g.newPlayer(id, `И${id}`, null, T0);
+    x.level = lvl;
+    x.money = 100_000;
+    x.str = lvl * 3;
+    db.set(id, x);
+    return x;
+  };
+  const a = mk(1, 10);
+  const b = mk(2, 10);
+  const fan1 = mk(3, 10);
+  const fan2 = mk(4, 10);
+  const ring = g.emptyRing();
+  g.ringJoin(a, ring, T0);
+  assert.equal(ring.cur, null);
+  assert.throws(() => g.ringJoin(a, ring, T0), /записан/);
+  g.ringJoin(b, ring, T0);
+  assert.ok(ring.cur);
+  assert.equal((ring.cur as g.RingMatch | null)!.fee, 2 * g.ration(a));
+  assert.throws(() => g.ringBet(a, ring, 'a', 500, T0), /свой/);
+  g.ringBet(fan1, ring, 'a', 1000, T0);
+  g.ringBet(fan2, ring, 'b', 1500, T0);
+  assert.throws(() => g.ringBet(fan1, ring, 'b', 500, T0), /уже/);
+  // рано — бой не идёт
+  assert.equal(g.ringResolve(ring, T0 + MIN, (id) => db.get(id)!, () => {}, fixed(0.5)), 0);
+  assert.ok(ring.cur);
+  const cut = g.ringResolve(ring, T0 + RING.delayMin * MIN, (id) => db.get(id)!, () => {}, fixed(0.5));
+  assert.equal(ring.cur, null);
+  const done = ring.last[0];
+  assert.equal(done.pool, 2500);
+  const winFan = done.winner === 'a' ? fan1 : fan2;
+  const loseFan = done.winner === 'a' ? fan2 : fan1;
+  const lost = done.winner === 'a' ? 1500 : 1000;
+  const stake = done.winner === 'a' ? 1000 : 1500;
+  assert.equal(cut, Math.floor(lost * RING.cut));
+  assert.equal(winFan.money, 100_000 - stake + stake + (lost - cut));
+  assert.equal(loseFan.money, 100_000 - lost);
+  // сорвавшийся бой: ставки возвращаются
+  const r2 = g.emptyRing();
+  g.ringJoin(a, r2, T0);
+  g.ringJoin(b, r2, T0);
+  g.ringBet(fan1, r2, 'a', 500, T0);
+  const m1 = fan1.money;
+  g.ringResolve(r2, T0 + 10 * MIN, (id) => (id === 2 ? null : db.get(id)!), () => {}, fixed(0.5));
+  assert.equal(fan1.money, m1 + 500);
+});

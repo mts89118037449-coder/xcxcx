@@ -23,6 +23,10 @@ export interface FightLog {
   title: string;
   replay: FightReplay;
   enemy: { name: string; look: Look; build?: number; npc?: string };
+  /** кто в левом углу (по умолчанию — сам игрок) */
+  me?: { name: string; look: Look };
+  /** заголовок итога вместо «Победа/Поражение» — для зрителя */
+  verdict?: string;
   lines: string[]; // итоги: награды, трофеи
 }
 

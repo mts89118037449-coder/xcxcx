@@ -271,7 +271,7 @@ export function App() {
       {shellsOpen && <ShellGame onClose={() => setShellsOpen(false)} />}
       {energyOpen && <EnergySheet onClose={() => setEnergyOpen(false)} />}
       </Suspense>
-      {fight && <FightModal fight={fight} me={{ name: p.name, look: lookOf(p) }} onClose={() => setFight(null)} />}
+      {fight && <FightModal fight={fight} me={fight.me ?? { name: p.name, look: lookOf(p) }} onClose={() => setFight(null)} />}
     </GameCtx.Provider>
   );
 }
@@ -289,7 +289,7 @@ function FightModal({ fight, me, onClose }: { fight: FightLog; me: Fighter; onCl
         <div className="muted center">{fight.title}</div>
         {done && (
           <div className="result-in">
-            <h2 className={fight.replay.win ? 'win' : 'lose'}>{fight.replay.win ? '🏆 Победа' : '💀 Поражение'}</h2>
+            <h2 className={fight.verdict ? 'win' : fight.replay.win ? 'win' : 'lose'}>{fight.verdict ?? (fight.replay.win ? '🏆 Победа' : '💀 Поражение')}</h2>
             {fight.lines.length > 0 && (
               <div className="rewards">
                 {fight.lines.map((l, i) => (

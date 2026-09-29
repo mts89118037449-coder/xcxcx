@@ -9,8 +9,9 @@ import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
 import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
+import { RingPanel } from '../Ring.tsx';
 
-type FightSeg = 'bosses' | 'riot' | 'pvp' | 'crew';
+type FightSeg = 'bosses' | 'riot' | 'pvp' | 'ring' | 'crew';
 
 /** Разделы «Боя»: «Братва» — отдельный экран, но переключается отсюда же. */
 export function FightNav({ value, onChange }: { value: FightSeg; onChange(v: FightSeg): void }) {
@@ -23,6 +24,7 @@ export function FightNav({ value, onChange }: { value: FightSeg; onChange(v: Fig
         { id: 'bosses', icon: '👹', label: 'Боссы' },
         { id: 'pvp', icon: '🥊', label: 'Наезд' },
         { id: 'riot', icon: '🔥', label: 'Бунт' },
+        { id: 'ring', icon: '🏟️', label: 'Ринг' },
         { id: 'crew', icon: '🏴', label: 'Братва' },
       ]}
     />
@@ -33,7 +35,7 @@ type FightResult = FightReplay;
 
 export function Fight() {
   const { p, now, act, busy, toast } = useGame();
-  const [seg, setSeg] = useSeg('fight', 'bosses', ['bosses', 'riot', 'pvp'] as const);
+  const [seg, setSeg] = useSeg('fight', 'bosses', ['bosses', 'riot', 'pvp', 'ring'] as const);
   const talk = useTalk();
   const [world, setWorld] = useState<WorldBossView | null>(null);
   const [anim, animKey, play] = useAnim();
@@ -110,6 +112,7 @@ export function Fight() {
         </Card>
       )}
 
+      {seg === 'ring' && <RingPanel />}
       {seg === 'pvp' && (
       <Card>
         <div className="row">

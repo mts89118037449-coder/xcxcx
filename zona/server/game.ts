@@ -57,7 +57,7 @@ import { SHIZO, SHIZO_CARDS, shizoCardById, type ShizoStat } from '../shared/min
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
-import { CLAN_BOSS, CLAN_WAR, HUT, type HutId } from '../shared/clans.ts';
+import { CLAN_BOSS, CLAN_WAR, HUT, RING, type HutId } from '../shared/clans.ts';
 import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
 import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
@@ -1177,6 +1177,122 @@ export function clanBossHit(p: Player, now: number, rng: Rng) {
   const s = stats(p, now);
   const crit = rng() * 100 < s.crit;
   return { damage: Math.round(s.atk * 4 * (0.85 + rng() * 0.3) * (crit ? 2 : 1)), crit };
+}
+
+// --- Ринг ----------------------------------------------------------------------------
+
+export interface RingFighter {
+  id: number;
+  name: string;
+  level: number;
+  look: Look;
+  fee: number;
+}
+export interface RingMatch {
+  id: number;
+  a: RingFighter;
+  b: RingFighter;
+  startsAt: number;
+  fee: number;
+  bets: { pid: number; name: string; side: 'a' | 'b'; amount: number }[];
+}
+export interface RingDone extends RingMatch {
+  winner: 'a' | 'b';
+  replay: { win: boolean; log: string[]; rounds: Round[]; startHp: [number, number]; maxHp: [number, number] };
+  pool: number;
+}
+export interface Ring {
+  seq: number;
+  queue: RingFighter[];
+  cur: RingMatch | null;
+  last: RingDone[];
+}
+export const emptyRing = (): Ring => ({ seq: 0, queue: [], cur: null, last: [] });
+
+function ringNext(ring: Ring, now: number) {
+  if (ring.cur || ring.queue.length < 2) return;
+  const [a, b] = ring.queue.splice(0, 2);
+  ring.cur = { id: ++ring.seq, a, b, startsAt: now + RING.delayMin * MIN, fee: a.fee + b.fee, bets: [] };
+}
+
+export function ringJoin(p: Player, ring: Ring, now: number) {
+  if (p.level < RING.minLevel) throw new GameError(`Ринг — с ${RING.minLevel} уровня`);
+  if (ring.queue.some((f) => f.id === p.id) || (ring.cur && (ring.cur.a.id === p.id || ring.cur.b.id === p.id))) throw new GameError('Ты уже записан');
+  requireHp(p, now);
+  const fee = RING.feeRations * ration(p);
+  if (p.money < fee) throw new GameError('Нечем заплатить за выход');
+  p.money -= fee;
+  ring.queue.push({ id: p.id, name: p.name, level: p.level, look: lookOf(p), fee });
+  ringNext(ring, now);
+  return { fee, queued: ring.queue.length };
+}
+
+export function ringBet(p: Player, ring: Ring, side: 'a' | 'b', amount: number, now: number) {
+  const m = ring.cur;
+  if (!m || now >= m.startsAt) throw new GameError('Ставки не принимаются');
+  if (m.a.id === p.id || m.b.id === p.id) throw new GameError('На свой бой ставить нельзя');
+  if (m.bets.some((b) => b.pid === p.id)) throw new GameError('Ставка уже сделана');
+  if (side !== 'a' && side !== 'b') throw new GameError('На кого?');
+  const a = Math.floor(Number(amount));
+  const max = RING.minBet + p.level * RING.betPerLevel;
+  if (!(a >= RING.minBet)) throw new GameError(`Ставка от ${RING.minBet} ₽`);
+  if (a > max) throw new GameError(`На твоём уровне — не больше ${max} ₽`);
+  if (p.money < a) throw new GameError('Не хватает денег');
+  p.money -= a;
+  m.bets.push({ pid: p.id, name: p.name, side, amount: a });
+  return { side, amount: a };
+}
+
+/**
+ * Провести бой, если пора: бойцы бьются в полную силу, ставки — тотализатор (победители делят банк
+ * пропорционально ставке, доля — на общак). load/save — работа с базой снаружи.
+ * Возвращает, сколько ушло на общак.
+ */
+export function ringResolve(ring: Ring, now: number, load: (id: number) => Player | null, save: (p: Player) => void, rng: Rng): number {
+  const m = ring.cur;
+  if (!m || now < m.startsAt) return 0;
+  ring.cur = null;
+  const fa = load(m.a.id);
+  const fb = load(m.b.id);
+  const pay = (id: number, money: number, text: string) => {
+    const who = load(id);
+    if (!who) return;
+    who.money += money;
+    log(who, now, text);
+    save(who);
+  };
+  if (!fa || !fb) {
+    for (const b of m.bets) pay(b.pid, b.amount, '🥊 Бой на ринге сорвался — ставка вернулась');
+    ringNext(ring, now);
+    return 0;
+  }
+  const full = (x: Player) => ({ ...fighter(x, now), hp: stats(x, now).maxHp, items: [] });
+  const st = newBattle(full(fa), full(fb));
+  battleAuto(st, rng);
+  const r = battleResult(st);
+  const winner: 'a' | 'b' = r.win ? 'a' : 'b';
+  const w = winner === 'a' ? fa : fb;
+  const l = winner === 'a' ? fb : fa;
+  w.money += m.fee;
+  w.authority += RING.winnerAuthority;
+  track(w, 'pvpWin');
+  log(w, now, `🥊 Победа на ринге над ${l.name}: +${m.fee} ₽, +${RING.winnerAuthority} авторитета`);
+  log(l, now, `🥊 Проиграл на ринге ${w.name}`);
+  save(fa);
+  save(fb);
+  const pool = m.bets.reduce((s2, b) => s2 + b.amount, 0);
+  const winSum = m.bets.filter((b) => b.side === winner).reduce((s2, b) => s2 + b.amount, 0);
+  const cut = Math.floor((pool - winSum) * RING.cut);
+  for (const b of m.bets) {
+    if (b.side !== winner) continue;
+    const win = b.amount + Math.floor(((pool - winSum - cut) * b.amount) / winSum);
+    pay(b.pid, win, `🥊 Ставка на ${w.name} сыграла: +${win} ₽`);
+  }
+  ring.last.unshift({ ...m, winner, pool, replay: { win: r.win, log: r.log, rounds: r.rounds, startHp: r.startHp, maxHp: r.maxHp } });
+  ring.last.length = Math.min(ring.last.length, RING.last);
+  ringNext(ring, now);
+  // никто не угадал — банк целиком на общак
+  return winSum ? cut : pool;
 }
 
 // --- Персонаж -----------------------------------------------------------------
