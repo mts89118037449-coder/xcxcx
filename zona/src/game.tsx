@@ -1,7 +1,8 @@
+import type { PlaceId } from '../shared/places.ts';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { FightReplay, Look, PlayerView } from '../shared/types.ts';
 
-export type Place = 'church' | 'medic' | 'escape' | 'pullups';
+export type Place = 'church' | 'medic' | 'escape' | 'pullups' | PlaceId;
 export type Tab = 'home' | 'zone' | 'work' | 'fight' | 'gear' | 'top' | 'shop';
 
 export interface DialogOption {

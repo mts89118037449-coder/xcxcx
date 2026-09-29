@@ -1,3 +1,4 @@
+import { PLACES } from '../shared/places.ts';
 import { STORY } from '../shared/story.ts';
 import { NpcPortrait, useNpc } from './art/sprites.tsx';
 import { useGame } from './game.tsx';
@@ -44,7 +45,7 @@ export function GameTiles() {
 
 /** Куда сходить по зоне. */
 export function PlaceTiles() {
-  const { p, now, openPlace, go, visit } = useGame();
+  const { p, now, openPlace, go, visit, toast } = useGame();
   return (
     <Tiles
       tiles={[
@@ -53,6 +54,16 @@ export function PlaceTiles() {
         { icon: '💪', name: 'Турник', left: p.pullupsLeft, on: () => openPlace('pullups') },
         { icon: '⛪', name: 'Церковь', left: null, on: () => openPlace('church') },
         { icon: '🏥', name: 'Санчасть', left: null, on: () => openPlace('medic') },
+        ...PLACES.map((pl) => {
+          const ready = pl.activities.filter((a) => (p.placeCd[`${pl.id}.${a.id}`] ?? 0) <= now).length;
+          const locked = p.level < pl.minLevel;
+          return {
+            icon: locked ? '🔒' : pl.icon,
+            name: locked ? `${pl.name} · ${pl.minLevel} ур.` : pl.name,
+            left: locked ? 0 : ready,
+            on: () => (locked ? toast(`${pl.name} — с ${pl.minLevel} уровня`) : openPlace(pl.id)),
+          };
+        }),
         { icon: '🕳️', name: 'Побег', left: p.escape.cdUntil > now ? 0 : null, on: () => openPlace('escape') },
       ]}
     />

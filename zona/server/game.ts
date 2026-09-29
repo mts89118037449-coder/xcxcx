@@ -52,6 +52,7 @@ import { battleAct, battleAuto, battleControls, battleResult, fight, newBattle, 
 import { STORY } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
+import { placeById, type PlaceId } from '../shared/places.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
 import { CONSUMABLES as CONSUMABLES_ALL, CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
 
@@ -136,6 +137,8 @@ export interface Player {
   eventAt: number;
   /** продолжение цепочки случаев, придёт после eventAt */
   chain: string | null;
+  /** откаты занятий в местах: «место.занятие» → когда снова можно */
+  placeCd: Record<string, number>;
   yardAt: number;
   escape: { cdUntil: number; run: { stage: number; at: number } | null; best: number };
   medBedAt: number;
@@ -240,6 +243,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     event: null,
     eventAt: now + 5 * MIN,
     chain: null,
+    placeCd: {},
     yardAt: 0,
     escape: { cdUntil: 0, run: null, best: 0 },
     medBedAt: 0,
@@ -312,6 +316,7 @@ export function migrate(p: Player): Player {
   p.event ??= null;
   p.eventAt ??= 0;
   p.chain ??= null;
+  p.placeCd ??= {};
   p.yardAt ??= 0;
   p.escape ??= { cdUntil: 0, run: null, best: 0 };
   p.medBedAt ??= 0;
@@ -1573,11 +1578,16 @@ export interface Applied {
   hp: number;
   item: string | null;
   levelUps: number;
+  term: number;
 }
 
 function applyEffects(p: Player, e: Effects, now: number, rng: Rng): Applied {
   const max = stats(p, now);
-  const out: Applied = { money: 0, butts: 0, gold: 0, xp: 0, authority: 0, energy: 0, hp: 0, item: null, levelUps: 0 };
+  const out: Applied = { money: 0, butts: 0, gold: 0, xp: 0, authority: 0, energy: 0, hp: 0, item: null, levelUps: 0, term: 0 };
+  if (e.term) {
+    out.term = Math.min(p.term, e.term);
+    serve(p, e.term);
+  }
   if (e.money) {
     out.money = Math.max(-p.money, Math.round(e.money * ration(p)));
     p.money += out.money;
@@ -1641,6 +1651,30 @@ export function answerEvent(p: Player, choice: number, now: number, rng: Rng) {
     p.eventAt = now + EVENT_TIMING.chainMin * MIN;
   }
   return { text: o.text, who: ev.who, name: ev.name, next: !!o.next, ...got };
+}
+
+/** Занятие в месте зоны: баня, столовая, библиотека… */
+export function placeDo(p: Player, placeId: string, actId: string, now: number, rng: Rng) {
+  const pl = placeById.get(placeId as PlaceId);
+  const a = pl?.activities.find((x) => x.id === actId);
+  if (!pl || !a) throw new GameError('Нет такого места');
+  if (p.level < pl.minLevel) throw new GameError(`Сюда пускают с ${pl.minLevel} уровня`);
+  const why = needFail(a.need, p);
+  if (why) throw new GameError(`Не получится: ${why}`);
+  const key = `${pl.id}.${a.id}`;
+  if ((p.placeCd[key] ?? 0) > now) throw new GameError('Рано, приходи позже');
+  const cost = a.cost ?? {};
+  const money = Math.round((cost.money ?? 0) * ration(p));
+  if (p.money < money || p.butts < (cost.butts ?? 0) || p.gold < (cost.gold ?? 0)) throw new GameError('Не на что');
+  if (cost.energy) spendEnergy(p, cost.energy, now);
+  p.money -= money;
+  p.butts -= cost.butts ?? 0;
+  p.gold -= cost.gold ?? 0;
+  p.placeCd[key] = now + a.cdMin * MIN;
+  track(p, 'place');
+  const o = pickWeighted(a.outcomes, rng);
+  const got = applyEffects(p, o, now, rng);
+  return { text: o.text, who: pl.who, name: pl.host, ...got };
 }
 
 /** Прогулка по двору: случай прямо сейчас (раз в полчаса), без энергии. */

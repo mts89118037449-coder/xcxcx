@@ -25,8 +25,9 @@ interface Got {
 const sign = (n: number) => (n > 0 ? `+${fmt(n)}` : `−${fmt(-n)}`);
 
 /** Что изменилось после случая — одной строкой. */
-export function gotLine(g: Omit<Got, 'text' | 'who' | 'name'>): string {
+export function gotLine(g: Omit<Got, 'text' | 'who' | 'name'> & { term?: number }): string {
   const parts: string[] = [];
+  if (g.term) parts.push(`−${Math.round(g.term * 10) / 10} дн. срока`);
   if (g.money) parts.push(`${sign(g.money)} ₽`);
   if (g.butts) parts.push(`${sign(g.butts)} 🚬`);
   if (g.gold) parts.push(`${sign(g.gold)} 🪙`);

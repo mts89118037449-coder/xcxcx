@@ -10,8 +10,9 @@ import { EventButton, EventStage } from './Events.tsx';
 import { BattleModal } from './Battle.tsx';
 import type { Mini } from './Minigames.tsx';
 import { MAST_RULES } from '../shared/term.ts';
+import { placeById, type PlaceId } from '../shared/places.ts';
 import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
-import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Tab } from './game.tsx';
+import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Place as PlaceT, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
 import { Gear } from './screens/Gear.tsx';
 import { Home } from './screens/Home.tsx';
@@ -28,6 +29,7 @@ const Church = named(() => import('./Church.tsx'), 'Church');
 const Pullups = named(() => import('./Pullups.tsx'), 'Pullups');
 const Medic = named(() => import('./Medic.tsx'), 'Medic');
 const Escape = named(() => import('./Escape.tsx'), 'Escape');
+const PlaceScreen = named(() => import('./Places.tsx'), 'PlaceScreen');
 const AdminPanel = named(() => import('./Admin.tsx'), 'AdminPanel');
 const IntroOverlay = named(() => import('./Intro.tsx'), 'IntroOverlay');
 const MastPicker = named(() => import('./Term.tsx'), 'MastPicker');
@@ -59,7 +61,7 @@ export function App() {
   const [energyOpen, setEnergyOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const [shellsOpen, setShellsOpen] = useState(false);
-  const [place, setPlace] = useState<'church' | 'medic' | 'escape' | null>(null);
+  const [place, setPlace] = useState<Exclude<PlaceT, 'pullups'> | null>(null);
   const [pullOpen, setPullOpen] = useState(false);
   const [eventId, setEventId] = useState<string | null>(null);
   const [battleOn, setBattleOn] = useState(false);
@@ -207,6 +209,7 @@ export function App() {
         {place === 'church' && <Church onBack={() => { setPlace(null); setTab('zone'); }} />}
         {place === 'medic' && <Medic onBack={() => { setPlace(null); setTab('zone'); }} />}
         {place === 'escape' && <Escape onBack={() => { setPlace(null); setTab('zone'); }} />}
+        {place && placeById.has(place as PlaceId) && <PlaceScreen id={place as PlaceId} onBack={() => { setPlace(null); setTab('zone'); }} />}
         {!place && tab === 'home' && <Home />}
         {!place && tab === 'zone' && <Zone />}
         {!place && tab === 'work' && <Work />}

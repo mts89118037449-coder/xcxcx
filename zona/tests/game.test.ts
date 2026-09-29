@@ -806,7 +806,7 @@ test('случаи: больше сотни, цепочки ведут к про
   g.spawnEvent(p, T0 + MIN, fixed(0.5));
   assert.equal(p.event, null, 'рано');
   g.spawnEvent(p, T0 + (EVENT_TIMING.chainMin + 1) * MIN, fixed(0.5));
-  assert.equal(p.event?.id, 'mal_2');
+  assert.equal((p.event as { id: string } | null)?.id, 'mal_2');
   assert.equal(p.chain, null);
   const y = g.yardWalk(p, T0 + (EVENT_TIMING.chainMin + 2) * MIN, fixed(0.5));
   assert.equal(y.id, 'mal_2');
@@ -829,4 +829,32 @@ test('случаи: больше сотни, цепочки ведут к про
   assert.equal(eventFits(eventById.get('x_prosecutor')!, who, noon), false);
   assert.equal(eventFits(eventById.get('x_mother_tat')!, who, noon), false);
   assert.equal(eventFits(eventById.get('x_mother_tat')!, { ...who, tattoos: ['t_mother'] }, noon), true);
+});
+
+test('места зоны: откат, цена, условия, срок скашивается', async () => {
+  const { PLACES } = await import('../shared/places.ts');
+  const { NPC_RIGS } = await import('../src/art/rig/npcs.ts');
+  assert.equal(PLACES.length, 7);
+  for (const pl of PLACES) {
+    assert.ok(NPC_RIGS[pl.who], `нет НПС у ${pl.id}`);
+    assert.ok(pl.activities.length >= 3);
+    for (const a of pl.activities) assert.ok(a.outcomes.length && a.cdMin > 0, `${pl.id}.${a.id}`);
+  }
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  assert.throws(() => g.placeDo(p, 'library', 'read', T0, fixed(0.1)), /уровня/);
+  const r = g.placeDo(p, 'bath', 'steam', T0, fixed(0.1));
+  assert.ok(r.text);
+  assert.throws(() => g.placeDo(p, 'bath', 'steam', T0 + MIN, fixed(0.1)), /Рано/);
+  assert.throws(() => g.placeDo(p, 'canteen', 'blat_table', T0, fixed(0.1)), /авторитет/);
+  const e0 = p.energy;
+  g.placeDo(p, 'canteen', 'kitchen', T0, fixed(0.1));
+  assert.equal(p.energy, e0 - 10);
+  p.level = 10;
+  const term = p.term;
+  const law = g.placeDo(p, 'library', 'law', T0, fixed(0.1)); // первый исход — скостили
+  assert.ok(law.term > 0 && p.term < term);
+  p.gold = 0;
+  p.level = 20;
+  assert.throws(() => g.placeDo(p, 'visits', 'long', T0, fixed(0.1)), /Не на что/);
+  assert.throws(() => g.placeDo(p, 'nowhere', 'x', T0, fixed(0.1)), /Нет такого/);
 });

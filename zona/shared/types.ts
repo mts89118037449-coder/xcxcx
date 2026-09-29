@@ -81,6 +81,7 @@ export interface PlayerView {
   cellShow: Record<string, string>;
   comfort: number;
   event: { id: string; until: number } | null;
+  placeCd: Record<string, number>;
   yardReadyAt: number;
   escape: { cdUntil: number; stage: number | null; best: number };
   medBedReadyAt: number;

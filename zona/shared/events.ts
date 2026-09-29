@@ -12,6 +12,8 @@ export interface Effects {
   energy?: number;
   hp?: number;
   item?: boolean;
+  /** скостить срок на столько дней */
+  term?: number;
 }
 
 export interface Outcome extends Effects {
