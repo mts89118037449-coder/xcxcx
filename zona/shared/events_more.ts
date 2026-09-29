@@ -262,8 +262,8 @@ const MAST_EVENTS: GameEvent[] = [
     id: 'm_obshak', who: 'sheet/cast/avtoritet', name: 'Смотрящий', where: 'any', mast: ['blat'],
     text: '«На общак собираем, на тех, кто в ШИЗО. Ты человек не последний».',
     options: [
-      { label: 'Уделить (2 пайки)', cost: { money: 2 }, outcomes: [{ w: 1, text: '«Правильно». Смотрящий пожал руку.', authority: 5 }] },
-      { label: 'Уделить бычками (8 🚬)', cost: { butts: 8 }, outcomes: [{ w: 1, text: 'Бычки ушли в ШИЗО. Там их ждут.', authority: 4 }] },
+      { label: 'Уделить (2 пайки)', cost: { money: 2 }, outcomes: [{ w: 1, text: '«Правильно». Смотрящий пожал руку.', authority: 5, rep: { brat: 6 } }] },
+      { label: 'Уделить бычками (8 🚬)', cost: { butts: 8 }, outcomes: [{ w: 1, text: 'Бычки ушли в ШИЗО. Там их ждут.', authority: 4, rep: { brat: 5 } }] },
       { label: 'Сейчас пусто', outcomes: [{ w: 1, text: '«Бывает. Запомню». Прозвучало не очень.', authority: -2 }] },
     ],
   },
@@ -280,7 +280,7 @@ const MAST_EVENTS: GameEvent[] = [
     text: 'Бригадир: «Ты вчера две нормы дал. Мастер хочет видеть — премию обещают».',
     options: [
       { label: 'Пойти к мастеру', outcomes: [{ w: 7, text: 'Премия и доска почёта. Мелочь, а приятно.', money: 3, xp: 8 }, { w: 3, text: 'Премию «забыли» начислить. Зато норму подняли.', xp: 5 }] },
-      { label: 'Отдать премию бригаде', outcomes: [{ w: 1, text: 'Бригада за тебя горой.', authority: 4 }] },
+      { label: 'Отдать премию бригаде', outcomes: [{ w: 1, text: 'Бригада за тебя горой.', authority: 4, rep: { work: 8 } }] },
     ],
   },
   {
@@ -303,7 +303,7 @@ const MAST_EVENTS: GameEvent[] = [
     id: 'm_sdp', who: 'sheet/cast/officer', name: 'Дежурный', where: 'any', mast: ['kozel'],
     text: '«Твоя смена на воротах локалки. Кто без повязки — записывай».',
     options: [
-      { label: 'Записывать всех', outcomes: [{ w: 1, text: 'Администрация довольна. Барак — нет.', money: 3, energy: 20, authority: -2 }] },
+      { label: 'Записывать всех', outcomes: [{ w: 1, text: 'Администрация довольна. Барак — нет.', money: 3, energy: 20, authority: -2, rep: { admin: 6 } }] },
       { label: 'Закрыть глаза за бычки', outcomes: [{ w: 7, text: 'И волки сыты, и в кармане звенит.', butts: 8 }, { w: 3, text: 'Дежурный проверил списки. Выговор.', money: -1 }] },
     ],
   },
@@ -311,7 +311,7 @@ const MAST_EVENTS: GameEvent[] = [
     id: 'm_report', who: 'sheet/cast/lawyer', name: 'Опер', where: 'any', mast: ['kozel'],
     text: 'Опер ждёт недельный отчёт: «Что в бараке? Только без воды».',
     options: [
-      { label: 'Рассказать правду', outcomes: [{ w: 1, text: 'Опер кивает, пишет. Характеристика к УДО — лучше.', xp: 15, authority: -2 }] },
+      { label: 'Рассказать правду', outcomes: [{ w: 1, text: 'Опер кивает, пишет. Характеристика к УДО — лучше.', xp: 15, authority: -2, rep: { admin: 5 } }] },
       { label: 'Наболтать общих слов', outcomes: [{ w: 6, text: 'Прокатило.', xp: 5 }, { w: 4, text: '«Халтуришь». Опер недоволен.', energy: -15 }] },
     ],
   },
@@ -328,7 +328,7 @@ const MAST_EVENTS: GameEvent[] = [
     text: 'Отрицалы шепчутся: «Завтра все отказываемся выходить на работу. Ты с нами?»',
     options: [
       { label: 'Поддержать', outcomes: [{ w: 5, text: 'Отказ прошёл. Администрация пошла на уступки.', authority: 6, energy: 20 }, { w: 5, text: 'Всех зачинщиков — в ШИЗО.', hp: -0.25, authority: 6 }] },
-      { label: 'Возглавить', outcomes: [{ w: 1, text: 'Ты теперь голос барака. Опасно, но почётно.', authority: 9, hp: -0.2 }] },
+      { label: 'Возглавить', outcomes: [{ w: 1, text: 'Ты теперь голос барака. Опасно, но почётно.', authority: 9, hp: -0.2, rep: { brat: 10 } }] },
     ],
   },
   {

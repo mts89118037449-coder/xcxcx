@@ -1,6 +1,7 @@
 // Места зоны: баня, столовая, библиотека, клуб, свиданка, промка, ШИЗО.
 // У каждого места — хозяин и несколько занятий со своим откатом. Исход — жребий, как у случаев.
 import type { Need, Outcome } from './events.ts';
+import type { FactionId } from './factions.ts';
 
 export type PlaceId = 'bath' | 'canteen' | 'library' | 'club' | 'visits' | 'factory' | 'shizo';
 
@@ -103,3 +104,22 @@ export const PLACES: PlaceDef[] = [
 ];
 
 export const placeById = new Map(PLACES.map((p) => [p.id, p]));
+
+/** Репутация за занятие: «место.занятие» → кому и сколько. */
+export const PLACE_REP: Record<string, Partial<Record<FactionId, number>>> = {
+  'canteen.kitchen': { work: 2 },
+  'canteen.blat_table': { brat: 3 },
+  'bath.back': { brat: 2 },
+  'library.read': { admin: 1 },
+  'library.law': { admin: 3 },
+  'club.rehearse': { admin: 2 },
+  'club.concert': { admin: 6 },
+  'club.kvn': { brat: 4 },
+  'factory.sew': { work: 3 },
+  'factory.wood': { work: 3 },
+  'factory.foundry': { work: 5 },
+  'factory.carry': { brat: 2 },
+  'shizo.grev': { brat: 5 },
+  'shizo.sit': { brat: 12 },
+  'shizo.bribe': { brat: 6 },
+};

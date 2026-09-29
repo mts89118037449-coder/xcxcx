@@ -54,7 +54,8 @@ import { battleAct, battleAuto, battleControls, battleResult, fight, newBattle, 
 import { chapterOf } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
-import { placeById, type PlaceId } from '../shared/places.ts';
+import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
+import { FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
 import { CONSUMABLES as CONSUMABLES_ALL, CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
 
@@ -141,6 +142,9 @@ export interface Player {
   chain: string | null;
   /** откаты занятий в местах: «место.занятие» → когда снова можно */
   placeCd: Record<string, number>;
+  /** репутация у братвы, работяг и администрации */
+  rep: Record<FactionId, number>;
+  obshakAskAt: number;
   yardAt: number;
   escape: { cdUntil: number; run: { stage: number; at: number } | null; best: number };
   medBedAt: number;
@@ -246,6 +250,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     eventAt: now + 5 * MIN,
     chain: null,
     placeCd: {},
+    rep: { brat: 0, work: 0, admin: 0 },
+    obshakAskAt: 0,
     yardAt: 0,
     escape: { cdUntil: 0, run: null, best: 0 },
     medBedAt: 0,
@@ -319,6 +325,8 @@ export function migrate(p: Player): Player {
   p.eventAt ??= 0;
   p.chain ??= null;
   p.placeCd ??= {};
+  p.rep ??= { brat: 0, work: 0, admin: 0 };
+  p.obshakAskAt ??= 0;
   p.yardAt ??= 0;
   p.escape ??= { cdUntil: 0, run: null, best: 0 };
   p.medBedAt ??= 0;
@@ -391,7 +399,27 @@ export function hodkaBonus(p: Player): number {
 }
 
 /** Скостить срок: дела сокращают дни до УДО (отрицательное — добавить). */
+/** Репутация: своя масть растит быстрее, соперник теряет часть. */
+export function gainRep(p: Player, id: FactionId, amount: number): number {
+  const f = factionById.get(id)!;
+  let n = amount;
+  if (n > 0 && p.mast && f.mast.includes(p.mast)) n *= REP_RULES.mastMul;
+  n = Math.round(n);
+  p.rep[id] = Math.max(0, p.rep[id] + n);
+  if (n > 0 && f.rival) p.rep[f.rival] = Math.max(0, p.rep[f.rival] - Math.round(n * REP_RULES.rivalShare));
+  return n;
+}
+
+/** Бонус от званий у сил зоны, %. */
+export function repBonus(p: Player, key: 'pvpLoot' | 'jobMoney' | 'questMoney'): number {
+  let sum = 0;
+  for (const f of FACTIONS) if (f.perRank.key === key) sum += repRank(p.rep[f.id]) * f.perRank.pct;
+  return sum;
+}
+
 export function serve(p: Player, days: number) {
+  // «Твёрдо стал на путь исправления»: администрация скашивает срок быстрее
+  if (days > 0 && repRank(p.rep?.admin ?? 0) >= 3) days *= 1.15;
   p.term = Math.max(0, Math.round((p.term - days) * 1000) / 1000);
 }
 
@@ -495,7 +523,7 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   spendEnergy(p, job.energy, now);
   // рандом смены: иногда премия от бригадира, иногда находка на промке
   const bonus = rng() < 0.1;
-  const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney')) / 100) * (bonus ? 2 : 1));
+  const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney') + repBonus(p, 'jobMoney')) / 100) * (bonus ? 2 : 1));
   p.money += money;
   let item: string | null = null;
   if (rng() < 0.05) {
@@ -505,6 +533,7 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   const xp = Math.round(job.xp * (1 + mastBonus(p, 'jobXp') / 100));
   const levelUps = addXp(p, xp, now);
   track(p, 'job');
+  gainRep(p, 'work', 1);
   return { money, xp, levelUps, bonus, item };
 }
 
@@ -853,7 +882,7 @@ export function pvpFinish(p: Player, target: Player | null, loot0: number, resul
     serve(p, TERM.pvpWin);
     xp = 8 + p.level * 2;
     if (target) loot = Math.min(loot, Math.max(0, target.money));
-    loot = Math.round(loot * (1 + (result.lootBonus + mastBonus(p, 'pvpLoot')) / 100));
+    loot = Math.round(loot * (1 + (result.lootBonus + mastBonus(p, 'pvpLoot') + repBonus(p, 'pvpLoot')) / 100));
     p.money += loot;
     p.authority += authority;
     if (rng() < PVP_ITEM_CHANCE) {
@@ -861,6 +890,7 @@ export function pvpFinish(p: Player, target: Player | null, loot0: number, resul
       giveItem(p, item);
     }
     track(p, 'pvpWin');
+    gainRep(p, 'brat', 2);
     p.wins += 1;
     if (target) {
       target.money = Math.max(0, target.money - loot);
@@ -1284,7 +1314,7 @@ export function finishQuest(p: Player, now: number, rng: Rng) {
   if (a.endsAt > now) throw new GameError('Ещё не готово');
   p.quests.active = null;
   const ok = rng() < a.chance;
-  const money = ok ? Math.round(a.money * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'questMoney')) / 100)) : 0;
+  const money = ok ? Math.round(a.money * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'questMoney') + repBonus(p, 'questMoney')) / 100)) : 0;
   const gold = ok ? a.gold : 0;
   const xp = ok ? a.xp : Math.round(a.xp / 3);
   p.money += money;
@@ -1296,6 +1326,7 @@ export function finishQuest(p: Player, now: number, rng: Rng) {
     giveItem(p, item);
   }
   track(p, 'quest');
+  if (ok) gainRep(p, 'admin', 3);
   ensureBoard(p, rng);
   return { ok, money, gold, xp, levelUps, tpl: a.tpl, item };
 }
@@ -1501,6 +1532,7 @@ export function pray(p: Player, now: number) {
   if (p.prayAt + CHURCH.prayCooldownMin * MIN > now) throw new GameError('Батюшка: «Не торопись, сын мой»');
   p.prayAt = now;
   track(p, 'church');
+  gainRep(p, 'admin', 1);
   p.blessUntil = Math.max(p.blessUntil, now) + CHURCH.prayBlessMin * MIN;
   addXp(p, 5, now);
 }
@@ -1583,11 +1615,13 @@ export interface Applied {
   item: string | null;
   levelUps: number;
   term: number;
+  rep: Partial<Record<FactionId, number>>;
 }
 
 function applyEffects(p: Player, e: Effects, now: number, rng: Rng): Applied {
   const max = stats(p, now);
-  const out: Applied = { money: 0, butts: 0, gold: 0, xp: 0, authority: 0, energy: 0, hp: 0, item: null, levelUps: 0, term: 0 };
+  const out: Applied = { money: 0, butts: 0, gold: 0, xp: 0, authority: 0, energy: 0, hp: 0, item: null, levelUps: 0, term: 0, rep: {} };
+  if (e.rep) for (const [id, n] of Object.entries(e.rep) as [FactionId, number][]) out.rep[id] = gainRep(p, id, n);
   if (e.term) {
     out.term = Math.min(p.term, e.term);
     serve(p, e.term);
@@ -1658,6 +1692,43 @@ export function answerEvent(p: Player, choice: number, now: number, rng: Rng) {
 }
 
 /** Занятие в месте зоны: баня, столовая, библиотека… */
+// --- Воровской общак ---------------------------------------------------------------
+
+export interface Obshak {
+  total: number;
+  log: { name: string; amount: number; at: number }[];
+}
+
+/** Уделить на общак: деньги в пайках, взамен — репутация у братвы и немного авторитета. */
+export function obshakGive(p: Player, ob: Obshak, rations: number, now: number) {
+  if (!(rations >= OBSHAK.minGive) || rations > 1000) throw new GameError(`Минимум ${OBSHAK.minGive} пайки`);
+  const money = Math.round(Math.floor(rations) * ration(p));
+  if (p.money < money) throw new GameError('Не хватает денег');
+  p.money -= money;
+  ob.total += money;
+  ob.log.unshift({ name: p.name, amount: money, at: now });
+  ob.log.length = Math.min(ob.log.length, OBSHAK.log);
+  const rep = gainRep(p, 'brat', Math.floor(rations) * OBSHAK.repPerRation);
+  const authority = Math.min(10, Math.floor(rations / 5));
+  p.authority += authority;
+  log(p, now, `🃏 Уделил на общак ${money} ₽`);
+  return { money, rep, authority };
+}
+
+/** Помощь из общака: своим, раз в сутки, за счёт репутации. */
+export function obshakAsk(p: Player, ob: Obshak, now: number) {
+  if (p.obshakAskAt + OBSHAK.askCooldownH * 60 * MIN > now) throw new GameError('Уже просил — приходи завтра');
+  if (repRank(p.rep.brat) < 3) throw new GameError(`Общак помогает близким: нужно звание «${factionById.get('brat')!.ranks[3]}»`);
+  const money = Math.min(Math.round(OBSHAK.askRations * ration(p)), Math.floor(ob.total * OBSHAK.askShare));
+  if (money <= 0) throw new GameError('Общак пуст');
+  ob.total -= money;
+  p.money += money;
+  p.obshakAskAt = now;
+  p.rep.brat = Math.max(0, p.rep.brat - OBSHAK.askRepCost);
+  log(p, now, `🃏 Общак помог: ${money} ₽`);
+  return { money };
+}
+
 export function placeDo(p: Player, placeId: string, actId: string, now: number, rng: Rng) {
   const pl = placeById.get(placeId as PlaceId);
   const a = pl?.activities.find((x) => x.id === actId);
@@ -1677,7 +1748,7 @@ export function placeDo(p: Player, placeId: string, actId: string, now: number, 
   p.placeCd[key] = now + a.cdMin * MIN;
   track(p, 'place');
   const o = pickWeighted(a.outcomes, rng);
-  const got = applyEffects(p, o, now, rng);
+  const got = applyEffects(p, { ...o, rep: { ...PLACE_REP[key], ...o.rep } }, now, rng);
   return { text: o.text, who: pl.who, name: pl.host, ...got };
 }
 

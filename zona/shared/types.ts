@@ -82,6 +82,8 @@ export interface PlayerView {
   comfort: number;
   event: { id: string; until: number } | null;
   placeCd: Record<string, number>;
+  rep: Record<'brat' | 'work' | 'admin', number>;
+  obshak: { total: number; log: { name: string; amount: number; at: number }[]; askReadyAt: number };
   yardReadyAt: number;
   escape: { cdUntil: number; stage: number | null; best: number };
   medBedReadyAt: number;

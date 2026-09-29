@@ -903,3 +903,43 @@ test('хата: 16 мест, стиль хаты даёт бонус за то, 
   p.cellShow.pet = 'f_roach';
   assert.equal(g.stats(p, T0).maxEnergy, before);
 });
+
+test('силы зоны: масть ускоряет, соперник теряет, звания дают бонус; общак', async () => {
+  const { repRank, REP_THRESHOLDS, OBSHAK } = await import('../shared/factions.ts');
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.mast = 'kozel';
+  assert.equal(g.gainRep(p, 'admin', 10), 15);
+  p.rep.brat = 100;
+  g.gainRep(p, 'admin', 10); // +15 администрации, братва −6
+  assert.equal(p.rep.brat, 94);
+  assert.equal(g.repBonus(p, 'questMoney'), 0);
+  p.rep.admin = REP_THRESHOLDS[3];
+  assert.equal(repRank(p.rep.admin), 3);
+  assert.equal(g.repBonus(p, 'questMoney'), 15);
+  // с «Твёрдо стал» срок скашивается быстрее
+  const t0 = p.term;
+  g.serve(p, 1);
+  assert.ok(Math.abs(t0 - p.term - 1.15) < 0.01);
+  // смена растит работяг, места — свою силу
+  const w = p.rep.work;
+  p.energy = 500;
+  g.doJob(p, 'j_floor', T0, fixed(0.5));
+  assert.equal(p.rep.work, w + 1);
+  const r = g.placeDo(p, 'canteen', 'kitchen', T0, fixed(0.1));
+  assert.equal(r.rep.work, 2);
+
+  // общак
+  const ob: g.Obshak = { total: 0, log: [] };
+  p.money = 100_000;
+  assert.throws(() => g.obshakGive(p, ob, 1, T0), /Минимум/);
+  const give = g.obshakGive(p, ob, 10, T0);
+  assert.equal(ob.total, give.money);
+  assert.equal(ob.log[0].name, 'Тест');
+  assert.ok(give.rep >= 10);
+  p.rep.brat = 0;
+  assert.throws(() => g.obshakAsk(p, ob, T0), /близким/);
+  p.rep.brat = REP_THRESHOLDS[3];
+  const ask = g.obshakAsk(p, ob, T0);
+  assert.ok(ask.money > 0 && ask.money <= give.money * OBSHAK.askShare + 1);
+  assert.throws(() => g.obshakAsk(p, ob, T0 + MIN), /завтра/);
+});

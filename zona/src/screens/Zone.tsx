@@ -7,6 +7,7 @@ import { useTalk } from '../Talk.tsx';
 import { WeeklyCard } from '../Weekly.tsx';
 import { GameTiles, PlaceTiles } from '../Leisure.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
+import { FactionCards, ObshakCard } from '../Factions.tsx';
 
 /** Вся зона: здания ведут на экраны, по земле валяются бычки, барыга меняет их. */
 export function Zone() {
@@ -16,7 +17,7 @@ export function Zone() {
   const [taken, setTaken] = useState<number[]>([]);
   const [pops, setPops] = useState<{ id: number; x: number; y: number; n: number }[]>([]);
   const field = p.field.filter((b) => !taken.includes(b.id));
-  const [seg, setSeg] = useSeg('zone', 'games', ['games', 'places', 'week'] as const);
+  const [seg, setSeg] = useSeg('zone', 'games', ['games', 'places', 'people', 'week'] as const);
 
   const pickUp = async (b: (typeof p.field)[number]) => {
     setTaken((t) => [...t, b.id]);
@@ -73,11 +74,18 @@ export function Zone() {
         items={[
           { id: 'games', icon: '🎲', label: 'Игры' },
           { id: 'places', icon: '📍', label: 'Места' },
+          { id: 'people', icon: '👥', label: 'Люди' },
           { id: 'week', icon: '📅', label: 'Неделя' },
         ]}
       />
       {seg === 'games' && <GameTiles />}
       {seg === 'places' && <PlaceTiles />}
+      {seg === 'people' && (
+        <>
+          <ObshakCard />
+          <FactionCards />
+        </>
+      )}
       {seg === 'week' && <WeeklyCard />}
     </>
   );

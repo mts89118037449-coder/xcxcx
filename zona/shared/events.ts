@@ -1,6 +1,7 @@
 // Случаи, побег, санчасть и гости: всё, где решает рандом.
 import { EVENTS_MORE } from './events_more.ts';
 import type { Mast } from './term.ts';
+import type { FactionId } from './factions.ts';
 
 /** Эффект исхода. money — в «пайках»: 30 + уровень × 15 рублей за единицу. hp — доля от максимума. */
 export interface Effects {
@@ -14,6 +15,8 @@ export interface Effects {
   item?: boolean;
   /** скостить срок на столько дней */
   term?: number;
+  /** репутация у сил зоны */
+  rep?: Partial<Record<FactionId, number>>;
 }
 
 export interface Outcome extends Effects {

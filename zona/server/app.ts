@@ -1,5 +1,6 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
+import { OBSHAK } from '../shared/factions.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { NOTIFY, termDays } from '../shared/term.ts';
 import { BALANCE, CHURCH, cellView, comfortOf, CLAN, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
@@ -158,6 +159,8 @@ export function createApp(opts: AppOptions) {
       comfort: comfortOf(p.furniture),
       event: p.event && p.event.until > t ? p.event : null,
       placeCd: p.placeCd,
+      rep: p.rep,
+      obshak: { ...db.kvGet<g.Obshak>('obshak', { total: 0, log: [] }), askReadyAt: p.obshakAskAt + OBSHAK.askCooldownH * 3600_000 },
       yardReadyAt: p.yardAt + EVENT_TIMING.yardCooldownMin * 60_000,
       escape: { cdUntil: p.escape.cdUntil, stage: p.escape.run?.stage ?? null, best: p.escape.best },
       medBedReadyAt: p.medBedAt + MEDIC.bedCooldownMin * 60_000,
@@ -354,6 +357,18 @@ export function createApp(opts: AppOptions) {
     weekly: (p, b, t) => g.claimWeekly(p, num(b.tier), t),
     pray: (p, _b, t) => g.pray(p, t),
     place: (p, b, t) => g.placeDo(p, String(b.place), String(b.act), t, rng),
+    obshakGive: (p, b, t) => {
+      const ob = db.kvGet<g.Obshak>('obshak', { total: 0, log: [] });
+      const r = g.obshakGive(p, ob, num(b.rations), t);
+      db.kvSet('obshak', ob);
+      return r;
+    },
+    obshakAsk: (p, _b, t) => {
+      const ob = db.kvGet<g.Obshak>('obshak', { total: 0, log: [] });
+      const r = g.obshakAsk(p, ob, t);
+      db.kvSet('obshak', ob);
+      return r;
+    },
     candle: (p, _b, t) => g.lightCandle(p, t),
     confess: (p, _b, t) => g.confess(p, t),
     pullups: (p, b, t) => g.pullups(p, num(b.reps), t),

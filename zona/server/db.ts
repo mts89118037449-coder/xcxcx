@@ -76,6 +76,11 @@ export function openDb(file: string) {
       damage INTEGER NOT NULL,
       PRIMARY KEY (boss_id, player_id)
     );
+    -- общее состояние зоны: общак и прочее, JSON по ключу
+    CREATE TABLE IF NOT EXISTS kv (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   // Колонка клана появилась позже — добавляем в старые базы.
@@ -84,6 +89,8 @@ export function openDb(file: string) {
   db.exec('CREATE INDEX IF NOT EXISTS players_clan ON players(clan_id)');
 
   const q = {
+    kvGet: db.prepare('SELECT value FROM kv WHERE key = ?'),
+    kvSet: db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
     get: db.prepare('SELECT data FROM players WHERE id = ?'),
     save: db.prepare(`
       INSERT INTO players (id, data, name, level, authority, last_seen, clan_id) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -143,6 +150,13 @@ export function openDb(file: string) {
         db.exec('ROLLBACK');
         throw e;
       }
+    },
+    kvGet<T>(key: string, fallback: T): T {
+      const row = q.kvGet.get(key) as { value: string } | undefined;
+      return row ? (JSON.parse(row.value) as T) : fallback;
+    },
+    kvSet(key: string, value: unknown) {
+      q.kvSet.run(key, JSON.stringify(value));
     },
     getPlayer(id: number): Player | null {
       const row = q.get.get(id) as { data: string } | undefined;
