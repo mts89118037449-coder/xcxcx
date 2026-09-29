@@ -1744,3 +1744,97 @@ main {
 .mini-pic { width: 54px; height: 64px; border-radius: 10px; flex: none; }
 .dialog-pic .npc-portrait { border-radius: 10px; }
 .rig-icon { background: radial-gradient(circle, #3a342a, #1e1a14); border-radius: 10px; }
+
+/* --- Компоновка v2: компактная шапка, крупная сцена, разделы вместо простыни ------------ */
+.top { padding: 6px 10px 6px; }
+.top-row { margin-bottom: 5px; gap: 8px; }
+.top-face-wrap { position: relative; flex: none; cursor: pointer; }
+.top-face { margin-right: 0; border-radius: 12px; display: block; }
+.top-lvl {
+  position: absolute; right: -5px; bottom: -4px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
+  background: var(--accent); color: #1a1408; font-size: 11px; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px #15130f;
+}
+.who b { font-size: 15px; }
+.who .muted { font-size: 12px; }
+.wallet { flex-direction: row; flex-wrap: nowrap; justify-content: flex-end; gap: 4px; font-size: 12.5px; flex: none; }
+.top-row .who { flex: 1; min-width: 60px; }
+.wallet .coin { background: #0d0c09; border: 1px solid var(--line); border-radius: 10px; padding: 1px 7px; white-space: nowrap; }
+.wallet .coin.gold { color: var(--gold); cursor: pointer; }
+.wallet .plus { width: 14px; height: 14px; line-height: 14px; font-size: 11px; margin-left: 3px; }
+.shop-btn {
+  flex: none; width: 36px; height: 36px; border-radius: 12px; border: 1px solid #6b5520;
+  background: linear-gradient(#3a2e18, #241c10); font-size: 18px; box-shadow: 0 0 10px #f2c14e33;
+}
+.shop-btn.on { border-color: var(--gold); }
+.bars { grid-template-columns: 1fr 1.25fr 0.7fr; gap: 5px; margin-bottom: 0; }
+.bars .bar { height: 16px; }
+.bars .bar-xp { height: 16px; }
+.bars .bar-xp .bar-label { font-size: 10.5px; }
+
+/* сцена во всю ширину и выше: края кадра обрезаются, персонажи крупнее */
+.scene-wrap .scene { aspect-ratio: 360 / 322; }
+.scene-tag { font-size: 12px; }
+
+/* нижнее меню: пять крупных разделов */
+.tabs button { padding: 8px 0 9px; font-size: 11.5px; }
+.tab-icon { font-size: 24px; }
+
+/* переключатель разделов экрана */
+.segbar {
+  display: flex; gap: 4px; margin: 0 0 10px; padding: 4px; border-radius: 14px;
+  background: var(--card); border: 1px solid var(--line);
+}
+.segbar button {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 0 5px;
+  border: 0; border-radius: 10px; background: none; color: var(--muted); font-size: 11.5px; font-weight: 700;
+}
+.segbar button.active { background: var(--card-2); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+.segbar-icon { position: relative; font-size: 20px; line-height: 1.15; }
+.segbar button:not(.active) .segbar-icon { filter: grayscale(0.5); opacity: 0.85; }
+.segbar-badge {
+  position: absolute; top: -3px; right: -9px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px;
+  background: var(--red); color: #fff; font-style: normal; font-size: 9.5px; line-height: 14px; text-align: center;
+}
+
+/* плитки крупнее, по три в ряд */
+.leisure { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.leisure-tile { padding: 12px 4px 10px; font-size: 12.5px; gap: 3px; }
+.leisure-tile span { font-size: 30px; }
+.job-grid { gap: 8px; }
+
+/* портреты крупнее */
+.npc-pic { width: 118px; height: 136px; }
+.npc-pic .npc-portrait { width: 100%; height: 100%; }
+.dialog-pic { width: 118px; height: 164px; }
+.dialog-pic .npc-portrait { width: 100%; height: 100%; }
+.story-pic { width: 72px; height: 86px; }
+.story { padding: 10px 12px; }
+.story-body b { font-size: 14.5px; }
+.mini-pic { width: 76px; height: 88px; }
+.boss-portrait { width: 104px; height: 104px; }
+.boss-tile { padding: 12px 8px; }
+.stat-row { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.stat-row div { padding: 8px 0; font-size: 15px; }
+.stat-row small { color: var(--muted); font-size: 10.5px; font-weight: 600; }
+
+/* карта зоны не обрезаем: по краям — здания */
+.scene-wrap .scene.map { aspect-ratio: 360 / 280; }
+
+/* --- Новые мини-игры --------------------------------------------------- */
+.die { filter: drop-shadow(0 3px 2px #0008); }
+.die.rolling { animation: die-shake 0.16s infinite alternate; }
+@keyframes die-shake { from { transform: rotate(-14deg) translateY(-3px); } to { transform: rotate(12deg) translateY(2px); } }
+.dice-felt .hand { gap: 10px; min-height: 60px; }
+.arm-table {
+  display: grid; grid-template-columns: 72px 1fr 72px; align-items: center; gap: 4px; margin: 8px 0;
+  padding: 8px; border-radius: 14px; background: radial-gradient(circle at 50% 70%, #3a2e22, #1a1612); touch-action: manipulation; user-select: none;
+}
+.arm-face { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; }
+.arm-face svg { border-radius: 12px; }
+.arm-svg { width: 100%; height: 120px; }
+.arm-go { text-align: center; font-size: 15px; margin: 4px 0 8px; }
+.arm-go b { font-size: 20px; color: var(--gold); }
+.arm-mash { font-size: 20px; padding: 18px 0; touch-action: manipulation; user-select: none; }
+.arm-mash:active { transform: scale(0.97); }
+.flip { transform: scaleX(-1); }
+.darts-board { display: block; width: 220px; height: 220px; margin: 6px auto; filter: drop-shadow(0 4px 6px #000a); }

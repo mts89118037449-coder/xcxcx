@@ -5,6 +5,7 @@ import { Face } from '../art/sprites.tsx';
 import { NpcBanner } from '../art/sprites.tsx';
 import { Clans } from '../Clans.tsx';
 import { Card, fmt, useGame } from '../game.tsx';
+import { FightNav } from './Fight.tsx';
 
 type Row = Awaited<ReturnType<typeof api.top>>['top'][number];
 
@@ -29,6 +30,8 @@ export function Top() {
     else navigator.clipboard?.writeText(link).then(() => toast('Ссылка скопирована'));
   };
 
+  // «Братва» — раздел «Боя»: тот же переключатель сверху
+  const nav = <FightNav value="crew" onChange={() => {}} />;
   const seg = (
     <div className="seg">
       <button className={view === 'top' ? 'active' : ''} onClick={() => setView('top')}>Рейтинг</button>
@@ -38,6 +41,7 @@ export function Top() {
   if (view === 'clans') {
     return (
       <>
+        {nav}
         {seg}
         <Clans />
       </>
@@ -46,6 +50,7 @@ export function Top() {
 
   return (
     <>
+      {nav}
       {seg}
       {link && (
         <Card className="glow">
@@ -70,7 +75,7 @@ export function Top() {
           {rows?.map((r, i) => (
             <li key={r.id} className={`clickable ${r.id === p.id ? 'me' : ''}`} onClick={() => visit(r.id)}>
               <span className="place">{i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
-              <Face face={r.face} size={30} />
+              <Face face={r.face} size={40} />
               <span className="grow">
                 {r.tag && <span className="tag">[{r.tag}]</span>} <b>{r.name}</b>
                 <small className="muted"> {r.rank} · ур. {r.level}</small>

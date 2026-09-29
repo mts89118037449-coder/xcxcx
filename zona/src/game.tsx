@@ -42,7 +42,7 @@ export interface Game {
   openShells(): void;
   openPlace(place: Place): void;
   openEvent(id?: string): void;
-  openMini(kind: 'cards' | 'race' | 'brew'): void;
+  openMini(kind: 'cards' | 'race' | 'brew' | 'dice' | 'arm' | 'darts'): void;
 }
 
 export const GameCtx = createContext<Game | null>(null);
@@ -65,6 +65,16 @@ export function useNow(): number {
 
 export function fmt(n: number): string {
   return Math.floor(n).toLocaleString('ru-RU');
+}
+
+/** Коротко для шапки: 12 400 → 12,4к, 3 500 000 → 3,5М. */
+export function fmtShort(n: number): string {
+  const a = Math.abs(n);
+  const cut = (v: number, s: string) => `${(Math.floor(v * 10) / 10).toLocaleString('ru-RU')}${s}`;
+  if (a >= 1e9) return cut(n / 1e9, 'млрд');
+  if (a >= 1e6) return cut(n / 1e6, 'М');
+  if (a >= 1e4) return cut(n / 1e3, 'к');
+  return fmt(n);
 }
 
 export function timeLeft(ms: number): string {

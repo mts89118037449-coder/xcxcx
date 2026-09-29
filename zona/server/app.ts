@@ -1,6 +1,6 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
-import { BREW, CARDS, RACE } from '../shared/minigames.ts';
+import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { BALANCE, CHURCH, cellView, comfortOf, CLAN, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
 import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
 import { validateInitData, type TgUser } from './auth.ts';
@@ -168,6 +168,10 @@ export function createApp(opts: AppOptions) {
         brew: g.playsLeft(p, 'brew', BREW.perDay, t),
         brewReadyAt: (p.minigames.brew?.at ?? 0) + BREW.cooldownMin * 60_000,
         cardsMaxBet: g.cardsMaxBet(p),
+        dice: g.playsLeft(p, 'dice', DICE.perDay, t),
+        diceMaxBet: g.diceMaxBet(p),
+        arm: g.playsLeft(p, 'arm', ARM.perDay, t),
+        darts: g.playsLeft(p, 'darts', DARTS.perDay, t),
       },
       god: p.god.on,
       perks: p.perks,
@@ -250,6 +254,9 @@ export function createApp(opts: AppOptions) {
     cardsStand: (p, _b, t) => g.cardsStand(p, t),
     race: (p, b, t) => g.roachRace(p, str(b.pick), num(b.bet), t, rng),
     brew: (p, b, t) => g.brew(p, num(b.quality), t),
+    dice: (p, b, t) => g.dice(p, num(b.bet), t, rng),
+    arm: (p, b, t) => g.armWrestle(p, str(b.rival), num(b.taps), t, rng),
+    darts: (p, b, t) => g.darts(p, b.accs, t),
     adminGod: (p, _b, t) => g.toggleGod(p, t),
     adminTool: (p, b, t) => g.adminTool(p, str(b.tool), str(b.arg), t),
     cellShow: (p, b) => g.setCellShow(p, str(b.spot), str(b.id)),

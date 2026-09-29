@@ -9,11 +9,32 @@ import { artUrl, useArt } from '../art/raster.ts';
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
 import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
+import { SegBar, useSeg } from '../Seg.tsx';
+
+type FightSeg = 'bosses' | 'riot' | 'pvp' | 'crew';
+
+/** Разделы «Боя»: «Братва» — отдельный экран, но переключается отсюда же. */
+export function FightNav({ value, onChange }: { value: FightSeg; onChange(v: FightSeg): void }) {
+  const { go } = useGame();
+  return (
+    <SegBar
+      value={value}
+      onChange={(v) => (v === 'crew' ? go('top') : (go('fight'), onChange(v)))}
+      items={[
+        { id: 'bosses', icon: '👹', label: 'Боссы' },
+        { id: 'pvp', icon: '🥊', label: 'Наезд' },
+        { id: 'riot', icon: '🔥', label: 'Бунт' },
+        { id: 'crew', icon: '🏴', label: 'Братва' },
+      ]}
+    />
+  );
+}
 
 type FightResult = FightReplay;
 
 export function Fight() {
-  const { p, now, act, busy, showFight, toast } = useGame();
+  const { p, now, act, busy, toast } = useGame();
+  const [seg, setSeg] = useSeg('fight', 'bosses', ['bosses', 'riot', 'pvp'] as const);
   const talk = useTalk();
   const [world, setWorld] = useState<WorldBossView | null>(null);
   const [anim, animKey, play] = useAnim();
@@ -64,7 +85,8 @@ export function Fight() {
           {now < p.yardReadyAt ? `🚶 ${timeLeft(p.yardReadyAt - now)}` : '🚶 Прогуляться'}
         </button>
       </div>
-      {world && (
+      <FightNav value={seg} onChange={(v) => v !== 'crew' && setSeg(v)} />
+      {seg === 'riot' && world && (
         <Card className="world">
           <div className="row">
             <b>{WORLD_BOSS.emoji} {WORLD_BOSS.name} #{world.gen}</b>
@@ -90,6 +112,7 @@ export function Fight() {
         </Card>
       )}
 
+      {seg === 'pvp' && (
       <Card>
         <div className="row">
           <div>
@@ -103,7 +126,10 @@ export function Fight() {
         {p.shieldUntil > now && <div className="muted small">🛡️ Тебя не тронут ещё {timeLeft(p.shieldUntil - now)}</div>}
         {lowHp && <div className="warn">Здоровья меньше 30% — сначала в санчасть или подожди</div>}
       </Card>
+      )}
 
+      {seg === 'bosses' && lowHp && <div className="warn">Здоровья меньше 30% — сначала в санчасть или подожди</div>}
+      {seg === 'bosses' && (
       <div className="boss-grid">
         {BOSSES.map((b) => {
           const locked = p.level < b.minLevel;
@@ -138,6 +164,7 @@ export function Fight() {
           );
         })}
       </div>
+      )}
     </>
   );
 }

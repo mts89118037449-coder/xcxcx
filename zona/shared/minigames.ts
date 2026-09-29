@@ -15,6 +15,31 @@ export const RACE = { perDay: 15, bets: [3, 5, 10] };
 /** Варить чифир: чем точнее момент, тем больше энергии. Немного — но бесплатно. */
 export const BREW = { perDay: 4, cooldownMin: 20, minEnergy: 2, maxEnergy: 8 };
 
+/** Кости с блатным: у кого больше на двух кубиках. Дубль при победе — втрое. */
+export const DICE = { perDay: 20, minBet: 50, betPerLevel: 150, payout: 2, doublePayout: 3 };
+
+/** Армрестлинг: кто больше раз нажмёт за отведённое время. Сила помогает. */
+export const ARM = {
+  perDay: 10,
+  seconds: 6,
+  maxTaps: 90, // больше физически не нажать — выше режем
+  rivals: [
+    { id: 'thin', name: 'Тощий', who: 'sheet/cast/thin', need: 28, xp: 6, butts: 3, authority: 0 },
+    { id: 'worker', name: 'Работяга', who: 'sheet/cast/worker', need: 40, xp: 12, butts: 6, authority: 1 },
+    { id: 'brute', name: 'Качок', who: 'sheet/cast/brute', need: 52, xp: 24, butts: 12, authority: 3 },
+  ],
+};
+
+/** Заточка в мишень: три броска, очки по кольцам. */
+export const DARTS = { perDay: 8, throws: 3, rings: [50, 25, 10, 5] as const, buttsPer: 10 };
+
+/** Очки за бросок по точности (0 — мимо, 1 — в яблочко). */
+export function dartPoints(acc: number): number {
+  const a = Math.max(0, Math.min(1, acc));
+  // пороги совпадают с кольцами мишени (радиусы 6, 14, 25, 36 из 46)
+  return a > 0.87 ? DARTS.rings[0] : a > 0.69 ? DARTS.rings[1] : a > 0.45 ? DARTS.rings[2] : a > 0.21 ? DARTS.rings[3] : 0;
+}
+
 export const SUITS = ['♠', '♥', '♦', '♣'];
 export const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'В', 'Д', 'К', 'Т'];
 

@@ -5,7 +5,8 @@ import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
 import { lookOf, timeLeft, useGame } from '../game.tsx';
 import { useTalk } from '../Talk.tsx';
 import { WeeklyCard } from '../Weekly.tsx';
-import { Leisure } from '../Leisure.tsx';
+import { GameTiles, PlaceTiles } from '../Leisure.tsx';
+import { SegBar, useSeg } from '../Seg.tsx';
 
 /** Вся зона: здания ведут на экраны, по земле валяются бычки, барыга меняет их. */
 export function Zone() {
@@ -15,6 +16,7 @@ export function Zone() {
   const [taken, setTaken] = useState<number[]>([]);
   const [pops, setPops] = useState<{ id: number; x: number; y: number; n: number }[]>([]);
   const field = p.field.filter((b) => !taken.includes(b.id));
+  const [seg, setSeg] = useSeg('zone', 'games', ['games', 'places', 'week'] as const);
 
   const pickUp = async (b: (typeof p.field)[number]) => {
     setTaken((t) => [...t, b.id]);
@@ -65,8 +67,18 @@ export function Zone() {
         <div className="scene-tag">🗺️ Зона · 🚬 {p.butts}</div>
       </div>
       {p.nextButtAt && !field.length && <div className="muted small center">🚬 через {timeLeft(p.nextButtAt - now)}</div>}
-      <Leisure />
-      <WeeklyCard />
+      <SegBar
+        value={seg}
+        onChange={setSeg}
+        items={[
+          { id: 'games', icon: '🎲', label: 'Игры' },
+          { id: 'places', icon: '📍', label: 'Места' },
+          { id: 'week', icon: '📅', label: 'Неделя' },
+        ]}
+      />
+      {seg === 'games' && <GameTiles />}
+      {seg === 'places' && <PlaceTiles />}
+      {seg === 'week' && <WeeklyCard />}
     </>
   );
 }

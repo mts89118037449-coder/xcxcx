@@ -66,7 +66,7 @@ export interface PlayerView {
   battle: BattleView | null;
   admin: boolean;
   story: { ch: number; step: number; progress: number };
-  games: { cards: number; race: number; brew: number; brewReadyAt: number; cardsMaxBet: number };
+  games: { cards: number; race: number; brew: number; brewReadyAt: number; cardsMaxBet: number; dice: number; diceMaxBet: number; arm: number; darts: number };
   god: boolean;
   cell: string[];
   cellShow: Record<string, string>;

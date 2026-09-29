@@ -8,8 +8,9 @@ import { CharacterEditor } from '../Editor.tsx';
 import { InteriorPicker } from '../Interior.tsx';
 import { usePoses } from '../art/sprites.tsx';
 import { BonusList, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
+import { SegBar, useSeg } from '../Seg.tsx';
+import { STORY } from '../../shared/story.ts';
 
-type Panel = 'look' | 'cell' | null;
 
 export function Home() {
   const { p, now, online, act, busy, go } = useGame();
@@ -17,7 +18,8 @@ export function Home() {
   const [bare, setBare] = useState(false);
   const poses = usePoses();
   const [anim, animKey, play] = useAnim();
-  const [panel, setPanel] = useState<Panel>(p.faceChosen ? null : 'look');
+  const [seg, setSeg] = useSeg('home', p.faceChosen ? 'story' : 'look', ['story', 'look', 'cell', 'me'] as const);
+  const panel = p.faceChosen ? seg : 'look';
   const [preview, setPreview] = useState<string | null>(null);
   const tryOn = preview ? furnitureById.get(preview) : null;
   const tryIdx = tryOn ? FURNITURE.filter((f) => f.spot === tryOn.spot).indexOf(tryOn) : 0;
@@ -41,7 +43,6 @@ export function Home() {
   const daily = async () => {
     if ((await act('daily')) !== null) play('act-cheer');
   };
-  const toggle = (x: Panel) => setPanel(panel === x ? null : x);
 
   return (
     <>
@@ -83,22 +84,30 @@ export function Home() {
         )}
       </div>
 
-      <div className="icon-row">
-        <button className={`icon-tile ${panel === 'look' ? 'on' : ''} ${p.faceChosen ? '' : 'glow'}`} onClick={() => toggle('look')}>
-          <span>✏️</span>Внешность
-        </button>
-        <button className={`icon-tile ${panel === 'cell' ? 'on' : ''}`} onClick={() => toggle('cell')}>
-          <span>🛠️</span>Обустроить
-        </button>
-        <button className="icon-tile" disabled={busy || p.hp >= p.stats.maxHp} onClick={() => act('heal')}>
-          <span>💉</span>{GOLD_PRICES.heal} 🪙
-        </button>
-        <button className="icon-tile" disabled={busy || p.energy >= p.stats.maxEnergy} onClick={() => act('refill')}>
-          <span>☕</span>{GOLD_PRICES.energyRefill} 🪙
-        </button>
-      </div>
+      <SegBar
+        value={panel}
+        onChange={setSeg}
+        items={[
+          { id: 'story', icon: '📖', label: 'Сюжет', badge: !!STORY[p.story.ch] && p.story.progress >= (STORY[p.story.ch].steps[p.story.step]?.n ?? Infinity) },
+          { id: 'look', icon: '✏️', label: 'Облик', badge: !p.faceChosen },
+          { id: 'cell', icon: '🛠️', label: 'Обустроить' },
+          { id: 'me', icon: '📊', label: 'Профиль' },
+        ]}
+      />
 
-      <StoryCard />
+      {panel === 'story' && (
+        <>
+          <StoryCard />
+          <ul className="journal">
+            {p.journal.slice(0, 5).map((j, i) => (
+              <li key={i}>
+                <small>{new Date(j.t).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small>
+                {j.text}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {panel === 'look' && <CharacterEditor />}
       {panel === 'cell' && (
         <>
@@ -106,31 +115,32 @@ export function Home() {
           <CellShop onChange={() => play('act-cheer')} onPreview={showPreview} />
         </>
       )}
-
-      <div className="stat-row">
-        <div><span>⚔️</span>{p.stats.atk}</div>
-        <div><span>🛡️</span>{p.stats.def}</div>
-        <div><span>💥</span>{p.stats.crit}%</div>
-        <div><span>🎖️</span>{fmt(p.authority)}</div>
-        <div><span>🏆</span>#{p.place}</div>
-        <div><span>🥊</span>{p.wins}/{p.losses}</div>
-      </div>
-
-      {!p.vipUntil && (
-        <button className="vip-strip" onClick={() => go('shop')}>
-          👑 Блатной статус: ⚡×2 · ₽+20% · 🪙10/день <b>Хочу</b>
-        </button>
+      {panel === 'me' && (
+        <>
+          <div className="stat-row">
+            <div><span>⚔️</span>{p.stats.atk}<small>атака</small></div>
+            <div><span>🛡️</span>{p.stats.def}<small>защита</small></div>
+            <div><span>💥</span>{p.stats.crit}%<small>крит</small></div>
+            <div><span>🎖️</span>{fmt(p.authority)}<small>авторитет</small></div>
+            <div><span>🏆</span>#{p.place}<small>место</small></div>
+            <div><span>🥊</span>{p.wins}/{p.losses}<small>драки</small></div>
+          </div>
+          <div className="row gap">
+            <button className="btn btn-wide btn-dark" disabled={busy || p.hp >= p.stats.maxHp} onClick={() => act('heal')}>
+              💉 Подлечиться · {GOLD_PRICES.heal} 🪙
+            </button>
+            <button className="btn btn-wide btn-dark" disabled={busy || p.energy >= p.stats.maxEnergy} onClick={() => act('refill')}>
+              ☕ Энергия · {GOLD_PRICES.energyRefill} 🪙
+            </button>
+          </div>
+          {!p.vipUntil && (
+            <button className="vip-strip" onClick={() => go('shop')}>
+              👑 Блатной статус: ⚡×2 · ₽+20% · 🪙10/день <b>Хочу</b>
+            </button>
+          )}
+          {p.vipUntil && <div className="vip-strip on">👑 Блатной ещё {timeLeft(p.vipUntil - now)}</div>}
+        </>
       )}
-      {p.vipUntil && <div className="vip-strip on">👑 Блатной ещё {timeLeft(p.vipUntil - now)}</div>}
-
-      <ul className="journal">
-        {p.journal.slice(0, 4).map((j, i) => (
-          <li key={i}>
-            <small>{new Date(j.t).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small>
-            {j.text}
-          </li>
-        ))}
-      </ul>
     </>
   );
 }

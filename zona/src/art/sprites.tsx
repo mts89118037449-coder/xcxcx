@@ -234,7 +234,7 @@ export function NpcPortrait({ who, className }: { who: string; className?: strin
     return url ? <img className={className} src={url} alt="" /> : null;
   }
   return (
-    <svg className={`npc-portrait ${className ?? ''}`} viewBox="18 4 84 118" preserveAspectRatio="xMidYMin slice" aria-hidden>
+    <svg className={`npc-portrait ${className ?? ''}`} viewBox="24 10 72 92" preserveAspectRatio="xMidYMin slice" aria-hidden>
       <Rig look={n.look} anim="idle" shadow={false} />
     </svg>
   );

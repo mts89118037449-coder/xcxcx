@@ -45,7 +45,7 @@ import {
 
 import { battleAct, battleAuto, battleControls, battleResult, fight, newBattle, npcPerks, type BattleAction, type BattleState, type Fighter, type FightResult, type Round } from './combat.ts';
 import { STORY } from '../shared/story.ts';
-import { BREW, CARDS, RACE, ROACHES, RANKS, SUITS, cardValue } from '../shared/minigames.ts';
+import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, type Effects } from '../shared/events.ts';
 import { CONSUMABLES as CONSUMABLES_ALL, CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
 
@@ -1721,6 +1721,62 @@ export function roachRace(p: Player, pick: string, bet: number, now: number, rng
   const payout = won ? Math.round(bet * roach.payout) : 0;
   p.butts += payout;
   return { order, winner: winner.id, won, butts: payout - bet };
+}
+
+export function diceMaxBet(p: Player) {
+  return DICE.minBet + p.level * DICE.betPerLevel;
+}
+
+/** Кости: по два кубика тебе и блатному, у кого больше — забирает. Ничья — ставка назад. */
+export function dice(p: Player, bet: number, now: number, rng: Rng) {
+  const b = Math.floor(Number(bet));
+  if (!(b >= DICE.minBet)) throw new GameError(`Ставка от ${DICE.minBet} ₽`);
+  if (b > diceMaxBet(p)) throw new GameError(`На твоём уровне — не больше ${diceMaxBet(p)} ₽`);
+  if (p.money < b) throw new GameError('Не хватает денег');
+  playLimit(p, 'dice', DICE.perDay, now);
+  p.money -= b;
+  const roll = () => 1 + Math.floor(rng() * 6);
+  const me = [roll(), roll()];
+  const him = [roll(), roll()];
+  const sm = me[0] + me[1];
+  const sh = him[0] + him[1];
+  const result: 'win' | 'lose' | 'push' = sm > sh ? 'win' : sm < sh ? 'lose' : 'push';
+  const back = result === 'win' ? b * (me[0] === me[1] ? DICE.doublePayout : DICE.payout) : result === 'push' ? b : 0;
+  p.money += back;
+  return { me, him, result, money: back - b };
+}
+
+/** Армрестлинг: taps — сколько раз нажал за раунд. Сила даёт фору, больше maxTaps не засчитываем. */
+export function armWrestle(p: Player, rivalId: string, taps: number, now: number, rng: Rng) {
+  const rival = ARM.rivals.find((r) => r.id === rivalId);
+  if (!rival) throw new GameError('Нет такого соперника');
+  playLimit(p, 'arm', ARM.perDay, now);
+  const t = Math.max(0, Math.min(ARM.maxTaps, Math.floor(Number(taps) || 0)));
+  const power = t + p.str * 0.25;
+  const need = rival.need * (0.9 + rng() * 0.2); // соперник тоже бывает не в духе
+  const won = power >= need;
+  const out = { won, power: Math.round(power), need: Math.round(need), xp: 0, butts: 0, authority: 0, levelUps: 0 };
+  if (won) {
+    out.xp = rival.xp;
+    out.butts = rival.butts;
+    out.authority = rival.authority;
+    p.butts += rival.butts;
+    p.authority += rival.authority;
+    out.levelUps = addXp(p, rival.xp, now);
+  }
+  return out;
+}
+
+/** Заточка в мишень: точность трёх бросков (0..1) → очки → бычки. */
+export function darts(p: Player, accs: unknown, now: number) {
+  const list = Array.isArray(accs) ? accs.slice(0, DARTS.throws).map((a) => Number(a) || 0) : [];
+  if (list.length !== DARTS.throws) throw new GameError('Нужно три броска');
+  playLimit(p, 'darts', DARTS.perDay, now);
+  const points = list.map(dartPoints);
+  const score = points.reduce((a, b) => a + b, 0);
+  const butts = Math.floor(score / DARTS.buttsPer);
+  p.butts += butts;
+  return { points, score, butts };
 }
 
 /** Сварить чифир: quality — насколько точно снял с огня (0..1). */

@@ -115,11 +115,11 @@ export function Scene({
   const box = `0 0 ${W} ${H}`;
   return (
     <div className={`scene ${className}`} onClick={onClick}>
-      <svg className="scene-layer" viewBox={box} aria-hidden>
+      <svg className="scene-layer" viewBox={box} preserveAspectRatio="xMidYMid slice" aria-hidden>
         <SceneDefs />
         {backdrop}
       </svg>
-      <svg className="scene-layer" viewBox={box}>
+      <svg className="scene-layer" viewBox={box} preserveAspectRatio="xMidYMid slice">
         <SceneDefs />
         {children}
       </svg>
@@ -912,7 +912,7 @@ export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace
     </g>
   );
   return (
-    <Scene backdrop={<ZoneBackdrop />}>
+    <Scene backdrop={<ZoneBackdrop />} className="map">
       {/* кликабельные здания */}
       <rect x={6} y={70} width={130} height={100} fill="#fff" opacity={0.001} onClick={() => onPlace('barrack')} style={{ cursor: 'pointer' }} />
       <rect x={140} y={14} width={46} height={98} fill="#fff" opacity={0.001} onClick={() => onPlace('church')} style={{ cursor: 'pointer' }} />

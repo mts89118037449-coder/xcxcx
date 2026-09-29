@@ -584,3 +584,48 @@ test('режим бога: без ограничений, выключение �
   g.adminTool(p, 'event', 'cards', T0);
   assert.equal(p.event?.id, 'cards');
 });
+
+// --- Кости, армрестлинг, мишень -------------------------------------------------------
+
+import { ARM, DARTS, DICE, dartPoints } from '../shared/minigames.ts';
+
+test('кости: ставка списывается, выигрыш вдвое, дубль втрое, лимит на день', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.money = 1_000_000;
+  // rng: 0.99 → шестёрки у игрока, 0 → единицы у блатного
+  const seq = [0.99, 0.99, 0, 0];
+  let i = 0;
+  const r = g.dice(p, 100, T0, () => seq[i++ % seq.length]);
+  assert.deepEqual(r.me, [6, 6]);
+  assert.equal(r.result, 'win');
+  assert.equal(r.money, 100 * DICE.doublePayout - 100);
+  assert.throws(() => g.dice(p, 10, T0, fixed(0.5)), /Ставка от/);
+  assert.throws(() => g.dice(p, g.diceMaxBet(p) + 1, T0, fixed(0.5)), /не больше/);
+  for (let k = 1; k < DICE.perDay; k++) g.dice(p, 100, T0, fixed(0.5));
+  assert.throws(() => g.dice(p, 100, T0, fixed(0.5)), /хватит/);
+});
+
+test('армрестлинг: нажатия выше предела не засчитываются, победа даёт опыт и бычки', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  const brute = ARM.rivals[2];
+  const lose = g.armWrestle(p, brute.id, 5, T0, fixed(0.5));
+  assert.equal(lose.won, false);
+  const butts = p.butts;
+  const win = g.armWrestle(p, brute.id, 10_000, T0, fixed(0.5));
+  assert.equal(win.won, true);
+  assert.ok(win.power <= ARM.maxTaps + p.str, 'читерские нажатия обрезаны');
+  assert.equal(p.butts, butts + brute.butts);
+  assert.throws(() => g.armWrestle(p, 'nobody', 10, T0, fixed(0.5)), /Нет такого/);
+});
+
+test('мишень: очки по кольцам, бычки за очки, ровно три броска', () => {
+  assert.equal(dartPoints(1), DARTS.rings[0]);
+  assert.equal(dartPoints(0.1), 0);
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  const butts = p.butts;
+  const r = g.darts(p, [1, 1, 0.8], T0);
+  assert.equal(r.score, 50 + 50 + 25);
+  assert.equal(p.butts, butts + Math.floor(125 / DARTS.buttsPer));
+  assert.throws(() => g.darts(p, [1], T0), /три броска/);
+  assert.throws(() => g.darts(p, 'x', T0), /три броска/);
+});

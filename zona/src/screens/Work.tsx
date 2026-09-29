@@ -3,6 +3,7 @@ import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
 import { Dailies, Quests } from '../Tasks.tsx';
 import { Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
+import { SegBar, useSeg } from '../Seg.tsx';
 
 const STAT_ICON: Record<Stat, string> = { str: '💪', agi: '🤸', end: '🫀' };
 
@@ -10,6 +11,7 @@ export function Work() {
   const { p, act, toast, busy } = useGame();
   const talk = useTalk();
   const [anim, animKey, play] = useAnim();
+  const [seg, setSeg] = useSeg('work', 'jobs', ['jobs', 'quests', 'daily', 'gym'] as const);
 
   const work = async (jobId: string) => {
     const r = await act<{ money: number; xp: number; levelUps: number; bonus: boolean; item: string | null }>('job', { jobId });
@@ -28,6 +30,17 @@ export function Work() {
         <Stage onTalk={talk} loc="work" look={lookOf(p)} mood={p.hp < p.stats.maxHp * 0.3 ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
         <div className="scene-tag">⚒️ Промзона</div>
       </div>
+      <SegBar
+        value={seg}
+        onChange={setSeg}
+        items={[
+          { id: 'jobs', icon: '⚒️', label: 'Смены' },
+          { id: 'quests', icon: '📋', label: 'Поручения' },
+          { id: 'daily', icon: '✅', label: 'Дела дня' },
+          { id: 'gym', icon: '💪', label: 'Качалка', badge: p.statPoints || false },
+        ]}
+      />
+      {seg === 'jobs' && (
       <div className="job-grid">
         {JOBS.filter((j, i) => j.minLevel <= p.level || JOBS.findIndex((x) => x.minLevel > p.level) === i).map((j) => {
           const locked = p.level < j.minLevel;
@@ -40,8 +53,11 @@ export function Work() {
           );
         })}
       </div>
-      <Dailies />
-      <Quests />
+      )}
+      {seg === 'daily' && <Dailies />}
+      {seg === 'quests' && <Quests />}
+      {seg === 'gym' && (
+      <>
       <div className="stat-pump">
         {(Object.keys(STAT_NAMES) as Stat[]).map((s) => (
           <div key={s}>
@@ -66,6 +82,8 @@ export function Work() {
       >
         ↺ Сброс навыков · {GOLD_PRICES.statReset} 🪙
       </button>
+      </>
+      )}
     </>
   );
 }

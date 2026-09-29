@@ -129,7 +129,7 @@ function ClanCard({ id, mine = false, onChange }: { id: number; mine?: boolean; 
       <ol className="rating" style={{ marginTop: 8 }}>
         {c.members.map((m) => (
           <li key={m.id} className={`clickable ${m.id === p.id ? 'me' : ''}`} onClick={() => visit(m.id)}>
-            <Face face={m.face} size={28} />
+            <Face face={m.face} size={38} />
             <span className="grow">
               <b>{m.name}</b>
               {m.id === c.ownerId && <small className="muted"> · главный</small>}

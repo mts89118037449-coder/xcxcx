@@ -2,19 +2,15 @@ import { STORY } from '../shared/story.ts';
 import { NpcPortrait, useNpc } from './art/sprites.tsx';
 import { useGame } from './game.tsx';
 
-/** Чем заняться без энергии: плитки с остатком на сегодня. */
-export function Leisure() {
-  const { p, now, openMini, openPlace, openShells, go } = useGame();
-  const tiles = [
-    { icon: '🃏', name: 'Очко', left: p.games.cards, on: () => openMini('cards') },
-    { icon: '🪳', name: 'Бега', left: p.games.race, on: () => openMini('race') },
-    { icon: '☕', name: 'Чифир', left: p.games.brew, on: () => openMini('brew'), wait: p.games.brewReadyAt > now },
-    { icon: '🥜', name: 'Напёрстки', left: p.shellsLeft, on: openShells },
-    { icon: '💪', name: 'Турник', left: p.pullupsLeft, on: () => openPlace('pullups') },
-    { icon: '⛪', name: 'Церковь', left: null, on: () => openPlace('church') },
-    { icon: '🚶', name: 'Двор', left: now >= p.yardReadyAt ? 1 : 0, on: () => go('fight') },
-    { icon: '🕳️', name: 'Побег', left: p.escape.cdUntil > now ? 0 : null, on: () => openPlace('escape') },
-  ];
+interface Tile {
+  icon: string;
+  name: string;
+  left: number | null;
+  wait?: boolean;
+  on(): void;
+}
+
+function Tiles({ tiles }: { tiles: Tile[] }) {
   return (
     <div className="leisure">
       {tiles.map((t) => (
@@ -25,6 +21,41 @@ export function Leisure() {
         </button>
       ))}
     </div>
+  );
+}
+
+/** Мини-игры без энергии: плитки с остатком на сегодня. */
+export function GameTiles() {
+  const { p, now, openMini, openShells } = useGame();
+  return (
+    <Tiles
+      tiles={[
+        { icon: '🃏', name: 'Очко', left: p.games.cards, on: () => openMini('cards') },
+        { icon: '🪳', name: 'Бега', left: p.games.race, on: () => openMini('race') },
+        { icon: '☕', name: 'Чифир', left: p.games.brew, on: () => openMini('brew'), wait: p.games.brewReadyAt > now },
+        { icon: '🥜', name: 'Напёрстки', left: p.shellsLeft, on: openShells },
+        { icon: '🎲', name: 'Кости', left: p.games.dice, on: () => openMini('dice') },
+        { icon: '💪', name: 'Армрестлинг', left: p.games.arm, on: () => openMini('arm') },
+        { icon: '🎯', name: 'Мишень', left: p.games.darts, on: () => openMini('darts') },
+      ]}
+    />
+  );
+}
+
+/** Куда сходить по зоне. */
+export function PlaceTiles() {
+  const { p, now, openPlace, go, visit } = useGame();
+  return (
+    <Tiles
+      tiles={[
+        { icon: '🚶', name: 'Двор', left: now >= p.yardReadyAt ? 1 : 0, on: () => go('fight') },
+        { icon: '🏚️', name: 'По хатам', left: p.snoopsLeft ?? null, on: () => visit(0) },
+        { icon: '💪', name: 'Турник', left: p.pullupsLeft, on: () => openPlace('pullups') },
+        { icon: '⛪', name: 'Церковь', left: null, on: () => openPlace('church') },
+        { icon: '🏥', name: 'Санчасть', left: null, on: () => openPlace('medic') },
+        { icon: '🕳️', name: 'Побег', left: p.escape.cdUntil > now ? 0 : null, on: () => openPlace('escape') },
+      ]}
+    />
   );
 }
 

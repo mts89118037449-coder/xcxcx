@@ -1,4 +1,4 @@
-import { Leisure } from './Leisure.tsx';
+import { GameTiles } from './Leisure.tsx';
 import { BALANCE, GOLD_PRICES } from '../shared/content.ts';
 import { fmt, timeLeft, useGame } from './game.tsx';
 
@@ -52,7 +52,7 @@ export function EnergySheet({ onClose }: { onClose(): void }) {
         <div className="muted small center" style={{ marginTop: 10 }}>У тебя {fmt(p.gold)} 🪙</div>
         <div className="section" style={{ marginTop: 14 }}>Пока ждёшь — бесплатно</div>
         <div onClick={onClose}>
-          <Leisure />
+          <GameTiles />
         </div>
       </div>
     </div>

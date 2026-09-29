@@ -15,9 +15,9 @@ import { Escape } from './Escape.tsx';
 import { EventButton, EventStage } from './Events.tsx';
 import { BattleModal } from './Battle.tsx';
 import { AdminPanel } from './Admin.tsx';
-import { BrewGame, CardsGame, RaceGame, type Mini } from './Minigames.tsx';
+import { ArmGame, BrewGame, CardsGame, DartsGame, DiceGame, RaceGame, type Mini } from './Minigames.tsx';
 import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
-import { Bar, GameCtx, fmt, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Tab } from './game.tsx';
+import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
 import { Gear } from './screens/Gear.tsx';
 import { Home } from './screens/Home.tsx';
@@ -25,14 +25,13 @@ import { Shop } from './screens/Shop.tsx';
 import { Top } from './screens/Top.tsx';
 import { Work } from './screens/Work.tsx';
 
-const TABS: { id: Tab; icon: string; label: string }[] = [
+// Пять разделов внизу; «Братва» живёт внутри «Боя», «Ларёк» — кнопкой ⭐ в шапке.
+const TABS: { id: Tab; icon: string; label: string; also?: Tab[] }[] = [
   { id: 'home', icon: '🏚️', label: 'Хата' },
   { id: 'zone', icon: '🗺️', label: 'Зона' },
   { id: 'work', icon: '⚒️', label: 'Работа' },
-  { id: 'fight', icon: '🥊', label: 'Бой' },
+  { id: 'fight', icon: '🥊', label: 'Бой', also: ['top'] },
   { id: 'gear', icon: '🎒', label: 'Шмот' },
-  { id: 'top', icon: '🏴', label: 'Братва' },
-  { id: 'shop', icon: '⭐', label: 'Ларёк' },
 ];
 
 export function App() {
@@ -147,12 +146,17 @@ export function App() {
     <GameCtx.Provider value={game}>
       <header className="top">
         <div className="top-row">
-          <Face face={p.face} skin={p.skin} hat={p.equipped.head} size={40} className="top-face" />
+          <div className="top-face-wrap" onClick={() => go('gear')}>
+            <Face face={p.face} skin={p.skin} hat={p.equipped.head} size={48} className="top-face" />
+            <b className="top-lvl">{p.level}</b>
+          </div>
           <div className="who">
-            <b>{p.name}</b>
-            <span className="muted">
+            <b>
               {p.vipUntil ? '👑 ' : ''}
-              {p.rank} · ур. {p.level}
+              {p.name}
+            </b>
+            <span className="muted">
+              {p.rank}
               {p.admin && (
                 <b className={`god-badge ${p.god ? 'on' : ''}`} onClick={() => setAdminOpen(true)}>
                   {p.god ? '⚡ БОГ' : '⚙️'}
@@ -161,24 +165,21 @@ export function App() {
             </span>
           </div>
           <div className="wallet">
-            <span>
-              {fmt(p.money)} ₽ · <span onClick={() => go('zone')}>{p.butts} 🚬</span>
-            </span>
-            <span onClick={() => go('shop')}>{fmt(p.gold)} 🪙 <b className="plus">+</b></span>
+            <span className="coin">{fmtShort(p.money)} ₽</span>
+            <span className="coin" onClick={() => go('zone')}>{fmtShort(p.butts)} 🚬</span>
+            <span className="coin gold" onClick={() => go('shop')}>{fmtShort(p.gold)} 🪙<b className="plus">+</b></span>
           </div>
+          <button className={`shop-btn ${tab === 'shop' ? 'on' : ''}`} onClick={() => go('shop')} aria-label="Ларёк">
+            ⭐
+          </button>
         </div>
         <div className="bars">
-          <Bar kind="hp" value={p.hp} max={p.stats.maxHp} label={`❤️ ${fmt(p.hp)}/${fmt(p.stats.maxHp)}`} />
-          <div onClick={() => setEnergyOpen(true)} style={{ cursor: "pointer" }}>
-          <Bar
-            kind="en"
-            value={p.energy}
-            max={p.stats.maxEnergy}
-            label={`⚡ ${p.energy}/${p.stats.maxEnergy}${energyTimer ? ` · ${timeLeft(energyTimer)}` : ''}`}
-          />
+          <Bar kind="hp" value={p.hp} max={p.stats.maxHp} label={`❤️ ${fmt(p.hp)}`} />
+          <div onClick={() => setEnergyOpen(true)} style={{ cursor: 'pointer' }}>
+            <Bar kind="en" value={p.energy} max={p.stats.maxEnergy} label={`⚡ ${p.energy}/${p.stats.maxEnergy}${energyTimer ? ` · ${timeLeft(energyTimer)}` : ''}`} />
           </div>
+          <Bar kind="xp" value={p.xp} max={p.xpNext} label={`⭐ ${Math.floor((p.xp / Math.max(1, p.xpNext)) * 100)}%`} />
         </div>
-        <Bar kind="xp" value={p.xp} max={p.xpNext} label={`Опыт ${fmt(p.xp)} / ${fmt(p.xpNext)}`} />
       </header>
 
       <main>
@@ -196,7 +197,7 @@ export function App() {
 
       <nav className="tabs">
         {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => go(t.id)}>
+          <button key={t.id} className={tab === t.id || t.also?.includes(tab) ? 'active' : ''} onClick={() => go(t.id)}>
             <span className="tab-icon">
               {t.icon}
               {t.id === 'work' && p.statPoints > 0 && <i className="dot" />}
@@ -215,6 +216,9 @@ export function App() {
       {mini === 'cards' && <CardsGame onClose={() => setMini(null)} />}
       {mini === 'race' && <RaceGame onClose={() => setMini(null)} />}
       {mini === 'brew' && <BrewGame onClose={() => setMini(null)} />}
+      {mini === 'dice' && <DiceGame onClose={() => setMini(null)} />}
+      {mini === 'arm' && <ArmGame onClose={() => setMini(null)} />}
+      {mini === 'darts' && <DartsGame onClose={() => setMini(null)} />}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
       {battleOn && <BattleModal onClose={() => setBattleOn(false)} />}
       {eventId && <EventStage id={eventId} onClose={() => setEventId(null)} />}
