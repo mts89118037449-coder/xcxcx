@@ -49,7 +49,7 @@ import {
 } from '../shared/content.ts';
 
 import { battleAct, battleAuto, battleControls, battleResult, fight, newBattle, npcPerks, type BattleAction, type BattleState, type Fighter, type FightResult, type Round } from './combat.ts';
-import { STORY } from '../shared/story.ts';
+import { chapterOf } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { placeById, type PlaceId } from '../shared/places.ts';
@@ -1187,7 +1187,7 @@ export function ensureDaily(p: Player, now: number) {
 }
 
 export function track(p: Player, kind: TrackKind, amount = 1) {
-  const step = STORY[p.story.ch]?.steps[p.story.step];
+  const step = chapterOf(p.story.ch, p.mast)?.steps[p.story.step];
   if (step && step.kind === kind) p.story.progress = Math.min(step.n, p.story.progress + amount);
   if (weeklyEvent(Date.now()).goal.kind === kind) {
     ensureWeekly(p, Date.now());
@@ -1862,7 +1862,7 @@ export function adminTool(p: Player, tool: string, arg: string, now: number) {
 // --- Сюжет -----------------------------------------------------------------------
 
 export function claimStory(p: Player, now: number) {
-  const ch = STORY[p.story.ch];
+  const ch = chapterOf(p.story.ch, p.mast);
   const step = ch?.steps[p.story.step];
   if (!step) throw new GameError('Сюжет пройден');
   if (p.story.progress < step.n) throw new GameError('Шаг ещё не выполнен');

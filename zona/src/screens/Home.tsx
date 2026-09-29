@@ -9,7 +9,7 @@ import { InteriorPicker } from '../Interior.tsx';
 import { BonusList, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { DailyWeek, MastPicker, NotifyToggle, TermCard } from '../Term.tsx';
-import { STORY } from '../../shared/story.ts';
+import { chapterOf } from '../../shared/story.ts';
 
 
 export function Home() {
@@ -87,7 +87,7 @@ export function Home() {
         value={panel}
         onChange={setSeg}
         items={[
-          { id: 'story', icon: '📖', label: 'Сюжет', badge: !!STORY[p.story.ch] && p.story.progress >= (STORY[p.story.ch].steps[p.story.step]?.n ?? Infinity) },
+          { id: 'story', icon: '📖', label: 'Сюжет', badge: p.story.progress >= (chapterOf(p.story.ch, p.mast)?.steps[p.story.step]?.n ?? Infinity) },
           { id: 'look', icon: '✏️', label: 'Облик', badge: !p.faceChosen },
           { id: 'cell', icon: '🛠️', label: 'Обустроить' },
           { id: 'me', icon: '📊', label: 'Профиль' },

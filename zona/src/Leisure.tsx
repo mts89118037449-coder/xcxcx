@@ -1,5 +1,5 @@
 import { PLACES } from '../shared/places.ts';
-import { STORY } from '../shared/story.ts';
+import { chapterOf } from '../shared/story.ts';
 import { NpcPortrait, useNpc } from './art/sprites.tsx';
 import { useGame } from './game.tsx';
 
@@ -73,7 +73,7 @@ export function PlaceTiles() {
 /** Сюжет: кто ведёт главу, текущий шаг и прогресс. */
 export function StoryCard() {
   const { p, act, busy } = useGame();
-  const ch = STORY[p.story.ch];
+  const ch = chapterOf(p.story.ch, p.mast);
   const step = ch?.steps[p.story.step];
   const npc = useNpc(ch?.who ?? '');
   if (!ch || !step) return null;

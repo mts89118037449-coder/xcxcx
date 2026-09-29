@@ -858,3 +858,30 @@ test('места зоны: откат, цена, условия, срок ска
   assert.throws(() => g.placeDo(p, 'visits', 'long', T0, fixed(0.1)), /Не на что/);
   assert.throws(() => g.placeDo(p, 'nowhere', 'x', T0, fixed(0.1)), /Нет такого/);
 });
+
+test('сюжет: 12 глав, у седьмой — своя версия для каждой масти', async () => {
+  const { STORY, chapterOf } = await import('../shared/story.ts');
+  const { NPC_RIGS } = await import('../src/art/rig/npcs.ts');
+  const { consumableById } = await import('../shared/perks.ts');
+  const { itemById } = await import('../shared/content.ts');
+  assert.equal(STORY.length, 12);
+  for (const c of STORY)
+    for (const v of [c, ...Object.values(c.variants ?? {})]) {
+      assert.ok(NPC_RIGS[v!.who], `${c.id}: нет НПС ${v!.who}`);
+      for (const s of v!.steps) {
+        if (s.reward.item) assert.ok(consumableById.has(s.reward.item), `${c.id}: ${s.reward.item}`);
+        if (s.reward.gear) assert.ok(itemById.has(s.reward.gear), `${c.id}: ${s.reward.gear}`);
+      }
+    }
+  const i = STORY.findIndex((c) => c.variants);
+  assert.equal(chapterOf(i, 'muzhik')!.name, 'Золотые руки');
+  assert.equal(chapterOf(i, null)!.name, 'Своя дорога');
+  // сюжет считает шаги по версии своей масти
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.story = { ch: i, step: 0, progress: 0 };
+  p.mast = 'muzhik';
+  g.track(p, 'job', 40);
+  assert.equal(p.story.progress, 40);
+  const r = g.claimStory(p, T0);
+  assert.equal(r.money, 8000);
+});
