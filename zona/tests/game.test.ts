@@ -741,3 +741,38 @@ test('напоминания: не ночью, не больше трёх в д�
   p.notify.n = 0;
   assert.equal(g.canNotify(p, day), false);
 });
+
+// --- Этап 2: боссы с приёмами, комплекты, улучшения ---------------------------------------
+
+import { SETS, UPGRADE, upgradeCost } from '../shared/content.ts';
+
+test('комплект: бонус за две вещи и за полный набор', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  const set = SETS.find((s) => s.id === 'set_retro')!;
+  p.inventory = [...set.items];
+  p.equipped = { body: 'body_robe' };
+  const hp1 = g.stats(p, T0).maxHp;
+  g.equip(p, 'legs_pants', T0);
+  const hp2 = g.stats(p, T0).maxHp;
+  assert.equal(hp2 - hp1, set.two.hp ?? 0, 'у казённых штанов нет здоровья — вся прибавка от комплекта');
+  g.equip(p, 'feet_slippers', T0);
+  g.equip(p, 'cap_knit', T0);
+  assert.ok(g.stats(p, T0).maxHp >= hp2 + (set.full.hp ?? 0));
+});
+
+test('улучшение у мастера: стоит денег, поднимает бонусы, не выше +5', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.money = 10_000_000;
+  p.inventory.push('wpn_rebar');
+  p.level = 10;
+  g.equip(p, 'wpn_rebar', T0);
+  const atk0 = g.stats(p, T0).atk;
+  const money0 = p.money;
+  g.upgradeItem(p, 'wpn_rebar');
+  assert.equal(money0 - p.money, upgradeCost(itemByIdT.get('wpn_rebar')!, 0).amount);
+  assert.ok(g.stats(p, T0).atk > atk0);
+  for (let i = 1; i < UPGRADE.max; i++) g.upgradeItem(p, 'wpn_rebar');
+  assert.throws(() => g.upgradeItem(p, 'wpn_rebar'), /Лучше/);
+});
+
+import { itemById as itemByIdT } from '../shared/content.ts';

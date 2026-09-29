@@ -33,6 +33,10 @@ import {
   SPOT_NAMES,
   type Spot,
   itemById,
+  SETS,
+  UPGRADE,
+  upgradeCost,
+  type Item,
   jobById,
   packById,
   tattooById,
@@ -149,6 +153,8 @@ export interface Player {
   bossGold: Record<string, string>;
   /** масть: выбирается с 5 уровня, даёт свои бонусы */
   mast: Mast | null;
+  /** ступени улучшения вещей у мастера */
+  upgrades: Record<string, number>;
   /** номер ходки и сколько дней осталось до УДО */
   hodka: number;
   term: number;
@@ -243,6 +249,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     bossCd: {},
     bossGold: {},
     mast: null,
+    upgrades: {},
     hodka: 1,
     term: termDays(1),
     intro: 0,
@@ -269,6 +276,7 @@ export function migrate(p: Player): Player {
   p.furniture ??= [];
   p.bossGold ??= {};
   p.mast ??= null;
+  p.upgrades ??= {};
   p.hodka ??= 1;
   p.term ??= termDays(p.hodka);
   p.intro ??= -1; // старые игроки вступление уже прожили
@@ -321,16 +329,42 @@ export function isVip(p: Player, now: number): boolean {
 
 function bonuses(p: Player): Required<Bonus> {
   const total: Required<Bonus> = { atk: 0, def: 0, hp: 0, crit: 0, energy: 0, money: 0 };
-  const sources = [
-    // вещь работает только с её уровня: после выхода по УДО старый шмот ждёт, пока дорастёшь
-    ...Object.values(p.equipped).map((id) => (id ? itemById.get(id) : undefined)).filter((i) => !i || i.minLevel <= p.level),
-    ...p.tattoos.map((id) => tattooById.get(id)),
-    ...p.furniture.map((id) => furnitureById.get(id)),
-  ].filter((b): b is NonNullable<typeof b> => !!b);
-  for (const b of sources) {
-    for (const k of Object.keys(total) as (keyof Bonus)[]) total[k] += b[k] ?? 0;
+  const add = (b: Bonus, k = 1) => {
+    for (const key of Object.keys(total) as (keyof Bonus)[]) total[key] += Math.round((b[key] ?? 0) * k);
+  };
+  // вещь работает только с её уровня: после выхода по УДО старый шмот ждёт, пока дорастёшь
+  const worn = Object.values(p.equipped)
+    .map((id) => (id ? itemById.get(id) : undefined))
+    .filter((i): i is Item => !!i && i.minLevel <= p.level);
+  for (const i of worn) add(i, 1 + ((p.upgrades[i.id] ?? 0) * UPGRADE.perLevel) / 100);
+  for (const id of p.tattoos) {
+    const t = tattooById.get(id);
+    if (t) add(t);
+  }
+  for (const id of p.furniture) {
+    const f = furnitureById.get(id);
+    if (f) add(f);
+  }
+  // комплекты: за две вещи и за полный набор
+  const ids = new Set(worn.map((i) => i.id));
+  for (const set of SETS) {
+    const n = set.items.filter((id) => ids.has(id)).length;
+    if (n >= 2) add(set.two);
+    if (n >= set.items.length) add(set.full);
   }
   return total;
+}
+
+/** Улучшить вещь у мастера на промке. */
+export function upgradeItem(p: Player, itemId: string) {
+  const item = itemById.get(itemId);
+  if (!item || !p.inventory.includes(itemId)) throw new GameError('Нет в инвентаре');
+  const lvl = p.upgrades[itemId] ?? 0;
+  if (lvl >= UPGRADE.max) throw new GameError('Лучше уже не сделать');
+  const cost = upgradeCost(item, lvl);
+  spend(p, cost.amount, cost.currency);
+  p.upgrades[itemId] = lvl + 1;
+  return { level: lvl + 1, cost };
 }
 
 /** Бонус масти в процентах или очках (0 — масти нет). */
@@ -631,7 +665,7 @@ function requireHp(p: Player, now: number) {
 function bossFighter(bossId: string): Fighter {
   const boss = bossById.get(bossId)!;
   const bossIdx = [...bossById.keys()].indexOf(bossId);
-  return { name: boss.name, hp: boss.hp, maxHp: boss.hp, atk: boss.atk, def: boss.def, crit: 5, perks: npcPerks(boss.minLevel + 2, bossIdx * 7 + 1) };
+  return { name: boss.name, hp: boss.hp, maxHp: boss.hp, atk: boss.atk, def: boss.def, crit: 5, perks: boss.perks ?? npcPerks(boss.minLevel + 2, bossIdx * 7 + 1) };
 }
 
 function noBattle(p: Player) {

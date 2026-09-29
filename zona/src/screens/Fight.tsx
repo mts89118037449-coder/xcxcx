@@ -138,6 +138,7 @@ export function Fight() {
               <b>{b.name}</b>
               <small>
                 ❤️{fmt(b.hp)} ⚔️{b.atk}
+                {b.trait && <span className="boss-trait">{b.trait}</span>}
                 {b.drops.length > 0 && ` ${b.drops.map((d) => itemById.get(d.itemId)?.emoji).join('')}`}
               </small>
               {locked ? (

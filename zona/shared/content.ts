@@ -58,6 +58,10 @@ export interface Boss {
   cooldownMin: number;
   reward: { money: [number, number]; xp: number; authority: number; gold: [number, number] };
   drops: { itemId: string; chance: number }[];
+  /** свои приёмы босса (id перков); без них — подбираются по уровню */
+  perks?: string[];
+  /** чем опасен — подпись на плитке */
+  trait?: string;
 }
 
 export interface StarPack {
@@ -162,6 +166,14 @@ export const ITEMS: Item[] = [
   { id: 'drop_cap_general', name: 'Генеральская фуражка', emoji: '🎖️', slot: 'head', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 34, hp: 100, crit: 6 },
   { id: 'drop_ring_thief', name: 'Перстень вора', emoji: '💍', slot: 'charm', minLevel: 1, price: 0, currency: 'money', bossOnly: true, crit: 12, money: 30, energy: 20 },
   { id: 'drop_helmet', name: 'Шлем «Тайфуна»', emoji: '🪖', slot: 'head', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 48, hp: 150, crit: 5 },
+  { id: 'drop_gloves', name: 'Перчатки щипача', emoji: '🧤', slot: 'charm', minLevel: 1, price: 0, currency: 'money', bossOnly: true, crit: 4, money: 8 },
+  { id: 'drop_vohr_cap', name: 'Фуражка ВОХРа', emoji: '🪖', slot: 'head', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 12, hp: 30, crit: 2 },
+  { id: 'drop_dog_tag', name: 'Жетон кинолога', emoji: '🐾', slot: 'charm', minLevel: 1, price: 0, currency: 'money', bossOnly: true, crit: 5, energy: 10, hp: 30 },
+  { id: 'drop_notebook', name: 'Блокнот стукача', emoji: '📓', slot: 'charm', minLevel: 1, price: 0, currency: 'money', bossOnly: true, crit: 6, money: 20 },
+  { id: 'drop_scalpel', name: 'Скальпель лепилы', emoji: '🔪', slot: 'weapon', minLevel: 1, price: 0, currency: 'money', bossOnly: true, atk: 40, crit: 8 },
+  { id: 'drop_smotr_coat', name: 'Пальто смотрящего', emoji: '🧥', slot: 'body', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 38, hp: 140, money: 15 },
+  { id: 'drop_major_cap', name: 'Фуражка режимника', emoji: '🎖️', slot: 'head', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 40, hp: 120, crit: 6 },
+  { id: 'drop_prosecutor_suit', name: 'Мундир прокурора', emoji: '🥼', slot: 'body', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 50, hp: 190, crit: 6, money: 10 },
   { id: 'drop_crown', name: 'Корона смотрящего', emoji: '👑', slot: 'head', minLevel: 1, price: 0, currency: 'money', bossOnly: true, def: 24, hp: 70, crit: 6 },
 ];
 
@@ -189,7 +201,7 @@ export const JOBS: Job[] = [
   { id: 'j_smuggle', name: 'Затянуть грев с воли', emoji: '📦', minLevel: 15, energy: 28, money: [600, 1000], xp: 34 },
 ];
 
-export const BOSSES: Boss[] = [
+const BOSS_LIST: Boss[] = [
   {
     id: 'b_rat', name: 'Крыса Шнырь', emoji: '🐀', description: 'Ворует пайки у своих. Пора наказать.',
     minLevel: 2, hp: 220, atk: 14, def: 4, energy: 15, cooldownMin: 30,
@@ -238,7 +250,58 @@ export const BOSSES: Boss[] = [
     reward: { money: [18000, 26000], xp: 2400, authority: 900, gold: [3, 5] },
     drops: [{ itemId: 'drop_helmet', chance: 0.05 }],
   },
+  {
+    id: 'b_pickpocket', name: 'Щипач Сёма', emoji: '🤏', description: 'Шарит по карманам в очереди за баландой.',
+    minLevel: 3, hp: 380, atk: 18, def: 6, energy: 18, cooldownMin: 40, perks: ['dodge_1'], trait: '💨 увёртливый',
+    reward: { money: [220, 350], xp: 45, authority: 7, gold: [0, 1] },
+    drops: [{ itemId: 'drop_gloves', chance: 0.08 }],
+  },
+  {
+    id: 'b_zavhoz', name: 'Завхоз', emoji: '📦', description: 'Держит склад и знает, кому что недодать.',
+    minLevel: 7, hp: 1100, atk: 40, def: 18, energy: 30, cooldownMin: 90, perks: ['block_3', 'heal_2'], trait: '🛡️ прячется за стеллажом',
+    reward: { money: [900, 1400], xp: 130, authority: 25, gold: [0, 2] },
+    drops: [{ itemId: 'drop_vohr_cap', chance: 0.07 }],
+  },
+  {
+    id: 'b_dog', name: 'Кинолог с Джульбарсом', emoji: '🐕', description: 'Овчарка рвётся с поводка, хозяин не лучше.',
+    minLevel: 11, hp: 2600, atk: 70, def: 32, energy: 40, cooldownMin: 150, perks: ['bleed_4', 'double_3'], trait: '🩸 травит собакой',
+    reward: { money: [2400, 3600], xp: 330, authority: 60, gold: [1, 2] },
+    drops: [{ itemId: 'drop_dog_tag', chance: 0.07 }],
+  },
+  {
+    id: 'b_snitch', name: 'Стукач Сивый', emoji: '🐍', description: 'Всё видит, всё пишет куму. Бьёт исподтишка.',
+    minLevel: 15, hp: 4200, atk: 115, def: 50, energy: 55, cooldownMin: 240, perks: ['stun_5', 'dodge_4'], trait: '💫 бьёт исподтишка',
+    reward: { money: [4500, 7000], xp: 600, authority: 140, gold: [1, 2] },
+    drops: [{ itemId: 'drop_notebook', chance: 0.06 }],
+  },
+  {
+    id: 'b_medic', name: 'Лепила-садист', emoji: '💉', description: 'Колет всем одно и то же. И себе тоже — для бодрости.',
+    minLevel: 19, hp: 5500, atk: 150, def: 75, energy: 65, cooldownMin: 330, perks: ['heal_6', 'armor_5'], trait: '💚 лечит сам себя',
+    reward: { money: [6500, 10000], xp: 850, authority: 240, gold: [1, 3] },
+    drops: [{ itemId: 'drop_scalpel', chance: 0.06 }],
+  },
+  {
+    id: 'b_smotr', name: 'Смотрящий за зоной', emoji: '👁️', description: 'Держит зону. Ответит на каждый удар — и злее.',
+    minLevel: 24, hp: 7000, atk: 185, def: 100, energy: 75, cooldownMin: 420, perks: ['counter_6', 'rage_6'], trait: '😤 звереет, отвечает',
+    reward: { money: [10000, 15000], xp: 1250, authority: 420, gold: [2, 3] },
+    drops: [{ itemId: 'drop_smotr_coat', chance: 0.05 }],
+  },
+  {
+    id: 'b_major', name: 'Майор-режимник', emoji: '🪪', description: 'Режим — его религия. Добьёт, если дашь слабину.',
+    minLevel: 29, hp: 8800, atk: 220, def: 120, energy: 90, cooldownMin: 600, perks: ['execute_7', 'armor_7', 'stun_6'], trait: '☠️ добивает слабых',
+    reward: { money: [15000, 22000], xp: 2000, authority: 700, gold: [2, 4] },
+    drops: [{ itemId: 'drop_major_cap', chance: 0.05 }],
+  },
+  {
+    id: 'b_prosecutor', name: 'Прокурор по надзору', emoji: '⚖️', description: 'Приехал с проверкой. За ним закон, охрана и терпение.',
+    minLevel: 36, hp: 11800, atk: 270, def: 150, energy: 110, cooldownMin: 900, perks: ['heal_8', 'block_8', 'double_8'], trait: '⚖️ держит удар, лечится',
+    reward: { money: [24000, 34000], xp: 3000, authority: 1200, gold: [3, 6] },
+    drops: [{ itemId: 'drop_prosecutor_suit', chance: 0.05 }],
+  },
 ];
+
+/** Боссы по порядку уровней. */
+export const BOSSES: Boss[] = [...BOSS_LIST].sort((x, y) => x.minLevel - y.minLevel);
 
 // Обустройство хаты: мебель видна в сцене камеры и даёт постоянные бонусы.
 // В каждом месте — лестница улучшений: следующую ступень можно купить, только когда есть предыдущая.
@@ -560,6 +623,44 @@ export function rankTitle(authority: number): string {
 }
 
 export const itemById = new Map(ITEMS.map((i) => [i.id, i]));
+
+// --- Комплекты, редкость, улучшение -------------------------------------------------------
+
+export interface GearSet {
+  id: string;
+  name: string;
+  items: string[];
+  /** бонус за 2 вещи и за полный комплект (складываются) */
+  two: Bonus;
+  full: Bonus;
+}
+
+export const SETS: GearSet[] = [
+  { id: 'set_retro', name: 'Лагерный ретро', items: ['body_robe', 'legs_pants', 'feet_slippers', 'cap_knit'], two: { hp: 30 }, full: { hp: 80, money: 5 } },
+  { id: 'set_sport', name: 'Спортивный', items: ['body_tracksuit', 'legs_jeans', 'feet_sneakers', 'cap_baseball'], two: { energy: 15 }, full: { atk: 10, energy: 25 } },
+  { id: 'set_vohr', name: 'Форма ВОХРа', items: ['drop_uniform', 'drop_vohr_cap', 'drop_baton', 'feet_kirza'], two: { def: 10 }, full: { crit: 5, hp: 80 } },
+  { id: 'set_thief', name: 'Воровской', items: ['body_crimson', 'cap_mink', 'feet_lacquer', 'drop_ring_thief'], two: { money: 10 }, full: { crit: 8, atk: 15 } },
+  { id: 'set_storm', name: 'Штурмовой', items: ['body_kevlar', 'cap_kevlar', 'legs_cargo', 'feet_kirza'], two: { def: 15 }, full: { def: 30, hp: 120 } },
+  { id: 'set_boss', name: 'Хозяйский', items: ['drop_coat', 'drop_crown', 'drop_keys', 'drop_baton'], two: { atk: 10, hp: 40 }, full: { crit: 10, money: 15, energy: 20 } },
+];
+
+export type Rarity = 'common' | 'good' | 'rare' | 'epic';
+export const RARITY_NAMES: Record<Rarity, string> = { common: 'обычная', good: 'добротная', rare: 'редкая', epic: 'трофей' };
+
+export function rarityOf(item: Item): Rarity {
+  if (item.bossOnly) return 'epic';
+  if (item.currency === 'gold') return 'rare';
+  return item.price >= 5000 ? 'good' : 'common';
+}
+
+/** Улучшение у мастера на промке: +10% к бонусам вещи за ступень, до +5. */
+export const UPGRADE = { max: 5, perLevel: 10 };
+
+export function upgradeCost(item: Item, level: number): { amount: number; currency: 'money' | 'gold' } {
+  if (item.bossOnly) return { amount: 4000 * (level + 1) * (level + 1), currency: 'money' };
+  if (item.currency === 'gold') return { amount: Math.ceil(item.price * 0.15 * (level + 1)), currency: 'gold' };
+  return { amount: Math.max(150, Math.round(item.price * 0.4 * (level + 1))), currency: 'money' };
+}
 export const tattooById = new Map(TATTOOS.map((t) => [t.id, t]));
 export const jobById = new Map(JOBS.map((j) => [j.id, j]));
 export const bossById = new Map(BOSSES.map((b) => [b.id, b]));

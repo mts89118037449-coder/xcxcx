@@ -72,6 +72,8 @@ export const TOPS: Record<string, TopWear> = {
   body_sheepskin: { color: '#8a5a32', sleeves: 'long', neck: 'fur', hem: 22, bulk: 4, buttons: true, lining: '#eadcc0', pockets: true },
   body_crimson: { color: '#a0184a', sleeves: 'long', neck: 'collar', hem: 8, bulk: 2, buttons: true, lining: '#2a2a2e', pockets: true },
   body_kevlar: { color: '#4a5038', sleeves: 'long', sleeveColor: '#2a2c2e', neck: 'crew', hem: 2, bulk: 5, pockets: true, belt: '#1c1c14' },
+  drop_smotr_coat: { color: '#1c1c20', sleeves: 'long', neck: 'collar', hem: 34, bulk: 4, buttons: true, lining: '#3a3a40', belt: '#0e0e10' },
+  drop_prosecutor_suit: { color: '#2a3a5a', sleeves: 'long', neck: 'collar', hem: 10, bulk: 3, buttons: true, epaulets: true, lining: '#c8a24a', legs: { color: '#2a3a5a', stripe: '#c8a24a' } },
   drop_greatcoat: { color: '#3a4636', sleeves: 'long', neck: 'collar', hem: 30, bulk: 5, buttons: true, epaulets: true, belt: '#8a6a2a', lining: '#c8a24a' },
   // только у НПС
   npc_whitecoat: { color: '#e6e6e0', sleeves: 'long', neck: 'collar', hem: 34, bulk: 2, buttons: true, pockets: true, legs: { color: '#3c4a56' } },
@@ -106,6 +108,8 @@ export const HATS: Record<string, HeadWear> = {
   cap_bandana: { kind: 'cap8', color: '#2a2a30' },
   cap_gold: { kind: 'capgold', color: '#1c1c1e', color2: '#d9a53a' },
   drop_crown: { kind: 'crown', color: '#d9a53a', color2: '#b83a3a' },
+  drop_vohr_cap: { kind: 'furazhka', color: '#2a3446', color2: '#4a6aa8' },
+  drop_major_cap: { kind: 'furazhka', color: '#3a2a2a', color2: '#b83a3a' },
   cap_kevlar: { kind: 'helmet', color: '#3e4632' },
   drop_cap_general: { kind: 'furazhka', color: '#2e3a2a', color2: '#c8a24a' },
   drop_helmet: { kind: 'helmet', color: '#15171a' },

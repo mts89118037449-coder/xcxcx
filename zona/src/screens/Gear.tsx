@@ -1,11 +1,20 @@
 import { useState } from 'react';
-import { ITEMS, SLOT_NAMES, TATTOOS, itemById, type Item, type Slot } from '../../shared/content.ts';
+import { ITEMS, RARITY_NAMES, SETS, SLOT_NAMES, TATTOOS, UPGRADE, itemById, rarityOf, upgradeCost, type Item, type Slot } from '../../shared/content.ts';
 import { ItemIcon, TattooIcon } from '../art/Icons.tsx';
 import { NpcBanner, PoseG } from '../art/sprites.tsx';
 import { PerksPanel } from '../Perks.tsx';
 import { BonusList, Card, Price, lookOf, useAnim, useGame } from '../game.tsx';
 
 type View = 'mine' | 'shop' | 'ink' | 'perks';
+
+/** Бонусы вещи с учётом улучшения у мастера. */
+function scaled(i: Item, lvl: number): Item {
+  if (!lvl) return i;
+  const k = 1 + (lvl * UPGRADE.perLevel) / 100;
+  const out = { ...i };
+  for (const key of ['atk', 'def', 'hp', 'crit', 'energy', 'money'] as const) if (out[key]) out[key] = Math.round(out[key]! * k);
+  return out;
+}
 
 export function Gear() {
   const { p, act, busy, toast } = useGame();
@@ -23,6 +32,13 @@ export function Gear() {
     if ((await act('buy', { itemId: item.id })) === null) return;
     play('act-dress');
     toast(`${item.name} — твоё`);
+  };
+
+  const upgrade = async (item: Item) => {
+    const lvl = p.upgrades[item.id] ?? 0;
+    const c = upgradeCost(item, lvl);
+    if (!confirm(`Мастер улучшит «${item.name}» до +${lvl + 1} (бонусы +${UPGRADE.perLevel * (lvl + 1)}%) за ${c.amount} ${c.currency === 'gold' ? '🪙' : '₽'}?`)) return;
+    if ((await act('upgrade', { itemId: item.id })) !== null) toast(`🔧 ${item.name} +${lvl + 1}`);
   };
 
   const sell = async (item: Item) => {
@@ -68,6 +84,26 @@ export function Gear() {
             <div className="wardrobe-col">{(['weapon', 'charm', 'feet'] as Slot[]).map(slotTile)}</div>
           </div>
           <div className="muted small center">Нажми на персонажа — {bare ? 'одеть' : 'снять верх и показать наколки'}</div>
+          <h3 className="section">Комплекты</h3>
+          <div className="sets">
+            {SETS.map((set) => {
+              const n = set.items.filter((id) => Object.values(p.equipped).includes(id)).length;
+              return (
+                <div key={set.id} className={`set-card ${n >= 2 ? 'on' : ''} ${n >= set.items.length ? 'full' : ''}`}>
+                  <b>{set.name}</b>
+                  <small>
+                    {n}/{set.items.length} · {set.items.map((id) => itemById.get(id)?.emoji).join('')}
+                  </small>
+                  <div className="set-bonus">
+                    <span className={n >= 2 ? 'on' : ''}>2: <BonusList b={set.two} /></span>
+                    <span className={n >= set.items.length ? 'on' : ''}>
+                      {set.items.length}: <BonusList b={set.full} />
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           <h3 className="section">Инвентарь</h3>
           {mine.map((i) => {
             const on = p.equipped[i.slot] === i.id;
@@ -77,8 +113,12 @@ export function Gear() {
                   <div className="item-row">
                     <ItemIcon id={i.id} />
                     <div>
-                      <b>{i.name}</b> <span className="muted small">{SLOT_NAMES[i.slot]}</span>
-                      <div><BonusList b={i} /></div>
+                      <b className={`rar-${rarityOf(i)}`}>
+                        {i.name}
+                        {(p.upgrades[i.id] ?? 0) > 0 && <span className="upg">+{p.upgrades[i.id]}</span>}
+                      </b>{' '}
+                      <span className="muted small">{SLOT_NAMES[i.slot]}</span>
+                      <div><BonusList b={scaled(i, p.upgrades[i.id] ?? 0)} /></div>
                     </div>
                   </div>
                   <div className="row gap-s">
@@ -86,6 +126,11 @@ export function Gear() {
                       <button className="btn btn-s btn-dark" disabled={busy} onClick={() => dress('unequip', { slot: i.slot })}>Снять</button>
                     ) : (
                       <button className="btn btn-s" disabled={busy} onClick={() => dress('equip', { itemId: i.id })}>Надеть</button>
+                    )}
+                    {(p.upgrades[i.id] ?? 0) < UPGRADE.max && (
+                      <button className="btn btn-s btn-dark" disabled={busy} onClick={() => upgrade(i)} title="Улучшить у мастера">
+                        🔧
+                      </button>
                     )}
                     {i.currency === 'money' && (
                       <button className="btn btn-s btn-dark" disabled={busy} onClick={() => sell(i)}>₽</button>
@@ -115,7 +160,7 @@ export function Gear() {
                   <div className="item-row">
                     <ItemIcon id={i.id} />
                     <div>
-                      <b>{i.name}</b>
+                      <b className={`rar-${rarityOf(i)}`}>{i.name}</b> <span className="muted small">{RARITY_NAMES[rarityOf(i)]}</span>
                       <div><BonusList b={i} /></div>
                       {locked && <div className="muted small">🔒 с {i.minLevel} уровня</div>}
                     </div>

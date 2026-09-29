@@ -950,6 +950,13 @@ export function Weapon({ id }: { id?: string }) {
           <rect x={4} y={10} width={3.2} height={13} rx={1.4} transform="rotate(-30 5.6 11)" fill="#8a5a32" stroke={INK} strokeWidth={0.6} />
         </g>
       );
+    case 'drop_scalpel':
+      return (
+        <g transform="translate(0 6) rotate(-100)">
+          <rect x={-1.2} y={-4} width={2.4} height={12} rx={1} fill="#c8ccd2" stroke={INK} strokeWidth={0.6} />
+          <path d="M -1.2,8 L 1.4,8 L 0.6,16 C 0,17 -1.2,16 -1.2,14 Z" fill="#eef2f6" stroke={INK} strokeWidth={0.6} />
+        </g>
+      );
     case 'wpn_axe':
       return (
         <g transform="translate(0 6) rotate(-100)">

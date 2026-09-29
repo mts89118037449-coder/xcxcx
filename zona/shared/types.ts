@@ -68,6 +68,7 @@ export interface PlayerView {
   admin: boolean;
   story: { ch: number; step: number; progress: number };
   mast: Mast | null;
+  upgrades: Record<string, number>;
   hodka: number;
   term: number;
   termTotal: number;
