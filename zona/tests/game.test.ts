@@ -780,3 +780,53 @@ test('улучшение у мастера: стоит денег, подним�
 });
 
 import { itemById as itemByIdT } from '../shared/content.ts';
+
+test('случаи: больше сотни, цепочки ведут к продолжению, условия проверяются', async () => {
+  const { EVENTS: all, eventById, eventFits, EVENT_TIMING } = await import('../shared/events.ts');
+  const { tattooById } = await import('../shared/content.ts');
+  assert.ok(all.length >= 100, `случаев ${all.length}`);
+  const targets = new Set<string>();
+  for (const e of all)
+    for (const o of e.options) {
+      if (o.need?.tattoo) assert.ok(tattooById.has(o.need.tattoo), `${e.id}: нет наколки ${o.need.tattoo}`);
+      for (const x of o.outcomes)
+        if (x.next) {
+          assert.ok(eventById.get(x.next)?.chain, `${e.id} → ${x.next}: продолжение должно быть chain`);
+          targets.add(x.next);
+        }
+    }
+  for (const e of all) if (e.chain) assert.ok(targets.has(e.id), `до ${e.id} не дойти`);
+
+  // цепочка: малява → через несколько минут продолжение, прогулка его не перебивает
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.event = { id: 'mal_1', until: T0 + 30 * MIN };
+  const r = g.answerEvent(p, 0, T0, fixed(0.1));
+  assert.equal(r.next, true);
+  assert.equal(p.chain, 'mal_2');
+  g.spawnEvent(p, T0 + MIN, fixed(0.5));
+  assert.equal(p.event, null, 'рано');
+  g.spawnEvent(p, T0 + (EVENT_TIMING.chainMin + 1) * MIN, fixed(0.5));
+  assert.equal(p.event?.id, 'mal_2');
+  assert.equal(p.chain, null);
+  const y = g.yardWalk(p, T0 + (EVENT_TIMING.chainMin + 2) * MIN, fixed(0.5));
+  assert.equal(y.id, 'mal_2');
+
+  // вариант только для масти
+  p.event = { id: 'oper_2', until: T0 + 60 * MIN };
+  assert.throws(() => g.answerEvent(p, 0, T0 + 10 * MIN, fixed(0.1)), /масть/);
+  p.mast = 'kozel';
+  assert.equal(g.answerEvent(p, 0, T0 + 10 * MIN, fixed(0.1)).next, true);
+
+  // сами по себе не выпадают: продолжения, чужая масть, ночные днём, для бывалых
+  const noon = Date.UTC(2026, 0, 1, 9); // 12:00 по Москве
+  const night = Date.UTC(2026, 0, 1, 21); // полночь
+  const who = { mast: 'blat' as const, tattoos: [] as string[], level: 1, authority: 0 };
+  assert.equal(eventFits(eventById.get('mal_2')!, who, noon), false);
+  assert.equal(eventFits(eventById.get('m_norma')!, who, noon), false);
+  assert.equal(eventFits(eventById.get('m_razbor')!, who, noon), true);
+  assert.equal(eventFits(eventById.get('n_dream')!, who, noon), false);
+  assert.equal(eventFits(eventById.get('n_dream')!, who, night), true);
+  assert.equal(eventFits(eventById.get('x_prosecutor')!, who, noon), false);
+  assert.equal(eventFits(eventById.get('x_mother_tat')!, who, noon), false);
+  assert.equal(eventFits(eventById.get('x_mother_tat')!, { ...who, tattoos: ['t_mother'] }, noon), true);
+});

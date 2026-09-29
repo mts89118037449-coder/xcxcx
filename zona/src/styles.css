@@ -1919,3 +1919,10 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .set-bonus { display: flex; flex-direction: column; gap: 1px; font-size: 11px; color: var(--muted); }
 .set-bonus .on { color: #cfe7b8; }
 .boss-trait { display: block; color: #ffb38a; font-size: 11px; }
+
+/* цепочки и условия в случаях */
+.ev-lbl { margin-right: auto; }
+.ev-opt { gap: 6px; }
+.ev-opt-need { border-color: #3d6b8f; background: linear-gradient(#1f3346, #172636); }
+.ev-opt small.ev-need { color: #9fd0ff; white-space: nowrap; }
+.ev-next { margin: 6px 0; padding: 8px 10px; border-radius: 10px; background: #2a2214; border: 1px dashed #6b5520; color: var(--gold); font-size: 13px; text-align: center; }

@@ -1,4 +1,6 @@
 // Случаи, побег, санчасть и гости: всё, где решает рандом.
+import { EVENTS_MORE } from './events_more.ts';
+import type { Mast } from './term.ts';
 
 /** Эффект исхода. money — в «пайках»: 30 + уровень × 15 рублей за единицу. hp — доля от максимума. */
 export interface Effects {
@@ -15,11 +17,22 @@ export interface Effects {
 export interface Outcome extends Effects {
   w: number; // вес исхода
   text: string;
+  /** продолжение цепочки: придёт через несколько минут */
+  next?: string;
+}
+
+/** Условие: масть, наколка, уровень или авторитет. */
+export interface Need {
+  mast?: Mast[];
+  tattoo?: string;
+  level?: number;
+  authority?: number;
 }
 
 export interface EventOption {
   label: string;
   cost?: { money?: number; butts?: number; gold?: number };
+  need?: Need;
   outcomes: Outcome[];
 }
 
@@ -30,11 +43,52 @@ export interface GameEvent {
   text: string;
   where: 'any' | 'yard';
   options: EventOption[];
+  minLevel?: number;
+  /** выпадает только этой масти */
+  mast?: Mast[];
+  /** выпадает только с таким условием (например, с наколкой) */
+  need?: Need;
+  /** только ночью по Москве */
+  night?: boolean;
+  /** продолжение цепочки: само не выпадает */
+  chain?: boolean;
+}
+
+export interface NeedSubject {
+  mast: Mast | null;
+  tattoos: string[];
+  level: number;
+  authority: number;
+}
+
+/** Почему условие не выполнено — или null, если всё в порядке. */
+export function needFail(n: Need | undefined, p: NeedSubject): string | null {
+  if (!n) return null;
+  if (n.mast && !(p.mast && n.mast.includes(p.mast))) return 'не твоя масть';
+  if (n.tattoo && !p.tattoos.includes(n.tattoo)) return 'нужна наколка';
+  if (n.level && p.level < n.level) return `с ${n.level} ур.`;
+  if (n.authority && p.authority < n.authority) return `авторитет ${n.authority}`;
+  return null;
+}
+
+/** Ночь по Москве: с 22 до 6. */
+export const isNight = (now: number) => {
+  const h = (new Date(now).getUTCHours() + 3) % 24;
+  return h >= 22 || h < 6;
+};
+
+/** Может ли случай выпасть сам по себе этому игроку сейчас. */
+export function eventFits(e: GameEvent, p: NeedSubject, now: number): boolean {
+  if (e.chain) return false;
+  if (e.minLevel && p.level < e.minLevel) return false;
+  if (e.mast && !(p.mast && e.mast.includes(p.mast))) return false;
+  if (e.night && !isNight(now)) return false;
+  return !needFail(e.need, p);
 }
 
 const nothing = (text: string): Outcome => ({ w: 1, text });
 
-export const EVENTS: GameEvent[] = [
+const EVENTS_BASE: GameEvent[] = [
   {
     id: 'guard_drop', who: 'sheet/cast/officer', name: 'Вертухай', where: 'any',
     text: 'Вертухай на обходе выронил пачку сигарет и не заметил.',
@@ -394,12 +448,14 @@ export const EVENTS: GameEvent[] = [
     ],
   },
 ];
+export const EVENTS: GameEvent[] = [...EVENTS_BASE, ...EVENTS_MORE];
 export const eventById = new Map(EVENTS.map((e) => [e.id, e]));
 
 export const EVENT_TIMING = {
   minGapMin: 12, // между случаями
   maxGapMin: 30,
   ttlMin: 40, // сколько случай ждёт ответа
+  chainMin: 4, // через сколько приходит продолжение цепочки
   yardCooldownMin: 30, // прогулка по двору — случай сразу
 };
 

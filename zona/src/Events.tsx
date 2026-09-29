@@ -1,4 +1,6 @@
-import { eventById } from '../shared/events.ts';
+import { eventById, needFail } from '../shared/events.ts';
+import { tattooById } from '../shared/content.ts';
+import { mastById } from '../shared/term.ts';
 import { useState } from 'react';
 import { itemLabel } from './Perks.tsx';
 import { CellScene, Place, YardScene } from './art/Scenes.tsx';
@@ -17,6 +19,7 @@ interface Got {
   energy: number;
   hp: number;
   item: string | null;
+  next?: boolean;
 }
 
 const sign = (n: number) => (n > 0 ? `+${fmt(n)}` : `−${fmt(-n)}`);
@@ -102,23 +105,38 @@ export function EventStage({ id, onClose }: { id: string; onClose(): void }) {
               const money = Math.round((cost.money ?? 0) * ration);
               const label = o.label.replace(/\s*\([^)]*\)\s*$/, '');
               const tag = money ? `${fmt(money)} ₽` : cost.butts ? `${cost.butts} 🚬` : cost.gold ? `${cost.gold} 🪙` : '';
+              const why = needFail(o.need, p);
+              const need = o.need?.tattoo
+                ? `🖋️ ${tattooById.get(o.need.tattoo)?.name}`
+                : o.need?.mast
+                  ? o.need.mast.map((m) => `${mastById.get(m)?.emoji} ${mastById.get(m)?.name}`).join(', ')
+                  : o.need?.level
+                    ? `⭐ ${o.need.level} ур.`
+                    : '';
               return (
                 <button
                   key={i}
-                  className={`ev-opt ${i === ev.options.length - 1 && ev.options.length > 1 && !o.cost ? 'ev-opt-dim' : ''}`}
-                  disabled={busy || p.money < money || p.butts < (cost.butts ?? 0) || p.gold < (cost.gold ?? 0)}
+                  className={`ev-opt ${o.need ? 'ev-opt-need' : ''} ${i === ev.options.length - 1 && ev.options.length > 1 && !o.cost && !o.need ? 'ev-opt-dim' : ''}`}
+                  disabled={busy || !!why || p.money < money || p.butts < (cost.butts ?? 0) || p.gold < (cost.gold ?? 0)}
                   onClick={() => pick(i)}
                 >
-                  {label}
+                  <span className="ev-lbl">
+                    {why ? '🔒 ' : ''}
+                    {label}
+                  </span>
+                  {need && <small className="ev-need">{need}</small>}
                   {tag && <small>{tag}</small>}
                 </button>
               );
             })}
           </div>
         ) : (
-          <button className="btn btn-wide" onClick={onClose}>
-            Дальше
-          </button>
+          <>
+            {res.next && <div className="ev-next">⏳ Продолжение следует — загляни через пару минут</div>}
+            <button className="btn btn-wide" onClick={onClose}>
+              Дальше
+            </button>
+          </>
         )}
       </div>
     </div>

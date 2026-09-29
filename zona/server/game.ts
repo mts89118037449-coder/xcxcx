@@ -52,7 +52,7 @@ import { battleAct, battleAuto, battleControls, battleResult, fight, newBattle, 
 import { STORY } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
-import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, type Effects } from '../shared/events.ts';
+import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
 import { CONSUMABLES as CONSUMABLES_ALL, CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
 
 export { fight, npcPerks };
@@ -134,6 +134,8 @@ export interface Player {
   } | null;
   event: { id: string; until: number } | null;
   eventAt: number;
+  /** продолжение цепочки случаев, придёт после eventAt */
+  chain: string | null;
   yardAt: number;
   escape: { cdUntil: number; run: { stage: number; at: number } | null; best: number };
   medBedAt: number;
@@ -237,6 +239,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     cards: null,
     event: null,
     eventAt: now + 5 * MIN,
+    chain: null,
     yardAt: 0,
     escape: { cdUntil: 0, run: null, best: 0 },
     medBedAt: 0,
@@ -308,6 +311,7 @@ export function migrate(p: Player): Player {
   p.cards ??= null;
   p.event ??= null;
   p.eventAt ??= 0;
+  p.chain ??= null;
   p.yardAt ??= 0;
   p.escape ??= { cdUntil: 0, run: null, best: 0 };
   p.medBedAt ??= 0;
@@ -1544,10 +1548,17 @@ function pickWeighted<T extends { w: number }>(list: T[], rng: Rng): T {
 /** Время от времени на зоне что-то случается — висит, пока не ответишь. */
 export function spawnEvent(p: Player, now: number, rng: Rng, where: 'any' | 'yard' = 'any') {
   if (p.event && p.event.until <= now) p.event = null;
-  if (where === 'any' && (p.event || now < p.eventAt)) return;
-  const pool = EVENTS.filter((e) => e.where === 'any' || e.where === where);
-  const ev = pool[Math.floor(rng() * pool.length)];
-  p.event = { id: ev.id, until: now + EVENT_TIMING.ttlMin * MIN };
+  // продолжение цепочки не перебивается прогулкой
+  if (p.event && eventById.get(p.event.id)?.chain) return;
+  if (p.chain && !p.event && now >= p.eventAt) {
+    p.event = { id: p.chain, until: now + EVENT_TIMING.ttlMin * MIN };
+    p.chain = null;
+  } else {
+    if (where === 'any' && (p.event || now < p.eventAt)) return;
+    const pool = EVENTS.filter((e) => (e.where === 'any' || e.where === where) && eventFits(e, p, now));
+    const ev = pool[Math.floor(rng() * pool.length)];
+    p.event = { id: ev.id, until: now + EVENT_TIMING.ttlMin * MIN };
+  }
   const gap = EVENT_TIMING.minGapMin + rng() * (EVENT_TIMING.maxGapMin - EVENT_TIMING.minGapMin);
   p.eventAt = now + gap * MIN;
 }
@@ -1612,6 +1623,8 @@ export function answerEvent(p: Player, choice: number, now: number, rng: Rng) {
   const ev = eventById.get(p.event.id);
   const opt = ev?.options[choice];
   if (!ev || !opt) throw new GameError('Нет такого ответа');
+  const why = needFail(opt.need, p);
+  if (why) throw new GameError(`Не получится: ${why}`);
   const cost = opt.cost ?? {};
   const money = Math.round((cost.money ?? 0) * ration(p));
   if (p.money < money || p.butts < (cost.butts ?? 0) || p.gold < (cost.gold ?? 0)) throw new GameError('Не на что');
@@ -1623,7 +1636,11 @@ export function answerEvent(p: Player, choice: number, now: number, rng: Rng) {
   serve(p, TERM.event);
   const o = pickWeighted(opt.outcomes, rng);
   const got = applyEffects(p, o, now, rng);
-  return { text: o.text, who: ev.who, name: ev.name, ...got };
+  if (o.next) {
+    p.chain = o.next;
+    p.eventAt = now + EVENT_TIMING.chainMin * MIN;
+  }
+  return { text: o.text, who: ev.who, name: ev.name, next: !!o.next, ...got };
 }
 
 /** Прогулка по двору: случай прямо сейчас (раз в полчаса), без энергии. */
