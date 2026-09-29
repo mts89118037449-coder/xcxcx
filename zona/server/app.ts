@@ -1,7 +1,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
 import { OBSHAK } from '../shared/factions.ts';
-import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SPEED } from '../shared/minigames2.ts';
+import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SHIZO, SPEED } from '../shared/minigames2.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { NOTIFY, termDays } from '../shared/term.ts';
 import { BALANCE, CHURCH, cellView, comfortOf, CLAN, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
@@ -199,6 +199,7 @@ export function createApp(opts: AppOptions) {
         beads: g.playsLeft(p, 'beads', BEADS.perDay, t),
         beadsReadyAt: (p.minigames.beads?.at ?? 0) + BEADS.cooldownMin * 60_000,
         fish: g.playsLeft(p, 'fish', FISH.perDay, t),
+        shizo: g.playsLeft(p, 'shizo', SHIZO.perDay, t),
         tableMaxBet: NARDY.minBet + p.level * NARDY.betPerLevel,
       },
       tables: p.tables,
@@ -344,6 +345,8 @@ export function createApp(opts: AppOptions) {
     conveyor: (p, b, t) => g.beltShift(p, num(b.good), num(b.missed), t),
     beads: (p, b, t) => g.beadsPlay(p, b.accs, t),
     fish: (p, b, t) => g.fishing(p, b.accs, t, rng),
+    shizoStart: (p, _b, t) => g.shizoStart(p, t, rng),
+    shizoPick: (p, b, t) => g.shizoPick(p, Math.floor(num(b.choice)), t, rng),
     adminGod: (p, _b, t) => g.toggleGod(p, t),
     adminTool: (p, b, t) => g.adminTool(p, str(b.tool), str(b.arg), t),
     cellShow: (p, b) => g.setCellShow(p, str(b.spot), str(b.id)),

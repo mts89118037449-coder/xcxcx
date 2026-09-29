@@ -2070,3 +2070,14 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .fish-catch span { padding: 4px 10px; border-radius: 10px; background: #2a3a22; color: #9fe29a; font-weight: 700; font-size: 13px; }
 .fish-catch span.no { background: #3a2220; color: #ff8a7a; }
 .bone-half i.off { background: none; }
+.shizo-scene { position: relative; height: 150px; border-radius: 12px; overflow: hidden; margin-bottom: 8px; }
+.shizo-scene .scene { height: 100%; }
+.shizo-bar { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 13px; }
+.shizo-bar span { width: 96px; flex: none; }
+.shizo-bar div { display: flex; gap: 3px; flex: 1; }
+.shizo-bar i { flex: 1; height: 10px; border-radius: 3px; background: #0006; }
+.shizo-bar i.on { background: linear-gradient(#e0b04a, #b3802a); }
+.shizo-bar.low i.on { background: linear-gradient(#e05a4a, #a32a1a); }
+.shizo-card { margin: 8px 0; padding: 10px; border-radius: 12px; background: #1d1f1c; border: 1px solid #3a3e38; font-size: 14px; line-height: 1.35; }
+.shizo-text { margin: 6px 0; padding: 6px 10px; border-radius: 10px; background: #243a22; color: #bfe8b0; font-size: 13px; }
+.shizo-text.bad { background: #3a2220; color: #ff9a8a; }

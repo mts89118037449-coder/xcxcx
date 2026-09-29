@@ -45,6 +45,7 @@ export function GameTiles() {
         { icon: '📦', name: 'Конвейер', left: p.games.conveyor, on: () => openMini('conveyor') },
         { icon: '📿', name: 'Чётки', left: p.games.beads, on: () => openMini('beads'), wait: p.games.beadsReadyAt > now },
         { icon: '🎣', name: 'Рыбалка', left: p.games.fish, on: () => openMini('fish') },
+        { icon: '🧱', name: 'Выжить в ШИЗО', left: p.tables.shizo ? null : p.games.shizo, on: () => openMini('shizo') },
       ]}
     />
   );

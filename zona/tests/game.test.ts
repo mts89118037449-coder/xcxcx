@@ -1103,3 +1103,35 @@ test('мини-игры 2: нарды, домино, этюд и ловкост�
   const fish = g.fishing(p, [1, 0.6, 0], T0, fixed(0.9));
   assert.deepEqual(fish.catches.map((c) => c.kind), ['butts', 'butts', 'none']);
 });
+
+test('ШИЗО: пять суток, ночь отнимает, ноль — сломался; выжил — авторитет и братва', async () => {
+  const { SHIZO, SHIZO_CARDS } = await import('../shared/minigames2.ts');
+  assert.ok(SHIZO_CARDS.length >= SHIZO.days);
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  assert.throws(() => g.shizoStart(p, T0, fixed(0)), /уровня/);
+  p.level = 10;
+  g.shizoStart(p, T0, fixed(0));
+  // с умом: поднимать самую слабую шкалу — выживаешь
+  let r;
+  for (let i = 0; i < 10 && p.tables.shizo; i++) {
+    const st = p.tables.shizo!;
+    const card = SHIZO_CARDS.find((c) => c.id === st.card)!;
+    const after = (o: (typeof card.opts)[number]) => Math.min(st.heat + (o.d.heat ?? 0), st.food + (o.d.food ?? 0), st.spirit + (o.d.spirit ?? 0));
+    const best = card.opts.map((o, k) => ({ k, s: after(o) - (o.butts ? 99 : 0) })).sort((a, b) => b.s - a.s)[0].k;
+    r = g.shizoPick(p, best, T0, fixed(0.99));
+  }
+  assert.ok(r?.end?.won, 'выжил');
+  assert.ok(p.rep.brat > 0);
+  assert.throws(() => g.shizoStart(p, T0, fixed(0)), /завтра/);
+  // худшие варианты — ломается
+  const q = g.newPlayer(2, 'Слабак', null, T0);
+  q.level = 10;
+  g.shizoStart(q, T0, fixed(0));
+  let r2;
+  for (let i = 0; i < 10 && q.tables.shizo; i++) {
+    const card = SHIZO_CARDS.find((c) => c.id === q.tables.shizo!.card)!;
+    const worst = card.opts.map((o, k) => ({ k, s: (o.d.heat ?? 0) + (o.d.food ?? 0) + (o.d.spirit ?? 0) + (o.butts ? 99 : 0) })).sort((a, b) => a.s - b.s)[0].k;
+    r2 = g.shizoPick(q, worst, T0, fixed(0.99));
+  }
+  assert.equal(r2?.end?.won, false);
+});

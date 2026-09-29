@@ -53,6 +53,7 @@ import {
 import { battleAct, battleAuto, battleControls, battleResult, fight, newBattle, npcPerks, type BattleAction, type BattleState, type Fighter, type FightResult, type Round } from './combat.ts';
 import { chapterOf } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
+import { SHIZO, SHIZO_CARDS, shizoCardById, type ShizoStat } from '../shared/minigames2.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
@@ -131,6 +132,7 @@ export interface Player {
     nardy?: { bet: number; me: number; him: number; dice: [number, number]; hisLast: [number, number] | null };
     domino?: { bet: number; hand: Tile[]; ai: Tile[]; bone: Tile[]; chain: Tile[]; last: string };
     chess?: string;
+    shizo?: { day: number; heat: number; food: number; spirit: number; card: string; seen: string[] };
   };
   /** Режим бога (только админ): без трат и откатов; реальные ресурсы сохранены и вернутся. */
   god: { on: boolean; saved: { money: number; gold: number; energy: number; butts: number; chifir: number } | null };
@@ -2458,6 +2460,65 @@ export function chessSolve(p: Player, from: string, to: string, now: number) {
     out.levelUps = addXp(p, out.xp, now);
   }
   return out;
+}
+
+// --- Выжить в ШИЗО --------------------------------------------------------------------------
+
+function shizoDraw(s: { seen: string[] }, rng: Rng): string {
+  const pool = SHIZO_CARDS.filter((c) => !s.seen.includes(c.id));
+  const c = (pool.length ? pool : SHIZO_CARDS)[Math.floor(rng() * (pool.length || SHIZO_CARDS.length))];
+  s.seen.push(c.id);
+  return c.id;
+}
+
+export function shizoStart(p: Player, now: number, rng: Rng) {
+  if (p.tables.shizo) return { state: p.tables.shizo };
+  if (p.level < SHIZO.minLevel) throw new GameError(`ШИЗО — с ${SHIZO.minLevel} уровня`);
+  playLimit(p, 'shizo', SHIZO.perDay, now);
+  const s = { day: 1, heat: SHIZO.start, food: SHIZO.start, spirit: SHIZO.start, card: '', seen: [] as string[] };
+  s.card = shizoDraw(s, rng);
+  p.tables.shizo = s;
+  return { state: s };
+}
+
+/** Выбор на сегодня, потом ночь: минус по каждой шкале. Ноль по любой — срыв. */
+export function shizoPick(p: Player, choice: number, now: number, rng: Rng) {
+  const s = p.tables.shizo;
+  if (!s) throw new GameError('Ты не в ШИЗО');
+  const card = shizoCardById.get(s.card)!;
+  const o = card.opts[choice];
+  if (!o) throw new GameError('Нет такого выбора');
+  if (o.butts) {
+    if (p.butts < o.butts) throw new GameError('Нет бычков');
+    p.butts -= o.butts;
+  }
+  const failed = !!o.risk && rng() < o.risk.chance;
+  const d = failed ? o.risk!.d : o.d;
+  for (const k of ['heat', 'food', 'spirit'] as ShizoStat[]) s[k] = Math.min(SHIZO.max, s[k] + (d[k] ?? 0) - SHIZO.nightLoss);
+  const text = failed ? o.risk!.text : o.text;
+  const broke = s.heat <= 0 || s.food <= 0 || s.spirit <= 0;
+  let end: null | { won: boolean; authority: number; xp: number; rep: number; term: number; levelUps: number } = null;
+  if (broke || s.day >= SHIZO.days) {
+    const won = !broke;
+    const authority = won ? 8 + Math.floor(p.level / 2) : 0;
+    const xp = won ? 30 + p.level * 3 : 10;
+    p.authority += authority;
+    const rep = won ? gainRep(p, 'brat', 10) : 0;
+    const term = won ? 0.5 : 0;
+    if (won) serve(p, term);
+    else {
+      p.hp = Math.max(1, Math.round(stats(p, now).maxHp * 0.3));
+      p.hpAt = now;
+    }
+    const levelUps = addXp(p, xp, now);
+    log(p, now, won ? `🧱 Отсидел пять суток в ШИЗО — не сломался. +${authority} авторитета` : '🧱 Сломался в ШИЗО. Увезли в санчасть');
+    end = { won, authority, xp, rep, term, levelUps };
+    delete p.tables.shizo;
+  } else {
+    s.day++;
+    s.card = shizoDraw(s, rng);
+  }
+  return { text, failed, state: { ...s }, end };
 }
 
 // --- Ловкость -------------------------------------------------------------------------------

@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { matById, type MatId } from '../shared/craft.ts';
-import { BEADS, BELT, CHESS, FISH, NARDY, SPEED, nardyLand, nardyStep, puzzleById, type NardyPick } from '../shared/minigames2.ts';
+import { BEADS, BELT, CHESS, FISH, NARDY, SHIZO, SPEED, nardyLand, nardyStep, puzzleById, shizoCardById, type NardyPick } from '../shared/minigames2.ts';
+import { LocationScene } from './art/Locations.tsx';
+import { Place } from './art/Scenes.tsx';
+import { PoseG } from './art/sprites.tsx';
 import { consumableById } from '../shared/perks.ts';
 import { Table } from './Minigames.tsx';
-import { fmt, timeLeft, useGame } from './game.tsx';
+import { fmt, lookOf, timeLeft, useGame } from './game.tsx';
 
 /** Выбор ставки перед партией. */
 function Bets({ max, onBet, disabled }: { max: number; onBet(b: number): void; disabled: boolean }) {
@@ -558,6 +561,92 @@ export function FishGame({ onClose }: { onClose(): void }) {
         <button className="btn btn-wide" disabled={busy || p.games.fish <= 0} onClick={start}>
           {p.games.fish <= 0 ? 'Завтра' : 'К окну'}
         </button>
+      )}
+    </Table>
+  );
+}
+
+// --- Выжить в ШИЗО --------------------------------------------------------------------------------
+
+type ShizoState = NonNullable<ReturnType<typeof useGame>['p']['tables']['shizo']>;
+type ShizoEnd = { won: boolean; authority: number; xp: number; rep: number; term: number };
+
+export function ShizoGame({ onClose }: { onClose(): void }) {
+  const { p, act, busy } = useGame();
+  const s = p.tables.shizo;
+  const [text, setText] = useState<{ t: string; bad: boolean } | null>(null);
+  const [end, setEnd] = useState<ShizoEnd | null>(null);
+  const [last, setLast] = useState<ShizoState | null>(null);
+  const card = s ? shizoCardById.get(s.card) : null;
+  const view = s ?? last;
+  const start = async () => {
+    setEnd(null);
+    setText(null);
+    await act('shizoStart');
+  };
+  const pick = async (i: number) => {
+    const r = await act<{ text: string; failed: boolean; state: ShizoState; end: ShizoEnd | null }>('shizoPick', { choice: i });
+    if (!r) return;
+    setText({ t: r.text, bad: r.failed });
+    setLast(r.state);
+    if (r.end) setEnd(r.end);
+  };
+  const bar = (k: 'heat' | 'food' | 'spirit', icon: string, name: string) =>
+    view && (
+      <div className={`shizo-bar ${view[k] <= 2 ? 'low' : ''}`}>
+        <span>
+          {icon} {name}
+        </span>
+        <div>
+          {Array.from({ length: SHIZO.max }, (_, i) => (
+            <i key={i} className={i < view[k] ? 'on' : ''} />
+          ))}
+        </div>
+      </div>
+    );
+  return (
+    <Table who="sheet/cast/omon" title="🧱 Выжить в ШИЗО" left={`пять суток · раз в день · ${p.games.shizo ? 'можно' : 'завтра'}`} onClose={onClose}>
+      <div className="shizo-scene">
+        <LocationScene place="shizo">
+          <Place x={180} y={268} scale={0.9}>
+            <PoseG name="stand" anim="cold" look={lookOf(p)} />
+          </Place>
+        </LocationScene>
+        {view && <div className="scene-tag">сутки {Math.min(view.day, SHIZO.days)} из {SHIZO.days}</div>}
+      </div>
+      {bar('heat', '🔥', 'Тепло')}
+      {bar('food', '🍞', 'Сытость')}
+      {bar('spirit', '✊', 'Дух')}
+      {text && <div className={`shizo-text ${text.bad ? 'bad' : ''}`}>{text.t}</div>}
+      {end ? (
+        <>
+          <div className={`verdict ${end.won ? 'win' : 'lose'}`}>
+            {end.won ? `Не сломался! +${end.authority} 🎖️ · +${end.xp} ⭐ · 🃏 +${end.rep} · −${end.term} дн. срока` : 'Сломался. Увезли в санчасть'}
+          </div>
+          <button className="btn btn-wide btn-dark" onClick={onClose}>
+            Выйти
+          </button>
+        </>
+      ) : s && card ? (
+        <>
+          <div className="shizo-card">{card.text}</div>
+          <div className="ev-opts">
+            {card.opts.map((o, i) => (
+              <button key={i} className="ev-opt" disabled={busy || (!!o.butts && p.butts < o.butts)} onClick={() => pick(i)}>
+                <span className="ev-lbl">{o.label}</span>
+                {o.risk && <small>риск</small>}
+              </button>
+            ))}
+          </div>
+          <div className="muted small center">Каждую ночь −1 ко всему. Ноль по любой шкале — сломался.</div>
+        </>
+      ) : (
+        <>
+          <div className="muted small center">Пять суток в бетонном мешке: тепло, еда и дух. Выдержишь — братва встретит как своего.</div>
+          <button className="btn btn-wide btn-red" disabled={busy || p.games.shizo <= 0 || p.level < SHIZO.minLevel} onClick={start}>
+            {p.level < SHIZO.minLevel ? `🔒 с ${SHIZO.minLevel} уровня` : p.games.shizo <= 0 ? 'Завтра' : 'Зайти в ШИЗО'}
+          </button>
+        </>
       )}
     </Table>
   );

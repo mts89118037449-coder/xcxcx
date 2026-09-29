@@ -46,6 +46,7 @@ const SpeedGame = named(() => import('./Minigames2.tsx'), 'SpeedGame');
 const ConveyorGame = named(() => import('./Minigames2.tsx'), 'ConveyorGame');
 const BeadsGame = named(() => import('./Minigames2.tsx'), 'BeadsGame');
 const FishGame = named(() => import('./Minigames2.tsx'), 'FishGame');
+const ShizoGame = named(() => import('./Minigames2.tsx'), 'ShizoGame');
 
 const TABS: { id: Tab; icon: string; label: string; also?: Tab[] }[] = [
   { id: 'home', icon: '🏚️', label: 'Хата' },
@@ -259,6 +260,7 @@ export function App() {
       {mini === 'conveyor' && <ConveyorGame onClose={() => setMini(null)} />}
       {mini === 'beads' && <BeadsGame onClose={() => setMini(null)} />}
       {mini === 'fish' && <FishGame onClose={() => setMini(null)} />}
+      {mini === 'shizo' && <ShizoGame onClose={() => setMini(null)} />}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
       {introOn && <IntroOverlay onDone={() => setIntroOn(false)} />}
       {!introOn && !mastAsked && !p.mast && p.level >= MAST_RULES.minLevel && <MastPicker onClose={() => setMastAsked(true)} />}
