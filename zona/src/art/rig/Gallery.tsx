@@ -29,7 +29,7 @@ export function RigGallery() {
     L({ body: 'body_crimson', legs: 'legs_black', feet: 'feet_lacquer', head: 'cap_mink', charm: 'charm_fiksa' }, 212, { skin: 2 }),
     L({ body: 'body_sheepskin', legs: 'legs_black', feet: 'feet_valenki', weapon: 'wpn_nunchaku' }, 180, { build: 2 }),
     L({ body: 'body_orange', legs: 'legs_pants', feet: 'feet_slippers' }, 48, { build: 0 }),
-    L({}, 70, { tattoos: ['t_tiger', 't_cat', 't_skull', 't_dagger', 't_rings'], str: 40, build: 2, skin: 3 }),
+    L({}, 70, { tattoos: ['t_madonna', 't_wolf', 't_snake', 't_owl', 't_clock', 't_cards', 't_dots', 't_knee_stars', 't_lion', 't_crown', 't_epaulets'], str: 40, build: 2, skin: 3 }),
     L({ legs: 'legs_pants', charm: 'charm_dogtag' }, 250, { tattoos: ['t_epaulets', 't_eagle', 't_rose'] }),
   ];
   const q = new URLSearchParams(location.search);

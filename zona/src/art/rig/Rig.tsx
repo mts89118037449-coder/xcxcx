@@ -5,7 +5,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { faceParts } from '../../../shared/content.ts';
 import type { Look } from '../../../shared/types.ts';
-import { TATTOO_ART, Rings, armSlots } from './tattoos.tsx';
+import { HandInk, TATTOO_ART, Rings, armSlots, firstOf, handInks } from './tattoos.tsx';
 import { FEET, HAIR_COLORS, HATS, LEGS, SKIN_TONES, TOPS, type LegWear, type Pattern, type TopWear } from './wear.ts';
 
 // --- Матрицы -------------------------------------------------------------------
@@ -1174,6 +1174,11 @@ export function RigBody({ look, pose, uid, mirror, shadow = true, bare, prop, ti
           }
         />
       )}
+      {!near && handInks(look.tattoos)[1] && (
+        <g transform={mat(a.w)}>
+          {handInks(look.tattoos)[1] === 't_rings' ? <Rings fist={pose.fist > 0.5} /> : <HandInk id={handInks(look.tattoos)[1]!} fist={pose.fist > 0.5} />}
+        </g>
+      )}
       {!near && prop === 'bowl' && (
         <g transform={mat(a.w)}>
           <HandProp kind="bowl" near={false} fist={false} />
@@ -1181,7 +1186,7 @@ export function RigBody({ look, pose, uid, mirror, shadow = true, bare, prop, ti
       )}
       {near && (
         <g transform={mat(a.w)}>
-          {look.tattoos.includes('t_rings') && <Rings fist={pose.fist > 0.5} />}
+          {handInks(look.tattoos)[0] === 't_rings' ? <Rings fist={pose.fist > 0.5} /> : handInks(look.tattoos)[0] && <HandInk id={handInks(look.tattoos)[0]!} fist={pose.fist > 0.5} />}
           {look.equipped.charm === 'charm_watch' && (
             <g>
               <rect x={-3.6} y={-2.2} width={7.4} height={3} rx={0.8} fill="#2a2420" stroke={INK} strokeWidth={0.5} />
@@ -1212,7 +1217,12 @@ export function RigBody({ look, pose, uid, mirror, shadow = true, bare, prop, ti
         uid={uid}
         {...skinShade}
         hatch={false}
-        extra={<path transform={mat(l.k)} d={`M ${-1 * mw},3 C ${1.4 * mw},5 ${3.4 * mw},4 ${4.4 * mw},1.4`} fill="none" stroke={skin.shade} strokeWidth={0.8} strokeLinecap="round" />}
+        extra={
+          <>
+            <path transform={mat(l.k)} d={`M ${-1 * mw},3 C ${1.4 * mw},5 ${3.4 * mw},4 ${4.4 * mw},1.4`} fill="none" stroke={skin.shade} strokeWidth={0.8} strokeLinecap="round" />
+            {!legs && look.tattoos.includes('t_knee_stars') && <g transform={`${mat(l.k)} translate(${1.2 * mw} 3) scale(0.8)`} opacity={0.85}>{TATTOO_ART.t_knee_stars.art}</g>}
+          </>
+        }
       />
       {legs && (
         <Chain
@@ -1436,12 +1446,15 @@ function TopLayer({ top, m, uid, d, sh, skirt, bw, bulk }: { top: TopWear; m: Ma
 function ChestTattoo({ look, bw }: { look: Look; bw: number }) {
   const t = look.tattoos;
   const at = (id: string, x: number, y: number, sx = 1, sy = sx) => t.includes(id) && <g transform={`translate(${x * bw} ${y}) scale(${sx} ${sy})`}>{TATTOO_ART[id].art}</g>;
+  const chest = firstOf(t, ['t_church', 't_madonna', 't_crucifix', 't_lighthouse', 't_ship', 't_mother']);
+  const belly = firstOf(t, ['t_eagle', 't_eyes', 't_lion', 't_beetle', 't_bear']);
   return (
     <g opacity={0.85}>
-      {at('t_church', 3, -35.6, 0.95)}
+      {/* на грудь и живот — по одной: первая набитая из списка */}
+      {chest && at(chest, 3, chest === 't_mother' ? -38 : -35.6, 0.95)}
       {at('t_stars', -5.6, -43.6, 0.72)}
       {at('t_stars', 12.4, -44, 0.52, 0.66)}
-      {at('t_eagle', 3.4, -13.6, 0.82)}
+      {belly && at(belly, 3.4, -13.6, 0.82)}
     </g>
   );
 }
@@ -1450,12 +1463,15 @@ function ArmTattoo({ look, a, near, covered }: { look: Look; a: Mats['n']; near:
   if (covered === 'long') return null;
   const slots = armSlots(look.tattoos);
   const up = slots[near ? 'nu' : 'fu'];
+  // на ближнем плече — погоны, на дальнем — корона (если набиты обе)
+  const shoulders = ['t_epaulets', 't_crown'].filter((id) => look.tattoos.includes(id));
+  const shoulder = near ? shoulders[0] : shoulders[1] ?? (shoulders.length === 1 ? shoulders[0] : undefined);
   const fore = slots[near ? 'nf' : 'ff'];
   const upOk = covered !== 'short';
   return (
     <g opacity={0.85}>
-      {upOk && look.tattoos.includes('t_epaulets') && <g transform={`${mat(a.s)} translate(0.8 2.6) scale(0.9)`}>{TATTOO_ART.t_epaulets.art}</g>}
-      {upOk && up && <g transform={`${mat(a.s)} translate(0.6 ${look.tattoos.includes('t_epaulets') ? 15 : 13}) scale(0.9)`}>{TATTOO_ART[up].art}</g>}
+      {upOk && shoulder && <g transform={`${mat(a.s)} translate(0.8 2.6) scale(0.9)`}>{TATTOO_ART[shoulder].art}</g>}
+      {upOk && up && <g transform={`${mat(a.s)} translate(0.6 ${shoulder ? 15 : 13}) scale(0.9)`}>{TATTOO_ART[up].art}</g>}
       {fore && <g transform={`${mat(a.e)} translate(0.4 11) scale(${fore === 't_dagger' ? 0.9 : 0.78})`}>{TATTOO_ART[fore].art}</g>}
     </g>
   );

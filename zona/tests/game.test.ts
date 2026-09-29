@@ -551,6 +551,10 @@ test('новый контент: у каждого случая и главы е
   for (const it of ITEMS) if (table[it.slot]) assert.ok(table[it.slot][it.id], `вещь ${it.id} не описана для рига`);
   assert.equal(new Set(ITEMS.map((i) => i.id)).size, ITEMS.length);
   assert.equal(new Set(TATTOOS.map((t) => t.id)).size, TATTOOS.length);
+  // рисунки наколок — в .tsx, который node не импортирует: проверяем по тексту
+  const { readFileSync } = await import('node:fs');
+  const art = readFileSync(new URL('../src/art/rig/tattoos.tsx', import.meta.url), 'utf8');
+  for (const t of TATTOOS) assert.ok(art.includes(`  ${t.id}: {`), `наколка ${t.id} не нарисована`);
 });
 
 test('очко, тараканьи бега и чифир: лимиты и расчёт', () => {
