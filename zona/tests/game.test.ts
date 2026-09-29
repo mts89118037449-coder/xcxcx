@@ -1135,3 +1135,30 @@ test('ШИЗО: пять суток, ночь отнимает, ноль — с�
   }
   assert.equal(r2?.end?.won, false);
 });
+
+test('клан: постройки хаты дают бонусы, очки войны копятся в клане, босс клана с откатом', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  const s0 = g.stats(p, T0);
+  p.clanHut = { kitchen: 2, gym: 5, cash: 1 };
+  assert.equal(g.stats(p, T0).maxEnergy, s0.maxEnergy, 'без клана постройки не работают');
+  p.clanId = 7;
+  const s1 = g.stats(p, T0);
+  assert.equal(s1.maxEnergy - s0.maxEnergy, 6);
+  assert.ok(s1.atk > s0.atk);
+  assert.equal(s1.moneyBonus - s0.moneyBonus, 2);
+  // очки войны
+  g.track(p, 'pvpWin');
+  assert.equal(p.war.pts, 2);
+  g.track(p, 'boss', 3);
+  assert.equal(p.war.pts, 5);
+  p.clanId = null;
+  g.track(p, 'pvpWin');
+  assert.equal(p.war.pts, 5, 'без клана очков нет');
+  // босс клана
+  assert.throws(() => g.clanBossHit(p, T0, fixed(0.5)), /не в клане/);
+  p.clanId = 7;
+  p.energy = 100;
+  const h = g.clanBossHit(p, T0, fixed(0.5));
+  assert.ok(h.damage > 0);
+  assert.throws(() => g.clanBossHit(p, T0 + 1000, fixed(0.5)), /не готов/);
+});

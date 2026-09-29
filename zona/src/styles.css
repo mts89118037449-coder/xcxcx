@@ -2081,3 +2081,19 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .shizo-card { margin: 8px 0; padding: 10px; border-radius: 12px; background: #1d1f1c; border: 1px solid #3a3e38; font-size: 14px; line-height: 1.35; }
 .shizo-text { margin: 6px 0; padding: 6px 10px; border-radius: 10px; background: #243a22; color: #bfe8b0; font-size: 13px; }
 .shizo-text.bad { background: #3a2220; color: #ff9a8a; }
+
+/* клан: босс, хата, война */
+.clan-extras { margin: 10px 0; }
+.clan-boss { display: flex; flex-direction: column; gap: 6px; position: relative; }
+.clan-boss-bar { position: relative; height: 18px; border-radius: 9px; background: #0006; overflow: hidden; }
+.clan-boss-bar div { height: 100%; background: linear-gradient(90deg, #7a1a14, #d0402a); transition: width 0.4s; }
+.clan-boss-bar span { position: absolute; inset: 0; text-align: center; font-size: 11px; line-height: 18px; font-weight: 800; color: #fff; }
+.clan-hit { position: absolute; right: 8px; top: 18px; font-weight: 900; color: #ffd24a; animation: dmg-pop 0.9s ease-out forwards; }
+.clan-hit.crit { color: #ff6a4a; font-size: 18px; }
+.clan-top { margin: 0; padding-left: 18px; font-size: 12.5px; }
+.clan-top li { display: flex; justify-content: space-between; }
+.hut { display: flex; flex-direction: column; gap: 6px; }
+.hut-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; background: #0003; }
+.hut-row small { display: block; font-size: 11.5px; }
+.hut-emoji { font-size: 26px; }
+.clan-war { display: flex; flex-direction: column; gap: 6px; }

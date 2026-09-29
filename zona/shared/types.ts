@@ -95,6 +95,10 @@ export interface PlayerView {
   debt: { amount: number; due: number; from: 'baryga' | 'katala'; counted: number } | null;
   loanLimit: number;
   mats: Partial<Record<string, number>>;
+  clanHitReadyAt: number;
+  war: { week: number; pts: number };
+  warClaimed: number;
+  week: number;
   obshak: { total: number; log: { name: string; amount: number; at: number }[]; askReadyAt: number };
   yardReadyAt: number;
   escape: { cdUntil: number; stage: number | null; best: number };
@@ -199,6 +203,9 @@ export interface ClanView {
   ownerId: number;
   members: { id: number; name: string; level: number; authority: number; face: number | null }[];
   upgradeCost: number | null;
+  hut?: Partial<Record<'kitchen' | 'gym' | 'cash' | 'lookout', number>>;
+  boss?: { hp: number; max: number; killed: boolean; top: { name: string; dmg: number }[] };
+  war?: { ranking: { id: number; name: string; tag: string; pts: number }[]; prevTop: { id: number; name: string; tag: string; pts: number }[]; prevRank: number };
 }
 
 export interface BattleView {

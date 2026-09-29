@@ -57,6 +57,7 @@ import { SHIZO, SHIZO_CARDS, shizoCardById, type ShizoStat } from '../shared/min
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
+import { CLAN_BOSS, CLAN_WAR, HUT, type HutId } from '../shared/clans.ts';
 import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
 import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
@@ -167,6 +168,12 @@ export interface Player {
   quests: QuestState;
   clanId: number | null;
   clanLevel: number;
+  /** постройки хаты клана (копия с клана) */
+  clanHut: Partial<Record<HutId, number>>;
+  clanHitAt: number;
+  /** очки войны кланов за неделю */
+  war: { week: number; pts: number };
+  warClaimed: number;
   respect: Record<string, string>;
   /** Надетые боевые перки (до PERK_SLOTS). */
   perks: string[];
@@ -277,6 +284,10 @@ export function newPlayer(id: number, name: string, username: string | null, now
     quests: { board: [], active: null },
     clanId: null,
     clanLevel: 0,
+    clanHut: {},
+    clanHitAt: 0,
+    war: { week: 0, pts: 0 },
+    warClaimed: 0,
     respect: {},
     bossCd: {},
     bossGold: {},
@@ -355,6 +366,10 @@ export function migrate(p: Player): Player {
   p.quests ??= { board: [], active: null };
   p.clanId ??= null;
   p.clanLevel ??= 0;
+  p.clanHut ??= {};
+  p.clanHitAt ??= 0;
+  p.war ??= { week: 0, pts: 0 };
+  p.warClaimed ??= 0;
   p.respect ??= {};
   p.perks ??= ['crit_1'];
   p.belt ??= ['c_bandage', 'c_sand'];
@@ -443,16 +458,23 @@ export function serve(p: Player, days: number) {
   p.term = Math.max(0, Math.round((p.term - days) * 1000) / 1000);
 }
 
+/** Бонус построек хаты клана. */
+export function hutBonus(p: Player, k: 'energy' | 'atk' | 'money' | 'def'): number {
+  let sum = 0;
+  for (const h of HUT) sum += (p.clanId ? (p.clanHut[h.id] ?? 0) : 0) * (h.bonus[k] ?? 0);
+  return sum;
+}
+
 export function stats(p: Player, now: number) {
   const b = bonuses(p);
   const vip = isVip(p, now);
   return {
-    atk: Math.round((5 + p.str * 3 + b.atk) * (1 + mastBonus(p, 'atk') / 100)),
-    def: p.agi * 2 + b.def,
+    atk: Math.round((5 + p.str * 3 + b.atk) * (1 + (mastBonus(p, 'atk') + hutBonus(p, 'atk')) / 100)),
+    def: Math.round((p.agi * 2 + b.def) * (1 + hutBonus(p, 'def') / 100)),
     maxHp: 80 + p.end * 12 + b.hp,
     crit: Math.min(40, 2 + Math.floor(p.agi * 0.3) + b.crit + mastBonus(p, 'crit') + (p.blessUntil > now ? CHURCH.blessCrit : 0)),
-    maxEnergy: BALANCE.baseEnergy + b.energy + mastBonus(p, 'energy') + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel,
-    moneyBonus: b.money + hodkaBonus(p) + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel + (p.blessUntil > now ? CHURCH.blessMoney : 0),
+    maxEnergy: BALANCE.baseEnergy + b.energy + mastBonus(p, 'energy') + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel + hutBonus(p, 'energy'),
+    moneyBonus: b.money + hutBonus(p, 'money') + hodkaBonus(p) + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel + (p.blessUntil > now ? CHURCH.blessMoney : 0),
   };
 }
 
@@ -1145,6 +1167,18 @@ export function worldBossHit(p: Player, now: number, rng: Rng) {
   return { damage: Math.round(s.atk * 4 * (0.85 + rng() * 0.3) * (crit ? 2 : 1) * k), crit };
 }
 
+/** Удар по боссу клана: как по бунту, но свой откат. */
+export function clanBossHit(p: Player, now: number, rng: Rng) {
+  if (!p.clanId) throw new GameError('Ты не в клане');
+  if (p.clanHitAt + CLAN_BOSS.cooldownSec * 1000 > now) throw new GameError('Удар ещё не готов');
+  requireHp(p, now);
+  spendEnergy(p, CLAN_BOSS.energy, now);
+  p.clanHitAt = now;
+  const s = stats(p, now);
+  const crit = rng() * 100 < s.crit;
+  return { damage: Math.round(s.atk * 4 * (0.85 + rng() * 0.3) * (crit ? 2 : 1)), crit };
+}
+
 // --- Персонаж -----------------------------------------------------------------
 
 export function setLook(p: Player, build: number, skin: number) {
@@ -1243,7 +1277,15 @@ export function ensureDaily(p: Player, now: number) {
   };
 }
 
+/** Очки войны кланов: копятся за неделю, клан суммирует. */
+export function warPoints(p: Player, now: number, pts: number) {
+  const w = weekIndex(now);
+  if (p.war.week !== w) p.war = { week: w, pts: 0 };
+  p.war.pts += pts;
+}
+
 export function track(p: Player, kind: TrackKind, amount = 1) {
+  if (p.clanId && CLAN_WAR.points[kind]) warPoints(p, Date.now(), CLAN_WAR.points[kind] * amount);
   const step = chapterOf(p.story.ch, p.mast)?.steps[p.story.step];
   if (step && step.kind === kind) p.story.progress = Math.min(step.n, p.story.progress + amount);
   if (weeklyEvent(Date.now()).goal.kind === kind) {
@@ -2089,7 +2131,7 @@ export function adminTool(p: Player, tool: string, arg: string, now: number) {
       break;
     case 'newbie': {
       const fresh = newPlayer(p.id, p.name, p.username, now);
-      const keep = { god: p.god, clanId: p.clanId, clanLevel: p.clanLevel, journal: p.journal };
+      const keep = { god: p.god, clanId: p.clanId, clanLevel: p.clanLevel, clanHut: p.clanHut, journal: p.journal };
       Object.assign(p, fresh, keep);
       p.god = { on: false, saved: null };
       break;

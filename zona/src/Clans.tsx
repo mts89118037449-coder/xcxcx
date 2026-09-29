@@ -3,7 +3,8 @@ import { CLAN } from '../shared/content.ts';
 import type { ClanView } from '../shared/types.ts';
 import { api } from './api.ts';
 import { Face, NpcBanner } from './art/sprites.tsx';
-import { Card, fmt, useGame } from './game.tsx';
+import { Card, fmt, timeLeft, useGame } from './game.tsx';
+import { CLAN_BOSS, CLAN_WAR, HUT, HUT_RULES } from '../shared/clans.ts';
 
 type ClanRow = Awaited<ReturnType<typeof api.clans>>['clans'][number];
 
@@ -120,11 +121,13 @@ function ClanCard({ id, mine = false, onChange }: { id: number; mine?: boolean; 
           </form>
           {owner && c.upgradeCost !== null && (
             <button className="btn btn-wide btn-gold" disabled={busy || c.treasury < c.upgradeCost} onClick={() => run('clanUpgrade', {}, 'Клан вырос!')}>
-              ⬆️ Поднять уровень · {fmt(c.upgradeCost)} ₽ из общака
+              ⬆️ Уровень клана · {fmt(c.upgradeCost)} ₽
             </button>
           )}
         </div>
       )}
+
+      {mine && <ClanExtras c={c} owner={owner} run={run} reload={load} />}
 
       <ol className="rating" style={{ marginTop: 8 }}>
         {c.members.map((m) => (
@@ -157,5 +160,122 @@ function ClanCard({ id, mine = false, onChange }: { id: number; mine?: boolean; 
         </button>
       )}
     </Card>
+  );
+}
+
+/** Хата клана, босс дня и война кланов — только в своём клане. */
+function ClanExtras({ c, owner, run, reload }: { c: ClanView; owner: boolean; run(type: string, body?: Record<string, unknown>, msg?: string): Promise<void>; reload(): void }) {
+  const { p, now, busy, act, toast } = useGame();
+  const [tab, setTab] = useState<'hut' | 'boss' | 'war'>('boss');
+  const [hitFx, setHitFx] = useState<{ dmg: number; crit: boolean; k: number } | null>(null);
+  const boss = c.boss;
+  const hit = async () => {
+    const r = await act<{ damage: number; crit: boolean; killed: boolean; reward: { money: number; gold: number } | null }>('clanBossHit');
+    if (!r) return;
+    setHitFx({ dmg: r.damage, crit: r.crit, k: Date.now() });
+    if (r.killed) toast(`${CLAN_BOSS.emoji} Разобрались!${r.reward ? ` +${fmt(r.reward.money)} ₽ +${r.reward.gold} 🪙` : ''}`);
+    reload();
+  };
+  const ready = now >= p.clanHitReadyAt;
+  const prevClaimable = !!c.war && c.war.prevRank > 0 && c.war.prevRank <= CLAN_WAR.rewards.length && p.warClaimed < p.week - 1;
+  return (
+    <div className="clan-extras">
+      <div className="chips">
+        {(
+          [
+            ['boss', `${CLAN_BOSS.emoji} Босс дня`],
+            ['hut', '🏚️ Хата клана'],
+            ['war', '⚔️ Война'],
+          ] as const
+        ).map(([k, l]) => (
+          <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {tab === 'boss' && boss && (
+        <div className="clan-boss">
+          <b>{CLAN_BOSS.name}</b>
+          <div className="clan-boss-bar">
+            <div style={{ width: `${(boss.hp / boss.max) * 100}%` }} />
+            <span>{boss.killed ? 'разобрались ✔' : `${fmt(boss.hp)} / ${fmt(boss.max)}`}</span>
+          </div>
+          {hitFx && (
+            <div key={hitFx.k} className={`clan-hit ${hitFx.crit ? 'crit' : ''}`}>
+              −{fmt(hitFx.dmg)}
+              {hitFx.crit ? ' КРИТ' : ''}
+            </div>
+          )}
+          <button className="btn btn-wide btn-red" disabled={busy || boss.killed || !ready || p.energy < CLAN_BOSS.energy} onClick={hit}>
+            {boss.killed ? 'Завтра новые' : ready ? `🥊 Бить · ${CLAN_BOSS.energy} ⚡` : `⏳ ${timeLeft(p.clanHitReadyAt - now)}`}
+          </button>
+          <small className="muted">
+            Бьют все свои. Добили — каждому деньги по доле урона и {CLAN_BOSS.gold} 🪙, общаку клана — {Math.round(CLAN_BOSS.treasuryShare * 100)}%, клану +{CLAN_WAR.points.clanBoss} очков войны.
+          </small>
+          {boss.top.length > 0 && (
+            <ol className="clan-top">
+              {boss.top.map((h, i) => (
+                <li key={i}>
+                  <span>{h.name}</span>
+                  <b>{fmt(h.dmg)}</b>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+      {tab === 'hut' && (
+        <div className="hut">
+          {HUT.map((h) => {
+            const lvl = c.hut?.[h.id] ?? 0;
+            const cost = HUT_RULES.cost(lvl);
+            return (
+              <div key={h.id} className="hut-row">
+                <span className="hut-emoji">{h.emoji}</span>
+                <div className="grow">
+                  <b>
+                    {h.name} <small className="muted">ур. {lvl}/{HUT_RULES.maxLevel}</small>
+                  </b>
+                  <small className="muted">
+                    {h.per} за уровень · сейчас {lvl ? `×${lvl}` : 'нет'}
+                  </small>
+                </div>
+                {owner && lvl < HUT_RULES.maxLevel && (
+                  <button className="btn btn-s btn-gold" disabled={busy || c.treasury < cost} onClick={() => run('clanHutBuild', { hut: h.id }, `${h.emoji} ${h.name} — ур. ${lvl + 1}`)}>
+                    {fmt(cost)} ₽
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <small className="muted">Строит главный из общака клана. Бонусы получает каждый участник.</small>
+        </div>
+      )}
+      {tab === 'war' && c.war && (
+        <div className="clan-war">
+          <small className="muted">
+            Очки за неделю: наезд +{CLAN_WAR.points.pvpWin}, босс +{CLAN_WAR.points.boss}, бунт +{CLAN_WAR.points.worldHit}, босс клана +{CLAN_WAR.points.clanBoss}. Топ-3 в конце недели — золото каждому ({CLAN_WAR.rewards.join('/')} 🪙) и деньги в общак.
+          </small>
+          <div className="muted small">Твой вклад: {p.war.week === p.week ? p.war.pts : 0}</div>
+          <ol className="rating">
+            {c.war.ranking.length === 0 && <li className="muted">Пока никто не набрал очков</li>}
+            {c.war.ranking.map((r, i) => (
+              <li key={r.id} className={r.id === c.id ? 'me' : ''}>
+                <span className="place">{i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
+                <span className="grow">
+                  <span className="tag">[{r.tag}]</span> {r.name}
+                </span>
+                <b>{fmt(r.pts)}</b>
+              </li>
+            ))}
+          </ol>
+          {prevClaimable && (
+            <button className="btn btn-wide btn-gold" disabled={busy} onClick={() => run('clanWarClaim', {}, `Награда за ${c.war!.prevRank} место!`)}>
+              🏆 Забрать награду за прошлую неделю · {c.war.prevRank} место
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

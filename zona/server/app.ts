@@ -1,6 +1,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
 import { OBSHAK } from '../shared/factions.ts';
+import { CLAN_BOSS, CLAN_WAR, HUT_RULES, hutById, type HutId } from '../shared/clans.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SHIZO, SPEED } from '../shared/minigames2.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { NOTIFY, termDays } from '../shared/term.ts';
@@ -87,6 +88,38 @@ export function createApp(opts: AppOptions) {
     const clan = p.clanId ? db.getClan(p.clanId) : null;
     if (!clan) p.clanId = null;
     p.clanLevel = clan?.level ?? 0;
+    p.clanHut = clan ? clanState(clan.id).hut : {};
+  }
+
+  // Состояние клана сверх таблицы: постройки хаты и босс дня
+  interface ClanState {
+    hut: Partial<Record<HutId, number>>;
+    boss: { day: string; hp: number; max: number; hits: Record<string, number>; killed: boolean } | null;
+  }
+  const clanState = (id: number) => db.kvGet<ClanState>(`clan:${id}`, { hut: {}, boss: null });
+  const saveClanState = (id: number, st: ClanState) => db.kvSet(`clan:${id}`, st);
+  const warTable = (week: number) => db.kvGet<Record<string, number>>(`clanwar:${week}`, {});
+  const addWar = (clanId: number, week: number, pts: number) => {
+    const w = warTable(week);
+    w[clanId] = (w[clanId] ?? 0) + pts;
+    db.kvSet(`clanwar:${week}`, w);
+  };
+  const warRanking = (week: number) =>
+    Object.entries(warTable(week))
+      .map(([id, pts]) => ({ id: Number(id), pts }))
+      .sort((a, b) => b.pts - a.pts);
+
+  /** Босс клана на сегодня: новый каждый день, толщина от числа участников и уровня. */
+  function clanBossToday(clanId: number, t: number): ClanState {
+    const st = clanState(clanId);
+    const day = g.dayKey(t);
+    if (!st.boss || st.boss.day !== day) {
+      const c = db.getClan(clanId)!;
+      const max = Math.round(CLAN_BOSS.hpPerMember * Math.max(1, db.clanMembers(clanId).length) * (1 + c.level * CLAN_BOSS.hpPerLevel));
+      st.boss = { day, hp: max, max, hits: {}, killed: false };
+      saveClanState(clanId, st);
+    }
+    return st;
   }
 
   function view(p: g.Player, t: number): PlayerView {
@@ -163,6 +196,10 @@ export function createApp(opts: AppOptions) {
       rep: p.rep,
       debt: p.debt,
       mats: p.mats,
+      clanHitReadyAt: p.clanHitAt + CLAN_BOSS.cooldownSec * 1000,
+      war: p.war,
+      warClaimed: p.warClaimed,
+      week: g.weekIndex(t),
       loanLimit: g.loanLimit(p),
       obshak: { ...db.kvGet<g.Obshak>('obshak', { total: 0, log: [] }), askReadyAt: p.obshakAskAt + OBSHAK.askCooldownH * 3600_000 },
       yardReadyAt: p.yardAt + EVENT_TIMING.yardCooldownMin * 60_000,
@@ -509,6 +546,73 @@ export function createApp(opts: AppOptions) {
       db.saveClan(c);
       syncClan(p);
     },
+    clanHutBuild: (p, b) => {
+      const c = clanOf(p);
+      if (c.owner_id !== p.id) throw new g.GameError('Строит только главный');
+      const h = hutById.get(str(b.hut) as HutId);
+      if (!h) throw new g.GameError('Нет такой постройки');
+      const st = clanState(c.id);
+      const lvl = st.hut[h.id] ?? 0;
+      if (lvl >= HUT_RULES.maxLevel) throw new g.GameError('Выше некуда');
+      const cost = HUT_RULES.cost(lvl);
+      if (c.treasury < cost) throw new g.GameError(`В общаке клана нужно ${cost} ₽`);
+      c.treasury -= cost;
+      st.hut[h.id] = lvl + 1;
+      db.saveClan(c);
+      saveClanState(c.id, st);
+      syncClan(p);
+      return { hut: h.id, level: lvl + 1 };
+    },
+    clanBossHit: (p, _b, t) => {
+      const c = clanOf(p);
+      const st = clanBossToday(c.id, t);
+      const boss = st.boss!;
+      if (boss.killed) throw new g.GameError('Сегодня уже разобрались — завтра новые');
+      const hit = g.clanBossHit(p, t, rng);
+      const damage = Math.min(hit.damage, boss.hp);
+      boss.hp -= damage;
+      boss.hits[p.id] = (boss.hits[p.id] ?? 0) + damage;
+      let reward: { money: number; gold: number } | null = null;
+      if (boss.hp <= 0) {
+        boss.killed = true;
+        const total = Object.values(boss.hits).reduce((a, b2) => a + b2, 0);
+        const pool = CLAN_BOSS.moneyPool * (1 + c.level * 0.1);
+        for (const [pid, dmg] of Object.entries(boss.hits)) {
+          const who = Number(pid) === p.id ? p : db.getPlayer(Number(pid));
+          if (!who) continue;
+          const money = Math.round((pool * dmg) / total);
+          who.money += money;
+          who.gold += CLAN_BOSS.gold;
+          g.log(who, t, `${CLAN_BOSS.emoji} Клан разобрался с беспредельщиками: +${money} ₽, +${CLAN_BOSS.gold} 🪙`);
+          if (who !== p) db.savePlayer(who);
+          else reward = { money, gold: CLAN_BOSS.gold };
+        }
+        c.treasury += Math.round(pool * CLAN_BOSS.treasuryShare);
+        db.saveClan(c);
+        addWar(c.id, g.weekIndex(t), CLAN_WAR.points.clanBoss);
+      }
+      saveClanState(c.id, st);
+      return { damage, crit: hit.crit, killed: boss.killed, reward };
+    },
+    clanWarClaim: (p, _b, t) => {
+      const c = clanOf(p);
+      const prev = g.weekIndex(t) - 1;
+      if (p.warClaimed >= prev) throw new g.GameError('Награда за ту неделю уже получена');
+      const rank = warRanking(prev).findIndex((r) => r.id === c.id);
+      if (rank < 0 || rank >= CLAN_WAR.rewards.length) throw new g.GameError('Клан не вошёл в тройку');
+      p.warClaimed = prev;
+      const gold = CLAN_WAR.rewards[rank];
+      p.gold += gold;
+      // общак клана получает награду один раз — первый забравший приносит
+      const paid = db.kvGet<number[]>(`clanwar:${prev}:paid`, []);
+      if (!paid.includes(c.id)) {
+        paid.push(c.id);
+        db.kvSet(`clanwar:${prev}:paid`, paid);
+        c.treasury += CLAN_WAR.treasury[rank];
+        db.saveClan(c);
+      }
+      return { rank: rank + 1, gold };
+    },
     clanKick: (p, b, t) => {
       const c = clanOf(p);
       if (c.owner_id !== p.id) throw new g.GameError('Выгнать может только главный');
@@ -593,7 +697,12 @@ export function createApp(opts: AppOptions) {
         const admin = opts.adminIds.includes(p.id);
         if (req.params.type.startsWith('admin') && !admin) throw new g.GameError('Только для админа');
         if (admin && p.god.on) g.godTopUp(p, t);
+        const week = g.weekIndex(t);
+        const war0 = p.war.week === week ? p.war.pts : 0;
         const result = handler(p, req.body ?? {}, t);
+        // очки войны кланов — в недельную таблицу клана
+        const war1 = p.war.week === week ? p.war.pts : 0;
+        if (p.clanId && war1 > war0) addWar(p.clanId, week, war1 - war0);
         if (admin && p.god.on) g.godTopUp(p, t);
         db.savePlayer(p);
         return { p, result };
@@ -668,7 +777,31 @@ export function createApp(opts: AppOptions) {
       members: db.clanMembers(c.id),
       upgradeCost: c.level < CLAN.maxLevel ? CLAN.upgradeCost(c.level) : null,
     };
-    res.json({ clan });
+    const t = now();
+    const st = clanBossToday(c.id, t);
+    const names = new Map(clan.members.map((m) => [m.id, m.name]));
+    const week = g.weekIndex(t);
+    const rankOf = (list: { id: number; pts: number }[]) =>
+      list.slice(0, 10).map((r) => {
+        const cc = db.getClan(r.id);
+        return { id: r.id, name: cc?.name ?? '—', tag: cc?.tag ?? '', pts: r.pts };
+      });
+    const prev = warRanking(week - 1);
+    const extra = {
+      hut: st.hut,
+      boss: {
+        hp: st.boss!.hp,
+        max: st.boss!.max,
+        killed: st.boss!.killed,
+        top: Object.entries(st.boss!.hits)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([id, dmg]) => ({ name: names.get(Number(id)) ?? '—', dmg })),
+      },
+      war: { ranking: rankOf(warRanking(week)), prevTop: rankOf(prev).slice(0, 3), prevRank: prev.findIndex((r) => r.id === c.id) + 1 },
+    };
+    res.json({ clan: { ...clan, ...extra } });
+    return;
   });
 
   api.post('/world', (req: AuthedRequest, res) => {
