@@ -15,9 +15,10 @@ import {
 import { ItemIcon, TattooIcon } from "../art/Icons.tsx";
 import { NpcBanner, PoseG } from "../art/sprites.tsx";
 import { PerksPanel } from "../Perks.tsx";
+import { CraftPanel } from "../Craft.tsx";
 import { BonusList, Card, Price, lookOf, useAnim, useGame } from "../game.tsx";
 
-type View = "mine" | "shop" | "ink" | "perks";
+type View = "mine" | "shop" | "ink" | "perks" | "craft";
 
 /** Бонусы вещи с учётом улучшения у мастера. */
 function scaled(i: Item, lvl: number): Item {
@@ -108,7 +109,7 @@ export function Gear() {
           className={view === "shop" ? "active" : ""}
           onClick={() => setView("shop")}
         >
-          Барахолка
+          Купить
         </button>
         <button
           className={view === "ink" ? "active" : ""}
@@ -122,9 +123,16 @@ export function Gear() {
         >
           Перки
         </button>
+        <button
+          className={view === "craft" ? "active" : ""}
+          onClick={() => setView("craft")}
+        >
+          Ремесло
+        </button>
       </div>
 
       {view === "perks" && <PerksPanel />}
+      {view === "craft" && <CraftPanel />}
 
       {view === "mine" && (
         <>

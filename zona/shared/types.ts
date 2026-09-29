@@ -85,6 +85,7 @@ export interface PlayerView {
   rep: Record<'brat' | 'work' | 'admin', number>;
   debt: { amount: number; due: number; from: 'baryga' | 'katala'; counted: number } | null;
   loanLimit: number;
+  mats: Partial<Record<string, number>>;
   obshak: { total: number; log: { name: string; amount: number; at: number }[]; askReadyAt: number };
   yardReadyAt: number;
   escape: { cdUntil: number; stage: number | null; best: number };

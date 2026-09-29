@@ -161,6 +161,7 @@ export function createApp(opts: AppOptions) {
       placeCd: p.placeCd,
       rep: p.rep,
       debt: p.debt,
+      mats: p.mats,
       loanLimit: g.loanLimit(p),
       obshak: { ...db.kvGet<g.Obshak>('obshak', { total: 0, log: [] }), askReadyAt: p.obshakAskAt + OBSHAK.askCooldownH * 3600_000 },
       yardReadyAt: p.yardAt + EVENT_TIMING.yardCooldownMin * 60_000,
@@ -365,6 +366,7 @@ export function createApp(opts: AppOptions) {
       db.kvSet('obshak', ob);
       return r;
     },
+    craft: (p, b, t) => g.craft(p, str(b.recipe), t),
     loanTake: (p, b, t) => g.loanTake(p, num(b.rations), t),
     loanPay: (p, b, t) => g.loanPay(p, num(b.amount), t),
     obshakAsk: (p, _b, t) => {

@@ -22,6 +22,7 @@ export interface Item extends Bonus {
   price: number;
   currency: 'money' | 'gold';
   bossOnly?: boolean; // не продаётся, выпадает только с боссов
+  crafted?: boolean; // делается ремеслом
 }
 
 export interface Tattoo extends Bonus {
@@ -156,6 +157,11 @@ export const ITEMS: Item[] = [
   { id: 'charm_dogtag', name: 'Армейский жетон', emoji: '🏷️', slot: 'charm', minLevel: 2, price: 500, currency: 'money', hp: 12, crit: 1 },
   { id: 'charm_watch', name: 'Часы «Командирские»', emoji: '⌚', slot: 'charm', minLevel: 6, price: 3200, currency: 'money', energy: 10, money: 6 },
   { id: 'charm_fiksa', name: 'Золотая фикса', emoji: '🦷', slot: 'charm', minLevel: 9, price: 70, currency: 'gold', crit: 5, money: 12 },
+  // Только ремеслом (в ларьке нет — как и боссовые)
+  { id: 'craft_beads', name: 'Чётки из мякиша', emoji: '📿', slot: 'charm', minLevel: 4, price: 0, currency: 'money', bossOnly: true, crafted: true, crit: 4, money: 7 },
+  { id: 'craft_mouthpiece', name: 'Наборный мундштук', emoji: '🚬', slot: 'charm', minLevel: 8, price: 0, currency: 'money', bossOnly: true, crafted: true, crit: 5, money: 12, energy: 6 },
+  { id: 'craft_ring', name: 'Перстень из проволоки', emoji: '💍', slot: 'charm', minLevel: 12, price: 0, currency: 'money', bossOnly: true, crafted: true, crit: 7, money: 16, energy: 8 },
+  { id: 'craft_amulet', name: 'Ладанка с родной землёй', emoji: '🧿', slot: 'charm', minLevel: 16, price: 0, currency: 'money', bossOnly: true, crafted: true, hp: 60, crit: 7, money: 18, energy: 10 },
   // Только с боссов
   { id: 'drop_keys', name: 'Ключи вертухая', emoji: '🗝️', slot: 'charm', minLevel: 1, price: 0, currency: 'money', bossOnly: true, crit: 6, money: 15, energy: 10 },
   { id: 'drop_baton', name: 'Дубинка начкара', emoji: '🏏', slot: 'weapon', minLevel: 1, price: 0, currency: 'money', bossOnly: true, atk: 26, crit: 5 },

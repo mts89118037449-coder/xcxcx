@@ -983,5 +983,38 @@ test('долги: барыга под процент, счётчик за про
   p.event = { id: 'x_katala', until: T0 + 30 * MIN };
   const lost = g.answerEvent(p, 0, T0, fixed(0.99));
   assert.ok(lost.debt > 0);
-  assert.equal(p.debt!.from, 'katala');
+  assert.equal((p.debt as { from: string } | null)?.from, 'katala');
+});
+
+test('ремесло: материалы с промки, рецепты, «Мастеровой» получает вдвое', async () => {
+  const { RECIPES, MATS } = await import('../shared/craft.ts');
+  const { consumableById } = await import('../shared/perks.ts');
+  const { itemById, REP_THRESHOLDS } = { ...(await import('../shared/content.ts')), ...(await import('../shared/factions.ts')) };
+  for (const r of RECIPES) {
+    if (r.out.item) assert.ok(consumableById.has(r.out.item), r.id);
+    if (r.out.gear) assert.ok(itemById.get(r.out.gear)?.crafted, r.id);
+    for (const id of Object.keys(r.mats)) assert.ok(MATS.some((m) => m.id === id), `${r.id}: ${id}`);
+  }
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.level = 5;
+  p.energy = 500;
+  g.placeDo(p, 'factory', 'sew', T0, fixed(0.1));
+  assert.equal(p.mats.thread, 2);
+  assert.equal(p.mats.cloth, 1);
+  assert.throws(() => g.craft(p, 'r_insert', T0), /материалов/);
+  assert.throws(() => g.craft(p, 'r_ring', T0), /уровня/);
+  const b0 = p.stash.c_bandage ?? 0;
+  p.mats.cloth = 2;
+  const r = g.craft(p, 'r_bandage', T0);
+  assert.equal(p.stash.c_bandage, b0 + 2);
+  assert.equal(p.mats.cloth, 0);
+  assert.ok(r.rep > 0);
+  // вещь ремеслом — одна
+  p.mats = { bread: 8, thread: 4 };
+  g.craft(p, 'r_beads', T0);
+  assert.ok(p.inventory.includes('craft_beads'));
+  assert.throws(() => g.craft(p, 'r_beads', T0), /уже есть/);
+  // «Мастеровой» у работяг — материалов вдвое
+  p.rep.work = REP_THRESHOLDS[3];
+  assert.deepEqual(g.giveMats(p, { wire: 2 }), { wire: 4 });
 });

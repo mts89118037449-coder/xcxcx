@@ -55,6 +55,7 @@ import { chapterOf } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
+import { CRAFT, MATS, PLACE_MATS, recipeById, type MatId } from '../shared/craft.ts';
 import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
 import { CONSUMABLES as CONSUMABLES_ALL, CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
@@ -145,6 +146,8 @@ export interface Player {
   /** репутация у братвы, работяг и администрации */
   rep: Record<FactionId, number>;
   obshakAskAt: number;
+  /** материалы для ремесла */
+  mats: Partial<Record<MatId, number>>;
   /** долг барыге или катале; счётчик тикает после due */
   debt: { amount: number; due: number; from: 'baryga' | 'katala'; counted: number } | null;
   yardAt: number;
@@ -255,6 +258,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     rep: { brat: 0, work: 0, admin: 0 },
     obshakAskAt: 0,
     debt: null,
+    mats: {},
     yardAt: 0,
     escape: { cdUntil: 0, run: null, best: 0 },
     medBedAt: 0,
@@ -331,6 +335,7 @@ export function migrate(p: Player): Player {
   p.rep ??= { brat: 0, work: 0, admin: 0 };
   p.obshakAskAt ??= 0;
   p.debt ??= null;
+  p.mats ??= {};
   p.yardAt ??= 0;
   p.escape ??= { cdUntil: 0, run: null, best: 0 };
   p.medBedAt ??= 0;
@@ -539,7 +544,8 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   const levelUps = addXp(p, xp, now);
   track(p, 'job');
   gainRep(p, 'work', 1);
-  return { money, xp, levelUps, bonus, item };
+  const mats = rng() < CRAFT.jobChance ? giveMats(p, { [rollMat(rng)]: 1 }) : {};
+  return { money, xp, levelUps, bonus, item, mats };
 }
 
 export function allocate(p: Player, stat: Stat) {
@@ -765,6 +771,7 @@ export function bossFinish(p: Player, bossId: string, result: FightResult, now: 
     p.authority += reward.authority;
     p.bossKills += 1;
     track(p, 'boss');
+    if (rng() < CRAFT.bossChance) giveMats(p, { [rollMat(rng)]: 1 });
     reward.levelUps = addXp(p, reward.xp, now);
     const drop = reward.drop ? itemById.get(reward.drop) : null;
     log(p, now, `${boss.emoji} Завалил «${boss.name}»${drop ? `, трофей: ${drop.emoji} ${drop.name}` : ''}`);
@@ -1702,6 +1709,38 @@ export function answerEvent(p: Player, choice: number, now: number, rng: Rng) {
 }
 
 /** Занятие в месте зоны: баня, столовая, библиотека… */
+// --- Ремесло -------------------------------------------------------------------------
+
+/** Выдать материалы; «Мастеровой» у работяг получает вдвое больше. */
+export function giveMats(p: Player, mats: Partial<Record<MatId, number>>): Partial<Record<MatId, number>> {
+  const k = repRank(p.rep.work) >= 3 ? 2 : 1;
+  const out: Partial<Record<MatId, number>> = {};
+  for (const [id, n] of Object.entries(mats) as [MatId, number][]) {
+    out[id] = n * k;
+    p.mats[id] = (p.mats[id] ?? 0) + n * k;
+  }
+  return out;
+}
+
+/** Случайный материал: чаще простые, реже лезвия и тушь. */
+export function rollMat(rng: Rng): MatId {
+  return pickWeighted(MATS, rng).id;
+}
+
+export function craft(p: Player, recipeId: string, now: number) {
+  const r = recipeById.get(recipeId);
+  if (!r) throw new GameError('Нет такого рецепта');
+  if (p.level < r.minLevel) throw new GameError(`Рецепт с ${r.minLevel} уровня`);
+  for (const [id, n] of Object.entries(r.mats) as [MatId, number][]) if ((p.mats[id] ?? 0) < n) throw new GameError('Не хватает материалов');
+  if (r.out.gear && p.inventory.includes(r.out.gear)) throw new GameError('Такая вещь уже есть');
+  for (const [id, n] of Object.entries(r.mats) as [MatId, number][]) p.mats[id] = (p.mats[id] ?? 0) - n;
+  if (r.out.item) giveItem(p, r.out.item, r.out.n ?? 1);
+  if (r.out.gear) p.inventory.push(r.out.gear);
+  const rep = gainRep(p, 'work', CRAFT.repPerCraft);
+  addXp(p, 3 + r.minLevel, now);
+  return { item: r.out.item ?? null, gear: r.out.gear ?? null, n: r.out.n ?? 1, rep };
+}
+
 // --- Долги ---------------------------------------------------------------------------
 
 const DAY = 24 * 60 * MIN;
@@ -1830,7 +1869,8 @@ export function placeDo(p: Player, placeId: string, actId: string, now: number, 
   track(p, 'place');
   const o = pickWeighted(a.outcomes, rng);
   const got = applyEffects(p, { ...o, rep: { ...PLACE_REP[key], ...o.rep } }, now, rng);
-  return { text: o.text, who: pl.who, name: pl.host, ...got };
+  const mats = PLACE_MATS[key] ? giveMats(p, PLACE_MATS[key]) : {};
+  return { text: o.text, who: pl.who, name: pl.host, ...got, mats };
 }
 
 /** Прогулка по двору: случай прямо сейчас (раз в полчаса), без энергии. */
@@ -1990,6 +2030,7 @@ export function adminTool(p: Player, tool: string, arg: string, now: number) {
       break;
     case 'items':
       for (const c of CONSUMABLES_ALL) p.stash[c.id] = (p.stash[c.id] ?? 0) + 10;
+      for (const m of MATS) p.mats[m.id] = (p.mats[m.id] ?? 0) + 10;
       break;
     case 'gear':
       for (const it of ITEMS) if (!p.inventory.includes(it.id)) p.inventory.push(it.id);
