@@ -1,21 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { PlayerView } from '../shared/types.ts';
 import { api, ApiError, tg } from './api.ts';
 import { FightArena, type Fighter } from './art/FightArena.tsx';
 import { Face } from './art/sprites.tsx';
 import { EnergySheet } from './Energy.tsx';
-import { VisitModal } from './Visit.tsx';
 import { DialogBox } from './Dialog.tsx';
-import { ShellGame } from './Shells.tsx';
 import { Zone } from './screens/Zone.tsx';
-import { Church } from './Church.tsx';
-import { Pullups } from './Pullups.tsx';
-import { Medic } from './Medic.tsx';
-import { Escape } from './Escape.tsx';
 import { EventButton, EventStage } from './Events.tsx';
 import { BattleModal } from './Battle.tsx';
-import { AdminPanel } from './Admin.tsx';
-import { ArmGame, BrewGame, CardsGame, DartsGame, DiceGame, RaceGame, type Mini } from './Minigames.tsx';
+import type { Mini } from './Minigames.tsx';
 import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
@@ -26,6 +19,22 @@ import { Top } from './screens/Top.tsx';
 import { Work } from './screens/Work.tsx';
 
 // Пять разделов внизу; «Братва» живёт внутри «Боя», «Ларёк» — кнопкой ⭐ в шапке.
+// Окна, которые открываются не сразу, — отдельными кусками: первый запуск в Telegram быстрее.
+const named = <K extends string>(load: () => Promise<Record<K, React.ComponentType<any>>>, key: K) => lazy(() => load().then((m) => ({ default: m[key] })));
+const VisitModal = named(() => import('./Visit.tsx'), 'VisitModal');
+const ShellGame = named(() => import('./Shells.tsx'), 'ShellGame');
+const Church = named(() => import('./Church.tsx'), 'Church');
+const Pullups = named(() => import('./Pullups.tsx'), 'Pullups');
+const Medic = named(() => import('./Medic.tsx'), 'Medic');
+const Escape = named(() => import('./Escape.tsx'), 'Escape');
+const AdminPanel = named(() => import('./Admin.tsx'), 'AdminPanel');
+const CardsGame = named(() => import('./Minigames.tsx'), 'CardsGame');
+const RaceGame = named(() => import('./Minigames.tsx'), 'RaceGame');
+const BrewGame = named(() => import('./Minigames.tsx'), 'BrewGame');
+const DiceGame = named(() => import('./Minigames.tsx'), 'DiceGame');
+const ArmGame = named(() => import('./Minigames.tsx'), 'ArmGame');
+const DartsGame = named(() => import('./Minigames.tsx'), 'DartsGame');
+
 const TABS: { id: Tab; icon: string; label: string; also?: Tab[] }[] = [
   { id: 'home', icon: '🏚️', label: 'Хата' },
   { id: 'zone', icon: '🗺️', label: 'Зона' },
@@ -184,6 +193,7 @@ export function App() {
       </header>
 
       <main>
+        <Suspense fallback={null}>
         {place === 'church' && <Church onBack={() => { setPlace(null); setTab('zone'); }} />}
         {place === 'medic' && <Medic onBack={() => { setPlace(null); setTab('zone'); }} />}
         {place === 'escape' && <Escape onBack={() => { setPlace(null); setTab('zone'); }} />}
@@ -194,6 +204,7 @@ export function App() {
         {!place && tab === 'gear' && <Gear />}
         {!place && tab === 'top' && <Top />}
         {!place && tab === 'shop' && <Shop />}
+        </Suspense>
       </main>
 
       <nav className="tabs">
@@ -213,6 +224,7 @@ export function App() {
       <FxLayer key={fx.key} chips={fx.chips} levelUp={fx.levelUp} />
       {toastMsg && <div className={`toast toast-${toastMsg.kind}`}>{toastMsg.text}</div>}
 
+      <Suspense fallback={null}>
       {visiting !== null && <VisitModal id={visiting} onClose={() => setVisiting(null)} />}
       {mini === 'cards' && <CardsGame onClose={() => setMini(null)} />}
       {mini === 'race' && <RaceGame onClose={() => setMini(null)} />}
@@ -227,6 +239,7 @@ export function App() {
       {pullOpen && <Pullups onClose={() => setPullOpen(false)} />}
       {shellsOpen && <ShellGame onClose={() => setShellsOpen(false)} />}
       {energyOpen && <EnergySheet onClose={() => setEnergyOpen(false)} />}
+      </Suspense>
       {fight && <FightModal fight={fight} me={{ name: p.name, look: lookOf(p) }} onClose={() => setFight(null)} />}
     </GameCtx.Provider>
   );

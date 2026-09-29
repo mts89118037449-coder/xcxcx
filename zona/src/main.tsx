@@ -1,6 +1,6 @@
+import { lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
-import { RigGallery } from './art/rig/Gallery.tsx';
 import './styles.css';
 
 const tg = window.Telegram?.WebApp;
@@ -9,5 +9,15 @@ tg?.expand();
 tg?.setHeaderColor?.('#15130f');
 tg?.setBackgroundColor?.('#15130f');
 
+// отладочная галерея рига грузится отдельно и только по ?rig=1
+const RigGallery = lazy(() => import('./art/rig/Gallery.tsx').then((m) => ({ default: m.RigGallery })));
 const rigDebug = new URLSearchParams(location.search).has('rig');
-createRoot(document.getElementById('root')!).render(rigDebug ? <RigGallery /> : <App />);
+createRoot(document.getElementById('root')!).render(
+  rigDebug ? (
+    <Suspense fallback={null}>
+      <RigGallery />
+    </Suspense>
+  ) : (
+    <App />
+  ),
+);

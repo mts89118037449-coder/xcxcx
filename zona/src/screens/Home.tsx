@@ -6,7 +6,6 @@ import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
 import { CharacterEditor } from '../Editor.tsx';
 import { InteriorPicker } from '../Interior.tsx';
-import { usePoses } from '../art/sprites.tsx';
 import { BonusList, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { STORY } from '../../shared/story.ts';
@@ -16,7 +15,6 @@ export function Home() {
   const { p, now, online, act, busy, go } = useGame();
   const talk = useTalk();
   const [bare, setBare] = useState(false);
-  const poses = usePoses();
   const [anim, animKey, play] = useAnim();
   const [seg, setSeg] = useSeg('home', p.faceChosen ? 'story' : 'look', ['story', 'look', 'cell', 'me'] as const);
   const panel = p.faceChosen ? seg : 'look';
@@ -77,7 +75,7 @@ export function Home() {
             📦 Грев
           </button>
         )}
-        {ink.length > 0 && !poses && !dailyReady && (
+        {ink.length > 0 && !dailyReady && !tryOn && (
           <button className="scene-btn" onClick={() => setBare(!bare)}>
             {bare ? '👕' : '💪'}
           </button>

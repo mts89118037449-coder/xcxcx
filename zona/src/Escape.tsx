@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ESCAPE, ESCAPE_STAGES, escapeReward } from '../shared/events.ts';
 import { EscapeScene } from './art/PlaceScenes.tsx';
 import { Place } from './art/Scenes.tsx';
-import { ImageG, PoseG, WALK, hasOutfit, useFlipbook, useNpc } from './art/sprites.tsx';
-import { useArt } from './art/raster.ts';
+import { ImageG, PoseG, useNpc } from './art/sprites.tsx';
 import { itemLabel } from './Perks.tsx';
 import { fmt, lookOf, timeLeft, useGame } from './game.tsx';
 
@@ -22,11 +21,9 @@ export function Escape({ onBack }: { onBack(): void }) {
   const [end, setEnd] = useState<EndResult | null>(null);
   const stageIdx = Math.min(p.escape.stage ?? end?.stage ?? 0, ESCAPE_STAGES.length - 1);
   const st = ESCAPE_STAGES[stageIdx];
-  const art = useArt();
   const look = lookOf(p);
   const omon = useNpc('sheet/cast/omon');
   const moving = phase === 'play' || phase === 'passed';
-  const frame = useFlipbook(WALK, 150, moving && !hasOutfit(art, look));
   const locked = p.escape.cdUntil > now && !running;
 
   const start = async () => {
@@ -59,15 +56,7 @@ export function Escape({ onBack }: { onBack(): void }) {
       <div className="scene-wrap">
         <EscapeScene stage={sceneStage} alarm={phase === 'caught'}>
           <Place x={phase === 'play' ? 110 : phase === 'caught' ? 160 : 150} y={262} scale={0.86} className={moving ? 'esc-run' : ''}>
-            {pose ? (
-              <PoseG name={pose} look={look} />
-            ) : (
-              WALK.map((f) => (
-                <g key={f} style={{ display: f === frame ? 'inline' : 'none' }}>
-                  <PoseG name={f} look={look} />
-                </g>
-              ))
-            )}
+            {pose ? <PoseG name={pose} look={look} /> : <PoseG name="walk1" anim={phase === 'play' ? 'run' : 'walk'} look={look} />}
           </Place>
           {phase === 'caught' && omon && (
             <Place x={270} y={262} scale={0.92}>

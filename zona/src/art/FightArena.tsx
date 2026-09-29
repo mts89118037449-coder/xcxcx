@@ -6,7 +6,6 @@ import { RigHead } from './rig/Rig.tsx';
 import { NPC_RIGS } from './rig/npcs.ts';
 import { PoseG } from './sprites.tsx';
 import { Place, YardScene } from './Scenes.tsx';
-import { Body } from './Stage.tsx';
 
 export interface Fighter {
   name: string;
@@ -121,14 +120,11 @@ export function FightArena({
     <div className="arena">
       <YardScene tower={false}>
           <Place x={104} y={266} scale={0.98} key={`me${i}`} className={`pose ${meCls}`}>
-            <Body look={me.look}>
-              {done && !replay.win ? (
-                // лёжа — та же одетая фигура, опрокинутая на землю головой к сопернику
-                <PoseG name="lying" anim="ko" look={me.look} />
-              ) : (
-                <PoseG name="guard34" anim={done ? 'cheer' : !last ? 'guard' : last.by === 0 ? (strike ? (last.crit || i % 3 === 2 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'} look={me.look} />
-              )}
-            </Body>
+            <PoseG
+              name="guard34"
+              anim={done ? (replay.win ? 'cheer' : 'ko') : !last ? 'guard' : last.by === 0 ? (strike ? (last.crit || i % 3 === 2 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'}
+              look={me.look}
+            />
           </Place>
           <Place x={256} y={266} scale={0.98} key={`en${i}`} className={`pose ${enemyCls}`}>
             <PoseG

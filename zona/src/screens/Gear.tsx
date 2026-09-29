@@ -1,11 +1,7 @@
 import { useState } from 'react';
 import { ITEMS, SLOT_NAMES, TATTOOS, itemById, type Item, type Slot } from '../../shared/content.ts';
-import { Character } from '../art/Character.tsx';
 import { ItemIcon, TattooIcon } from '../art/Icons.tsx';
-import { characterLayers, useArt } from '../art/raster.ts';
-import { RasterFigure } from '../art/Stage.tsx';
-import { PoseG, usePoses } from '../art/sprites.tsx';
-import { NpcBanner } from '../art/sprites.tsx';
+import { NpcBanner, PoseG } from '../art/sprites.tsx';
 import { PerksPanel } from '../Perks.tsx';
 import { BonusList, Card, Price, lookOf, useAnim, useGame } from '../game.tsx';
 
@@ -17,9 +13,6 @@ export function Gear() {
   const [slot, setSlot] = useState<Slot | 'all'>('all');
   const [bare, setBare] = useState(false);
   const [anim, animKey, play] = useAnim();
-  const art = useArt();
-  const standLayers = characterLayers(art, 'stand', lookOf(p), { bare });
-  const poses = usePoses();
 
   const dress = async (type: 'equip' | 'unequip', body: Record<string, unknown>) => {
     if ((await act(type, body)) !== null) play('act-dress');
@@ -67,21 +60,14 @@ export function Gear() {
           <div className="wardrobe">
             <div className="wardrobe-col">{(['head', 'body', 'legs'] as Slot[]).map(slotTile)}</div>
             <div className="pose-wrap" onClick={() => setBare(!bare)}>
-              {standLayers ? (
-                <div className="stand-view">
-                  <RasterFigure layers={standLayers} className={anim} key={animKey} />
-                </div>
-              ) : poses ? (
-                <svg key={animKey} className={`char-view pose ${anim}`} viewBox="0 -6 120 221">
-                  <PoseG name="stand" look={lookOf(p)} />
-                </svg>
-              ) : (
-                <Character key={animKey} className={`char-view pose ${anim}`} look={lookOf(p)} bare={bare} />
-              )}
+              {/* тап — раздеться по пояс и показать наколки */}
+              <svg key={animKey} className="char-view" viewBox="0 -6 120 221">
+                <PoseG name="stand" anim={anim === 'act-dress' ? 'flex' : undefined} look={lookOf(p)} bare={bare} />
+              </svg>
             </div>
             <div className="wardrobe-col">{(['weapon', 'charm', 'feet'] as Slot[]).map(slotTile)}</div>
           </div>
-          {!poses && <div className="muted small center">Нажми на персонажа — {bare ? 'одеть' : 'снять верх и показать наколки'}</div>}
+          <div className="muted small center">Нажми на персонажа — {bare ? 'одеть' : 'снять верх и показать наколки'}</div>
           <h3 className="section">Инвентарь</h3>
           {mine.map((i) => {
             const on = p.equipped[i.slot] === i.id;

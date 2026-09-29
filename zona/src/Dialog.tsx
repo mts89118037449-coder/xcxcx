@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
-import { artUrl, useArt } from './art/raster.ts';
 import type { DialogSpec } from './game.tsx';
 import { NpcPortrait } from './art/sprites.tsx';
 
 /** Разговор с персонажем: портрет, реплика печатается, ниже — ответы. */
 export function DialogBox({ d, onClose }: { d: DialogSpec; onClose(): void }) {
-  const url = artUrl(useArt(), d.who);
   const [shown, setShown] = useState(0);
   useEffect(() => {
     setShown(0);
@@ -16,7 +14,7 @@ export function DialogBox({ d, onClose }: { d: DialogSpec; onClose(): void }) {
   return (
     <div className="modal dialog-modal" onClick={onClose}>
       <div className="dialog" onClick={(e) => (typing ? setShown(d.text.length) : e.stopPropagation())}>
-        {(url || d.who.startsWith('sheet/')) && (
+        {d.who.startsWith('sheet/') && (
           <div className="dialog-pic">
             <NpcPortrait who={d.who} />
           </div>

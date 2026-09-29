@@ -185,3 +185,12 @@ test('webhook проверяет секрет', async () => {
   const res = await fetch(`${base}/tg/webhook`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
   assert.equal(res.status, 403);
 });
+
+test('частые запросы одного игрока режутся, другие игроки не страдают', async () => {
+  const spam = initData(990, 'Скрипт');
+  const codes: number[] = [];
+  for (let i = 0; i < 60; i++) codes.push((await post('/api/me', spam)).status);
+  assert.ok(codes.includes(429), 'после запаса — 429');
+  assert.equal(codes[0], 200);
+  assert.equal((await post('/api/me', initData(991, 'Честный'))).status, 200);
+});

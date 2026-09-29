@@ -1869,3 +1869,4 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .top-face-wrap .top-face { width: 46px; height: 46px; }
 .shop-btn { width: 40px; height: 40px; }
 .rank-line { text-align: center; font-weight: 800; color: var(--gold); margin: 2px 0 8px; }
+.icon-emoji { display: inline-grid; place-items: center; border-radius: 10px; background: radial-gradient(circle at 50% 40%, #3a3226, #1a1612); }

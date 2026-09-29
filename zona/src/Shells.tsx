@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { SHELLS } from '../shared/content.ts';
-import { artUrl, useArt } from './art/raster.ts';
+import { NpcPortrait } from './art/sprites.tsx';
 import { fmt, useGame } from './game.tsx';
 
 type Phase = 'bet' | 'shuffle' | 'pick' | 'reveal';
@@ -8,7 +8,6 @@ type Phase = 'bet' | 'shuffle' | 'pick' | 'reveal';
 /** Напёрстки с Лёхой: шарик прячется, напёрстки крутятся, угадай где. */
 export function ShellGame({ onClose }: { onClose(): void }) {
   const { p, act, toast } = useGame();
-  const lyoha = artUrl(useArt(), 'sheet/rival/3');
   const max = SHELLS.betPerLevel * p.level;
   const bets = [SHELLS.minBet, Math.round(max / 4 / 50) * 50, Math.round(max / 2 / 50) * 50, max].filter((b, i, a) => b >= SHELLS.minBet && a.indexOf(b) === i);
   const [bet, setBet] = useState(bets[0]);
@@ -51,7 +50,7 @@ export function ShellGame({ onClose }: { onClose(): void }) {
     <div className="modal" onClick={onClose}>
       <div className="modal-body shells" onClick={(e) => e.stopPropagation()}>
         <div className="shells-top">
-          {lyoha && <img className="shells-lyoha" src={lyoha} alt="" />}
+          <NpcPortrait who="sheet/rival/3" className="shells-lyoha" />
           <div>
             <b>Лёха-напёрсточник</b>
             <p className="muted small">

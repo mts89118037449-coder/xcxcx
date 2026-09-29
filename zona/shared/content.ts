@@ -524,7 +524,6 @@ export const CLAN = {
   energyPerLevel: 2,
 };
 
-/** Сколько лиц на выбор (картинки public/art/sheet/face/<n>.png). */
 /** Внешность героя собирается из частей: причёска × борода × форма лица × брови. Номер лица = их комбинация. */
 export const FACE_PARTS = { hair: 8, beard: 6, jaw: 3, brow: 2 };
 export const FACE_COUNT = FACE_PARTS.hair * FACE_PARTS.beard * FACE_PARTS.jaw * FACE_PARTS.brow;
@@ -617,28 +616,3 @@ export const CHURCH = {
   confessHeal: 0.3, // доля здоровья, раз в день
 };
 export const PULLUPS = { maxReps: 40, cooldownMin: 10, perDay: 12, repsPerXp: 3 };
-
-/** Комплекты одежды, нарисованные на герое целиком (public/art/sheet/outfit/<set>/<поза>.png).
- *  У всех есть stand; guard — боевая стойка, walk — шаг, sit — сидя. */
-export type OutfitPose = 'stand' | 'guard' | 'walk' | 'sit';
-export const OUTFITS: Record<string, { set: string; poses: OutfitPose[] }> = {
-  body_robe: { set: 'c_stripes', poses: ['stand'] },
-  body_tank: { set: 'c_tank', poses: ['stand', 'guard'] },
-  body_telnyashka: { set: 'c_telnyashka', poses: ['stand'] },
-  body_quilted: { set: 'c_bushlat', poses: ['stand'] },
-  body_tracksuit: { set: 'c_tracksuit', poses: ['stand'] },
-  body_overalls: { set: 'c_overalls', poses: ['stand'] },
-  body_bib: { set: 'c_bib', poses: ['stand', 'guard'] },
-  body_denim: { set: 'c_denim', poses: ['stand'] },
-  body_vest: { set: 'c_vest', poses: ['stand', 'walk'] },
-  body_camo: { set: 'c_camo', poses: ['stand', 'guard', 'walk'] },
-  body_leather: { set: 'c_leather', poses: ['stand', 'walk'] },
-  body_parka: { set: 'c_parka', poses: ['stand'] },
-  body_alaska: { set: 'c_alaska', poses: ['stand'] },
-  body_smock: { set: 'c_smock', poses: ['stand', 'walk'] },
-  body_bomber: { set: 'c_bomber', poses: ['stand'] },
-  body_apron: { set: 'c_apron', poses: ['stand'] },
-  body_gown: { set: 'a_gown', poses: ['stand'] },
-  drop_coat: { set: 'c_tulup', poses: ['stand'] },
-  drop_uniform: { set: 'c_guardform', poses: ['stand', 'guard', 'walk'] },
-};

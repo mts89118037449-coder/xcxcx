@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { BUILDS, GOLD_PRICES, SKINS, faceOf, faceParts } from '../shared/content.ts';
 import { Rig, RigHead } from './art/rig/Rig.tsx';
 import { SKIN_TONES } from './art/rig/wear.ts';
-import { useArt } from './art/raster.ts';
-import { Face, faceUrl } from './art/sprites.tsx';
+import { Face } from './art/sprites.tsx';
 import { Card, useGame } from './game.tsx';
 
 type Section = 'face' | 'body' | 'name';
@@ -11,7 +10,6 @@ type Section = 'face' | 'body' | 'name';
 /** Редактор персонажа: лицо, телосложение, кожа, имя. */
 export function CharacterEditor() {
   const { p, act, busy, toast } = useGame();
-  const art = useArt();
   const [open, setOpen] = useState<Section | null>('face');
   const [name, setName] = useState(p.name);
 

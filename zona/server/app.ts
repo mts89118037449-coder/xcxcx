@@ -21,6 +21,8 @@ export interface AppOptions {
   now?: () => number;
   rng?: g.Rng;
   staticDir?: string;
+  /** запросов на игрока: запас и пополнение в секунду (по умолчанию 40 и 8) */
+  rateLimit?: { burst: number; perSec: number };
 }
 
 interface AuthedRequest extends Request {
@@ -225,6 +227,26 @@ export function createApp(opts: AppOptions) {
   // --- API игры ------------------------------------------------------------
   const api = express.Router();
   api.use(auth);
+
+  // Ограничение частоты на игрока (ведро с жетонами): живой игрок столько не нажмёт,
+  // а скрипт, долбящий мини-игры или бои, упрётся и не положит сервер.
+  const limit = opts.rateLimit ?? { burst: 40, perSec: 8 };
+  const buckets = new Map<number, { tokens: number; at: number }>();
+  api.use((req: AuthedRequest, res, next) => {
+    const id = req.tgUser!.id;
+    const t = Date.now();
+    const b = buckets.get(id) ?? { tokens: limit.burst, at: t };
+    b.tokens = Math.min(limit.burst, b.tokens + ((t - b.at) / 1000) * limit.perSec);
+    b.at = t;
+    if (b.tokens < 1) {
+      buckets.set(id, b);
+      return res.status(429).json({ error: 'Слишком часто — подожди секунду' });
+    }
+    b.tokens -= 1;
+    buckets.set(id, b);
+    if (buckets.size > 50_000) for (const [k, v] of buckets) if (t - v.at > 60_000) buckets.delete(k);
+    next();
+  });
 
   api.post('/me', (req: AuthedRequest, res) => {
     const t = now();
