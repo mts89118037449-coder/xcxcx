@@ -658,3 +658,86 @@ test('золото с босса — только за первую победу
   assert.ok(second.win);
   assert.equal(second.reward.gold, 0);
 });
+
+// --- Этап 1: этапирование, масть, срок, напоминания ------------------------------------------
+
+import { INTRO, MAST_RULES, TERM, termDays } from '../shared/term.ts';
+
+test('этапирование: новичок проходит сцены по порядку, старые игроки его пропускают', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  assert.equal(p.intro, 0);
+  for (let i = 0; i < INTRO.length; i++) {
+    const r = g.introStep(p, 0, T0);
+    assert.ok(r.reply);
+    assert.equal(r.done, i === INTRO.length - 1);
+  }
+  assert.equal(p.intro, -1);
+  assert.ok((p.stash.c_sand ?? 0) >= 1);
+  assert.throws(() => g.introStep(p, 0, T0), /пройден/);
+  const old = g.migrate({ ...g.newPlayer(2, 'Старый', null, T0), intro: undefined } as unknown as g.Player);
+  assert.equal(old.intro, -1);
+});
+
+test('масть: с 5 уровня, даёт бонусы, смена стоит золота и авторитета', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  assert.throws(() => g.chooseMast(p, 'muzhik', T0), /уровня/);
+  p.level = MAST_RULES.minLevel;
+  const e0 = g.stats(p, T0).maxEnergy;
+  g.chooseMast(p, 'muzhik', T0);
+  assert.equal(g.stats(p, T0).maxEnergy, e0 + 15);
+  const job = g.doJob(p, 'j_floor', T0, fixed(0.5));
+  assert.ok(job.xp > 4, 'мужику больше опыта за смены');
+  p.authority = 100;
+  p.gold = 0;
+  assert.throws(() => g.chooseMast(p, 'otric', T0), /золота/);
+  p.gold = 500;
+  const atk0 = g.stats(p, T0).atk;
+  g.chooseMast(p, 'otric', T0);
+  assert.equal(p.authority, 70);
+  assert.ok(g.stats(p, T0).atk > atk0);
+});
+
+test('срок: дела скашивают дни, УДО сбрасывает уровень и даёт бонус навсегда', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  assert.equal(p.term, termDays(1));
+  g.doJob(p, 'j_floor', T0, fixed(0.5));
+  assert.ok(p.term < termDays(1));
+  assert.throws(() => g.release(p, T0), /До УДО/);
+  p.term = 0;
+  p.level = 20;
+  p.str = 90;
+  p.tattoos = ['t_cat'];
+  const gold = p.gold;
+  const r = g.release(p, T0);
+  assert.equal(r.hodka, 2);
+  assert.equal(p.level, 1);
+  assert.equal(p.str, 5);
+  assert.deepEqual(p.tattoos, ['t_cat']);
+  assert.equal(p.gold, gold + TERM.releaseGold);
+  assert.equal(p.term, termDays(2));
+  assert.equal(g.hodkaBonus(p), TERM.bonusPerHodka);
+  // бонус ходки к опыту
+  const xp0 = p.xp;
+  g.addXp(p, 10, T0);
+  assert.equal(p.xp - xp0, 11);
+});
+
+test('напоминания: не ночью, не больше трёх в день, каждое — раз между заходами', () => {
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  const day = Date.UTC(2026, 0, 6, 9); // 12:00 по Москве
+  p.lastSeen = day - 3 * 3600_000;
+  p.energy = 999;
+  p.dailyAt = day; // грев уже забран
+  const n = g.pendingNotice(p, day);
+  assert.equal(n?.kind, 'energy');
+  g.markNotified(p, n!.kind, day);
+  assert.equal(g.pendingNotice(p, day + 60_000)?.kind ?? null, null, 'про энергию второй раз не пишем');
+  const night = Date.UTC(2026, 0, 6, 21); // полночь по Москве
+  p.lastSeen = night - 3600_000;
+  assert.equal(g.pendingNotice(p, night), null);
+  p.notify = { on: true, day: g.dayKey(day), n: 3, last: {} };
+  assert.equal(g.canNotify(p, day), false);
+  g.setNotify(p, false);
+  p.notify.n = 0;
+  assert.equal(g.canNotify(p, day), false);
+});

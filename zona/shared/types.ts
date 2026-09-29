@@ -1,3 +1,4 @@
+import type { Mast } from './term.ts';
 import type { Slot } from './content.ts';
 
 export interface PlayerView {
@@ -66,6 +67,13 @@ export interface PlayerView {
   battle: BattleView | null;
   admin: boolean;
   story: { ch: number; step: number; progress: number };
+  mast: Mast | null;
+  hodka: number;
+  term: number;
+  termTotal: number;
+  hodkaBonus: number;
+  intro: number;
+  notifyOn: boolean;
   games: { cards: number; race: number; brew: number; brewReadyAt: number; cardsMaxBet: number; dice: number; diceMaxBet: number; arm: number; darts: number };
   god: boolean;
   cell: string[];

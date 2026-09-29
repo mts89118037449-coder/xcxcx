@@ -8,6 +8,7 @@ import { CharacterEditor } from '../Editor.tsx';
 import { InteriorPicker } from '../Interior.tsx';
 import { BonusList, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
+import { DailyWeek, MastPicker, NotifyToggle, TermCard } from '../Term.tsx';
 import { STORY } from '../../shared/story.ts';
 
 
@@ -38,9 +39,9 @@ export function Home() {
   const ink = TATTOOS.filter((t) => p.tattoos.includes(t.id));
   const hurt = p.hp < p.stats.maxHp * 0.3;
 
-  const daily = async () => {
-    if ((await act('daily')) !== null) play('act-cheer');
-  };
+  const [weekOpen, setWeekOpen] = useState(false);
+  const [mastOpen, setMastOpen] = useState(false);
+  const daily = () => setWeekOpen(true);
 
   return (
     <>
@@ -57,7 +58,7 @@ export function Home() {
           animKey={animKey}
           onClick={() => play('act-cheer')}
         />
-        <div className="scene-tag">🏚️ 🛋️{p.comfort} · <span className="pulse" /> {fmt(online)}</div>
+        <div className="scene-tag">🏚️ 🛋️{p.comfort} · ⛓️{p.term > 0 ? `${Math.ceil(p.term)} дн.` : 'УДО!'} · <span className="pulse" /> {fmt(online)}</div>
         {tryOn && (
           <div className="try-bar">
             <span>
@@ -116,6 +117,7 @@ export function Home() {
       {panel === 'me' && (
         <>
           <div className="rank-line">🎖️ {p.rank} · ур. {p.level}</div>
+          <TermCard onMast={() => setMastOpen(true)} />
           <div className="stat-row">
             <div><span>⚔️</span>{p.stats.atk}<small>атака</small></div>
             <div><span>🛡️</span>{p.stats.def}<small>защита</small></div>
@@ -138,8 +140,11 @@ export function Home() {
             </button>
           )}
           {p.vipUntil && <div className="vip-strip on">👑 Блатной ещё {timeLeft(p.vipUntil - now)}</div>}
+          <NotifyToggle />
         </>
       )}
+      {weekOpen && <DailyWeek onClose={() => { setWeekOpen(false); play('act-cheer'); }} />}
+      {mastOpen && <MastPicker onClose={() => setMastOpen(false)} />}
     </>
   );
 }

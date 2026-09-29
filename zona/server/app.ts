@@ -1,6 +1,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
+import { NOTIFY, termDays } from '../shared/term.ts';
 import { BALANCE, CHURCH, cellView, comfortOf, CLAN, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
 import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
 import { validateInitData, type TgUser } from './auth.ts';
@@ -164,6 +165,13 @@ export function createApp(opts: AppOptions) {
       battle: g.battleView(p),
       admin: opts.adminIds.includes(p.id),
       story: p.story,
+      mast: p.mast,
+      hodka: p.hodka,
+      term: p.term,
+      termTotal: termDays(p.hodka),
+      hodkaBonus: g.hodkaBonus(p),
+      intro: p.intro,
+      notifyOn: p.notify.on,
       games: {
         cards: g.playsLeft(p, 'cards', CARDS.perDay, t),
         race: g.playsLeft(p, 'race', RACE.perDay, t),
@@ -224,6 +232,29 @@ export function createApp(opts: AppOptions) {
     });
   }
 
+  /** Сообщение игроку от бота с кнопкой «Играть». */
+  function notifyPlayer(id: number, text: string) {
+    const markup = opts.webAppUrl ? { reply_markup: { inline_keyboard: [[{ text: '🎮 Играть', web_app: { url: opts.webAppUrl } }]] } } : {};
+    return bot?.call('sendMessage', { chat_id: id, text, ...markup }).catch(() => null);
+  }
+
+  /** Раз в несколько минут: кому из недавно игравших есть что сказать. */
+  function runNotifier() {
+    if (!bot) return 0;
+    const t = now();
+    let sent = 0;
+    for (const p of db.recentPlayers(t - NOTIFY.activeWithinDays * 24 * 3600_000)) {
+      g.tick(p, t);
+      const n = g.pendingNotice(p, t);
+      if (!n) continue;
+      g.markNotified(p, n.kind, t);
+      db.savePlayer(p);
+      notifyPlayer(p.id, n.text);
+      sent++;
+    }
+    return sent;
+  }
+
   // --- API игры ------------------------------------------------------------
   const api = express.Router();
   api.use(auth);
@@ -270,6 +301,10 @@ export function createApp(opts: AppOptions) {
 
   const actions: Record<string, Handler> = {
     look: (p, b) => g.setLook(p, num(b.build), num(b.skin)),
+    mast: (p, b, t) => g.chooseMast(p, str(b.id), t),
+    release: (p, _b, t) => g.release(p, t),
+    intro: (p, b, t) => g.introStep(p, num(b.choice), t),
+    notify: (p, b) => g.setNotify(p, !!b.on),
     story: (p, _b, t) => g.claimStory(p, t),
     cardsStart: (p, b, t) => g.cardsStart(p, num(b.bet), t, rng),
     cardsHit: (p, _b, t) => g.cardsHit(p, t),
@@ -433,7 +468,14 @@ export function createApp(opts: AppOptions) {
       }
       const target = bt.targetId ? db.getPlayer(bt.targetId) : null;
       const r = g.pvpFinish(p, target, bt.loot, result, t, rng);
-      if (target) db.savePlayer(target);
+      if (target) {
+        // на тебя наехали — сразу сообщение от бота (если можно писать)
+        if (r.win && bot && g.canNotify(target, t)) {
+          g.markNotified(target, 'attacked', t);
+          notifyPlayer(target.id, `🥊 ${p.name} наехал и отжал ${r.loot} ₽. Отомстить?`);
+        }
+        db.savePlayer(target);
+      }
       return { rounds: step.rounds, done: true, win: r.win, reward: { money: r.loot, xp: r.xp, authority: r.authority, item: r.item, levelUps: r.levelUps }, used: r.used };
     },
     worldHit: (p, _b, t) => {
@@ -680,5 +722,5 @@ export function createApp(opts: AppOptions) {
     app.get(/^\/(?!api|tg).*/, (_req, res) => res.sendFile('index.html', { root: opts.staticDir }));
   }
 
-  return { app, handleUpdate, creditPayment };
+  return { app, handleUpdate, creditPayment, runNotifier };
 }

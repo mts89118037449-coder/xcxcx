@@ -40,6 +40,7 @@ interface Day {
   items: number;
   furniture: number;
   tattoos: number;
+  term: number;
   income: Record<string, number>;
 }
 
@@ -159,6 +160,7 @@ function simulate(profile: (typeof PROFILES)[number]) {
       }
 
       gFrom('бои');
+      if (!p.mast && p.level >= 5) g.chooseMast(p, profile.sessions >= 16 ? 'otric' : profile.sessions >= 8 ? 'blat' : 'muzhik', now);
       // покупки: очки навыков, шмот, мебель, наколки, качалка
       while (p.statPoints > 0) g.allocate(p, p.str <= p.end * 1.6 ? 'str' : p.end <= p.agi * 1.4 ? 'end' : 'agi');
       for (const slot of ['weapon', 'body', 'head', 'legs', 'feet', 'charm'] as const) {
@@ -201,6 +203,7 @@ function simulate(profile: (typeof PROFILES)[number]) {
       items: p.inventory.length,
       furniture: p.furniture.length,
       tattoos: p.tattoos.length,
+      term: Math.ceil(p.term),
       income: { ...income },
     });
   }
@@ -211,11 +214,11 @@ const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
 for (const pr of PROFILES) {
   const { days, tries, gold } = simulate(pr);
   console.log(`\n=== ${pr.name}: ${pr.sessions} заходов в день ===`);
-  console.log('день  ур   деньги   золото бычки  атк  защ   хп  боссов лучший босс          шмот мебель наколки');
+  console.log('день  ур   деньги   золото бычки  атк  защ   хп  боссов лучший босс          шмот мебель наколки срок');
   for (const [i, d] of days.entries()) {
     if (![0, 1, 2, 4, 6, 9, 13, 19, 29, 44, 59].includes(i) && i !== days.length - 1) continue;
     console.log(
-      `${String(i + 1).padStart(4)} ${String(d.level).padStart(4)} ${fmt(d.money).padStart(9)} ${String(d.gold).padStart(6)} ${String(d.butts).padStart(5)} ${String(d.atk).padStart(4)} ${String(d.def).padStart(4)} ${String(d.hp).padStart(5)} ${String(d.bosses).padStart(6)} ${d.top.padEnd(20)} ${String(d.items).padStart(4)}/${ITEMS.length} ${String(d.furniture).padStart(3)}/${FURNITURE.length} ${String(d.tattoos).padStart(3)}/${TATTOOS.length}`,
+      `${String(i + 1).padStart(4)} ${String(d.level).padStart(4)} ${fmt(d.money).padStart(9)} ${String(d.gold).padStart(6)} ${String(d.butts).padStart(5)} ${String(d.atk).padStart(4)} ${String(d.def).padStart(4)} ${String(d.hp).padStart(5)} ${String(d.bosses).padStart(6)} ${d.top.padEnd(20)} ${String(d.items).padStart(4)}/${ITEMS.length} ${String(d.furniture).padStart(3)}/${FURNITURE.length} ${String(d.tattoos).padStart(3)}/${TATTOOS.length} ${String(d.term).padStart(4)}`,
     );
   }
   const last = days[days.length - 1].income;

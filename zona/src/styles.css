@@ -1870,3 +1870,37 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .shop-btn { width: 40px; height: 40px; }
 .rank-line { text-align: center; font-weight: 800; color: var(--gold); margin: 2px 0 8px; }
 .icon-emoji { display: inline-grid; place-items: center; border-radius: 10px; background: radial-gradient(circle at 50% 40%, #3a3226, #1a1612); }
+
+/* --- Этап 1: этапирование, масть, срок, неделя грева ------------------- */
+.intro-modal { background: #000d; }
+.intro-body { max-width: 520px; }
+.intro-steps { display: flex; gap: 5px; justify-content: center; margin: 2px 0 8px; }
+.intro-steps i { width: 26px; height: 5px; border-radius: 3px; background: #3a342a; }
+.intro-steps i.done { background: var(--gold); }
+.intro-steps i.now { background: #8a7440; animation: bt-glow 1.4s infinite; }
+.intro-gains { text-align: center; color: var(--gold); font-weight: 800; margin: 8px 0; }
+.mast-body { max-width: 560px; }
+.mast-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+.mast-card { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); text-align: center; }
+.mast-card.on { border-color: var(--gold); box-shadow: 0 0 10px #f2c14e44; }
+.mast-card small { color: var(--muted); font-size: 11px; line-height: 1.25; }
+.mast-card ul { margin: 2px 0 4px; padding: 0; list-style: none; font-size: 11.5px; color: #cfe7b8; }
+.mast-pic { width: 84px; height: 96px; border-radius: 12px; }
+.term-card { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; margin: 0 0 10px; border-radius: 14px; border: 1px solid #4a4030; background: linear-gradient(90deg, #2a241a, #1c1914); }
+.term-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.term-row > div { display: flex; flex-direction: column; }
+.term-row small { color: var(--muted); font-size: 11.5px; }
+.term-bar { position: relative; height: 16px; border-radius: 8px; background: #0008; overflow: hidden; }
+.term-bar div { height: 100%; background: linear-gradient(90deg, #5a4a2a, var(--gold)); }
+.term-bar span { position: absolute; inset: 0; text-align: center; font-size: 11px; line-height: 16px; font-weight: 800; text-shadow: 0 1px 2px #000; }
+.week { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0; }
+.week-day { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 2px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-size: 11px; text-align: center; }
+.week-day span { font-size: 24px; }
+.week-day i { font-style: normal; color: var(--gold); font-size: 10.5px; }
+.week-day small { color: var(--muted); }
+.week-day.got { opacity: 0.5; }
+.week-day.cur { border-color: var(--gold); box-shadow: 0 0 12px #f2c14e55; animation: bt-glow 1.6s infinite; }
+.week-day.big { grid-column: span 2; background: linear-gradient(#3a2e18, #241c10); border-color: #6b5520; }
+.week-day em { position: absolute; top: 2px; right: 6px; font-style: normal; color: #8fd07a; font-weight: 900; }
+.notify-toggle { display: flex; gap: 8px; align-items: flex-start; margin: 10px 2px; font-size: 12.5px; color: var(--muted); }
+.notify-toggle input { margin-top: 2px; accent-color: var(--accent); }

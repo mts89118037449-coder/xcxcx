@@ -9,6 +9,7 @@ import { Zone } from './screens/Zone.tsx';
 import { EventButton, EventStage } from './Events.tsx';
 import { BattleModal } from './Battle.tsx';
 import type { Mini } from './Minigames.tsx';
+import { MAST_RULES } from '../shared/term.ts';
 import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Tab } from './game.tsx';
 import { Fight } from './screens/Fight.tsx';
@@ -28,6 +29,8 @@ const Pullups = named(() => import('./Pullups.tsx'), 'Pullups');
 const Medic = named(() => import('./Medic.tsx'), 'Medic');
 const Escape = named(() => import('./Escape.tsx'), 'Escape');
 const AdminPanel = named(() => import('./Admin.tsx'), 'AdminPanel');
+const IntroOverlay = named(() => import('./Intro.tsx'), 'IntroOverlay');
+const MastPicker = named(() => import('./Term.tsx'), 'MastPicker');
 const CardsGame = named(() => import('./Minigames.tsx'), 'CardsGame');
 const RaceGame = named(() => import('./Minigames.tsx'), 'RaceGame');
 const BrewGame = named(() => import('./Minigames.tsx'), 'BrewGame');
@@ -63,6 +66,13 @@ export function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [mini, setMini] = useState<Mini | null>(null);
   const hasBattle = !!player?.battle;
+  // этапирование для новичка и приглашение выбрать масть — по одному разу за заход
+  const [introOn, setIntroOn] = useState(false);
+  const introPending = (player?.intro ?? -1) >= 0;
+  useEffect(() => {
+    if (introPending) setIntroOn(true);
+  }, [introPending]);
+  const [mastAsked, setMastAsked] = useState(false);
   useEffect(() => {
     if (hasBattle) setBattleOn(true); // драка началась или игрок вернулся в незаконченную
   }, [hasBattle]);
@@ -233,6 +243,8 @@ export function App() {
       {mini === 'arm' && <ArmGame onClose={() => setMini(null)} />}
       {mini === 'darts' && <DartsGame onClose={() => setMini(null)} />}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
+      {introOn && <IntroOverlay onDone={() => setIntroOn(false)} />}
+      {!introOn && !mastAsked && !p.mast && p.level >= MAST_RULES.minLevel && <MastPicker onClose={() => setMastAsked(true)} />}
       {battleOn && <BattleModal onClose={() => setBattleOn(false)} />}
       {eventId && <EventStage id={eventId} onClose={() => setEventId(null)} />}
       {dialog && <DialogBox d={dialog} onClose={() => setDialog(null)} />}

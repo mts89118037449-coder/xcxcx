@@ -5,6 +5,7 @@
 import type { DailyState, Look, Quest, QuestState } from '../shared/types.ts';
 import {
   BALANCE,
+  BOSSES,
   CHURCH,
   PULLUPS,
   WEEKLY_EVENTS,
@@ -46,6 +47,7 @@ import {
 import { battleAct, battleAuto, battleControls, battleResult, fight, newBattle, npcPerks, type BattleAction, type BattleState, type Fighter, type FightResult, type Round } from './combat.ts';
 import { STORY } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
+import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, type Effects } from '../shared/events.ts';
 import { CONSUMABLES as CONSUMABLES_ALL, CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
 
@@ -145,6 +147,15 @@ export interface Player {
   bossCd: Record<string, number>;
   /** день последнего золота с босса: золото — только за первую победу в сутки */
   bossGold: Record<string, string>;
+  /** масть: выбирается с 5 уровня, даёт свои бонусы */
+  mast: Mast | null;
+  /** номер ходки и сколько дней осталось до УДО */
+  hodka: number;
+  term: number;
+  /** шаг вступления-этапирования; −1 — пройдено */
+  intro: number;
+  /** уведомления от бота: включены ли, сколько за сегодня, когда какое слали */
+  notify: { on: boolean; day: string; n: number; last: Record<string, number> };
   pvpAt: number;
   shieldUntil: number;
   worldHitAt: number;
@@ -231,6 +242,11 @@ export function newPlayer(id: number, name: string, username: string | null, now
     respect: {},
     bossCd: {},
     bossGold: {},
+    mast: null,
+    hodka: 1,
+    term: termDays(1),
+    intro: 0,
+    notify: { on: true, day: '', n: 0, last: {} },
     pvpAt: 0,
     shieldUntil: 0,
     worldHitAt: 0,
@@ -252,6 +268,11 @@ export function newPlayer(id: number, name: string, username: string | null, now
 export function migrate(p: Player): Player {
   p.furniture ??= [];
   p.bossGold ??= {};
+  p.mast ??= null;
+  p.hodka ??= 1;
+  p.term ??= termDays(p.hodka);
+  p.intro ??= -1; // старые игроки вступление уже прожили
+  p.notify ??= { on: true, day: '', n: 0, last: {} };
   p.cellShow ??= {};
   p.face ??= p.id % FACE_COUNT;
   p.faceChosen ??= false;
@@ -301,7 +322,8 @@ export function isVip(p: Player, now: number): boolean {
 function bonuses(p: Player): Required<Bonus> {
   const total: Required<Bonus> = { atk: 0, def: 0, hp: 0, crit: 0, energy: 0, money: 0 };
   const sources = [
-    ...Object.values(p.equipped).map((id) => (id ? itemById.get(id) : undefined)),
+    // вещь работает только с её уровня: после выхода по УДО старый шмот ждёт, пока дорастёшь
+    ...Object.values(p.equipped).map((id) => (id ? itemById.get(id) : undefined)).filter((i) => !i || i.minLevel <= p.level),
     ...p.tattoos.map((id) => tattooById.get(id)),
     ...p.furniture.map((id) => furnitureById.get(id)),
   ].filter((b): b is NonNullable<typeof b> => !!b);
@@ -311,16 +333,31 @@ function bonuses(p: Player): Required<Bonus> {
   return total;
 }
 
+/** Бонус масти в процентах или очках (0 — масти нет). */
+export function mastBonus(p: Player, k: keyof NonNullable<ReturnType<typeof mastById.get>>['bonus']): number {
+  return (p.mast ? mastById.get(p.mast)?.bonus[k] : 0) ?? 0;
+}
+
+/** Бонус за отсиженные ходки: % к деньгам и опыту. */
+export function hodkaBonus(p: Player): number {
+  return Math.min(TERM.maxHodkaBonus, p.hodka - 1) * TERM.bonusPerHodka;
+}
+
+/** Скостить срок: дела сокращают дни до УДО (отрицательное — добавить). */
+export function serve(p: Player, days: number) {
+  p.term = Math.max(0, Math.round((p.term - days) * 1000) / 1000);
+}
+
 export function stats(p: Player, now: number) {
   const b = bonuses(p);
   const vip = isVip(p, now);
   return {
-    atk: 5 + p.str * 3 + b.atk,
+    atk: Math.round((5 + p.str * 3 + b.atk) * (1 + mastBonus(p, 'atk') / 100)),
     def: p.agi * 2 + b.def,
     maxHp: 80 + p.end * 12 + b.hp,
-    crit: Math.min(40, 2 + Math.floor(p.agi * 0.3) + b.crit + (p.blessUntil > now ? CHURCH.blessCrit : 0)),
-    maxEnergy: BALANCE.baseEnergy + b.energy + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel,
-    moneyBonus: b.money + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel + (p.blessUntil > now ? CHURCH.blessMoney : 0),
+    crit: Math.min(40, 2 + Math.floor(p.agi * 0.3) + b.crit + mastBonus(p, 'crit') + (p.blessUntil > now ? CHURCH.blessCrit : 0)),
+    maxEnergy: BALANCE.baseEnergy + b.energy + mastBonus(p, 'energy') + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel,
+    moneyBonus: b.money + hodkaBonus(p) + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel + (p.blessUntil > now ? CHURCH.blessMoney : 0),
   };
 }
 
@@ -368,6 +405,7 @@ function spendEnergy(p: Player, amount: number, now: number): void {
   const wasFull = p.energy >= stats(p, now).maxEnergy;
   p.energy -= amount;
   if (wasFull) p.energyAt = now;
+  serve(p, amount * TERM.perEnergy);
   track(p, 'spend', amount);
 }
 
@@ -382,7 +420,8 @@ function roll(rng: Rng, [min, max]: [number, number]): number {
   return min + Math.floor(rng() * (max - min + 1));
 }
 
-export function addXp(p: Player, xp: number, now: number): number {
+export function addXp(p: Player, xp0: number, now: number): number {
+  const xp = Math.round(xp0 * (1 + hodkaBonus(p) / 100));
   p.xp += xp;
   let ups = 0;
   while (p.xp >= xpToNext(p.level)) {
@@ -409,16 +448,17 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   spendEnergy(p, job.energy, now);
   // рандом смены: иногда премия от бригадира, иногда находка на промке
   const bonus = rng() < 0.1;
-  const money = Math.round(roll(rng, job.money) * (1 + stats(p, now).moneyBonus / 100) * (bonus ? 2 : 1));
+  const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney')) / 100) * (bonus ? 2 : 1));
   p.money += money;
   let item: string | null = null;
   if (rng() < 0.05) {
     item = rollConsumable(rng);
     giveItem(p, item);
   }
-  const levelUps = addXp(p, job.xp, now);
+  const xp = Math.round(job.xp * (1 + mastBonus(p, 'jobXp') / 100));
+  const levelUps = addXp(p, xp, now);
   track(p, 'job');
-  return { money, xp: job.xp, levelUps, bonus, item };
+  return { money, xp, levelUps, bonus, item };
 }
 
 export function allocate(p: Player, stat: Stat) {
@@ -617,7 +657,7 @@ export function bossFinish(p: Player, bossId: string, result: FightResult, now: 
   spendItems(p, result.used);
   p.hp = result.hpLeft;
   p.hpAt = now;
-  p.bossCd[bossId] = now + boss.cooldownMin * MIN * (result.win ? 1 : 0.25);
+  p.bossCd[bossId] = now + boss.cooldownMin * MIN * (result.win ? 1 : 0.25) * (1 - mastBonus(p, 'bossCd') / 100);
 
   const reward = { money: 0, xp: 0, authority: 0, gold: 0, drop: null as string | null, item: null as string | null, levelUps: 0 };
   if (result.win) {
@@ -627,7 +667,8 @@ export function bossFinish(p: Player, bossId: string, result: FightResult, now: 
       giveItem(p, reward.item);
     }
     reward.xp = boss.reward.xp;
-    reward.authority = boss.reward.authority;
+    reward.authority = Math.round(boss.reward.authority * (1 + mastBonus(p, 'authority') / 100));
+    serve(p, TERM.bossWin);
     // золото — только за первую победу над этим боссом за сутки, иначе фарм обесценивает донат
     reward.gold = p.bossGold[bossId] === dayKey(now) ? 0 : roll(rng, boss.reward.gold);
     if (reward.gold > 0) p.bossGold[bossId] = dayKey(now);
@@ -761,10 +802,11 @@ export function pvpFinish(p: Player, target: Player | null, loot0: number, resul
   let authority = 0;
   let xp = 0;
   if (result.win) {
-    authority = (3 + Math.floor(rng() * 6)) * (weeklyEvent(now).id === 'tournament' ? 2 : 1);
+    authority = Math.round((3 + Math.floor(rng() * 6)) * (weeklyEvent(now).id === 'tournament' ? 2 : 1) * (1 + mastBonus(p, 'authority') / 100));
+    serve(p, TERM.pvpWin);
     xp = 8 + p.level * 2;
     if (target) loot = Math.min(loot, Math.max(0, target.money));
-    loot = Math.round(loot * (1 + result.lootBonus / 100));
+    loot = Math.round(loot * (1 + (result.lootBonus + mastBonus(p, 'pvpLoot')) / 100));
     p.money += loot;
     p.authority += authority;
     if (rng() < PVP_ITEM_CHANCE) {
@@ -811,11 +853,132 @@ export function claimDaily(p: Player, now: number) {
   // серия идёт по кругу 1…7: большой грев на седьмой день, потом новая неделя
   p.dailyStreak = now - p.dailyAt < 2 * day ? (p.dailyStreak % 7) + 1 : 1;
   p.dailyAt = now;
-  const money = BALANCE.dailyBase * p.dailyStreak + p.level * 20;
-  const gold = p.dailyStreak === 7 ? 10 : 1;
+  const w = DAILY_WEEK[p.dailyStreak - 1];
+  const money = Math.round((w.money ?? 0) * (1 + p.level / 5));
+  const gold = w.gold ?? 0;
   p.money += money;
   p.gold += gold;
-  return { money, gold, streak: p.dailyStreak };
+  p.butts += w.butts ?? 0;
+  p.chifir += w.chifir ?? 0;
+  if (w.item) giveItem(p, w.item);
+  return { money, gold, butts: w.butts ?? 0, chifir: w.chifir ?? 0, item: w.item ?? null, streak: p.dailyStreak };
+}
+
+// --- Масть, срок, этапирование ---------------------------------------------------------
+
+export function chooseMast(p: Player, id: string, now: number) {
+  const m = mastById.get(id as Mast);
+  if (!m) throw new GameError('Нет такой масти');
+  if (p.level < MAST_RULES.minLevel) throw new GameError(`Масть выбирают с ${MAST_RULES.minLevel} уровня`);
+  if (p.mast === m.id) throw new GameError('Ты и так в этой масти');
+  let lost = 0;
+  if (p.mast) {
+    // перейти в другую масть — дорого и с потерей уважения
+    spend(p, MAST_RULES.changeGold, 'gold');
+    lost = Math.floor(p.authority * MAST_RULES.changeAuthorityLoss);
+    p.authority -= lost;
+  }
+  p.mast = m.id;
+  clampHp(p, now);
+  log(p, now, `${m.emoji} Масть: ${m.name}`);
+  return { mast: m.id, lost };
+}
+
+/** Выход по УДО: следующая ходка с нуля по уровню, но с бонусом к деньгам и опыту навсегда. */
+export function release(p: Player, now: number) {
+  if (p.term > 0) throw new GameError(`До УДО ещё ${Math.ceil(p.term)} дн.`);
+  noBattle(p);
+  const done = p.hodka;
+  const gold = TERM.releaseGold * done;
+  p.hodka += 1;
+  p.term = termDays(p.hodka);
+  p.level = 1;
+  p.xp = 0;
+  p.str = 5;
+  p.agi = 5;
+  p.end = 5;
+  p.statPoints = 0;
+  p.money = 300;
+  p.gold += gold;
+  p.bossCd = {};
+  p.escape = { cdUntil: 0, run: null, best: p.escape.best };
+  const s = stats(p, now);
+  p.hp = s.maxHp;
+  p.hpAt = now;
+  p.energy = Math.max(p.energy, s.maxEnergy);
+  p.energyAt = now;
+  log(p, now, `🔓 Вышел по УДО после ${done}-й ходки. Бонус ходок: +${hodkaBonus(p)}% к деньгам и опыту`);
+  return { hodka: p.hodka, gold, bonus: hodkaBonus(p), term: p.term };
+}
+
+/** Шаг вступления: выбор ответа в сцене этапирования. */
+export function introStep(p: Player, choice: number, now: number) {
+  const step = INTRO[p.intro];
+  if (p.intro < 0 || !step) throw new GameError('Этап уже пройден');
+  const o = step.options[choice];
+  if (!o) throw new GameError('Нет такого ответа');
+  p.money = Math.max(0, p.money + (o.money ?? 0));
+  p.authority = Math.max(0, p.authority + (o.authority ?? 0));
+  p.butts = Math.max(0, p.butts + (o.butts ?? 0));
+  const levelUps = o.xp ? addXp(p, o.xp, now) : 0;
+  p.intro = p.intro + 1 >= INTRO.length ? -1 : p.intro + 1;
+  if (p.intro === -1) {
+    giveItem(p, 'c_bandage');
+    giveItem(p, 'c_sand');
+  }
+  return { reply: o.reply, money: o.money ?? 0, authority: o.authority ?? 0, butts: o.butts ?? 0, xp: o.xp ?? 0, levelUps, done: p.intro === -1 };
+}
+
+// --- Уведомления от бота ------------------------------------------------------------------
+
+export function setNotify(p: Player, on: boolean) {
+  p.notify.on = !!on;
+  return { on: p.notify.on };
+}
+
+/** Час по Москве — для тихих часов. */
+function mskHour(now: number): number {
+  return new Date(now + 3 * 60 * MIN).getUTCHours();
+}
+
+/** Можно ли сейчас написать игроку: включено, не ночь, лимит на день, давно не в игре. */
+export function canNotify(p: Player, now: number): boolean {
+  if (!p.notify.on) return false;
+  const h = mskHour(now);
+  if (h >= NOTIFY.quietFrom || h < NOTIFY.quietTo) return false;
+  if (now - p.lastSeen > NOTIFY.activeWithinDays * 24 * 60 * MIN) return false;
+  if (now - p.lastSeen < 10 * MIN) return false; // и так в игре
+  const day = dayKey(now);
+  return p.notify.day !== day || p.notify.n < NOTIFY.maxPerDay;
+}
+
+export function markNotified(p: Player, kind: string, now: number) {
+  const day = dayKey(now);
+  if (p.notify.day !== day) p.notify = { ...p.notify, day, n: 0 };
+  p.notify.n += 1;
+  p.notify.last[kind] = now;
+}
+
+/** Что сказать игроку, если есть повод. Каждое напоминание — не чаще раза между заходами. */
+export function pendingNotice(p: Player, now: number): { kind: string; text: string } | null {
+  if (!canNotify(p, now)) return null;
+  const fresh = (kind: string) => (p.notify.last[kind] ?? 0) < p.lastSeen;
+  const s = stats(p, now);
+  if (fresh('daily') && now - p.dailyAt >= 24 * 60 * MIN) {
+    const w = DAILY_WEEK[(p.dailyStreak % 7)];
+    return { kind: 'daily', text: `📦 Грев пришёл: ${w.label.toLowerCase()} ждёт в хате. Заходи, пока серия не сгорела.` };
+  }
+  if (fresh('energy') && p.energy >= s.maxEnergy) return { kind: 'energy', text: `⚡ Энергия полная (${p.energy}). Промка, боссы и поручения ждут.` };
+  if (fresh('event') && p.event && p.event.until > now) {
+    const ev = eventById.get(p.event.id);
+    if (ev) return { kind: 'event', text: `❗ ${ev.name}: ${ev.text}` };
+  }
+  if (fresh('boss')) {
+    const ready = BOSSES.filter((b) => b.minLevel <= p.level && (p.bossCd[b.id] ?? 0) <= now).pop();
+    if (ready && (p.bossCd[ready.id] ?? 0) > p.lastSeen) return { kind: 'boss', text: `${ready.emoji} ${ready.name} оклемался. Самое время снова разобраться.` };
+  }
+  if (fresh('term') && p.term <= 0) return { kind: 'term', text: '🔓 Срок вышел! Можешь выйти по УДО и зайти следующей ходкой сильнее.' };
+  return null;
 }
 
 export function refillEnergy(p: Player, now: number) {
@@ -996,6 +1159,7 @@ export function claimTask(p: Player, index: number, now: number) {
   if (t.claimed) throw new GameError('Уже получено');
   if (t.progress < t.target) throw new GameError('Задание не выполнено');
   t.claimed = true;
+  serve(p, TERM.dailyTask);
   p.money += t.money;
   p.gold += t.gold;
   addXp(p, t.xp, now);
@@ -1073,7 +1237,7 @@ export function finishQuest(p: Player, now: number, rng: Rng) {
   if (a.endsAt > now) throw new GameError('Ещё не готово');
   p.quests.active = null;
   const ok = rng() < a.chance;
-  const money = ok ? Math.round(a.money * (1 + stats(p, now).moneyBonus / 100)) : 0;
+  const money = ok ? Math.round(a.money * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'questMoney')) / 100)) : 0;
   const gold = ok ? a.gold : 0;
   const xp = ok ? a.xp : Math.round(a.xp / 3);
   p.money += money;
@@ -1422,6 +1586,7 @@ export function answerEvent(p: Player, choice: number, now: number, rng: Rng) {
   p.gold -= cost.gold ?? 0;
   p.event = null;
   track(p, 'event');
+  serve(p, TERM.event);
   const o = pickWeighted(opt.outcomes, rng);
   const got = applyEffects(p, o, now, rng);
   return { text: o.text, who: ev.who, name: ev.name, ...got };
@@ -1475,10 +1640,11 @@ export function escapeEnd(p: Player, caught: boolean, now: number, rng: Rng) {
   const r = escapeReward(p.level, stages);
   const k = caught ? 1 : ESCAPE.bailShare;
   const reward = applyEffects(p, { xp: Math.round(r.xp * k), authority: Math.round(r.authority * k), gold: caught ? r.gold : 0, item: r.item && caught }, now, rng);
-  const money = Math.round(r.money * k);
+  const money = Math.round(r.money * k * (1 + mastBonus(p, 'escape') / 100));
   p.money += money;
   reward.money = money;
   if (caught) {
+    serve(p, TERM.escapeCaught);
     const max = stats(p, now).maxHp;
     p.hp = Math.max(1, Math.min(p.hp, Math.round(max * 0.4)));
     p.hpAt = now;
@@ -1619,6 +1785,7 @@ export function claimStory(p: Player, now: number) {
   p.money += r.money ?? 0;
   p.gold += r.gold ?? 0;
   p.butts += r.butts ?? 0;
+  serve(p, TERM.storyStep);
   if (r.item) giveItem(p, r.item);
   if (r.gear && itemById.has(r.gear) && !p.inventory.includes(r.gear)) p.inventory.push(r.gear);
   const levelUps = r.xp ? addXp(p, r.xp, now) : 0;

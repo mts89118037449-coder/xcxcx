@@ -27,7 +27,7 @@ const botUsername = bot
   ? await bot.call<{ username: string }>('getMe', {}).then((me) => me.username).catch(() => process.env.BOT_USERNAME ?? '')
   : '';
 
-const { app } = createApp({
+const { app, runNotifier } = createApp({
   db: openDb(process.env.DB_PATH ?? path.join(root, 'data', 'zona.db')),
   bot,
   botToken,
@@ -38,6 +38,16 @@ const { app } = createApp({
   devAuth,
   staticDir: path.join(root, 'dist'),
 });
+
+// напоминания от бота: раз в 10 минут смотрим, кому есть что сказать
+setInterval(() => {
+  try {
+    const n = runNotifier();
+    if (n) console.log(`Напоминаний отправлено: ${n}`);
+  } catch (e) {
+    console.error('Напоминания:', e);
+  }
+}, 10 * 60_000);
 
 app.listen(port, async () => {
   console.log(`Зона запущена на :${port}${devAuth ? ' (DEV_AUTH включён — не для продакшена!)' : ''}`);

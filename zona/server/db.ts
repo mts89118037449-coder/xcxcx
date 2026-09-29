@@ -106,6 +106,7 @@ export function openDb(file: string) {
       WHERE id != ? AND level BETWEEN ? AND ?
       ORDER BY RANDOM() LIMIT 20`),
     top: db.prepare("SELECT p.id, p.name, p.level, p.authority, json_extract(p.data, '$.face') AS face, c.tag AS tag FROM players p LEFT JOIN clans c ON c.id = p.clan_id ORDER BY p.authority DESC, p.level DESC LIMIT ?"),
+    recent: db.prepare('SELECT data FROM players WHERE last_seen > ?'),
     randomIds: db.prepare('SELECT id FROM players WHERE id != ? ORDER BY last_seen DESC LIMIT 60'),
     rank: db.prepare('SELECT COUNT(*) + 1 AS r FROM players WHERE authority > ?'),
     online: db.prepare('SELECT COUNT(*) AS n FROM players WHERE last_seen > ?'),
@@ -161,6 +162,10 @@ export function openDb(file: string) {
     randomNeighbour(exceptId: number, skip: number[] = []): number | null {
       const ids = (q.randomIds.all(exceptId) as { id: number }[]).map((r) => r.id).filter((id) => !skip.includes(id));
       return ids.length ? ids[Math.floor(Math.random() * ids.length)] : null;
+    },
+    /** Все, кто заходил после since — для рассылки напоминаний. */
+    recentPlayers(since: number): Player[] {
+      return (q.recent.all(since) as { data: string }[]).map((r) => migrate(JSON.parse(r.data) as Player));
     },
     rank(authority: number): number {
       return (q.rank.get(authority) as { r: number }).r;
