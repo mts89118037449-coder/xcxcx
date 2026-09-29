@@ -76,7 +76,7 @@ export function poseAt(anim: RigAnim, t: number): Pose {
     }
     case 'crossed': {
       const b = Math.sin(s * 2.1);
-      return { ...P0, y: b * 0.5, lean: 2 + b * 0.6, nS: 16, nE: 34, nW: 10, fS: 20, fE: 30, fW: 10, nH: -7, fH: 9, head: -4 + Math.sin(s * 0.6) * 2, brow: 0.6 };
+      return { ...P0, y: b * 0.5, lean: 2 + b * 0.6, nS: 10, nE: 28, nW: -34, fS: 14, fE: 24, fW: -34, fist: 1, nH: -7, fH: 9, head: -4 + Math.sin(s * 0.6) * 2, brow: 0.6 };
     }
     case 'walk':
     case 'run': {
@@ -126,13 +126,13 @@ export function poseAt(anim: RigAnim, t: number): Pose {
       return mix(g, rec, k);
     }
     case 'ko': {
-      const k = Math.min(1, ease(s / 0.5));
+      const k = ease(Math.min(1, s / 0.5));
       const lie: Pose = { ...P0, root: -86, y: 84, x: 34, lean: 0, nS: -150, nE: -20, fS: -170, fE: -10, nH: -6, nK: 10, fH: 4, fK: 18, head: -8, brow: -1 };
       return mix(poseAt('guard', 0), lie, k);
     }
     case 'cheer': {
       const b = Math.abs(Math.sin(s * 5));
-      return { ...P0, y: -b * 5, nS: -118, nE: -52, fS: -150, fE: -30, fist: 1, mouth: 1, brow: 0.4, nH: -6, fH: 8, nK: b * 6 };
+      return { ...P0, y: -b * 5, nS: -166, nE: -18, fS: -150, fE: -30, fist: 1, mouth: 1, brow: 0.4, nH: -6, fH: 8, nK: b * 6 };
     }
     case 'work': {
       const b = Math.sin(s * 5.2);
@@ -370,6 +370,7 @@ function torsoPath(bw: number, g: number, hem: number): string {
     [k(12.8), -12],
     [k(13.6), -5],
     [k(14), 2 + hem],
+    [0, 3.4 + hem],
   ];
   return `M ${f2(pts[0][0])},${f2(pts[0][1])}${cr(pts)} Z`;
 }
@@ -427,7 +428,7 @@ function Chain({ parts, fill, uid, gloss, extra, shadeC = '#000', shadeO = 0.26,
 // --- Голова ---------------------------------------------------------------------------------
 // Вполоборота вправо: профиль носа, губ и подбородка — на контуре, дальний глаз меньше ближнего.
 
-const HEAD_SCALE = 0.9;
+const HEAD_SCALE = [0.86, 0.8];
 
 /** Череп и лицо; jaw: 0 — обычная, 1 — узкая, 2 — тяжёлая челюсть. */
 function headPath(jaw: number): string {
@@ -460,7 +461,7 @@ function Head({ look, pose, uid, skin }: { look: Look; pose: Pose; uid: string; 
   const fIn = -22.6 + angry * 1.1;
   const thick = fp.brow === 1 ? 1.9 : 1.3;
   return (
-    <g transform={`scale(${HEAD_SCALE})`}>
+    <g transform={`scale(${HEAD_SCALE[0]} ${HEAD_SCALE[1]})`}>
       <clipPath id={clip}>
         <path d={full} />
       </clipPath>
@@ -472,57 +473,60 @@ function Head({ look, pose, uid, skin }: { look: Look; pose: Pose; uid: string; 
         {/* собственная тень: затылок, под челюстью */}
         <path d="M -9,-15 C -13,-19.6 -13.6,-28 -9.6,-33.6 C -8.2,-35.6 -6.4,-37 -4.4,-38 C -7.4,-33 -8.6,-27 -7.8,-22 C -7,-17 -4,-11 -0.4,-6.8 C 2,-4 3.6,-0.4 5.5,4 C 0,4 -6,-4 -9,-15 Z" fill={skin.shade} opacity={0.55} />
         {/* глазницы и тень под носом */}
-        <path d="M 2.6,-19.4 C 3.4,-22.6 9.4,-23 10.4,-20.4 C 9.2,-21.2 7,-21.4 5.2,-21 C 4.2,-20.8 3.2,-20.2 2.6,-19.4 Z" fill={skin.shade} opacity={0.55} />
+        <path d="M 0,-19.4 C 0.8,-22.6 6.8,-23 7.8,-20.4 C 6.6,-21.2 4.4,-21.4 2.6,-21 C 1.6,-20.8 0.6,-20.2 0,-19.4 Z" fill={skin.shade} opacity={0.55} />
         <path d="M 10.2,-20.2 C 11,-21.8 13.2,-22 13.8,-20.6 C 12.6,-21 11.2,-20.8 10.2,-20.2 Z" fill={skin.shade} opacity={0.55} />
         <path d="M 10.4,-8.2 C 11.6,-7.2 13.2,-7 14,-7.8 C 13.4,-6.6 11.4,-6.4 10.4,-8.2 Z" fill={skin.shade} opacity={0.8} />
         {/* скула, носогубка, подбородок */}
-        <path d="M 1.6,-13 C 4,-10.8 7.4,-10.6 9.8,-12" fill="none" stroke={skin.shade} strokeWidth={0.9} strokeLinecap="round" opacity={0.8} />
+        <path d="M 5.4,-13.4 C 7,-12.6 8.6,-12.6 9.8,-13.2" fill="none" stroke={skin.shade} strokeWidth={0.7} strokeLinecap="round" opacity={0.5} />
         <path d="M 11.2,-8.6 C 9.8,-7.6 9,-6.2 9.1,-4.8" fill="none" stroke={skin.shade} strokeWidth={0.8} strokeLinecap="round" />
         <path d="M 8.4,-1.2 C 9.4,-0.6 10.6,-0.8 11.2,-1.6" fill="none" stroke={skin.shade} strokeWidth={0.8} strokeLinecap="round" />
         {/* блик на лбу */}
         <path d="M 3.6,-33.6 C 7,-34.4 10,-31.6 11,-27.6" fill="none" stroke="#fff" strokeOpacity={0.22} strokeWidth={1.6} strokeLinecap="round" />
         <path d="M 13.2,-16.6 C 14,-14.4 14.8,-12.6 15,-11" fill="none" stroke="#fff" strokeOpacity={0.3} strokeWidth={0.9} strokeLinecap="round" />
       </g>
-      {/* глаза: ближний крупнее, дальний у переносицы */}
-      <path d="M 3.6,-19.2 C 4.6,-20.7 7.5,-20.9 8.9,-19.4 C 7.6,-18 5,-17.8 3.6,-19.2 Z" fill="#efe8dc" />
-      <circle cx={6.7} cy={-19.3} r={1.3} fill="#3a2a1c" />
-      <circle cx={6.8} cy={-19.3} r={0.7} fill="#0e0a08" />
-      <circle cx={7.2} cy={-19.8} r={0.35} fill="#fff" />
-      <path d="M 10.6,-19.4 C 11.2,-20.4 12.6,-20.6 13.1,-19.6 C 12.6,-18.6 11.2,-18.6 10.6,-19.4 Z" fill="#efe8dc" />
-      <circle cx={12.1} cy={-19.5} r={0.95} fill="#0e0a08" />
-      <path d="M 3.1,-18.9 C 4.4,-21.1 7.7,-21.4 9.3,-19.3" fill="none" stroke={INK} strokeWidth={1.3} strokeLinecap="round" />
-      <path d="M 10.3,-19.2 C 11.1,-20.9 12.9,-20.9 13.4,-19.5" fill="none" stroke={INK} strokeWidth={1.1} strokeLinecap="round" />
-      <path d="M 4.6,-18.2 C 5.9,-17.5 7.4,-17.6 8.4,-18.4 M 11,-18.6 C 11.8,-18.2 12.6,-18.3 13,-18.8" fill="none" stroke={skin.shade} strokeWidth={0.6} />
-      {/* брови */}
+      {/* глаза вполоборота: ближний крупный, дальний за переносицей и частично закрыт контуром */}
+      <path d="M 1,-19.2 C 2,-20.7 4.9,-20.9 6.3,-19.4 C 5,-18 2.4,-17.8 1,-19.2 Z" fill="#efe8dc" />
+      <circle cx={4} cy={-19.3} r={1.3} fill="#3a2a1c" />
+      <circle cx={4.1} cy={-19.3} r={0.7} fill="#0e0a08" />
+      <circle cx={4.5} cy={-19.8} r={0.35} fill="#fff" />
+      <path d="M 0.5,-18.9 C 1.8,-21.1 5.1,-21.4 6.7,-19.3" fill="none" stroke={INK} strokeWidth={1.3} strokeLinecap="round" />
+      <path d="M 2,-18.2 C 3.3,-17.5 4.8,-17.6 5.8,-18.4" fill="none" stroke={skin.shade} strokeWidth={0.6} />
       <path
-        d={`M 2.2,${nOut + 0.4} C 4.4,${nOut - 1.6} 7.4,${nIn - 1.6} 9.8,${nIn} C 7.4,${nIn - 1.6 + thick} 4.6,${nOut - 1.4 + thick} 2.2,${nOut + 0.4} Z`}
+        d={`M -0.4,${nOut + 0.4} C 1.8,${nOut - 1.6} 4.8,${nIn - 1.6} 7.2,${nIn} C 4.8,${nIn - 1.6 + thick} 2,${nOut - 1.4 + thick} -0.4,${nOut + 0.4} Z`}
         fill={hairC}
         stroke={hairC}
         strokeWidth={0.6}
         strokeLinejoin="round"
       />
-      <path d={`M 10.8,${fIn} C 12,${fIn - 1.4} 13.2,${fIn - 1.2} 14,${fIn + 0.4} C 13,${fIn - 0.6 + thick * 0.8} 12,${fIn - 0.4 + thick * 0.8} 10.8,${fIn} Z`} fill={hairC} stroke={hairC} strokeWidth={0.5} />
-      {angry > 0.3 && <path d="M 9.8,-24.2 L 10.4,-22.6" stroke={skin.shade} strokeWidth={0.7} />}
+      <g clipPath={`url(#${clip})`}>
+        <path d="M 10,-19.4 C 10.6,-20.4 12.2,-20.6 13,-19.6 C 12.4,-18.6 10.8,-18.6 10,-19.4 Z" fill="#efe8dc" />
+        <circle cx={11.7} cy={-19.5} r={0.95} fill="#0e0a08" />
+        <path d="M 9.7,-19.2 C 10.6,-20.9 12.6,-20.9 13.4,-19.5" fill="none" stroke={INK} strokeWidth={1.1} strokeLinecap="round" />
+        <path d={`M 9.8,${fIn} C 11,${fIn - 1.4} 12.6,${fIn - 1.2} 14,${fIn + 0.2} C 12.8,${fIn - 0.6 + thick * 0.8} 11.2,${fIn - 0.4 + thick * 0.8} 9.8,${fIn} Z`} fill={hairC} stroke={hairC} strokeWidth={0.5} />
+      </g>
+      {angry > 0.3 && <path d="M 8.2,-24.2 L 8.6,-22.6" stroke={skin.shade} strokeWidth={0.7} />}
       {/* нос: крыло и ноздря */}
-      <path d="M 11.4,-17.2 C 10.8,-14.4 10.6,-12 11.2,-10.2" fill="none" stroke={skin.shade} strokeWidth={0.9} strokeLinecap="round" />
+      <path d="M 8.6,-18.4 C 8.2,-15.4 8.6,-12.6 10.2,-10.6" fill="none" stroke={skin.shade} strokeWidth={0.9} strokeLinecap="round" />
       <path d="M 11,-10.4 C 11.2,-8.8 12.8,-8.4 13.8,-9.2" fill="none" stroke={INK} strokeWidth={0.9} strokeLinecap="round" />
       {/* рот */}
       {pose.mouth > 0.5 ? (
         <g>
-          <path d="M 7.8,-5.4 C 9.8,-4.6 12,-4.6 13.1,-5.6 C 12.9,-2 9.2,-1.4 7.8,-5.4 Z" fill="#3a1812" stroke={INK} strokeWidth={0.8} strokeLinejoin="round" />
+          <path d="M 6.8,-5.2 C 9.2,-4.4 11.8,-4.6 13.1,-5.6 C 12.9,-1.8 8.6,-1.2 6.8,-5.2 Z" fill="#3a1812" stroke={INK} strokeWidth={0.8} strokeLinejoin="round" />
           <path d="M 8.8,-4.9 C 10.4,-4.5 11.8,-4.5 12.8,-5.1 L 12.6,-4.3 C 11.4,-3.9 10,-4 8.9,-4.3 Z" fill="#ece4d6" />
         </g>
       ) : (
         <g>
-          <path d={angry < 0 ? 'M 8,-3.9 C 9.8,-5 11.6,-5.1 12.9,-4.5' : 'M 8,-4.6 C 9.8,-4.1 11.6,-4.2 12.9,-4.9'} fill="none" stroke={INK} strokeWidth={1.1} strokeLinecap="round" />
-          <path d="M 9.4,-3.1 C 10.6,-2.7 11.8,-2.9 12.4,-3.4" fill="none" stroke={skin.shade} strokeWidth={0.8} strokeLinecap="round" />
+          <path d={angry < 0 ? 'M 6.6,-3.9 C 8.8,-5 11.2,-5.1 12.9,-4.5' : 'M 6.6,-4.4 C 8.8,-4.1 11.2,-4.2 12.9,-4.9'} fill="none" stroke={INK} strokeWidth={1.1} strokeLinecap="round" />
+          <path d="M 8.4,-3 C 10,-2.6 11.6,-2.8 12.4,-3.4" fill="none" stroke={skin.shade} strokeWidth={0.8} strokeLinecap="round" />
         </g>
       )}
       <Beard kind={fp.beard} color={hairC} jaw={fp.jaw} clip={clip} />
       {!hat && <Hair kind={fp.hair} color={hairC} />}
       {/* ухо поверх волос */}
+      <g transform="translate(-2.4 0.6)">
       <path d="M -5.4,-21.6 C -4,-24.4 -0.6,-24 -0.4,-20.6 C -0.2,-17.4 -1.8,-14.6 -4,-14.4 C -5.6,-14.4 -6.2,-16.4 -5.8,-18 Z" fill={skin.base} stroke={INK} strokeWidth={1.2} strokeLinejoin="round" />
       <path d="M -2,-21.4 C -1,-20.2 -1.2,-18 -2.8,-16.8 M -3.6,-20.4 C -3,-19.6 -3,-18.6 -3.6,-18" fill="none" stroke={skin.shade} strokeWidth={0.8} strokeLinecap="round" />
+      </g>
       {hat && (
         <g transform="translate(0.2 0) scale(1.08 1) translate(-1.75 0)">
           <Hat h={hat} />
@@ -854,7 +858,7 @@ export function RigBody({ look, pose, uid, mirror, shadow = true, bare }: { look
   const skin = SKIN_TONES[look.skin ?? 0] ?? SKIN_TONES[0];
   const build = [0.9, 1, 1.12][look.build ?? 1] ?? 1;
   const muscle = Math.min(1.25, 0.92 + (look.str ?? 5) * 0.006);
-  const body: Body = { bw: build * 1.34, mw: build * muscle * 1.12 };
+  const body: Body = { bw: build * 1.14, mw: build * muscle * 1.06 };
   const top = !bare && look.equipped.body ? TOPS[look.equipped.body] : undefined;
   const legs: LegWear | undefined = !bare ? (top?.legs ?? (look.equipped.legs ? LEGS[look.equipped.legs] : undefined)) : undefined;
   const feet = look.equipped.feet ? FEET[look.equipped.feet] : undefined;
