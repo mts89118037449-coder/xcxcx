@@ -943,3 +943,45 @@ test('силы зоны: масть ускоряет, соперник теря�
   assert.ok(ask.money > 0 && ask.money <= give.money * OBSHAK.askShare + 1);
   assert.throws(() => g.obshakAsk(p, ob, T0 + MIN), /завтра/);
 });
+
+test('долги: барыга под процент, счётчик за просрочку, выбивают силой; карточный долг', async () => {
+  const { DEBT } = await import('../shared/factions.ts');
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  p.level = 10;
+  p.money = 0;
+  p.authority = 50;
+  const r = g.loanTake(p, 10, T0);
+  assert.equal(p.money, r.money);
+  assert.equal(p.debt!.amount, Math.round(r.money * (1 + DEBT.interest)));
+  assert.throws(() => g.loanTake(p, 5, T0), /старый/);
+  assert.throws(() => g.loanTake(p, 7, T0), /столько/);
+  // вовремя — никакого счётчика
+  g.debtCounter(p, T0 + 23 * 60 * MIN);
+  assert.equal(p.debt!.counted, 0);
+  // просрочка на сутки: +15% и минус авторитет
+  const owe = p.debt!.amount;
+  g.debtCounter(p, T0 + 25 * 60 * MIN);
+  assert.equal(p.debt!.counted, 1);
+  assert.equal(p.debt!.amount, Math.round(owe * (1 + DEBT.counter)));
+  assert.equal(p.authority, 50 - DEBT.authorityLoss);
+  g.debtCounter(p, T0 + 26 * 60 * MIN); // в те же сутки второй раз не капает
+  assert.equal(p.debt!.counted, 1);
+  // третьи сутки — выбивают: забирают всё, что есть
+  g.debtCounter(p, T0 + (24 * 3 + 1) * 60 * MIN);
+  assert.equal(p.money, 0);
+  assert.ok(p.debt === null || p.debt.amount > 0);
+  // частичный и полный возврат
+  p.debt = { amount: 1000, due: T0 + 60 * MIN, from: 'baryga', counted: 0 };
+  p.money = 400;
+  assert.equal(g.loanPay(p, 400, T0).left, 600);
+  p.money = 5000;
+  assert.equal(g.loanPay(p, 5000, T0).cleared, true);
+  assert.equal(p.money, 4400);
+  assert.equal(p.debt, null);
+  assert.throws(() => g.loanPay(p, 10, T0), /никому/);
+  // проигрыш катале в долг
+  p.event = { id: 'x_katala', until: T0 + 30 * MIN };
+  const lost = g.answerEvent(p, 0, T0, fixed(0.99));
+  assert.ok(lost.debt > 0);
+  assert.equal(p.debt!.from, 'katala');
+});

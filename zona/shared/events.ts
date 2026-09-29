@@ -17,6 +17,8 @@ export interface Effects {
   term?: number;
   /** репутация у сил зоны */
   rep?: Partial<Record<FactionId, number>>;
+  /** карточный долг катале, в пайках */
+  debt?: number;
 }
 
 export interface Outcome extends Effects {
@@ -32,6 +34,8 @@ export interface Need {
   tattoo?: string;
   level?: number;
   authority?: number;
+  /** только для должников */
+  debt?: boolean;
 }
 
 export interface EventOption {
@@ -64,11 +68,13 @@ export interface NeedSubject {
   tattoos: string[];
   level: number;
   authority: number;
+  debt?: unknown;
 }
 
 /** Почему условие не выполнено — или null, если всё в порядке. */
 export function needFail(n: Need | undefined, p: NeedSubject): string | null {
   if (!n) return null;
+  if (n.debt && !p.debt) return 'нет долга';
   if (n.mast && !(p.mast && n.mast.includes(p.mast))) return 'не твоя масть';
   if (n.tattoo && !p.tattoos.includes(n.tattoo)) return 'нужна наколка';
   if (n.level && p.level < n.level) return `с ${n.level} ур.`;

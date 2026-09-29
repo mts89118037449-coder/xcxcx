@@ -160,6 +160,8 @@ export function createApp(opts: AppOptions) {
       event: p.event && p.event.until > t ? p.event : null,
       placeCd: p.placeCd,
       rep: p.rep,
+      debt: p.debt,
+      loanLimit: g.loanLimit(p),
       obshak: { ...db.kvGet<g.Obshak>('obshak', { total: 0, log: [] }), askReadyAt: p.obshakAskAt + OBSHAK.askCooldownH * 3600_000 },
       yardReadyAt: p.yardAt + EVENT_TIMING.yardCooldownMin * 60_000,
       escape: { cdUntil: p.escape.cdUntil, stage: p.escape.run?.stage ?? null, best: p.escape.best },
@@ -363,6 +365,8 @@ export function createApp(opts: AppOptions) {
       db.kvSet('obshak', ob);
       return r;
     },
+    loanTake: (p, b, t) => g.loanTake(p, num(b.rations), t),
+    loanPay: (p, b, t) => g.loanPay(p, num(b.amount), t),
     obshakAsk: (p, _b, t) => {
       const ob = db.kvGet<g.Obshak>('obshak', { total: 0, log: [] });
       const r = g.obshakAsk(p, ob, t);

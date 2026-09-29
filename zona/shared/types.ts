@@ -83,6 +83,8 @@ export interface PlayerView {
   event: { id: string; until: number } | null;
   placeCd: Record<string, number>;
   rep: Record<'brat' | 'work' | 'admin', number>;
+  debt: { amount: number; due: number; from: 'baryga' | 'katala'; counted: number } | null;
+  loanLimit: number;
   obshak: { total: number; log: { name: string; amount: number; at: number }[]; askReadyAt: number };
   yardReadyAt: number;
   escape: { cdUntil: number; stage: number | null; best: number };

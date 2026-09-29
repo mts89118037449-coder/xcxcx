@@ -7,7 +7,7 @@ import { useTalk } from '../Talk.tsx';
 import { WeeklyCard } from '../Weekly.tsx';
 import { GameTiles, PlaceTiles } from '../Leisure.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
-import { FactionCards, ObshakCard } from '../Factions.tsx';
+import { DebtCard, FactionCards, ObshakCard } from '../Factions.tsx';
 
 /** Вся зона: здания ведут на экраны, по земле валяются бычки, барыга меняет их. */
 export function Zone() {
@@ -83,6 +83,7 @@ export function Zone() {
       {seg === 'people' && (
         <>
           <ObshakCard />
+          <DebtCard />
           <FactionCards />
         </>
       )}

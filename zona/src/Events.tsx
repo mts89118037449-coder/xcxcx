@@ -20,13 +20,17 @@ interface Got {
   hp: number;
   item: string | null;
   next?: boolean;
+  debt?: number;
+  rep?: Partial<Record<string, number>>;
 }
 
 const sign = (n: number) => (n > 0 ? `+${fmt(n)}` : `−${fmt(-n)}`);
 
 /** Что изменилось после случая — одной строкой. */
-export function gotLine(g: Omit<Got, 'text' | 'who' | 'name'> & { term?: number }): string {
+export function gotLine(g: Omit<Got, 'text' | 'who' | 'name'> & { term?: number; debt?: number; rep?: Partial<Record<string, number>> }): string {
   const parts: string[] = [];
+  if (g.debt) parts.push(`📒 долг +${fmt(g.debt)} ₽`);
+  for (const [id, n] of Object.entries(g.rep ?? {})) if (n) parts.push(`${n > 0 ? '+' : ''}${n} ${id === 'brat' ? '🃏' : id === 'work' ? '⚒️' : '📋'}`);
   if (g.term) parts.push(`−${Math.round(g.term * 10) / 10} дн. срока`);
   if (g.money) parts.push(`${sign(g.money)} ₽`);
   if (g.butts) parts.push(`${sign(g.butts)} 🚬`);
@@ -55,7 +59,7 @@ export function EventStage({ id, onClose }: { id: string; onClose(): void }) {
   if (!ev) return null;
   const ration = 30 + p.level * 15;
   const score = (r: Got) => r.money + r.butts * 20 + r.gold * 50 + r.xp + r.authority * 10 + r.energy + r.hp / 5 + (r.item ? 50 : 0);
-  const isBad = (r: Got) => r.hp < 0 || r.money < 0 || r.butts < 0 || r.authority < 0;
+  const isBad = (r: Got) => r.hp < 0 || r.money < 0 || r.butts < 0 || r.authority < 0 || (r.debt ?? 0) > 0;
   const bad = !!res && isBad(res);
   const good = !!res && !bad && score(res) > 0;
 

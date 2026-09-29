@@ -55,7 +55,7 @@ import { chapterOf } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
-import { FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
+import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
 import { CONSUMABLES as CONSUMABLES_ALL, CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
 
@@ -145,6 +145,8 @@ export interface Player {
   /** репутация у братвы, работяг и администрации */
   rep: Record<FactionId, number>;
   obshakAskAt: number;
+  /** долг барыге или катале; счётчик тикает после due */
+  debt: { amount: number; due: number; from: 'baryga' | 'katala'; counted: number } | null;
   yardAt: number;
   escape: { cdUntil: number; run: { stage: number; at: number } | null; best: number };
   medBedAt: number;
@@ -252,6 +254,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     placeCd: {},
     rep: { brat: 0, work: 0, admin: 0 },
     obshakAskAt: 0,
+    debt: null,
     yardAt: 0,
     escape: { cdUntil: 0, run: null, best: 0 },
     medBedAt: 0,
@@ -327,6 +330,7 @@ export function migrate(p: Player): Player {
   p.placeCd ??= {};
   p.rep ??= { brat: 0, work: 0, admin: 0 };
   p.obshakAskAt ??= 0;
+  p.debt ??= null;
   p.yardAt ??= 0;
   p.escape ??= { cdUntil: 0, run: null, best: 0 };
   p.medBedAt ??= 0;
@@ -466,6 +470,7 @@ export function tick(p: Player, now: number): void {
     log(p, now, `👑 Блатной статус: +${BALANCE.vipDailyGold} золота`);
   }
   ensureDaily(p, now);
+  debtCounter(p, now);
   growField(p, now, Math.random);
   spawnEvent(p, now, Math.random);
 }
@@ -1616,12 +1621,17 @@ export interface Applied {
   levelUps: number;
   term: number;
   rep: Partial<Record<FactionId, number>>;
+  debt: number;
 }
 
 function applyEffects(p: Player, e: Effects, now: number, rng: Rng): Applied {
   const max = stats(p, now);
-  const out: Applied = { money: 0, butts: 0, gold: 0, xp: 0, authority: 0, energy: 0, hp: 0, item: null, levelUps: 0, term: 0, rep: {} };
+  const out: Applied = { money: 0, butts: 0, gold: 0, xp: 0, authority: 0, energy: 0, hp: 0, item: null, levelUps: 0, term: 0, rep: {}, debt: 0 };
   if (e.rep) for (const [id, n] of Object.entries(e.rep) as [FactionId, number][]) out.rep[id] = gainRep(p, id, n);
+  if (e.debt) {
+    out.debt = Math.round(e.debt * ration(p));
+    addDebt(p, out.debt, 'katala', now);
+  }
   if (e.term) {
     out.term = Math.min(p.term, e.term);
     serve(p, e.term);
@@ -1692,6 +1702,77 @@ export function answerEvent(p: Player, choice: number, now: number, rng: Rng) {
 }
 
 /** Занятие в месте зоны: баня, столовая, библиотека… */
+// --- Долги ---------------------------------------------------------------------------
+
+const DAY = 24 * 60 * MIN;
+
+/** Сколько можно занять у барыги сейчас. */
+export function loanLimit(p: Player): number {
+  return DEBT.maxPerLevel * p.level * ration(p);
+}
+
+/** Добавить к долгу (новый — со сроком). */
+function addDebt(p: Player, amount: number, from: 'baryga' | 'katala', now: number) {
+  if (p.debt) p.debt.amount += amount;
+  else p.debt = { amount, due: now + DEBT.termH * 60 * MIN, from, counted: 0 };
+}
+
+/** Занять у барыги под процент. */
+export function loanTake(p: Player, rations: number, now: number) {
+  if (!DEBT.loanRations.includes(rations)) throw new GameError('Барыга столько не даёт');
+  if (p.debt) throw new GameError('Сначала верни старый долг');
+  const money = rations * ration(p);
+  if (money > loanLimit(p)) throw new GameError('Барыга тебе столько не доверит');
+  p.money += money;
+  addDebt(p, Math.round(money * (1 + DEBT.interest)), 'baryga', now);
+  log(p, now, `💸 Занял у барыги ${money} ₽ — вернуть ${p.debt!.amount} ₽`);
+  return { money, owe: p.debt!.amount, due: p.debt!.due };
+}
+
+/** Вернуть долг целиком или частью. */
+export function loanPay(p: Player, amount: number, now: number) {
+  if (!p.debt) throw new GameError('Ты никому не должен');
+  const pay = Math.min(p.debt.amount, Math.floor(amount));
+  if (!(pay > 0)) throw new GameError('Сколько отдаёшь?');
+  if (p.money < pay) throw new GameError('Не хватает денег');
+  p.money -= pay;
+  p.debt.amount -= pay;
+  const cleared = p.debt.amount <= 0;
+  if (cleared) {
+    // вернул вовремя — уважение, с просрочкой — просто закрыл
+    if (p.debt.counted === 0) gainRep(p, 'brat', 2);
+    p.debt = null;
+    log(p, now, '🤝 Долг закрыт');
+  }
+  return { paid: pay, left: p.debt?.amount ?? 0, cleared };
+}
+
+/** Счётчик: каждые сутки просрочки — процент сверху и удар по репутации; долго не платишь — выбивают. */
+export function debtCounter(p: Player, now: number) {
+  const d = p.debt;
+  if (!d || now <= d.due) return;
+  const days = Math.floor((now - d.due) / DAY) + 1;
+  while (d.counted < days) {
+    d.counted++;
+    d.amount = Math.round(d.amount * (1 + DEBT.counter));
+    p.authority = Math.max(0, p.authority - DEBT.authorityLoss);
+    p.rep.brat = Math.max(0, p.rep.brat - DEBT.repLoss);
+    log(p, now, `⏳ Долг на счётчике: теперь ${d.amount} ₽`);
+    if (d.counted >= DEBT.forceAfterDays) {
+      const take = Math.min(p.money, d.amount);
+      p.money -= take;
+      d.amount -= take;
+      p.hp = Math.max(1, Math.round(p.hp * 0.5));
+      p.hpAt = now;
+      log(p, now, `🥊 Пришли за долгом: забрали ${take} ₽ и отбили бока`);
+      if (d.amount <= 0) {
+        p.debt = null;
+        return;
+      }
+    }
+  }
+}
+
 // --- Воровской общак ---------------------------------------------------------------
 
 export interface Obshak {

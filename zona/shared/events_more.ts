@@ -423,6 +423,23 @@ const NIGHT: GameEvent[] = [
 
 const MORE: GameEvent[] = [
   {
+    id: 'x_katala', who: 'sheet/cast/gypsy', name: 'Катала', where: 'any', minLevel: 4,
+    text: 'Катала раскидывает колоду: «Денег нет? Не беда, сыграем под запись. Отдашь завтра».',
+    options: [
+      { label: 'Под запись (3 пайки)', outcomes: [{ w: 45, text: 'Прёт! Катала отсчитал выигрыш, скрипя зубами.', money: 3, authority: 1 }, { w: 55, text: 'Проиграл. Катала записал долг — завтра спросит.', debt: 3 }] },
+      { label: 'По-крупному (8 паек)', outcomes: [{ w: 40, text: 'Сорвал банк! Хата ахнула.', money: 8, authority: 3 }, { w: 60, text: 'Раздели. Восемь паек долга — и счётчик тикает с завтрашнего дня.', debt: 8 }] },
+      { label: 'Не играю в долг', outcomes: [nothing('«Правильный». Катала пошёл искать другого.')] },
+    ],
+  },
+  {
+    id: 'x_collector', who: 'sheet/cast/brute', name: 'Сборщик', where: 'any', minLevel: 4, need: { debt: true },
+    text: 'Здоровяк от каталы присаживается на шконку: «Долг помнишь? Я вот помню».',
+    options: [
+      { label: 'Попросить отсрочку', outcomes: [{ w: 5, text: '«Сутки. Потом не обижайся».', authority: -1 }, { w: 5, text: 'Отсрочку дал — кулаком по рёбрам на память.', hp: -0.15 }] },
+      { label: 'Послать', outcomes: [{ w: 4, text: 'Сборщик ушёл. Братва видела — уважают.', authority: 3 }, { w: 6, text: 'Зря. Очнулся на полу.', hp: -0.35, authority: -2 }] },
+    ],
+  },
+  {
     id: 'x_prosecutor', who: 'sheet/cast/lawyer', name: 'Проверка из прокуратуры', where: 'any', minLevel: 10,
     text: 'Прокурорская проверка. Мужчина в костюме: «Жалобы на условия содержания есть?»',
     options: [

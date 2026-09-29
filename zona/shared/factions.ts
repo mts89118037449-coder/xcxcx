@@ -63,6 +63,22 @@ export function repRank(rep: number): number {
 /** Множитель прироста для масти и доля, которую теряет соперник. */
 export const REP_RULES = { mastMul: 1.5, rivalShare: 0.4 };
 
+/** Долги: барыга даёт под процент, катала записывает проигрыш. Просрочка — счётчик и коллекторы. */
+export const DEBT = {
+  /** можно занять у барыги: пайки на выбор */
+  loanRations: [5, 10, 20],
+  /** не больше этого, пайки на уровень */
+  maxPerLevel: 2,
+  interest: 0.2,
+  termH: 24,
+  /** за каждые сутки просрочки */
+  counter: 0.15,
+  authorityLoss: 2,
+  repLoss: 5,
+  /** после стольких суток просрочки долг выбивают силой */
+  forceAfterDays: 3,
+};
+
 export const OBSHAK = {
   /** минимальный взнос в пайках */
   minGive: 2,

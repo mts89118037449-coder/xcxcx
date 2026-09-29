@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FACTIONS, OBSHAK, REP_THRESHOLDS, repRank } from '../shared/factions.ts';
+import { DEBT, FACTIONS, OBSHAK, REP_THRESHOLDS, repRank } from '../shared/factions.ts';
 import { mastById } from '../shared/term.ts';
 import { NpcPortrait } from './art/sprites.tsx';
 import { fmt, timeLeft, useGame } from './game.tsx';
@@ -43,6 +43,56 @@ export function FactionCards() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Долги: занять у барыги под процент, вернуть; просрочка — счётчик. */
+export function DebtCard() {
+  const { p, now, act, busy, toast } = useGame();
+  const ration = 30 + p.level * 15;
+  const d = p.debt;
+  const late = !!d && now > d.due;
+  const take = async (k: number) => {
+    const r = await act<{ money: number; owe: number }>('loanTake', { rations: k });
+    if (r) toast(`💸 +${fmt(r.money)} ₽ · вернуть ${fmt(r.owe)} ₽ за сутки`);
+  };
+  const pay = async (amount: number) => {
+    const r = await act<{ paid: number; cleared: boolean }>('loanPay', { amount });
+    if (r) toast(r.cleared ? '🤝 Долг закрыт' : `Отдал ${fmt(r.paid)} ₽`);
+  };
+  return (
+    <div className={`debt ${late ? 'late' : ''}`}>
+      <div className="obshak-head">
+        <span className="obshak-pot">{d ? (late ? '⏳' : '📒') : '💸'}</span>
+        <div className="grow">
+          <b>{d ? (d.from === 'katala' ? 'Долг катале' : 'Долг барыге') : 'Занять у барыги'}</b>
+          <small className="muted">
+            {d
+              ? late
+                ? `На счётчике: +${Math.round(DEBT.counter * 100)}% в сутки, минус авторитет. Через ${DEBT.forceAfterDays} дня выбьют силой.`
+                : `Вернуть до срока — иначе счётчик. Осталось ${timeLeft(d.due - now)}.`
+              : `Под ${Math.round(DEBT.interest * 100)}% на сутки. Не вернёшь — счётчик и сборщики.`}
+          </small>
+        </div>
+        {d && <div className="obshak-total debt-sum">{fmt(d.amount)} ₽</div>}
+      </div>
+      {d ? (
+        <div className="row">
+          <button className="btn grow" disabled={busy || p.money <= 0} onClick={() => pay(Math.min(p.money, d.amount))}>
+            {p.money >= d.amount ? `Вернуть всё · ${fmt(d.amount)} ₽` : `Отдать сколько есть · ${fmt(p.money)} ₽`}
+          </button>
+        </div>
+      ) : (
+        <div className="obshak-give">
+          {DEBT.loanRations.map((k) => (
+            <button key={k} className="chip" disabled={busy || k * ration > p.loanLimit} onClick={() => take(k)}>
+              {fmt(k * ration)} ₽
+              <small>вернуть {fmt(Math.round(k * ration * (1 + DEBT.interest)))}</small>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
