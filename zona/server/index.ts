@@ -9,7 +9,12 @@ import { createBot } from './telegram.ts';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const botToken = process.env.BOT_TOKEN ?? '';
-const publicUrl = (process.env.PUBLIC_URL ?? '').replace(/\/$/, '');
+// Полный адрес игры, с портом, если он не 443: https://домен:8443. Из него — webhook, кнопка «Играть» и ссылки.
+const publicUrl = (process.env.WEBAPP_URL || process.env.PUBLIC_URL || '').replace(/\/$/, '');
+if (publicUrl) {
+  const p = new URL(publicUrl).port || '443';
+  if (!['443', '80', '88', '8443'].includes(p)) console.warn(`⚠️ PUBLIC_URL на порту ${p}: Telegram принимает webhook только на 443, 80, 88 и 8443`);
+}
 const devAuth = process.env.DEV_AUTH === '1';
 const port = Number(process.env.PORT ?? 8080);
 

@@ -1,5 +1,10 @@
-# HTTPS-сертификат Caddy получает и продлевает сам (нужны открытые порты 80 и 443).
-__DOMAIN__ {
+# HTTPS-сертификат Caddy получает и продлевает сам. Нужен свободный порт 80 (проверка Let's Encrypt)
+# и порт __HTTPS_PORT__ для самой игры. Порт задаётся HTTPS_PORT в install.sh (по умолчанию 443).
+{
+	https_port __HTTPS_PORT__
+}
+
+__DOMAIN__:__HTTPS_PORT__ {
 	encode zstd gzip
 	@art path /art/* /assets/*
 	header @art Cache-Control "public, max-age=604800"

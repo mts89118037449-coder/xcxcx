@@ -16,7 +16,14 @@
 #                 домен, который указывает на IP сервера; свой домен можно подставить позже
 #   REPO_URL    — репозиторий (по умолчанию GitHub-репозиторий проекта)
 #   BRANCH      — ветка (по умолчанию claude/tyuryaga-telegram-port-jignpo)
-#   GIT_TOKEN   — токен GitHub, если репозиторий приватный
+#   HTTPS_PORT  — внешний порт HTTPS (по умолчанию 443). Если 443 занят (VPN, другой прокси) —
+#                 HTTPS_PORT=8443. Telegram принимает webhook только на 443, 80, 88 и 8443.
+#                 Запоминается в /etc/zona.env — при обновлении передавать заново не нужно.
+#                 Порт 80 должен оставаться свободным: по нему Let's Encrypt проверяет домен.
+#   GIT_TOKEN   — токен GitHub, если репозиторий приватный. Запоминается в
+#                 /root/.zona-git-credentials (права 600) — при обновлении передавать заново не нужно.
+#
+# Свой Caddyfile: если в /etc/caddy/Caddyfile есть строка «# zona: manual», скрипт его не трогает.
 set -euo pipefail
 
 [ "$(id -u)" = 0 ] || { echo "Запусти от root: sudo -E bash install.sh"; exit 1; }
@@ -56,17 +63,29 @@ mkdir -p "$DATA_DIR" "$DATA_DIR/backups"
 chown -R zona:zona "$DATA_DIR"
 
 log "Код ($BRANCH)"
-AUTH_URL="$REPO_URL"
-[ -n "${GIT_TOKEN:-}" ] && AUTH_URL="${REPO_URL/https:\/\//https://x-access-token:${GIT_TOKEN}@}"
+# Токен GitHub храним не в адресе репозитория, а в отдельном файле только для root:
+# так он не светится в `git remote -v` и логах, а обновление идёт без логина и пароля.
+CRED_FILE=/root/.zona-git-credentials
+git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
+if [ -n "${GIT_TOKEN:-}" ]; then
+  host="${REPO_URL#https://}"; host="${host%%/*}"
+  umask 077
+  printf 'https://x-access-token:%s@%s\n' "$GIT_TOKEN" "$host" > "$CRED_FILE"
+  chmod 600 "$CRED_FILE"
+  umask 022
+fi
+GIT_AUTH=()
+[ -f "$CRED_FILE" ] && GIT_AUTH=(-c "credential.helper=store --file=$CRED_FILE")
 if [ -d "$APP_DIR/.git" ]; then
-  git -C "$APP_DIR" remote set-url origin "$AUTH_URL"
-  git -C "$APP_DIR" fetch --depth 1 origin "$BRANCH"
+  git -C "$APP_DIR" remote set-url origin "$REPO_URL"
+  git -C "$APP_DIR" "${GIT_AUTH[@]}" fetch --depth 1 origin "$BRANCH"
   git -C "$APP_DIR" reset --hard FETCH_HEAD
 else
   rm -rf "$APP_DIR"
-  git clone --depth 1 --branch "$BRANCH" "$AUTH_URL" "$APP_DIR"
+  git "${GIT_AUTH[@]}" clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
 fi
-git -C "$APP_DIR" remote set-url origin "$REPO_URL" # токен в конфиге git не храним
+# и для ручного `git pull` в /opt/zona
+[ -f "$CRED_FILE" ] && git -C "$APP_DIR" config credential.helper "store --file=$CRED_FILE"
 SRC="$APP_DIR/zona"
 
 log "Зависимости и сборка"
@@ -77,25 +96,35 @@ chown -R zona:zona "$APP_DIR"
 
 log "Настройки ($ENV_FILE)"
 # переданное в команде важнее; чего не передали — берём из прошлой установки
-NEW_TOKEN="${BOT_TOKEN:-}"; NEW_ADMINS="${ADMIN_IDS:-}"
+NEW_TOKEN="${BOT_TOKEN:-}"; NEW_ADMINS="${ADMIN_IDS:-}"; NEW_DOMAIN="${DOMAIN:-}"; NEW_HTTPS_PORT="${HTTPS_PORT:-}"
 if [ -f "$ENV_FILE" ]; then
   set -a; . "$ENV_FILE"; set +a
 fi
 BOT_TOKEN="${NEW_TOKEN:-${BOT_TOKEN:-}}"
 ADMIN_IDS="${NEW_ADMINS:-${ADMIN_IDS:-}}"
 : "${BOT_TOKEN:?Нужен BOT_TOKEN: BOT_TOKEN='...' bash install.sh}"
-if [ -z "${DOMAIN:-}" ]; then
-  if [ -n "${PUBLIC_URL:-}" ]; then
-    DOMAIN="${PUBLIC_URL#https://}"
-  else
-    IP="$(curl -4 -fsS https://api.ipify.org || hostname -I | awk '{print $1}')"
-    DOMAIN="${IP//./-}.sslip.io"
-  fi
+# Адрес из прошлой установки: https://домен[:порт]
+OLD_HOST="${PUBLIC_URL:-}"; OLD_HOST="${OLD_HOST#https://}"; OLD_HOST="${OLD_HOST%%/*}"
+OLD_DOMAIN="${OLD_HOST%%:*}"
+OLD_PORT=""; [ "$OLD_HOST" != "$OLD_DOMAIN" ] && OLD_PORT="${OLD_HOST##*:}"
+DOMAIN="${NEW_DOMAIN:-$OLD_DOMAIN}"
+# порт, выставленный руками в текущем Caddyfile, тоже не теряем
+CADDY_PORT="$(grep -oE '^[[:space:]]*https_port[[:space:]]+[0-9]+' /etc/caddy/Caddyfile 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)"
+HTTPS_PORT="${NEW_HTTPS_PORT:-${HTTPS_PORT:-${OLD_PORT:-${CADDY_PORT:-443}}}}"
+if [ -z "$DOMAIN" ]; then
+  IP="$(curl -4 -fsS https://api.ipify.org || hostname -I | awk '{print $1}')"
+  DOMAIN="${IP//./-}.sslip.io"
 fi
+case "$HTTPS_PORT" in
+  443|80|88|8443) ;;
+  *) echo "⚠️  HTTPS_PORT=$HTTPS_PORT: Telegram принимает webhook только на 443, 80, 88 или 8443 — бот не будет получать сообщения." ;;
+esac
+if [ "$HTTPS_PORT" = 443 ]; then PUBLIC_URL="https://$DOMAIN"; else PUBLIC_URL="https://$DOMAIN:$HTTPS_PORT"; fi
 umask 077
 cat > "$ENV_FILE" <<ENV
 BOT_TOKEN=$BOT_TOKEN
-PUBLIC_URL=https://$DOMAIN
+PUBLIC_URL=$PUBLIC_URL
+HTTPS_PORT=$HTTPS_PORT
 ADMIN_IDS=${ADMIN_IDS:-}
 PORT=$PORT
 DB_PATH=$DATA_DIR/zona.db
@@ -110,14 +139,19 @@ systemctl daemon-reload
 systemctl enable zona >/dev/null
 systemctl restart zona
 
-log "HTTPS: $DOMAIN"
-sed "s#__DOMAIN__#$DOMAIN#g; s#__PORT__#$PORT#g" "$SRC/deploy/Caddyfile" > /etc/caddy/Caddyfile
+log "HTTPS: $PUBLIC_URL"
+if [ -f /etc/caddy/Caddyfile ] && grep -q '# zona: manual' /etc/caddy/Caddyfile; then
+  echo "Caddyfile помечен «# zona: manual» — не трогаю."
+else
+  sed "s#__DOMAIN__#$DOMAIN#g; s#__PORT__#$PORT#g; s#__HTTPS_PORT__#$HTTPS_PORT#g" "$SRC/deploy/Caddyfile" > /etc/caddy/Caddyfile
+fi
+caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 || { echo "❌ Caddyfile с ошибкой:"; caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; exit 1; }
 systemctl enable caddy >/dev/null
 systemctl reload caddy 2>/dev/null || systemctl restart caddy
 
 if command -v ufw >/dev/null && ufw status | grep -q active; then
   ufw allow 80/tcp >/dev/null
-  ufw allow 443/tcp >/dev/null
+  ufw allow "$HTTPS_PORT/tcp" >/dev/null
 fi
 
 log "Бэкап базы каждую ночь (хранится 14 дней)"
@@ -128,7 +162,7 @@ CRON
 sleep 3
 if systemctl is-active --quiet zona; then
   echo
-  echo "✅ Готово. Игра: https://$DOMAIN  ·  бот сам поставил webhook и кнопку «Играть»."
+  echo "✅ Готово. Игра: $PUBLIC_URL  ·  бот сам поставил webhook и кнопку «Играть»."
   echo "   Логи:      journalctl -u zona -f"
   echo "   Обновить:  bash $SRC/deploy/install.sh   (секреты возьмутся из $ENV_FILE)"
 else
