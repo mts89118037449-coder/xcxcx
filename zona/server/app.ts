@@ -79,6 +79,7 @@ export function createApp(opts: AppOptions) {
       }
     }
     g.tick(p, t);
+    db.markSeen(g.dayKey(t), p.id);
     syncClan(p);
     g.ensureBoard(p, rng);
     p.lastSeen = t;
@@ -790,6 +791,12 @@ export function createApp(opts: AppOptions) {
       if (e instanceof g.GameError) return res.status(400).json({ error: e.message });
       throw e;
     }
+  });
+
+  api.post('/admin/stats', (req: AuthedRequest, res) => {
+    if (!opts.adminIds.includes(req.tgUser!.id)) return res.status(403).json({ error: 'Только для админа' });
+    const t = now();
+    res.json({ stats: db.analytics(t, g.dayKey), total: db.totalPlayers(), online: db.online(t - BALANCE.onlineWindowSec * 1000) });
   });
 
   api.post('/season', (_req, res) => {

@@ -109,6 +109,12 @@ export function openDb(file: string) {
       at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS chat_channel ON chat(channel, id);
+    -- кто заходил в какой день (по Москве): удержание и активные за день
+    CREATE TABLE IF NOT EXISTS activity (
+      day TEXT NOT NULL,
+      pid INTEGER NOT NULL,
+      PRIMARY KEY (day, pid)
+    );
     -- общее состояние зоны: общак и прочее, JSON по ключу
     CREATE TABLE IF NOT EXISTS kv (
       key TEXT PRIMARY KEY,
@@ -124,6 +130,7 @@ export function openDb(file: string) {
   if (!cols.some((c) => c.name === 'clan_id')) db.exec('ALTER TABLE players ADD COLUMN clan_id INTEGER');
   db.exec('CREATE INDEX IF NOT EXISTS players_clan ON players(clan_id)');
 
+  const seenCache = new Set<string>();
   const q = {
     lotAdd: db.prepare('INSERT INTO market (seller_id, seller_name, kind, ref, qty, price, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
     lotGet: db.prepare('SELECT * FROM market WHERE id = ?'),
@@ -137,6 +144,22 @@ export function openDb(file: string) {
       "SELECT id, name, json_extract(data, '$.face') AS face, json_extract(data, '$.frame') AS frame, json_extract(data, '$.season.pts') AS pts FROM players WHERE json_extract(data, '$.season.id') = ? AND json_extract(data, '$.season.pts') > 0 ORDER BY pts DESC LIMIT 20",
     ),
     chatTrim: db.prepare('DELETE FROM chat WHERE channel = ? AND id < ?'),
+    seen: db.prepare('INSERT OR IGNORE INTO activity (day, pid) VALUES (?, ?)'),
+    dau: db.prepare('SELECT day, COUNT(*) AS n FROM activity WHERE day >= ? GROUP BY day'),
+    newByDay: db.prepare(
+      "SELECT date(json_extract(data, '$.createdAt') / 1000 + 10800, 'unixepoch') AS day, COUNT(*) AS n FROM players WHERE json_extract(data, '$.createdAt') >= ? GROUP BY day",
+    ),
+    cohort: db.prepare(
+      `SELECT COUNT(*) AS n FROM players p JOIN activity a ON a.pid = p.id
+       WHERE date(json_extract(p.data, '$.createdAt') / 1000 + 10800, 'unixepoch') = ? AND a.day = ?`,
+    ),
+    churnByLevel: db.prepare('SELECT level, COUNT(*) AS n FROM players WHERE last_seen < ? AND json_extract(data, \'$.createdAt\') >= ? GROUP BY level ORDER BY level'),
+    introStuck: db.prepare("SELECT COUNT(*) AS n FROM players WHERE json_extract(data, '$.intro') >= 0"),
+    chapters: db.prepare("SELECT json_extract(data, '$.story.ch') AS ch, COUNT(*) AS n FROM players GROUP BY ch ORDER BY ch"),
+    masts: db.prepare("SELECT COALESCE(json_extract(data, '$.mast'), '—') AS mast, COUNT(*) AS n FROM players GROUP BY mast"),
+    levels: db.prepare('SELECT level, COUNT(*) AS n FROM players GROUP BY level ORDER BY level'),
+    payByPack: db.prepare('SELECT pack_id AS pack, COUNT(*) AS n, SUM(stars) AS stars FROM payments WHERE refunded = 0 GROUP BY pack_id ORDER BY stars DESC'),
+    paySince: db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(stars), 0) AS stars, COUNT(DISTINCT player_id) AS payers FROM payments WHERE refunded = 0 AND created_at >= ?'),
     kvGet: db.prepare('SELECT value FROM kv WHERE key = ?'),
     kvSet: db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
     get: db.prepare('SELECT data FROM players WHERE id = ?'),
@@ -228,6 +251,38 @@ export function openDb(file: string) {
     },
     seasonTop(season: number) {
       return q.seasonTop.all(season) as { id: number; name: string; face: number | null; frame: string | null; pts: number }[];
+    },
+    /** Отметить, что игрок заходил сегодня (повторы — бесплатно). */
+    markSeen(day: string, pid: number) {
+      const k = `${day}:${pid}`;
+      if (seenCache.has(k)) return;
+      if (seenCache.size > 50_000) seenCache.clear();
+      seenCache.add(k);
+      q.seen.run(day, pid);
+    },
+    /** Сводка для админа: активные, новые, удержание, где бросают, платежи. */
+    analytics(now: number, dayKey: (t: number) => string) {
+      const DAY = 86_400_000;
+      const days = Array.from({ length: 14 }, (_, i) => dayKey(now - (13 - i) * DAY));
+      const dau = new Map((q.dau.all(days[0]) as { day: string; n: number }[]).map((r) => [r.day, r.n]));
+      const fresh = new Map((q.newByDay.all(now - 15 * DAY) as { day: string; n: number }[]).map((r) => [r.day, r.n]));
+      const ret = (d: string, after: number) => {
+        const target = dayKey(Date.parse(`${d}T12:00:00+03:00`) + after * DAY);
+        return target > days[days.length - 1] ? null : (q.cohort.get(d, target) as { n: number }).n;
+      };
+      return {
+        days: days.map((d) => ({ day: d, active: dau.get(d) ?? 0, fresh: fresh.get(d) ?? 0, d1: ret(d, 1), d7: ret(d, 7) })),
+        churn: q.churnByLevel.all(now - 3 * DAY, now - 30 * DAY) as { level: number; n: number }[],
+        introStuck: (q.introStuck.get() as { n: number }).n,
+        chapters: q.chapters.all() as { ch: number; n: number }[],
+        masts: q.masts.all() as { mast: string; n: number }[],
+        levels: q.levels.all() as { level: number; n: number }[],
+        pay: {
+          byPack: q.payByPack.all() as { pack: string; n: number; stars: number }[],
+          week: q.paySince.get(now - 7 * DAY) as { n: number; stars: number; payers: number },
+          all: q.paySince.get(0) as { n: number; stars: number; payers: number },
+        },
+      };
     },
     kvGet<T>(key: string, fallback: T): T {
       const row = q.kvGet.get(key) as { value: string } | undefined;

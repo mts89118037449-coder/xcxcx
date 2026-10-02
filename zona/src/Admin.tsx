@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { EVENTS } from '../shared/events.ts';
 import { useGame } from './game.tsx';
+import { AdminStats } from './AdminStats.tsx';
 
 /** Панель админа: режим игрока или бога и инструменты для тестов. */
 export function AdminPanel({ onClose }: { onClose(): void }) {
   const { p, act, busy, toast } = useGame();
   const [lvl, setLvl] = useState(p.level);
   const [ev, setEv] = useState(EVENTS[0].id);
+  const [statsOn, setStatsOn] = useState(false);
   const tool = async (t: string, arg = '', msg = 'Готово') => {
     if ((await act('adminTool', { tool: t, arg })) !== null) toast(msg);
   };
@@ -14,6 +16,10 @@ export function AdminPanel({ onClose }: { onClose(): void }) {
     <div className="modal" onClick={onClose}>
       <div className="modal-body admin" onClick={(e) => e.stopPropagation()}>
         <h2>⚙️ Админ</h2>
+        <button className="btn btn-wide btn-gold" onClick={() => setStatsOn(!statsOn)}>
+          📊 {statsOn ? 'Скрыть статистику' : 'Статистика игры'}
+        </button>
+        {statsOn && <AdminStats />}
         <div className="seg">
           <button className={!p.god ? 'active' : ''} disabled={busy || !p.god} onClick={() => act('adminGod')}>
             👤 Игрок

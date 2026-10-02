@@ -40,6 +40,7 @@ export const api = {
   top: () =>
     post<{ top: { id: number; name: string; level: number; authority: number; rank: string; face: number | null; tag: string | null }[]; online: number; total: number }>('/top'),
   market: () => post<{ lots: MarketLot[] }>('/market'),
+  adminStats: <T,>() => post<T>('/admin/stats'),
   season: () => post<{ top: { id: number; name: string; face: number | null; frame: string | null; pts: number }[] }>('/season'),
   refs: () => post<{ refs: { id: number; name: string; level: number }[] }>('/refs'),
   chat: (channel: 'all' | 'clan') => post<{ messages: { id: number; pid: number; name: string; face: number | null; phrase: string; at: number; frame: string | null; title: string | null }[] }>('/chat', { channel }),
