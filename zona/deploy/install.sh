@@ -28,6 +28,8 @@
 set -euo pipefail
 
 [ "$(id -u)" = 0 ] || { echo "Запусти от root: sudo -E bash install.sh"; exit 1; }
+# отпечаток этого запуска: если git привезёт другую версию скрипта — перезапустимся в ней
+SELF_SUM="$(sha1sum < "${BASH_SOURCE[0]}")"
 
 REPO_URL="${REPO_URL:-https://github.com/mts89118037449-coder/xcxcx.git}"
 BRANCH="${BRANCH:-claude/tyuryaga-telegram-port-jignpo}"
@@ -88,6 +90,12 @@ fi
 # и для ручного `git pull` в /opt/zona
 [ -f "$CRED_FILE" ] && git -C "$APP_DIR" config credential.helper "store --file=$CRED_FILE"
 SRC="$APP_DIR/zona"
+# bash дочитывает уже запущенный файл, а git только что положил новый: без перезапуска
+# этот проход доработал бы по старой логике (так и случилось с портом 8443). Перезапускаемся в свежей версии.
+if [ -z "${ZONA_REEXEC:-}" ] && [ "$SELF_SUM" != "$(sha1sum < "$SRC/deploy/install.sh")" ]; then
+  log "Скрипт обновился — перезапускаю новую версию"
+  exec env ZONA_REEXEC=1 bash "$SRC/deploy/install.sh" "$@"
+fi
 
 log "Зависимости и сборка"
 cd "$SRC"
