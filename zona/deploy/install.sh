@@ -119,7 +119,17 @@ OLD_PORT=""; [ "$OLD_HOST" != "$OLD_DOMAIN" ] && OLD_PORT="${OLD_HOST##*:}"
 DOMAIN="${NEW_DOMAIN:-$OLD_DOMAIN}"
 # порт, выставленный руками в текущем Caddyfile, тоже не теряем
 CADDY_PORT="$(grep -oE '^[[:space:]]*https_port[[:space:]]+[0-9]+' /etc/caddy/Caddyfile 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)"
-HTTPS_PORT="${NEW_HTTPS_PORT:-${HTTPS_PORT:-${OLD_PORT:-${CADDY_PORT:-443}}}}"
+# 443 занят чужим (VPN/Xray и т.п.) — без подсказок берём 8443, чтобы Caddy не падал на bind
+BUSY_443="$(ss -Hltnp 'sport = :443' 2>/dev/null | grep -v caddy || true)"
+AUTO_PORT=443
+if [ -n "$BUSY_443" ]; then
+  AUTO_PORT=8443
+  echo "Порт 443 занят: $(echo "$BUSY_443" | grep -oE 'users:\(\("[^"]+' | head -1 | sed 's/users:(("//') — игра будет на 8443"
+fi
+HTTPS_PORT="${NEW_HTTPS_PORT:-${HTTPS_PORT:-${OLD_PORT:-${CADDY_PORT:-$AUTO_PORT}}}}"
+if [ "$HTTPS_PORT" = 443 ] && [ -n "$BUSY_443" ]; then
+  echo "❌ HTTPS_PORT=443, но порт занят другим процессом. Запусти с HTTPS_PORT=8443."; exit 1
+fi
 if [ -z "$DOMAIN" ]; then
   IP="$(curl -4 -fsS https://api.ipify.org || hostname -I | awk '{print $1}')"
   DOMAIN="${IP//./-}.sslip.io"
@@ -156,7 +166,10 @@ else
 fi
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 || { echo "❌ Caddyfile с ошибкой:"; caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; exit 1; }
 systemctl enable caddy >/dev/null
-systemctl reload caddy 2>/dev/null || systemctl restart caddy
+if ! { systemctl reload caddy 2>/dev/null || systemctl restart caddy; }; then
+  echo "❌ Caddy не запустился. Конфиг:"; cat /etc/caddy/Caddyfile
+  echo "Лог Caddy:"; journalctl -u caddy -n 25 --no-pager; exit 1
+fi
 
 if command -v ufw >/dev/null && ufw status | grep -q active; then
   ufw allow 80/tcp >/dev/null
