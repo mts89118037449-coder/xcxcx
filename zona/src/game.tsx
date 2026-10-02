@@ -136,3 +136,11 @@ export function useAnim(): [string, number, (cls: string) => void] {
 export function lookOf(p: PlayerView): Look {
   return { equipped: p.equipped, tattoos: p.tattoos, str: p.str, face: p.face, build: p.build, skin: p.skin };
 }
+
+/** Наезд на сокамерника — вызывается и с кнопки, и из диалога во дворе. */
+export function usePvp() {
+  const { act } = useGame();
+  return async () => {
+    await act('pvp');
+  };
+}

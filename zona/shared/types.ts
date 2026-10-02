@@ -89,7 +89,7 @@ export interface PlayerView {
   cell: string[];
   cellShow: Record<string, string>;
   comfort: number;
-  event: { id: string; until: number } | null;
+  event: { id: string; until: number; who?: string; name?: string } | null;
   placeCd: Record<string, number>;
   rep: Record<'brat' | 'work' | 'admin', number>;
   debt: { amount: number; due: number; from: 'baryga' | 'katala'; counted: number } | null;

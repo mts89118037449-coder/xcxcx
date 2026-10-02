@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { needFail } from '../shared/events.ts';
 import { PLACES, placeById, type PlaceId } from '../shared/places.ts';
 import { mastById } from '../shared/term.ts';
-import { gotLine } from './Events.tsx';
+import { gotLine } from './EventsLite.tsx';
 import { LocationScene } from './art/Locations.tsx';
 import { Place } from './art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from './art/sprites.tsx';

@@ -1,13 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { PlayerView } from '../shared/types.ts';
 import { api, ApiError, tg } from './api.ts';
-import { FightArena, type Fighter } from './art/FightArena.tsx';
 import { Face } from './art/sprites.tsx';
 import { EnergySheet } from './Energy.tsx';
 import { DialogBox } from './Dialog.tsx';
-import { Zone } from './screens/Zone.tsx';
-import { EventButton, EventStage } from './Events.tsx';
-import { BattleModal } from './Battle.tsx';
+import { EventButton } from './EventsLite.tsx';
 import type { Mini } from './Minigames.tsx';
 import { MAST_RULES } from '../shared/term.ts';
 import { frameClass } from './Season.tsx';
@@ -16,12 +13,7 @@ import { UnlockModal, freshUnlocks } from './Unlocks.tsx';
 import { placeById, type PlaceId } from '../shared/places.ts';
 import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Place as PlaceT, type Tab } from './game.tsx';
-import { Fight } from './screens/Fight.tsx';
-import { Gear } from './screens/Gear.tsx';
 import { Home } from './screens/Home.tsx';
-import { Shop } from './screens/Shop.tsx';
-import { Top } from './screens/Top.tsx';
-import { Work } from './screens/Work.tsx';
 
 // Пять разделов внизу; «Братва» живёт внутри «Боя», «Ларёк» — кнопкой ⭐ в шапке.
 // Окна, которые открываются не сразу, — отдельными кусками: первый запуск в Telegram быстрее.
@@ -33,6 +25,16 @@ const Pullups = named(() => import('./Pullups.tsx'), 'Pullups');
 const Medic = named(() => import('./Medic.tsx'), 'Medic');
 const Escape = named(() => import('./Escape.tsx'), 'Escape');
 const PlaceScreen = named(() => import('./Places.tsx'), 'PlaceScreen');
+const EventStage = named(() => import('./Events.tsx'), 'EventStage');
+const FightModal = named(() => import('./FightModal.tsx'), 'FightModal');
+const BattleModal = named(() => import('./Battle.tsx'), 'BattleModal');
+// вкладки, кроме хаты, — по требованию: первый экран грузится быстрее
+const Zone = named(() => import('./screens/Zone.tsx'), 'Zone');
+const Work = named(() => import('./screens/Work.tsx'), 'Work');
+const Fight = named(() => import('./screens/Fight.tsx'), 'Fight');
+const Gear = named(() => import('./screens/Gear.tsx'), 'Gear');
+const Top = named(() => import('./screens/Top.tsx'), 'Top');
+const Shop = named(() => import('./screens/Shop.tsx'), 'Shop');
 const AdminPanel = named(() => import('./Admin.tsx'), 'AdminPanel');
 const IntroOverlay = named(() => import('./Intro.tsx'), 'IntroOverlay');
 const MastPicker = named(() => import('./Term.tsx'), 'MastPicker');
@@ -284,33 +286,3 @@ export function App() {
   );
 }
 
-function FightModal({ fight, me, onClose }: { fight: FightLog; me: Fighter; onClose(): void }) {
-  const [done, setDone] = useState(false);
-  const finish = useCallback(() => {
-    setDone(true);
-    tg?.HapticFeedback?.notificationOccurred(fight.replay.win ? 'success' : 'error');
-  }, [fight]);
-  return (
-    <div className="modal" onClick={() => done && onClose()}>
-      <div className="modal-body" onClick={(e) => e.stopPropagation()}>
-        <FightArena me={me} enemy={fight.enemy} replay={fight.replay} onDone={finish} />
-        <div className="muted center">{fight.title}</div>
-        {done && (
-          <div className="result-in">
-            <h2 className={fight.verdict ? 'win' : fight.replay.win ? 'win' : 'lose'}>{fight.verdict ?? (fight.replay.win ? '🏆 Победа' : '💀 Поражение')}</h2>
-            {fight.lines.length > 0 && (
-              <div className="rewards">
-                {fight.lines.map((l, i) => (
-                  <div key={i}>{l}</div>
-                ))}
-              </div>
-            )}
-            <button className="btn btn-wide" onClick={onClose}>
-              Ясно
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}

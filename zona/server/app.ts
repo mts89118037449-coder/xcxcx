@@ -1,5 +1,5 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
-import { EVENT_TIMING, MEDIC } from '../shared/events.ts';
+import { EVENT_TIMING, MEDIC, eventById } from '../shared/events.ts';
 import { OBSHAK } from '../shared/factions.ts';
 import { CHAT } from '../shared/chat.ts';
 import { seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
@@ -236,7 +236,7 @@ export function createApp(opts: AppOptions) {
       cell: cellView(p.furniture, p.cellShow),
       cellShow: p.cellShow,
       comfort: comfortOf(p.furniture),
-      event: p.event && p.event.until > t ? p.event : null,
+      event: p.event && p.event.until > t ? { ...p.event, who: eventById.get(p.event.id)?.who, name: eventById.get(p.event.id)?.name } : null,
       placeCd: p.placeCd,
       rep: p.rep,
       debt: p.debt,

@@ -1,5 +1,5 @@
 import { itemLines } from '../Perks.tsx';
-import { useEvent } from '../Events.tsx';
+import { useEvent } from '../EventsLite.tsx';
 import { useCallback, useEffect, useState } from 'react';
 import { BALANCE, BOSSES, GOLD_PRICES, WORLD_BOSS, itemById } from '../../shared/content.ts';
 import type { FightReplay, Look, WorldBossView } from '../../shared/types.ts';
@@ -7,7 +7,7 @@ import { api } from '../api.ts';
 import { NpcPortrait } from '../art/sprites.tsx';
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
-import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
+import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame, usePvp } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { RingPanel } from '../Ring.tsx';
 import { LockedCard } from '../Unlocks.tsx';
@@ -166,10 +166,3 @@ export function Fight() {
   );
 }
 
-/** Наезд на сокамерника — вызывается и с кнопки, и из диалога во дворе. */
-export function usePvp() {
-  const { act } = useGame();
-  return async () => {
-    await act('pvp');
-  };
-}

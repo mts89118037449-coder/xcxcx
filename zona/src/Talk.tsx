@@ -1,6 +1,6 @@
 import { GOLD_PRICES, JOBS, TRADES } from '../shared/content.ts';
 import { fmt, useGame, type DialogSpec } from './game.tsx';
-import { usePvp } from './screens/Fight.tsx';
+import { usePvp } from './game.tsx';
 
 export type TalkKind = 'lyoha' | 'ded' | 'amba' | 'smoker' | 'worker' | 'coverall' | 'baryga' | 'medic' | 'turnik';
 
