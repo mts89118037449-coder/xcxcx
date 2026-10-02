@@ -7,6 +7,7 @@ import { useTalk } from '../Talk.tsx';
 import { WeeklyCard } from '../Weekly.tsx';
 import { GameTiles, PlaceTiles } from '../Leisure.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
+import { play } from '../sound.ts';
 import { DebtCard, FactionCards, ObshakCard } from '../Factions.tsx';
 import { Market } from '../Market.tsx';
 import { LockedCard } from '../Unlocks.tsx';
@@ -24,6 +25,7 @@ export function Zone() {
 
   const pickUp = async (b: (typeof p.field)[number]) => {
     setTaken((t) => [...t, b.id]);
+    play('pop');
     setPops((a) => [...a, { id: b.id, x: b.x * 360, y: b.y * 280, n: b.pack ? BUTTS.packValue : 1 }]);
     setTimeout(() => setPops((a) => a.filter((x) => x.id !== b.id)), 900);
     await act('butt', { id: b.id });

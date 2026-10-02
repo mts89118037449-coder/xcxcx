@@ -8,6 +8,7 @@ import { EventButton } from './EventsLite.tsx';
 import type { Mini } from './Minigames.tsx';
 import { MAST_RULES } from '../shared/term.ts';
 import { frameClass } from './Season.tsx';
+import { play } from './sound.ts';
 import { GuideBar } from './Guide.tsx';
 import { UnlockModal, freshUnlocks } from './Unlocks.tsx';
 import { placeById, type PlaceId } from '../shared/places.ts';
@@ -99,6 +100,9 @@ export function App() {
   const showFx = useCallback((result: unknown) => {
     const g = gainsOf(result);
     if (!g.chips.length && !g.levelUps) return;
+    // звук награды: новый уровень, золото или деньги
+    const r = result as { gold?: number } | null;
+    play(g.levelUps > 0 ? 'level' : r && typeof r === 'object' && (r.gold ?? 0) > 0 ? 'gold' : 'coin');
     setFx((f) => ({ chips: g.chips, levelUp: g.levelUps > 0, key: f.key + 1 }));
     tg?.HapticFeedback?.notificationOccurred('success');
     clearTimeout(fxTimer.current);
@@ -141,6 +145,7 @@ export function App() {
         showFx(r.result);
         return r.result;
       } catch (e) {
+        play('error');
         toast(e instanceof ApiError ? e.message : 'Нет связи с сервером', 'err');
         if (e instanceof ApiError && e.message.startsWith('Не хватает энергии')) setEnergyOpen(true);
         return null;

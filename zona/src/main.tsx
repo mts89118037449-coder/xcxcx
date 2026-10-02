@@ -2,6 +2,9 @@ import { lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import './styles.css';
+import { initSound } from './sound.ts';
+
+initSound();
 
 const tg = window.Telegram?.WebApp;
 tg?.ready();

@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { tg } from './api.ts';
+import { play } from './sound.ts';
 import { FightArena, type Fighter } from './art/FightArena.tsx';
 import type { FightLog } from './game.tsx';
 
@@ -8,6 +9,7 @@ export function FightModal({ fight, me, onClose }: { fight: FightLog; me: Fighte
   const [done, setDone] = useState(false);
   const finish = useCallback(() => {
     setDone(true);
+    play(fight.replay.win ? 'win' : 'lose');
     tg?.HapticFeedback?.notificationOccurred(fight.replay.win ? 'success' : 'error');
   }, [fight]);
   return (

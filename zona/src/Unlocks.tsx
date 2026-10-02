@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { UNLOCKS, unlockById, type Unlock } from '../shared/unlocks.ts';
+import { play } from './sound.ts';
 import { jumpSeg } from './Seg.tsx';
 import { useGame } from './game.tsx';
 
@@ -32,6 +34,7 @@ export function freshUnlocks(level: number, seen: string[]): Unlock[] {
 /** Окно «Открыто новое»: по одной карточке на раздел, кнопка ведёт туда. */
 export function UnlockModal({ list, onClose }: { list: Unlock[]; onClose(): void }) {
   const { act, go } = useGame();
+  useEffect(() => play('unlock'), []);
   const done = async (to?: Unlock) => {
     await act('unlocksSeen', { ids: list.map((u) => u.id) });
     onClose();

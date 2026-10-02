@@ -1,5 +1,7 @@
 // Лёгкая часть случаев: кнопка «!», строка наград, открытие. Тексты случаев — в Events.tsx, грузятся по требованию.
+import { useEffect } from 'react';
 import { itemLabel } from './Perks.tsx';
+import { play } from './sound.ts';
 import { NpcPortrait } from './art/sprites.tsx';
 import { fmt, useGame } from './game.tsx';
 import type { Got } from './Events.tsx';
@@ -33,15 +35,20 @@ export function useEvent() {
 export function EventButton() {
   const { p, now } = useGame();
   const open = useEvent();
-  if (!p.event || p.event.until <= now) return null;
   // имя и лицо приходят с сервера — сами тексты случаев грузятся, только когда откроешь
   const ev = p.event;
-  if (!ev.who) return null;
+  const live = !!ev && ev.until > now;
+  // звонок — один раз на новый случай
+  const liveId = live ? ev!.id : null;
+  useEffect(() => {
+    if (liveId) play('event');
+  }, [liveId]);
+  if (!live || !ev!.who) return null;
   return (
     // кружок с лицом того, кто ждёт: не закрывает кнопки внизу экрана
-    <button className="event-btn" onClick={() => open()} aria-label={ev.name}>
+    <button className="event-btn" onClick={() => open()} aria-label={ev!.name}>
       <span className="pulse-ring" />
-      <NpcPortrait who={ev.who} className="event-face" tight />
+      <NpcPortrait who={ev!.who} className="event-face" tight />
       <b className="event-mark">!</b>
     </button>
   );

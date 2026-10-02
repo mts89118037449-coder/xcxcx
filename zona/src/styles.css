@@ -2221,3 +2221,6 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .st-table th { color: var(--muted); font-weight: 600; font-size: 11px; }
 .st-list { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .st-list div { display: flex; justify-content: space-between; padding: 4px 2px; border-bottom: 1px solid var(--line); }
+.sound-set { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.sound-vol { display: flex; align-items: center; gap: 10px; padding: 6px 2px; font-size: 13px; color: var(--muted); }
+.sound-vol input { flex: 1; accent-color: var(--accent); }

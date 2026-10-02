@@ -9,6 +9,7 @@ import { InteriorPicker } from '../Interior.tsx';
 import { BonusList, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { DailyWeek, MastPicker, NotifyToggle, TermCard } from '../Term.tsx';
+import { SoundSettings } from '../SoundSettings.tsx';
 import { chapterOf } from '../../shared/story.ts';
 
 
@@ -141,6 +142,7 @@ export function Home() {
           )}
           {p.vipUntil && <div className="vip-strip on">👑 Блатной ещё {timeLeft(p.vipUntil - now)}</div>}
           <NotifyToggle />
+          <SoundSettings />
         </>
       )}
       {weekOpen && <DailyWeek onClose={() => { setWeekOpen(false); play('act-cheer'); }} />}

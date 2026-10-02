@@ -5,6 +5,7 @@ import { Bar, fmt } from '../game.tsx';
 import { RigHead } from './rig/Rig.tsx';
 import { NPC_RIGS } from './rig/npcs.ts';
 import { PoseG } from './sprites.tsx';
+import { play } from '../sound.ts';
 import { Place, YardScene } from './Scenes.tsx';
 
 export interface Fighter {
@@ -54,6 +55,9 @@ export function FightArena({
       onDone();
       return;
     }
+    // звук прошлого хода: удар, крит или промах
+    const prev = replay.rounds[i - 1];
+    if (prev && i > startAt) play(prev.miss ? 'miss' : prev.crit ? 'crit' : prev.dmg > 0 ? 'hit' : 'click');
     const next = replay.rounds[i];
     const t = setTimeout(() => setI(i + 1), i === 0 ? 350 : next && !next.dmg && !next.miss ? STEP_MS * 0.8 : STEP_MS);
     return () => clearTimeout(t);

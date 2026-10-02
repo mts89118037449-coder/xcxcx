@@ -4,6 +4,7 @@ import { RigHead } from './art/rig/Rig.tsx';
 import { NPC_RIGS } from './art/rig/npcs.ts';
 import { NpcPortrait, useNpc } from './art/sprites.tsx';
 import { fmt, lookOf, timeLeft, useGame } from './game.tsx';
+import { play } from './sound.ts';
 
 export type Mini = 'cards' | 'race' | 'brew' | 'dice' | 'arm' | 'darts' | 'nardy' | 'domino' | 'chess' | 'speed' | 'conveyor' | 'beads' | 'fish' | 'shizo';
 
@@ -91,13 +92,13 @@ export function CardsGame({ onClose }: { onClose(): void }) {
               </button>
             ))}
           </div>
-          <button className="btn btn-wide" disabled={busy || p.games.cards <= 0 || p.money < bet} onClick={() => run('cardsStart', { bet })}>
+          <button className="btn btn-wide" disabled={busy || p.games.cards <= 0 || p.money < bet} onClick={() => (play('card'), run('cardsStart', { bet }))}>
             {p.games.cards <= 0 ? 'Завтра' : 'Раздавай'}
           </button>
         </>
       ) : (
         <div className="row gap">
-          <button className="btn btn-wide" disabled={busy} onClick={() => run('cardsHit')}>
+          <button className="btn btn-wide" disabled={busy} onClick={() => (play('card'), run('cardsHit'))}>
             Ещё
           </button>
           <button className="btn btn-wide btn-dark" disabled={busy} onClick={() => run('cardsStand')}>
@@ -260,6 +261,7 @@ export function DiceGame({ onClose }: { onClose(): void }) {
   const roll = async () => {
     setRes(null);
     setRolling(true);
+    play('dice');
     const [r] = await Promise.all([act<{ me: number[]; him: number[]; result: 'win' | 'lose'; money: number }>('dice', { bet }), new Promise((ok) => setTimeout(ok, 750))]);
     setRolling(false);
     if (r) setRes(r);
