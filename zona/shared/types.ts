@@ -99,6 +99,7 @@ export interface PlayerView {
   parcelsLeft: number;
   season: { id: number; pts: number; free: number[]; paid: number[]; pass: boolean; name: string; emoji: string; desc: string; focus: string; endsAt: number };
   cosmetics: string[];
+  unlocksSeen: string[];
   frame: string | null;
   title: string | null;
   offer: { id: string; bought: boolean };

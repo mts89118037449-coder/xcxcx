@@ -1,4 +1,5 @@
 import { PLACES } from '../shared/places.ts';
+import { unlockById } from '../shared/unlocks.ts';
 import { chapterOf } from '../shared/story.ts';
 import { NpcPortrait, useNpc } from './art/sprites.tsx';
 import { useGame } from './game.tsx';
@@ -8,6 +9,7 @@ interface Tile {
   name: string;
   left: number | null;
   wait?: boolean;
+  locked?: boolean;
   on(): void;
 }
 
@@ -15,7 +17,7 @@ function Tiles({ tiles }: { tiles: Tile[] }) {
   return (
     <div className="leisure">
       {tiles.map((t) => (
-        <button key={t.name} className={`leisure-tile ${t.left === 0 || t.wait ? 'spent' : ''}`} onClick={t.on}>
+        <button key={t.name} className={`leisure-tile ${t.left === 0 || t.wait ? 'spent' : ''} ${t.locked ? 'locked' : ''}`} onClick={t.on}>
           <span>{t.icon}</span>
           {t.name}
           {t.left != null && t.left > 0 && <i>{t.left}</i>}
@@ -27,10 +29,18 @@ function Tiles({ tiles }: { tiles: Tile[] }) {
 
 /** Мини-игры без энергии: плитки с остатком на сегодня. */
 export function GameTiles() {
-  const { p, now, openMini, openShells } = useGame();
-  return (
-    <Tiles
-      tiles={[
+  const { p, now, openMini, openShells, toast } = useGame();
+  // закрытая игра: замок и уровень, по нажатию — подсказка
+  const gate = (id: string, t: Tile): Tile => {
+    const u = unlockById.get(id);
+    if (!u || p.level >= u.level) return t;
+    return { icon: '🔒', name: `${t.name} · ${u.level} ур.`, left: null, locked: true, on: () => toast(`${u.emoji} ${u.name} — с ${u.level} уровня`) };
+  };
+  const ids: Record<string, string> = {
+    Кости: 'dice', Армрестлинг: 'arm', Мишень: 'darts', Нарды: 'nardy', Домино: 'domino', Этюд: 'chess',
+    'Чифир на скорость': 'speed', Конвейер: 'conveyor', Чётки: 'beads', Рыбалка: 'fish', 'Выжить в ШИЗО': 'shizo',
+  };
+  const all: Tile[] = [
         { icon: '🃏', name: 'Очко', left: p.games.cards, on: () => openMini('cards') },
         { icon: '🪳', name: 'Бега', left: p.games.race, on: () => openMini('race') },
         { icon: '☕', name: 'Чифир', left: p.games.brew, on: () => openMini('brew'), wait: p.games.brewReadyAt > now },
@@ -46,10 +56,19 @@ export function GameTiles() {
         { icon: '📿', name: 'Чётки', left: p.games.beads, on: () => openMini('beads'), wait: p.games.beadsReadyAt > now },
         { icon: '🎣', name: 'Рыбалка', left: p.games.fish, on: () => openMini('fish') },
         { icon: '🧱', name: 'Выжить в ШИЗО', left: p.tables.shizo ? null : p.games.shizo, on: () => openMini('shizo') },
-      ]}
-    />
+  ];
+  // закрытые — в конец, и только три ближайших: стена замков отпугивает
+  const lvl = (t: Tile) => unlockById.get(ids[t.name])?.level ?? 0;
+  const open = all.filter((t) => !ids[t.name] || p.level >= lvl(t));
+  const shut = all.filter((t) => ids[t.name] && p.level < lvl(t)).sort((a, b) => lvl(a) - lvl(b));
+  return (
+    <>
+      <Tiles tiles={[...open, ...shut.slice(0, 3).map((t) => gate(ids[t.name], t))]} />
+      {shut.length > 3 && <div className="muted small center">Ещё {shut.length - 3} игр откроются с уровнем</div>}
+    </>
   );
 }
+
 
 /** Куда сходить по зоне. */
 export function PlaceTiles() {

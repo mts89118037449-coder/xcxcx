@@ -11,6 +11,8 @@ import { BattleModal } from './Battle.tsx';
 import type { Mini } from './Minigames.tsx';
 import { MAST_RULES } from '../shared/term.ts';
 import { frameClass } from './Season.tsx';
+import { GuideBar } from './Guide.tsx';
+import { UnlockModal, freshUnlocks } from './Unlocks.tsx';
 import { placeById, type PlaceId } from '../shared/places.ts';
 import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Place as PlaceT, type Tab } from './game.tsx';
@@ -84,6 +86,8 @@ export function App() {
     if (introPending) setIntroOn(true);
   }, [introPending]);
   const [mastAsked, setMastAsked] = useState(false);
+  // открытия, которые уже закрыли в этой сессии (пока сервер не подтвердил)
+  const [unlockHidden, setUnlockHidden] = useState<string[]>([]);
   useEffect(() => {
     if (hasBattle) setBattleOn(true); // драка началась или игрок вернулся в незаконченную
   }, [hasBattle]);
@@ -164,6 +168,7 @@ export function App() {
   }
 
   const p = player;
+  const fresh = freshUnlocks(p.level, [...p.unlocksSeen, ...unlockHidden]);
   const go = (t: Tab) => {
     setTab(t);
     setPlace(null);
@@ -214,6 +219,7 @@ export function App() {
       </header>
 
       <main>
+        {!place && <GuideBar />}
         <Suspense fallback={null}>
         {place === 'church' && <Church onBack={() => { setPlace(null); setTab('zone'); }} />}
         {place === 'medic' && <Medic onBack={() => { setPlace(null); setTab('zone'); }} />}
@@ -264,6 +270,7 @@ export function App() {
       {mini === 'shizo' && <ShizoGame onClose={() => setMini(null)} />}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
       {introOn && <IntroOverlay onDone={() => setIntroOn(false)} />}
+      {!introOn && fresh.length > 0 && <UnlockModal list={fresh} onClose={() => setUnlockHidden(fresh.map((u) => u.id))} />}
       {!introOn && !mastAsked && !p.mast && p.level >= MAST_RULES.minLevel && <MastPicker onClose={() => setMastAsked(true)} />}
       {battleOn && <BattleModal onClose={() => setBattleOn(false)} />}
       {eventId && <EventStage id={eventId} onClose={() => setEventId(null)} />}

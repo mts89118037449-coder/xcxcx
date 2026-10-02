@@ -1295,3 +1295,22 @@ test('сезон: очки, тема ×2, пропуск, предложение
   assert.equal(p.season.pass, false);
   assert.ok(p.cosmetics.includes('frame_season'), 'косметика остаётся');
 });
+
+test('открытия по уровням: сервер не пускает раньше, старым игрокам окна не сыплются', async () => {
+  const { UNLOCKS } = await import('../shared/unlocks.ts');
+  const p = g.newPlayer(1, 'Тест', null, T0);
+  assert.throws(() => g.requireUnlock(p, 'lotPut'), /4 уровня/);
+  assert.throws(() => g.requireUnlock(p, 'ringJoin'), /3 уровня/);
+  g.requireUnlock(p, 'job'); // не в списке — открыто
+  g.requireUnlock(p, 'pvp'); // наезды с первого — их ждёт сюжет
+  p.level = 4;
+  g.requireUnlock(p, 'lotPut');
+  // старый игрок 10 уровня без поля — всё до 10 уровня уже «видел»
+  const old = g.newPlayer(2, 'Старый', null, T0) as unknown as Record<string, unknown>;
+  old.level = 10;
+  delete old.unlocksSeen;
+  const m = g.migrate(old as unknown as g.Player);
+  assert.equal(m.unlocksSeen.length, UNLOCKS.filter((u) => u.level <= 10).length);
+  g.seeUnlocks(p, ['dice', 'dice', 'нет такого']);
+  assert.deepEqual(p.unlocksSeen, ['dice']);
+});

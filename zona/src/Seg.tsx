@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /** Раздел экрана, который помнится между заходами (у каждого игрока в своём браузере). */
 export function useSeg<T extends string>(key: string, def: T, allowed: readonly T[]): [T, (v: T) => void] {
@@ -10,6 +10,15 @@ export function useSeg<T extends string>(key: string, def: T, allowed: readonly 
       return def;
     }
   });
+  // переход «из подсказки»: открыть нужный раздел, даже если экран уже на месте
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ key: string; value: string }>).detail;
+      if (d.key === key && allowed.includes(d.value as T)) setV(d.value as T);
+    };
+    window.addEventListener('seg-jump', on);
+    return () => window.removeEventListener('seg-jump', on);
+  }, [key]);
   const set = (x: T) => {
     setV(x);
     try {
@@ -44,4 +53,14 @@ export function SegBar<T extends string>({ items, value, onChange }: { items: Se
       ))}
     </div>
   );
+}
+
+/** Открыть раздел на экране: запоминаем и сообщаем уже открытому экрану. */
+export function jumpSeg(key: string, value: string) {
+  try {
+    localStorage.setItem(`seg:${key}`, value);
+  } catch {
+    /* ничего */
+  }
+  window.dispatchEvent(new CustomEvent('seg-jump', { detail: { key, value } }));
 }

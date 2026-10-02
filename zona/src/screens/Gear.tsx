@@ -16,6 +16,8 @@ import { ItemIcon, TattooIcon } from "../art/Icons.tsx";
 import { NpcBanner, PoseG } from "../art/sprites.tsx";
 import { PerksPanel } from "../Perks.tsx";
 import { CraftPanel } from "../Craft.tsx";
+import { LockedCard } from "../Unlocks.tsx";
+import { isOpen } from "../../shared/unlocks.ts";
 import { BonusList, Card, Price, lookOf, useAnim, useGame } from "../game.tsx";
 
 type View = "mine" | "shop" | "ink" | "perks" | "craft";
@@ -132,7 +134,7 @@ export function Gear() {
       </div>
 
       {view === "perks" && <PerksPanel />}
-      {view === "craft" && <CraftPanel />}
+      {view === "craft" && (isOpen("craft", p.level) ? <CraftPanel /> : <LockedCard id="craft" />)}
 
       {view === "mine" && (
         <>

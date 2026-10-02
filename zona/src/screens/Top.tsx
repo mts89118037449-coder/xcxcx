@@ -5,6 +5,8 @@ import { Face } from '../art/sprites.tsx';
 import { NpcBanner } from '../art/sprites.tsx';
 import { Clans } from '../Clans.tsx';
 import { ChatPanel } from '../Chat.tsx';
+import { LockedCard } from '../Unlocks.tsx';
+import { isOpen } from '../../shared/unlocks.ts';
 import { REFERRAL } from '../../shared/clans.ts';
 import { Card, fmt, useGame } from '../game.tsx';
 import { FightNav } from './Fight.tsx';
@@ -50,7 +52,7 @@ export function Top() {
       <>
         {nav}
         {seg}
-        <ChatPanel />
+        {isOpen('chat', p.level) ? <ChatPanel /> : <LockedCard id="chat" />}
       </>
     );
   }
@@ -59,7 +61,7 @@ export function Top() {
       <>
         {nav}
         {seg}
-        <Clans />
+        {isOpen('clans', p.level) || p.clan ? <Clans /> : <LockedCard id="clans" />}
       </>
     );
   }

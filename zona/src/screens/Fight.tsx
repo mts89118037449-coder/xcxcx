@@ -10,6 +10,8 @@ import { useTalk } from '../Talk.tsx';
 import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { RingPanel } from '../Ring.tsx';
+import { LockedCard } from '../Unlocks.tsx';
+import { isOpen } from '../../shared/unlocks.ts';
 
 type FightSeg = 'bosses' | 'riot' | 'pvp' | 'ring' | 'crew';
 
@@ -112,7 +114,7 @@ export function Fight() {
         </Card>
       )}
 
-      {seg === 'ring' && <RingPanel />}
+      {seg === 'ring' && (isOpen('ring', p.level) ? <RingPanel /> : <LockedCard id="ring" />)}
       {seg === 'pvp' && (
       <Card>
         <div className="row">

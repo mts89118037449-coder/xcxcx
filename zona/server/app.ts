@@ -246,6 +246,7 @@ export function createApp(opts: AppOptions) {
         return { ...p.season, name: th.name, emoji: th.emoji, desc: th.desc, focus: th.focusLabel, endsAt: seasonEndsAt(t) };
       })(),
       cosmetics: p.cosmetics,
+      unlocksSeen: p.unlocksSeen,
       frame: p.frame,
       title: p.title,
       offer: { id: offerOfDay(t).id, bought: p.offerDay === Math.floor((t + 3 * 3600_000) / 86_400_000) },
@@ -489,6 +490,7 @@ export function createApp(opts: AppOptions) {
       g.chatSay(p, str(b.phrase), t);
       return { id: db.chatAdd(channel === 'clan' ? `clan:${p.clanId}` : 'all', p.id, p.name, p.face ?? null, str(b.phrase), t, p.frame, p.title) };
     },
+    unlocksSeen: (p, b) => g.seeUnlocks(p, Array.isArray(b.ids) ? b.ids.map(str) : []),
     seasonClaim: (p, b, t) => g.seasonClaim(p, Math.floor(num(b.level)), b.paid === true, t, rng),
     wear: (p, b) => g.wearCosmetic(p, str(b.kind) === 'title' ? 'title' : 'frame', str(b.id)),
     ringJoin: (p, _b, t) => withRing(p, t, (ring) => g.ringJoin(p, ring, t)),
@@ -771,6 +773,7 @@ export function createApp(opts: AppOptions) {
         if (admin && p.god.on) g.godTopUp(p, t);
         const week = g.weekIndex(t);
         const war0 = p.war.week === week ? p.war.pts : 0;
+        g.requireUnlock(p, req.params.type);
         const result = handler(p, req.body ?? {}, t);
         // очки войны кланов — в недельную таблицу клана
         const war1 = p.war.week === week ? p.war.pts : 0;

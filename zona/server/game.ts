@@ -60,6 +60,7 @@ import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type M
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
+import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
 import { PASS, SEASON_PTS, cosmeticById, passReward, seasonIndex, seasonTheme } from '../shared/season.ts';
 import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
 import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
@@ -210,6 +211,8 @@ export interface Player {
   /** сезон: очки, забранные уровни пропуска, куплен ли пропуск */
   season: { id: number; pts: number; free: number[]; paid: number[]; pass: boolean };
   cosmetics: string[];
+  /** какие открытия игрок уже видел (окно «Открыто новое») */
+  unlocksSeen: string[];
   frame: string | null;
   title: string | null;
   offerDay: number;
@@ -321,6 +324,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     parcels: { day: '', n: 0 },
     season: { id: seasonIndex(now), pts: 0, free: [], paid: [], pass: false },
     cosmetics: [],
+    unlocksSeen: [],
     frame: null,
     title: null,
     offerDay: -1,
@@ -383,6 +387,8 @@ export function migrate(p: Player): Player {
   p.parcels ??= { day: '', n: 0 };
   p.season ??= { id: seasonIndex(Date.now()), pts: 0, free: [], paid: [], pass: false };
   p.cosmetics ??= [];
+  // кто играл до открытий по уровням — всё уже открытое считаем увиденным, без вороха окон
+  p.unlocksSeen ??= UNLOCKS.filter((u) => u.level <= p.level).map((u) => u.id);
   p.frame ??= null;
   p.title ??= null;
   p.offerDay ??= -1;
@@ -1259,6 +1265,20 @@ export function clanBossHit(p: Player, now: number, rng: Rng) {
   const s = stats(p, now);
   const crit = rng() * 100 < s.crit;
   return { damage: Math.round(s.atk * 4 * (0.85 + rng() * 0.3) * (crit ? 2 : 1)), crit };
+}
+
+// --- Открытия по уровням ------------------------------------------------------------------
+
+/** Экшен закрыт до своего уровня. */
+export function requireUnlock(p: Player, action: string) {
+  const id = ACTION_UNLOCK[action];
+  const u = id ? unlockById.get(id) : null;
+  if (u && p.level < u.level) throw new GameError(`${u.emoji} ${u.name} — с ${u.level} уровня`);
+}
+
+/** Отметить открытия увиденными. */
+export function seeUnlocks(p: Player, ids: string[]) {
+  for (const id of ids) if (unlockById.has(id) && !p.unlocksSeen.includes(id)) p.unlocksSeen.push(id);
 }
 
 // --- Чат ------------------------------------------------------------------------------

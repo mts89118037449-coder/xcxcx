@@ -9,6 +9,8 @@ import { GameTiles, PlaceTiles } from '../Leisure.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { DebtCard, FactionCards, ObshakCard } from '../Factions.tsx';
 import { Market } from '../Market.tsx';
+import { LockedCard } from '../Unlocks.tsx';
+import { isOpen } from '../../shared/unlocks.ts';
 
 /** Вся зона: здания ведут на экраны, по земле валяются бычки, барыга меняет их. */
 export function Zone() {
@@ -82,14 +84,17 @@ export function Zone() {
       />
       {seg === 'games' && <GameTiles />}
       {seg === 'places' && <PlaceTiles />}
-      {seg === 'people' && (
-        <>
-          <ObshakCard />
-          <DebtCard />
-          <FactionCards />
-        </>
-      )}
-      {seg === 'market' && <Market />}
+      {seg === 'people' &&
+        (isOpen('people', p.level) ? (
+          <>
+            <ObshakCard />
+            <DebtCard />
+            <FactionCards />
+          </>
+        ) : (
+          <LockedCard id="people" />
+        ))}
+      {seg === 'market' && (isOpen('market', p.level) ? <Market /> : <LockedCard id="market" />)}
       {seg === 'week' && <WeeklyCard />}
     </>
   );
