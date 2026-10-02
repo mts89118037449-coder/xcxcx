@@ -75,6 +75,8 @@ export const DEBT = {
   counter: 0.15,
   authorityLoss: 2,
   repLoss: 5,
+  /** счётчик не раздувает долг больше чем втрое от взятого */
+  maxGrowth: 3,
   /** после стольких суток просрочки долг выбивают силой */
   forceAfterDays: 3,
 };

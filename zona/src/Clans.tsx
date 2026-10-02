@@ -210,7 +210,7 @@ function ClanExtras({ c, owner, run, reload }: { c: ClanView; owner: boolean; ru
             {boss.killed ? 'Завтра новые' : ready ? `🥊 Бить · ${CLAN_BOSS.energy} ⚡` : `⏳ ${timeLeft(p.clanHitReadyAt - now)}`}
           </button>
           <small className="muted">
-            Бьют все свои. Добили — каждому деньги по доле урона и {CLAN_BOSS.gold} 🪙, общаку клана — {Math.round(CLAN_BOSS.treasuryShare * 100)}%, клану +{CLAN_WAR.points.clanBoss} очков войны.
+            Бьют все свои. Добили — каждому деньги по доле урона (около {CLAN_BOSS.rationsPerMember} паек) и {CLAN_BOSS.gold} 🪙, общаку клана — доля, клану +{CLAN_WAR.points.clanBoss} очков войны.
           </small>
           {boss.top.length > 0 && (
             <ol className="clan-top">

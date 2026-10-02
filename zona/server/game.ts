@@ -165,7 +165,7 @@ export interface Player {
   /** материалы для ремесла */
   mats: Partial<Record<MatId, number>>;
   /** долг барыге или катале; счётчик тикает после due */
-  debt: { amount: number; due: number; from: 'baryga' | 'katala'; counted: number } | null;
+  debt: { amount: number; due: number; from: 'baryga' | 'katala'; counted: number; base?: number } | null;
   yardAt: number;
   escape: { cdUntil: number; run: { stage: number; at: number } | null; best: number };
   medBedAt: number;
@@ -1515,6 +1515,9 @@ export function warPoints(p: Player, now: number, pts: number) {
   p.war.pts += pts;
 }
 
+/** Часы для счётчиков без явного now (сюжет, неделя, сезон, война). Симуляция подменяет на своё время. */
+export const clock = { now: () => Date.now() };
+
 /** Новый месяц — новый сезон: очки и пропуск обнуляются. */
 export function ensureSeason(p: Player, now: number) {
   const id = seasonIndex(now);
@@ -1524,15 +1527,15 @@ export function ensureSeason(p: Player, now: number) {
 export function track(p: Player, kind: TrackKind, amount = 1) {
   const sp = SEASON_PTS[kind];
   if (sp) {
-    const t = Date.now();
+    const t = clock.now();
     ensureSeason(p, t);
     p.season.pts += sp * amount * (seasonTheme(p.season.id).focus === kind ? 2 : 1);
   }
-  if (p.clanId && CLAN_WAR.points[kind]) warPoints(p, Date.now(), CLAN_WAR.points[kind] * amount);
+  if (p.clanId && CLAN_WAR.points[kind]) warPoints(p, clock.now(), CLAN_WAR.points[kind] * amount);
   const step = chapterOf(p.story.ch, p.mast)?.steps[p.story.step];
   if (step && step.kind === kind) p.story.progress = Math.min(step.n, p.story.progress + amount);
-  if (weeklyEvent(Date.now()).goal.kind === kind) {
-    ensureWeekly(p, Date.now());
+  if (weeklyEvent(clock.now()).goal.kind === kind) {
+    ensureWeekly(p, clock.now());
     p.weekly.progress += amount;
   }
   for (const t of p.daily.tasks) if (t.kind === kind && !t.claimed) t.progress = Math.min(t.target, t.progress + amount);
@@ -1768,7 +1771,7 @@ export function pickButt(p: Player, id: number) {
   const b = p.field.find((x) => x.id === id);
   if (!b) throw new GameError('Уже подобрали');
   p.field = p.field.filter((x) => x.id !== id);
-  const got = (b.pack ? BUTTS.packValue : 1) * (weeklyEvent(Date.now()).id === 'tobacco' ? 2 : 1);
+  const got = (b.pack ? BUTTS.packValue : 1) * (weeklyEvent(clock.now()).id === 'tobacco' ? 2 : 1);
   track(p, 'butts', got);
   p.butts += got;
   return { got };
@@ -2106,8 +2109,11 @@ export function loanLimit(p: Player): number {
 
 /** Добавить к долгу (новый — со сроком). */
 function addDebt(p: Player, amount: number, from: 'baryga' | 'katala', now: number) {
-  if (p.debt) p.debt.amount += amount;
-  else p.debt = { amount, due: now + DEBT.termH * 60 * MIN, from, counted: 0 };
+  if (p.debt) {
+    p.debt.amount += amount;
+    p.debt.base = (p.debt.base ?? p.debt.amount - amount) + amount;
+  }
+  else p.debt = { amount, due: now + DEBT.termH * 60 * MIN, from, counted: 0, base: amount };
 }
 
 /** Занять у барыги под процент. */
@@ -2147,7 +2153,7 @@ export function debtCounter(p: Player, now: number) {
   const days = Math.floor((now - d.due) / DAY) + 1;
   while (d.counted < days) {
     d.counted++;
-    d.amount = Math.round(d.amount * (1 + DEBT.counter));
+    d.amount = Math.min(Math.round(d.amount * (1 + DEBT.counter)), Math.round((d.base ?? d.amount) * DEBT.maxGrowth));
     p.authority = Math.max(0, p.authority - DEBT.authorityLoss);
     p.rep.brat = Math.max(0, p.rep.brat - DEBT.repLoss);
     log(p, now, `⏳ Долг на счётчике: теперь ${d.amount} ₽`);
@@ -2620,9 +2626,10 @@ export function nardyStart(p: Player, bet: number, now: number, rng: Rng) {
   const b = tableBet(p, bet, NARDY.minBet, NARDY.betPerLevel);
   playLimit(p, 'nardy', NARDY.perDay, now);
   p.money -= b;
-  // цыган ходит первым
-  const his: [number, number] = [die(rng), die(rng)];
-  p.tables.nardy = { bet: b, me: 0, him: nardyAi(0, his), dice: [die(rng), die(rng)], hisLast: his };
+  // кто ходит первым — жребий: на короткой доске первый ход даёт ~70% победы
+  const hisFirst = rng() < 0.5;
+  const his: [number, number] | null = hisFirst ? [die(rng), die(rng)] : null;
+  p.tables.nardy = { bet: b, me: 0, him: his ? nardyAi(0, his) : 0, dice: [die(rng), die(rng)], hisLast: his };
   return p.tables.nardy;
 }
 
@@ -2642,7 +2649,7 @@ export function nardyMove(p: Player, pick: NardyPick, rng: Rng) {
   const state = { ...g };
   let money = 0;
   if (result) {
-    money = result === 'win' ? g.bet * NARDY.payout : 0;
+    money = result === 'win' ? Math.round(g.bet * NARDY.payout) : 0;
     p.money += money;
     delete p.tables.nardy;
   }

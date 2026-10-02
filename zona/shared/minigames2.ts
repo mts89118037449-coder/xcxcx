@@ -7,7 +7,8 @@ export const NARDY = {
   perDay: 10,
   minBet: 50,
   betPerLevel: 150,
-  payout: 2,
+  /** первый ход — жребий, так что при ×1.85 у цыгана ~7% форы, как в костях */
+  payout: 1.85,
   finish: 24,
   /** встал на ловушку — назад на 5 */
   traps: [7, 15, 21],

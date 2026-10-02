@@ -26,7 +26,7 @@ export const SEASON_PTS: Partial<Record<TrackKind, number>> = {
   church: 1, yard: 1, escape: 2, visit: 1, furnish: 2, train: 1,
 };
 
-export const PASS = { levels: 30, perLevel: 200 };
+export const PASS = { levels: 30, perLevel: 260 };
 
 /** Номер сезона — месяц по Москве. */
 export function seasonIndex(now: number): number {

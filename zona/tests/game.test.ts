@@ -1069,7 +1069,7 @@ test('мини-игры 2: нарды, домино, этюд и ловкост�
   let r;
   for (let i = 0; i < 60 && p.tables.nardy; i++) r = g.nardyMove(p, 'sum', rng);
   assert.ok(r && r.result);
-  assert.equal(p.money, 99_500 + (r!.result === 'win' ? 500 * NARDY.payout : 0));
+  assert.equal(p.money, 99_500 + (r!.result === 'win' ? Math.round(500 * NARDY.payout) : 0));
 
   // домино доигрывается: ходим первой подходящей, иначе берём
   g.dominoStart(p, 500, T0, rng);

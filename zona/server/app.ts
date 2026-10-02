@@ -650,18 +650,20 @@ export function createApp(opts: AppOptions) {
       if (boss.hp <= 0) {
         boss.killed = true;
         const total = Object.values(boss.hits).reduce((a, b2) => a + b2, 0);
-        const pool = CLAN_BOSS.moneyPool * (1 + c.level * 0.1);
+        const members = Object.keys(boss.hits).length;
         for (const [pid, dmg] of Object.entries(boss.hits)) {
           const who = Number(pid) === p.id ? p : db.getPlayer(Number(pid));
           if (!who) continue;
-          const money = Math.round((pool * dmg) / total);
+          // своя пайка × доля урона × число бивших: поровну бившим — по 25 паек, больше бил — больше, но не выше потолка
+          const r = g.ration(who) * (1 + c.level * 0.1);
+          const money = Math.round(Math.min(CLAN_BOSS.rationsCap * r, CLAN_BOSS.rationsPerMember * r * members * (dmg / total)));
           who.money += money;
           who.gold += CLAN_BOSS.gold;
           g.log(who, t, `${CLAN_BOSS.emoji} Клан разобрался с беспредельщиками: +${money} ₽, +${CLAN_BOSS.gold} 🪙`);
           if (who !== p) db.savePlayer(who);
           else reward = { money, gold: CLAN_BOSS.gold };
         }
-        c.treasury += Math.round(pool * CLAN_BOSS.treasuryShare);
+        c.treasury += Math.round(CLAN_BOSS.treasuryRations * g.ration(p) * members);
         db.saveClan(c);
         addWar(c.id, g.weekIndex(t), CLAN_WAR.points.clanBoss);
       }
