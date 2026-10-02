@@ -8,6 +8,7 @@
 # кладёт секреты в /etc/zona.env (права 600), запускает сервис zona через systemd,
 # выдаёт HTTPS-сертификат (Let's Encrypt через Caddy) и настраивает ежедневный бэкап базы.
 # Повторный запуск безопасен: обновит код и перезапустит сервис, база не трогается.
+# После первой установки обновлять можно короткой командой: update-zona
 #
 # Переменные:
 #   BOT_TOKEN   — токен от @BotFather (обязательно при первой установке)
@@ -154,6 +155,22 @@ if command -v ufw >/dev/null && ufw status | grep -q active; then
   ufw allow "$HTTPS_PORT/tcp" >/dev/null
 fi
 
+log "Команда update-zona"
+# Обновление одной командой: сначала свежий код, потом уже новая версия этого скрипта.
+# Настройки (токены, порт, домен) берутся из /etc/zona.env и /root/.zona-git-credentials.
+cat > /usr/local/bin/update-zona <<UPD
+#!/usr/bin/env bash
+set -euo pipefail
+[ "\$(id -u)" = 0 ] || { echo "Запусти от root: sudo update-zona"; exit 1; }
+AUTH=()
+[ -f $CRED_FILE ] && AUTH=(-c "credential.helper=store --file=$CRED_FILE")
+echo "==> Забираю свежий код ($BRANCH)"
+git -C $APP_DIR "\${AUTH[@]}" fetch --depth 1 origin $BRANCH
+git -C $APP_DIR reset --hard FETCH_HEAD
+exec env BRANCH=$BRANCH bash $SRC/deploy/install.sh "\$@"
+UPD
+chmod 755 /usr/local/bin/update-zona
+
 log "Бэкап базы каждую ночь (хранится 14 дней)"
 cat > /etc/cron.d/zona-backup <<CRON
 30 4 * * * zona /usr/bin/node $SRC/deploy/backup.mjs $DATA_DIR/zona.db $DATA_DIR/backups 14 >> $DATA_DIR/backups/backup.log 2>&1
@@ -164,7 +181,7 @@ if systemctl is-active --quiet zona; then
   echo
   echo "✅ Готово. Игра: $PUBLIC_URL  ·  бот сам поставил webhook и кнопку «Играть»."
   echo "   Логи:      journalctl -u zona -f"
-  echo "   Обновить:  bash $SRC/deploy/install.sh   (секреты возьмутся из $ENV_FILE)"
+  echo "   Обновить:  update-zona   (токены, порт и домен возьмутся из сохранённых настроек)"
 else
   echo "❌ Сервис не запустился:"; journalctl -u zona -n 40 --no-pager; exit 1
 fi
