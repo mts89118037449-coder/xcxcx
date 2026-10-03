@@ -1448,3 +1448,40 @@ test('события зоны: по выходным сами по кругу, �
   assert.ok(r.found);
   g.live.cur = null;
 });
+
+import { LEAGUE, leaguePoints, leagueTier } from '../shared/league.ts';
+
+test('лиги: соперник по силе, за слабого очков нет, одного не больше двух раз в день, награда за прошлую неделю', () => {
+  const p = g.newPlayer(1, 'Я', null, T0);
+  p.level = 10;
+  p.str = 30;
+  const mk = (id: number, str: number, level = 10) => Object.assign(g.newPlayer(id, `Б${id}`, null, T0), { level, str });
+  const weak = mk(2, 5, 4);
+  const equal = mk(3, 30);
+  const strong = mk(4, 80, 20);
+  assert.equal(g.pickOpponent(p, [weak, equal, strong], T0, fixed(0))!.id, 3);
+  // очки
+  assert.equal(leaguePoints(true, 1), LEAGUE.win);
+  assert.equal(leaguePoints(true, 0.5), 0, 'слабый — без очков');
+  assert.ok(leaguePoints(true, 1.5) > LEAGUE.win);
+  assert.equal(leaguePoints(false, 1), -LEAGUE.loss);
+  assert.equal(leaguePoints(true, null), Math.round(LEAGUE.win * LEAGUE.botShare));
+  // не больше двух раз одного
+  const res = g.pvpFinish(p, equal, 0, { win: true, hpLeft: 100, used: [], lootBonus: 0 } as never, T0, fixed(0.5), 1);
+  assert.equal(res.league.pts, LEAGUE.win);
+  g.pvpFinish(p, equal, 0, { win: true, hpLeft: 100, used: [], lootBonus: 0 } as never, T0, fixed(0.5), 1);
+  assert.equal(g.pickOpponent(p, [equal], T0, fixed(0)), null);
+  assert.ok(g.pickOpponent(p, [equal], T0 + 24 * 3600_000, fixed(0)), 'назавтра — снова можно');
+  // неделя закончилась: прошлая неделя помнится, награда по лиге
+  p.league.pts = 350;
+  const week = p.league.week;
+  g.ensureLeague(p, T0 + 7 * 24 * 3600_000);
+  assert.equal(p.league.pts, 0);
+  assert.deepEqual(p.league.last, { week, pts: 350 });
+  const gold0 = p.gold;
+  const r = g.leagueClaim(p, { week, pts: 350, rank: 0 }, T0);
+  assert.equal(r.gold, leagueTier(350).gold + LEAGUE.topGold[0]);
+  assert.equal(p.gold, gold0 + r.gold);
+  assert.ok(p.cosmetics.includes(LEAGUE.champTitle));
+  assert.throws(() => g.leagueClaim(p, { week, pts: 350, rank: 0 }, T0), /уже получена/);
+});

@@ -7,10 +7,11 @@ import { FightArena } from './art/FightArena.tsx';
 import { itemLabel } from './Perks.tsx';
 import { lookOf, useGame } from './game.tsx';
 import { tg } from './api.ts';
+import { leagueTier } from '../shared/league.ts';
 
 interface Final {
   win: boolean;
-  reward: { money?: number; xp?: number; authority?: number; gold?: number; drop?: string | null; item?: string | null };
+  reward: { money?: number; xp?: number; authority?: number; gold?: number; drop?: string | null; item?: string | null; league?: { pts: number; total: number; weak: boolean; up: string | null } };
   used: string[];
 }
 
@@ -102,6 +103,14 @@ export function BattleModal({ onClose }: { onClose(): void }) {
         {over && shown && (
           <div className="result-in">
             <h2 className={final!.win ? 'win' : 'lose'}>{final!.win ? '🏆 Победа' : '💀 Поражение'}</h2>
+            {final!.reward.league && (
+              <div className={`league-gain ${final!.reward.league.pts > 0 ? 'up' : final!.reward.league.pts < 0 ? 'down' : ''}`}>
+                🏆 {final!.reward.league.pts > 0 ? '+' : ''}
+                {final!.reward.league.pts} очков лиги
+                {final!.reward.league.weak && <small> · соперник слабый — очков нет</small>}
+                {final!.reward.league.up && <b> · новая лига: {leagueTier(final!.reward.league.total).emoji} {leagueTier(final!.reward.league.total).name}!</b>}
+              </div>
+            )}
             {(drop || final!.used.length > 0) && (
               <div className="rewards">
                 {drop && <div>🎁 {drop.emoji} {drop.name}</div>}

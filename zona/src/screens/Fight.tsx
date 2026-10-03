@@ -10,6 +10,7 @@ import { useTalk } from '../Talk.tsx';
 import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame, usePvp } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { RingPanel } from '../Ring.tsx';
+import { LeagueCard } from '../League.tsx';
 import { LockedCard } from '../Unlocks.tsx';
 import { isOpen } from '../../shared/unlocks.ts';
 
@@ -115,12 +116,13 @@ export function Fight() {
       )}
 
       {seg === 'ring' && (isOpen('ring', p.level) ? <RingPanel /> : <LockedCard id="ring" />)}
+      {seg === 'pvp' && <LeagueCard />}
       {seg === 'pvp' && (
       <Card>
         <div className="row">
           <div>
             <b>🥊 Наехать</b>
-            <div className="muted small">💰 10% его денег · 🎖️ авторитет</div>
+            <div className="muted small">💰 10% его денег · 🎖️ авторитет · 🏆 очки лиги</div>
           </div>
           <button className="btn btn-red" disabled={busy || !pvpReady || lowHp} onClick={pvp}>
             {pvpReady ? `⚡${BALANCE.pvpEnergy}` : timeLeft(p.pvpReadyAt - now)}

@@ -59,6 +59,9 @@ export interface WorldBossRow {
   started_at: number;
 }
 
+const LEAGUE_PTS = `(CASE WHEN json_extract(data, '$.league.week') = :w THEN json_extract(data, '$.league.pts')
+  WHEN json_extract(data, '$.league.last.week') = :w THEN json_extract(data, '$.league.last.pts') ELSE 0 END)`;
+
 export function openDb(file: string) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
@@ -218,6 +221,10 @@ export function openDb(file: string) {
     errDel: db.prepare('DELETE FROM client_errors WHERE hash = ?'),
     errClear: db.prepare('DELETE FROM client_errors'),
     errTrim: db.prepare('DELETE FROM client_errors WHERE hash IN (SELECT hash FROM client_errors ORDER BY last LIMIT 100)'),
+    // очки лиги за неделю: у кого неделя ещё текущая — из pts, у кого уже перевалила — из last
+    leagueTop: db.prepare(`SELECT id, name, level, json_extract(data, '$.face') AS face, json_extract(data, '$.frame') AS frame, json_extract(data, '$.title') AS title, ${LEAGUE_PTS} AS pts
+      FROM players WHERE ${LEAGUE_PTS} > 0 ORDER BY pts DESC, level DESC LIMIT ?`),
+    leagueRank: db.prepare(`SELECT COUNT(*) AS n FROM players WHERE ${LEAGUE_PTS} > ?`),
     kvGet: db.prepare('SELECT value FROM kv WHERE key = ?'),
     kvSet: db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
     get: db.prepare('SELECT data FROM players WHERE id = ?'),
@@ -240,7 +247,7 @@ export function openDb(file: string) {
     opponents: db.prepare(`
       SELECT data FROM players
       WHERE id != ? AND level BETWEEN ? AND ?
-      ORDER BY RANDOM() LIMIT 20`),
+      ORDER BY RANDOM() LIMIT 40`),
     top: db.prepare("SELECT p.id, p.name, p.level, p.authority, json_extract(p.data, '$.face') AS face, c.tag AS tag FROM players p LEFT JOIN clans c ON c.id = p.clan_id ORDER BY p.authority DESC, p.level DESC LIMIT ?"),
     recent: db.prepare('SELECT data FROM players WHERE last_seen > ?'),
     randomIds: db.prepare('SELECT id FROM players WHERE id != ? ORDER BY last_seen DESC LIMIT 60'),
@@ -369,6 +376,13 @@ export function openDb(file: string) {
       if (hash) q.errDel.run(hash);
       else q.errClear.run();
     },
+    leagueTop(week: number, limit: number) {
+      return q.leagueTop.all({ w: week }, limit) as { id: number; name: string; level: number; face: number | null; frame: string | null; title: string | null; pts: number }[];
+    },
+    /** Место по очкам лиги за неделю, с нуля. */
+    leagueRank(week: number, pts: number): number {
+      return (q.leagueRank.get({ w: week }, pts) as { n: number }).n;
+    },
     /** Кого подозревают в накрутке (счёт без остывания — остывание считает сервер). */
     suspects(): Player[] {
       return (q.suspects.all() as { data: string }[]).map((r) => migrate(JSON.parse(r.data) as Player));
@@ -388,7 +402,7 @@ export function openDb(file: string) {
       q.save.run(p.id, JSON.stringify(p), p.name, p.level, p.authority, p.lastSeen, p.clanId);
     },
     opponents(p: Player): Player[] {
-      const rows = q.opponents.all(p.id, Math.max(1, p.level - 2), p.level + 2) as { data: string }[];
+      const rows = q.opponents.all(p.id, Math.max(1, p.level - 3), p.level + 3) as { data: string }[];
       return rows.map((r) => migrate(JSON.parse(r.data) as Player));
     },
     top(limit: number) {

@@ -245,3 +245,19 @@ test('событие зоны видно в профиле; запускать �
   assert.ok('live' in me.json.player);
   assert.equal((await post('/api/admin/live', auth, { start: 'amnesty', hours: 3 })).status, 403);
 });
+
+test('таблица лиги: очки за неделю считаются и у тех, у кого неделя уже перевалила', async () => {
+  const auth = initData(9401, 'Боец');
+  await post('/api/me', auth);
+  const p = db.getPlayer(9401)!;
+  const week = (await import('../server/game.ts')).weekIndex(Date.now());
+  p.league = { week, pts: 120, wins: 10, claimed: 0, last: null };
+  db.savePlayer(p);
+  const other = db.getPlayer(9101)!;
+  other.league = { week: week + 1, pts: 5, wins: 1, claimed: 0, last: { week, pts: 200 } };
+  db.savePlayer(other);
+  const r = await post('/api/league', auth);
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.json.top.slice(0, 2).map((x: { id: number }) => x.id), [9101, 9401]);
+  assert.equal(r.json.myRank, 2);
+});

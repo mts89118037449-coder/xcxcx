@@ -59,6 +59,7 @@ import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits
 import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
 import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
 import { liveById, type LiveEffects, type LiveRun } from '../shared/live.ts';
+import { LEAGUE, LEAGUE_TIERS, leaguePoints, leagueTier, powerOf } from '../shared/league.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTICE_KINDS, NOTIFY, TERM, mastById, termDays, type Mast, type NoticeKind } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
@@ -150,6 +151,8 @@ export interface Player {
     bossId: string | null;
     targetId: number | null;
     loot: number;
+    /** сила соперника к твоей (для очков лиги); null — бот */
+    ratio?: number | null;
     enemy: { name: string; npc?: string; look?: Look };
     st: BattleState;
     at: number;
@@ -225,6 +228,10 @@ export interface Player {
   /** обучение первых минут: шаг (-1 — пройдено или пропущено) и прогресс шага */
   tut: number;
   tutN: number;
+  /** лига наездов: очки за неделю и за какую неделю забрана награда */
+  league: { week: number; pts: number; wins: number; claimed: number; last: { week: number; pts: number } | null };
+  /** кого сегодня уже били — не больше двух раз одного */
+  pvpDay: { day: string; hits: Record<string, number> };
   /** подозрение в накрутке: счёт остывает со временем, журнал — для админа */
   sus: { score: number; at: number; log: { t: number; game: string; why: string }[] };
   banned: boolean;
@@ -343,6 +350,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     runs: {},
     tut: 0,
     tutN: 0,
+    league: { week: 0, pts: 0, wins: 0, claimed: 0, last: null },
+    pvpDay: { day: '', hits: {} },
     sus: { score: 0, at: now, log: [] },
     banned: false,
     perks: ['crit_1'],
@@ -413,6 +422,8 @@ export function migrate(p: Player): Player {
   // кто играл до обучения — оно ему не нужно
   p.tut ??= -1;
   p.tutN ??= 0;
+  p.league ??= { week: 0, pts: 0, wins: 0, claimed: 0, last: null };
+  p.pvpDay ??= { day: '', hits: {} };
   p.sus ??= { score: 0, at: 0, log: [] };
   p.banned ??= false;
   p.debt ??= null;
@@ -960,24 +971,32 @@ export function pvpStart(p: Player, target: Player | null, now: number, rng: Rng
   let enemy: Fighter;
   let loot: number;
   let enemyLook: Look;
+  let ratio: number | null = null;
   if (target) {
     // Защищающийся бьётся в полную силу: оффлайн-игрока не обижаем на израненном здоровье.
     tick(target, now);
     enemy = { ...fighter(target, now), hp: stats(target, now).maxHp, items: [] };
     loot = Math.min(Math.floor(target.money * BALANCE.pvpStealShare), target.level * 300);
     enemyLook = lookOf(target);
+    ratio = power(target, now) / Math.max(1, power(p, now));
   } else {
     const bot = botOpponent(p.level, rng);
     enemy = bot;
     loot = bot.money;
     enemyLook = bot.look;
   }
-  p.battle = { kind: 'pvp', bossId: null, targetId: target?.id ?? null, loot, enemy: { name: enemy.name, look: enemyLook }, st: newBattle(fighter(p, now), enemy), at: now };
+  p.battle = { kind: 'pvp', bossId: null, targetId: target?.id ?? null, loot, ratio, enemy: { name: enemy.name, look: enemyLook }, st: newBattle(fighter(p, now), enemy), at: now };
   return battleView(p);
 }
 
-export function pvpFinish(p: Player, target: Player | null, loot0: number, result: FightResult, now: number, rng: Rng) {
+export function pvpFinish(p: Player, target: Player | null, loot0: number, result: FightResult, now: number, rng: Rng, ratio: number | null = null) {
   let loot = loot0;
+  const league = leagueAdd(p, result.win, target ? ratio : null, now);
+  if (target) {
+    const day = dayKey(now);
+    if (p.pvpDay.day !== day) p.pvpDay = { day, hits: {} };
+    p.pvpDay.hits[target.id] = (p.pvpDay.hits[target.id] ?? 0) + 1;
+  }
   spendItems(p, result.used);
   p.hp = result.hpLeft;
   let item: string | null = null;
@@ -1018,7 +1037,7 @@ export function pvpFinish(p: Player, target: Player | null, loot0: number, resul
     }
   }
   const levelUps = addXp(p, xp, now);
-  return { ...result, loot, authority, xp, levelUps, item };
+  return { ...result, loot, authority, xp, levelUps, item, league };
 }
 
 /** Наезд целиком автоматически (тесты). */
@@ -1027,7 +1046,7 @@ export function pvp(p: Player, target: Player | null, now: number, rng: Rng) {
   const b = p.battle!;
   p.battle = null;
   battleAuto(b.st, rng);
-  const r = pvpFinish(p, target, b.loot, battleResult(b.st), now, rng);
+  const r = pvpFinish(p, target, b.loot, battleResult(b.st), now, rng, b.ratio ?? null);
   return { ...r, enemy: b.enemy.name, enemyLook: b.enemy.look! };
 }
 
@@ -3095,3 +3114,65 @@ export function tutSkip(p: Player) {
   p.tut = -1;
   p.tutN = 0;
 }
+
+// --- Лиги наездов -------------------------------------------------------------------------
+
+/** Сила бойца одной цифрой. */
+export function power(p: Player, now: number): number {
+  return powerOf(stats(p, now));
+}
+
+export function ensureLeague(p: Player, now: number) {
+  const w = weekIndex(now);
+  if (p.league.week === w) return;
+  // прошлую неделю помним — за неё ещё забирать награду
+  const last = p.league.week === w - 1 ? { week: w - 1, pts: p.league.pts } : p.league.last?.week === w - 1 ? p.league.last : null;
+  p.league = { week: w, pts: 0, wins: 0, claimed: p.league.claimed, last };
+}
+
+/** Очки лиги за наезд. Возвращает, сколько добавилось и почему ноль. */
+function leagueAdd(p: Player, win: boolean, ratio: number | null, now: number) {
+  ensureLeague(p, now);
+  const pts = leaguePoints(win, ratio);
+  const before = leagueTier(p.league.pts);
+  p.league.pts = Math.max(0, p.league.pts + pts);
+  if (win) p.league.wins += 1;
+  const after = leagueTier(p.league.pts);
+  if (after.min > before.min) log(p, now, `${after.emoji} Ты в лиге «${after.name}»!`);
+  return { pts, total: p.league.pts, weak: win && ratio !== null && ratio < LEAGUE.weakRatio, up: after.min > before.min ? after.id : null };
+}
+
+/**
+ * Подбор соперника по силе: из кандидатов — кого можно бить (без щита, не надоел сегодня),
+ * ближе всего по силе; среди близких — случайно.
+ */
+export function pickOpponent(p: Player, candidates: Player[], now: number, rng: Rng): Player | null {
+  const me = Math.max(1, power(p, now));
+  const day = dayKey(now);
+  const hits = p.pvpDay.day === day ? p.pvpDay.hits : {};
+  const ok = candidates
+    .filter((c) => c.id !== p.id && canBeAttacked(c, now) && (hits[c.id] ?? 0) < LEAGUE.sameTargetPerDay)
+    .map((c) => ({ c, r: power(c, now) / me }))
+    .sort((a, b) => Math.abs(Math.log(a.r)) - Math.abs(Math.log(b.r)));
+  if (!ok.length) return null;
+  const band = ok.filter((x) => x.r >= LEAGUE.band[0] && x.r <= LEAGUE.band[1]);
+  const pool = band.length ? band : ok.slice(0, 1);
+  return pool[Math.floor(rng() * Math.min(pool.length, 4))].c;
+}
+
+/** Награда за прошлую неделю: по лиге, где закончил, и за место в таблице (место считает сервер). */
+export function leagueClaim(p: Player, prev: { week: number; pts: number; rank: number | null }, now: number) {
+  if (p.league.claimed >= prev.week) throw new GameError('Награда за ту неделю уже получена');
+  const tier = leagueTier(prev.pts);
+  const top = prev.rank !== null && prev.rank < LEAGUE.topGold.length ? LEAGUE.topGold[prev.rank] : 0;
+  if (!tier.gold && !top) throw new GameError('За ту неделю награды нет — подними лигу');
+  p.league.claimed = prev.week;
+  p.gold += tier.gold + top;
+  p.money += tier.money;
+  const title = prev.rank === 0 && !p.cosmetics.includes(LEAGUE.champTitle);
+  if (title) p.cosmetics.push(LEAGUE.champTitle);
+  log(p, now, `${tier.emoji} Итоги недели в лиге: +${tier.gold + top} 🪙, +${tier.money} ₽${title ? ', титул «Чемпион двора»' : ''}`);
+  return { tier: tier.id, gold: tier.gold + top, money: tier.money, title };
+}
+
+export { LEAGUE_TIERS };

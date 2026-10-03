@@ -2289,3 +2289,29 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .live-big { font-size: 64px; }
 .live-fx { display: inline-block; margin: 6px 0; padding: 6px 12px; border-radius: 16px; background: #0006; color: var(--gold); font-weight: 700; }
 .live-pick { width: 100%; text-align: left; display: block; }
+
+/* --- Лиги --- */
+.league { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
+.league-blatnoy { border-color: #8a8f99; }
+.league-avtoritet { border-color: #b8952e; }
+.league-smotr { border-color: #d9a13b; box-shadow: 0 0 14px #d9a13b33; }
+.league-head { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.league-head b { display: block; }
+.league-head small { color: var(--muted); }
+.league-badge { font-size: 34px; }
+.league-ladder { position: relative; display: flex; justify-content: space-between; padding: 0 2px; }
+.league-ladder::before { content: ''; position: absolute; left: 14px; right: 14px; top: 13px; height: 4px; background: var(--card-2); border-radius: 2px; }
+.league-fill { position: absolute; left: 14px; top: 13px; height: 4px; background: var(--gold); border-radius: 2px; max-width: calc(100% - 28px); }
+.league-step { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; opacity: 0.45; }
+.league-step span { font-size: 20px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--card-2); border: 1px solid var(--line); }
+.league-step small { font-size: 10px; color: var(--muted); }
+.league-step.on { opacity: 1; }
+.league-step.cur span { border-color: var(--gold); box-shadow: 0 0 8px #f2c14e66; }
+.league-table { display: flex; flex-direction: column; gap: 3px; }
+.league-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; background: var(--card-2); font-size: 13px; }
+.league-row i { font-style: normal; width: 22px; text-align: center; color: var(--muted); }
+.league-row.me { outline: 1px solid var(--gold); }
+.league-more { background: none; border: 0; color: var(--muted); font-size: 12px; padding: 2px; }
+.league-gain { margin: 6px 0; font-size: 14px; color: var(--muted); }
+.league-gain.up { color: var(--gold); }
+.league-gain.down { color: #e07a5f; }

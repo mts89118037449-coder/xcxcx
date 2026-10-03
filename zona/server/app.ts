@@ -4,6 +4,7 @@ import { OBSHAK } from '../shared/factions.ts';
 import { ANTICHEAT } from '../shared/anticheat.ts';
 import { isOpen } from '../shared/unlocks.ts';
 import { ERRLOG, REPORT } from '../shared/support.ts';
+import { LEAGUE, leagueTier } from '../shared/league.ts';
 import { LIVE, currentLive, liveById, nextAutoLive, type LiveId, type LiveRun } from '../shared/live.ts';
 import crypto from 'node:crypto';
 import { CHAT } from '../shared/chat.ts';
@@ -309,6 +310,12 @@ export function createApp(opts: AppOptions) {
       hodkaBonus: g.hodkaBonus(p),
       intro: p.intro,
       tut: p.tut >= 0 ? { step: p.tut, n: p.tutN } : null,
+      league: (() => {
+        g.ensureLeague(p, t);
+        const last = p.league.last;
+        const claimable = !!last && last.pts > 0 && p.league.claimed < last.week && (leagueTier(last.pts).gold > 0 || db.leagueRank(last.week, last.pts) < LEAGUE.topGold.length);
+        return { week: p.league.week, pts: p.league.pts, wins: p.league.wins, last, claimable, power: g.power(p, t) };
+      })(),
       live: (() => {
         const cur = liveNow(t);
         const def = cur && liveById.get(cur.id);
@@ -773,8 +780,15 @@ export function createApp(opts: AppOptions) {
     bossReset: (p, b, t) => g.resetBoss(p, str(b.bossId), t),
     statReset: (p, _b, t) => g.resetStats(p, t),
     pvp: (p, _b, t) => {
-      const target = db.opponents(p).find((o) => g.canBeAttacked(o, t)) ?? null;
+      // соперник по силе, не тот, кого сегодня уже дважды били
+      const target = g.pickOpponent(p, db.opponents(p), t, rng);
       return g.pvpStart(p, target, t, rng);
+    },
+    leagueClaim: (p, _b, t) => {
+      g.ensureLeague(p, t);
+      const last = p.league.last;
+      if (!last) throw new g.GameError('За прошлую неделю наездов не было');
+      return g.leagueClaim(p, { week: last.week, pts: last.pts, rank: last.pts > 0 ? db.leagueRank(last.week, last.pts) : null }, t);
     },
     // ход в текущем бою: удар, перк, расходник или «авто» до конца
     battle: (p, b, t) => {
@@ -791,7 +805,7 @@ export function createApp(opts: AppOptions) {
         return { rounds: step.rounds, done: true, win: r.win, reward: r.reward, used: r.used };
       }
       const target = bt.targetId ? db.getPlayer(bt.targetId) : null;
-      const r = g.pvpFinish(p, target, bt.loot, result, t, rng);
+      const r = g.pvpFinish(p, target, bt.loot, result, t, rng, bt.ratio ?? null);
       if (target) {
         // на тебя наехали — сразу сообщение от бота (если можно писать)
         if (r.win && bot && g.wantsNotice(target, 'attacked', t)) {
@@ -800,7 +814,7 @@ export function createApp(opts: AppOptions) {
         }
         db.savePlayer(target);
       }
-      return { rounds: step.rounds, done: true, win: r.win, reward: { money: r.loot, xp: r.xp, authority: r.authority, item: r.item, levelUps: r.levelUps }, used: r.used };
+      return { rounds: step.rounds, done: true, win: r.win, reward: { money: r.loot, xp: r.xp, authority: r.authority, item: r.item, levelUps: r.levelUps, league: r.league }, used: r.used };
     },
     worldHit: (p, _b, t) => {
       const boss = worldBoss(t);
@@ -994,6 +1008,20 @@ export function createApp(opts: AppOptions) {
       return r;
     });
     res.json({ ring, now: t });
+  });
+
+  // Таблица лиги за неделю и итоги прошлой
+  api.post('/league', (req: AuthedRequest, res) => {
+    const t = now();
+    const week = g.weekIndex(t);
+    const me = db.getPlayer(req.tgUser!.id);
+    const pts = me && me.league.week === week ? me.league.pts : 0;
+    res.json({
+      top: db.leagueTop(week, LEAGUE.tableSize),
+      prev: db.leagueTop(week - 1, 3),
+      myRank: pts > 0 ? db.leagueRank(week, pts) + 1 : null,
+      endsAt: g.weekEndsAt(t),
+    });
   });
 
   api.post('/market', (_req, res) => {

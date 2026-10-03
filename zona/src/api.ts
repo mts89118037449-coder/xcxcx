@@ -80,6 +80,8 @@ export const api = {
   top: () =>
     post<{ top: { id: number; name: string; level: number; authority: number; rank: string; face: number | null; tag: string | null }[]; online: number; total: number }>('/top'),
   market: () => post<{ lots: MarketLot[] }>('/market'),
+  league: () =>
+    post<{ top: { id: number; name: string; level: number; pts: number; title: string | null }[]; prev: { id: number; name: string; level: number; pts: number; title: string | null }[]; myRank: number | null; endsAt: number }>('/league'),
   adminStats: <T,>() => post<T>('/admin/stats'),
   report: (topic: string, text: string, ctx: unknown) => post<{ id: number }>('/report', { topic, text, ctx }),
   adminReports: (body: { done?: number; reply?: { id: number; text: string }; errDel?: string } = {}) =>
