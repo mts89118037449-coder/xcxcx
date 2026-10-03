@@ -67,7 +67,7 @@ export function Home() {
               👀 {tryOn.emoji} {tryOn.name}
               <BonusList b={tryOn} />
             </span>
-            <button className={`btn btn-s ${tryOn.currency === 'gold' ? 'btn-gold' : ''}`} disabled={busy || !canBuy} onClick={buyPreview}>
+            <button className={`btn btn-s ${tryOn.currency === 'gold' ? 'btn-gold' : ''}`} data-tut={canBuy ? 'furnish' : undefined} disabled={busy || !canBuy} onClick={buyPreview}>
               {!canBuy ? (p.level < tryOn.minLevel ? `🔒 ур. ${tryOn.minLevel}` : `🔒 ${tryPrev?.name}`) : <Price amount={tryOn.price} currency={tryOn.currency} />}
             </button>
             <button className="btn btn-s btn-dark" onClick={() => setPreview(null)}>✕</button>

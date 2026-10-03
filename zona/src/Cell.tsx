@@ -70,7 +70,7 @@ export function CellShop({ onChange, onPreview }: { onChange(): void; onPreview(
                   {shown === f.id ? '✓ Стоит' : 'Поставить'}
                 </button>
               ) : (
-                <button className={`btn btn-s ${f.currency === 'gold' ? 'btn-gold' : ''}`} disabled={busy || !prevOk || !lvlOk} onClick={(e) => { e.stopPropagation(); buy(f); }}>
+                <button className={`btn btn-s ${f.currency === 'gold' ? 'btn-gold' : ''}`} data-tut={prevOk && lvlOk && f.currency === 'money' && p.money >= f.price ? 'furnish' : undefined} disabled={busy || !prevOk || !lvlOk} onClick={(e) => { e.stopPropagation(); buy(f); }}>
                   {!lvlOk ? `🔒 ур. ${f.minLevel}` : !prevOk ? '🔒 сначала прошлое' : <Price amount={f.price} currency={f.currency} />}
                 </button>
               )}

@@ -153,7 +153,7 @@ export function Fight() {
                   ⏳{timeLeft(cd)} · {GOLD_PRICES.bossReset}🪙
                 </button>
               ) : (
-                <button className="btn btn-s btn-red" disabled={busy || lowHp} onClick={() => boss(b.id, b.name)}>
+                <button className="btn btn-s btn-red" data-tut="boss" disabled={busy || lowHp} onClick={() => boss(b.id, b.name)}>
                   В бой ⚡{b.energy}
                 </button>
               )}

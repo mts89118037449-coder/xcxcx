@@ -1377,3 +1377,38 @@ test('напоминания: долг горит, клановый босс, к
   g.setNotifyKind(p, 'debt', false);
   assert.equal(g.pendingNotice(p, day, { live: { startsAt: day - 1000, text: '🎪 Шмон!' } })?.text, '🎪 Шмон!');
 });
+
+import { TUTORIAL, TUT_GIFT } from '../shared/tutorial.ts';
+
+test('обучение: после вступления сыплет бычки, шаги идут по действиям, в конце подарок; старым игрокам не показывается', () => {
+  const p = g.newPlayer(1, 'Новичок', null, T0);
+  for (let i = 0; p.intro >= 0 && i < 20; i++) g.introStep(p, 0, T0);
+  assert.equal(p.intro, -1);
+  assert.equal(TUTORIAL[p.tut].id, 'look');
+  assert.equal(g.tutAdvance(p, 'job', T0), null, 'чужое действие не считается');
+  g.setFace(p, 3);
+  g.tutAdvance(p, 'face', T0);
+  assert.equal(TUTORIAL[p.tut].id, 'butts');
+  assert.ok(p.field.length >= 5, 'бычки насыпаны');
+  for (let i = 0; i < 5; i++) {
+    g.pickButt(p, p.field[0].id);
+    g.tutAdvance(p, 'butt', T0);
+  }
+  assert.equal(TUTORIAL[p.tut].id, 'trade');
+  const gold0 = p.gold;
+  g.tutAdvance(p, 'trade', T0);
+  g.tutAdvance(p, 'job', T0);
+  assert.ok(p.level >= 2, 'после смены — второй уровень, чтобы открылся первый босс');
+  for (const a of ['boss', 'furnish']) g.tutAdvance(p, a, T0);
+  assert.equal(p.tut, -1);
+  assert.equal(p.gold, gold0 + TUT_GIFT.gold);
+  assert.throws(() => g.tutSkip(p), /позади/);
+  // лицо уже выбрано до конца вступления — шаг пропускается
+  const q = g.newPlayer(2, 'Б', null, T0);
+  g.setFace(q, 2);
+  for (let i = 0; q.intro >= 0 && i < 20; i++) g.introStep(q, 0, T0);
+  assert.equal(TUTORIAL[q.tut].id, 'butts');
+  // старый игрок
+  const old = g.migrate({ ...g.newPlayer(3, 'В', null, T0), tut: undefined } as never);
+  assert.equal(old.tut, -1);
+});

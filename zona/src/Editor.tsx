@@ -118,6 +118,7 @@ function FacePicker() {
       {row('brow', 'Брови')}
       <button
         className="btn btn-wide"
+        data-tut="face"
         disabled={busy || (face === p.face && p.faceChosen)}
         onClick={async () => {
           if (p.faceChosen && !confirm(`Сменить внешность за ${GOLD_PRICES.faceChange} 🪙?`)) return;

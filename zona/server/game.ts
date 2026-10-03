@@ -57,6 +57,7 @@ import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, 
 import { SHIZO, SHIZO_CARDS, shizoCardById, type ShizoStat } from '../shared/minigames2.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
 import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
+import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTICE_KINDS, NOTIFY, TERM, mastById, termDays, type Mast, type NoticeKind } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
@@ -220,6 +221,9 @@ export interface Player {
   starsSpent: number;
   /** начатые мини-игры: когда сервер засёк старт (защита от накруток) */
   runs: Record<string, { at: number; delay: number }>;
+  /** обучение первых минут: шаг (-1 — пройдено или пропущено) и прогресс шага */
+  tut: number;
+  tutN: number;
   /** подозрение в накрутке: счёт остывает со временем, журнал — для админа */
   sus: { score: number; at: number; log: { t: number; game: string; why: string }[] };
   banned: boolean;
@@ -336,6 +340,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     offerDay: -1,
     starsSpent: 0,
     runs: {},
+    tut: 0,
+    tutN: 0,
     sus: { score: 0, at: now, log: [] },
     banned: false,
     perks: ['crit_1'],
@@ -403,6 +409,9 @@ export function migrate(p: Player): Player {
   p.title ??= null;
   p.offerDay ??= -1;
   p.runs ??= {};
+  // кто играл до обучения — оно ему не нужно
+  p.tut ??= -1;
+  p.tutN ??= 0;
   p.sus ??= { score: 0, at: 0, log: [] };
   p.banned ??= false;
   p.debt ??= null;
@@ -1096,6 +1105,7 @@ export function introStep(p: Player, choice: number, now: number) {
   if (p.intro === -1) {
     giveItem(p, 'c_bandage');
     giveItem(p, 'c_sand');
+    tutSkipDone(p, now);
   }
   return { reply: o.reply, money: o.money ?? 0, authority: o.authority ?? 0, butts: o.butts ?? 0, xp: o.xp ?? 0, levelUps, done: p.intro === -1 };
 }
@@ -3009,4 +3019,49 @@ export function runCheck(p: Player, game: string, body: Record<string, unknown>,
   const odd = tooPerfect(game, body);
   if (odd) suspect(p, game, odd, ANTICHEAT.soft, now);
   return null;
+}
+
+// --- Обучение первых минут ------------------------------------------------------------
+
+/** Насыпать бычков у ног, чтобы шаг с бычками не ждал. */
+function tutSeedButts(p: Player) {
+  const need = TUT_BUTTS - p.field.length;
+  for (let i = 0; i < need; i++) {
+    p.field.push({ id: ++p.fieldSeq, x: Math.round((0.12 + (i / TUT_BUTTS) * 0.76) * 1000) / 1000, y: 0.78 + (i % 2) * 0.1, pack: false });
+  }
+}
+
+/** Пропустить шаги, которые уже сделаны (лицо выбрано), и подготовить следующий. */
+function tutSkipDone(p: Player, _now: number) {
+  while (p.tut >= 0 && p.tut < TUTORIAL.length && TUTORIAL[p.tut].id === 'look' && p.faceChosen) p.tut++;
+  if (p.tut >= 0 && TUTORIAL[p.tut]?.id === 'butts') tutSeedButts(p);
+}
+
+/** Действие сделано — двигаем обучение. Возвращает, что выдали, если шаг закрылся. */
+export function tutAdvance(p: Player, action: string, now: number) {
+  if (p.intro >= 0 || p.tut < 0) return null;
+  const step = TUTORIAL[p.tut];
+  if (!step || !step.actions.includes(action)) return null;
+  p.tutN += 1;
+  if (p.tutN < step.n) return null;
+  p.tutN = 0;
+  p.money += step.reward.money ?? 0;
+  p.butts += step.reward.butts ?? 0;
+  if (step.reward.xp) addXp(p, step.reward.xp, now);
+  if (step.reward.level && p.level < step.reward.level) addXp(p, Math.max(0, xpToNext(p.level) - p.xp), now);
+  p.tut += 1;
+  tutSkipDone(p, now);
+  if (p.tut < TUTORIAL.length) return { step: step.id, done: false };
+  p.tut = -1;
+  p.gold += TUT_GIFT.gold;
+  p.money += TUT_GIFT.money;
+  for (const id of TUT_GIFT.items) giveItem(p, id);
+  log(p, now, `🎁 Обучение пройдено: +${TUT_GIFT.gold} 🪙, +${TUT_GIFT.money} ₽ и грев`);
+  return { step: step.id, done: true };
+}
+
+export function tutSkip(p: Player) {
+  if (p.tut < 0) throw new GameError('Обучение уже позади');
+  p.tut = -1;
+  p.tutN = 0;
 }

@@ -293,6 +293,7 @@ export function createApp(opts: AppOptions) {
       termTotal: termDays(p.hodka),
       hodkaBonus: g.hodkaBonus(p),
       intro: p.intro,
+      tut: p.tut >= 0 ? { step: p.tut, n: p.tutN } : null,
       notifyOn: p.notify.on,
       notifyOff: p.notify.off,
       games: {
@@ -452,6 +453,7 @@ export function createApp(opts: AppOptions) {
     upgrade: (p, b) => g.upgradeItem(p, str(b.itemId)),
     intro: (p, b, t) => g.introStep(p, num(b.choice), t),
     notify: (p, b) => g.setNotify(p, !!b.on),
+    tutSkip: (p) => g.tutSkip(p),
     notifyKind: (p, b) => g.setNotifyKind(p, str(b.kind), !!b.on),
     story: (p, _b, t) => g.claimStory(p, t),
     cardsStart: (p, b, t) => g.cardsStart(p, num(b.bet), t, rng),
@@ -819,6 +821,7 @@ export function createApp(opts: AppOptions) {
         const war0 = p.war.week === week ? p.war.pts : 0;
         g.requireUnlock(p, req.params.type);
         const result = handler(p, req.body ?? {}, t);
+        g.tutAdvance(p, req.params.type, t);
         // очки войны кланов — в недельную таблицу клана
         const war1 = p.war.week === week ? p.war.pts : 0;
         if (p.clanId && war1 > war0) addWar(p.clanId, week, war1 - war0);

@@ -43,7 +43,7 @@ export function SegBar<T extends string>({ items, value, onChange }: { items: Se
   return (
     <div className="segbar">
       {items.map((it) => (
-        <button key={it.id} className={value === it.id ? 'active' : ''} onClick={() => onChange(it.id)}>
+        <button key={it.id} data-tut={`seg-${it.id}`} className={value === it.id ? 'active' : ''} onClick={() => onChange(it.id)}>
           <span className="segbar-icon">
             {it.icon}
             {it.badge ? <i className="segbar-badge">{typeof it.badge === 'number' ? it.badge : ''}</i> : null}

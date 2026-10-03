@@ -50,7 +50,7 @@ export function Zone() {
             <PoseG name="crossed" look={lookOf(p)} />
           </Place>
           {baryga && (
-            <g className="npc-click" onClick={() => talk('baryga')}>
+            <g className="npc-click" data-tut="baryga" onClick={() => talk('baryga')}>
               <Place x={196} y={250} scale={0.66}>
                 <ImageG url={baryga.url} height={baryga.height} mirror className="char-breathe" />
               </Place>

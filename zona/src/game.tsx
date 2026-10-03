@@ -10,6 +10,8 @@ export interface DialogOption {
   onPick?: () => unknown;
   keepOpen?: boolean;
   disabled?: boolean;
+  /** метка для стрелки обучения */
+  tut?: string;
 }
 
 export interface DialogSpec {

@@ -88,6 +88,7 @@ export function useTalk() {
           ...TRADES.map((t) => ({
             label: `${t.label}${t.id === 'money' ? ` (+${fmt(40 + p.level * 10)} ₽)` : ''} — ${t.cost} 🚬`,
             disabled: p.butts < t.cost,
+            tut: t.id === 'money' && p.butts >= t.cost ? 'trade' : undefined,
             onPick: async () => {
               await act('trade', { offer: t.id });
             },

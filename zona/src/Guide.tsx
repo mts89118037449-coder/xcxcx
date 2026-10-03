@@ -26,7 +26,7 @@ const WHERE: Partial<Record<TrackKind, { tab?: Tab; seg?: [string, string]; plac
 /** Подсказка новичку: что сделать дальше по сюжету, одной кнопкой — туда. До 8 уровня. */
 export function GuideBar() {
   const { p, go, openPlace, openEvent } = useGame();
-  if (p.level >= 8 || p.intro >= 0) return null;
+  if (p.level >= 8 || p.intro >= 0 || p.tut) return null;
   const ch = chapterOf(p.story.ch, p.mast);
   const step = ch?.steps[p.story.step];
   if (!ch || !step) return null;

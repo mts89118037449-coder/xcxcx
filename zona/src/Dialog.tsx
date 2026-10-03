@@ -27,6 +27,7 @@ export function DialogBox({ d, onClose }: { d: DialogSpec; onClose(): void }) {
               <button
                 key={i}
                 className="dialog-opt"
+                data-tut={o.tut}
                 disabled={o.disabled}
                 onClick={(e) => {
                   e.stopPropagation();

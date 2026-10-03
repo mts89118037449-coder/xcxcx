@@ -15,6 +15,7 @@ import { placeById, type PlaceId } from '../shared/places.ts';
 import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Place as PlaceT, type Tab } from './game.tsx';
 import { logError, noteFailure } from './errlog.ts';
+import { TutorialCoach } from './Tutorial.tsx';
 import { Home } from './screens/Home.tsx';
 
 // Пять разделов внизу; «Братва» живёт внутри «Боя», «Ларёк» — кнопкой ⭐ в шапке.
@@ -248,7 +249,7 @@ export function App() {
 
       <nav className="tabs">
         {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id || t.also?.includes(tab) ? 'active' : ''} onClick={() => go(t.id)}>
+          <button key={t.id} data-tut={`tab-${t.id}`} className={tab === t.id || t.also?.includes(tab) ? 'active' : ''} onClick={() => go(t.id)}>
             <span className="tab-icon">
               {t.icon}
               {t.id === 'work' && p.statPoints > 0 && <i className="dot" />}
@@ -281,6 +282,7 @@ export function App() {
       {mini === 'shizo' && <ShizoGame onClose={() => setMini(null)} />}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
       {introOn && <IntroOverlay onDone={() => setIntroOn(false)} />}
+      {!introOn && <TutorialCoach tab={tab} />}
       {!introOn && fresh.length > 0 && <UnlockModal list={fresh} onClose={() => setUnlockHidden(fresh.map((u) => u.id))} />}
       {!introOn && !mastAsked && !p.mast && p.level >= MAST_RULES.minLevel && <MastPicker onClose={() => setMastAsked(true)} />}
       {battleOn && <BattleModal onClose={() => setBattleOn(false)} />}

@@ -74,6 +74,8 @@ export interface PlayerView {
   termTotal: number;
   hodkaBonus: number;
   intro: number;
+  /** обучение первых минут: номер шага и прогресс; null — позади */
+  tut: { step: number; n: number } | null;
   notifyOn: boolean;
   notifyOff: string[];
   games: {

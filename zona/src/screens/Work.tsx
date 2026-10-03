@@ -45,7 +45,7 @@ export function Work() {
         {JOBS.filter((j, i) => j.minLevel <= p.level || JOBS.findIndex((x) => x.minLevel > p.level) === i).map((j) => {
           const locked = p.level < j.minLevel;
           return (
-            <button key={j.id} className={`job-tile ${locked ? 'locked' : ''}`} disabled={locked || busy} onClick={() => work(j.id)}>
+            <button key={j.id} data-tut={locked ? undefined : 'job'} className={`job-tile ${locked ? 'locked' : ''}`} disabled={locked || busy} onClick={() => work(j.id)}>
               <span className="job-emoji">{locked ? '🔒' : j.emoji}</span>
               <b>{j.name}</b>
               {locked ? <small>ур. {j.minLevel}</small> : <small>₽{fmt(j.money[1])} · ⚡{j.energy}</small>}
