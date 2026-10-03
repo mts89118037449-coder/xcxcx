@@ -239,8 +239,6 @@ function Club() {
         <path d="M40,20 H320 V36 Q180,50 40,36 Z" fill="#8a1c1c" />
         <path d="M40,36 Q180,50 320,36" stroke="#caa55a" strokeWidth={2} fill="none" />
         <rect x={30} y={170} width={300} height={14} fill="#6a4a2a" stroke="#3a2716" />
-        {/* прожектор */}
-        <path d="M180,36 L130,170 H230 Z" fill="#fff2c0" opacity={0.12} />
         {/* плакат */}
         <g transform="translate(144 60)">
           <rect width={72} height={50} fill="#e8dfc4" />
@@ -351,8 +349,6 @@ function Factory() {
       <rect x={0} y={92} width={W} height={8} fill="#c9a52a" stroke="#6a5a10" />
       <g transform="translate(220 100)">
         <rect x={-10} y={0} width={20} height={10} fill="#8a7a20" />
-        <path d="M0,10 V60" stroke="#333" strokeWidth={1.5} />
-        <path d="M-6,60 H6 L0,70 Z" fill="#555" />
       </g>
       {/* швейные машинки */}
       {[0, 1].map((i) => (
@@ -425,6 +421,124 @@ function Shizo() {
   );
 }
 
+// --- Жизнь в местах: то, что двигается поверх фона ---------------------------------------------
+
+/** Мухи над столом: каждая по своей петле. */
+const Flies = () => (
+  <g>
+    {[
+      [70, 160, 0],
+      [230, 150, 1.3],
+      [300, 172, 2.1],
+    ].map(([x, y, d]) => (
+      <g key={x} transform={`translate(${x} ${y})`}>
+        <g className="loc-fly" style={{ animationDelay: `${d}s` }}>
+          <circle r={1.3} fill="#111" />
+          <ellipse cx={-1} cy={-1.4} rx={1.4} ry={0.8} fill="#ddd" opacity={0.6} />
+        </g>
+      </g>
+    ))}
+  </g>
+);
+
+/** Капли с потолка: падают и разбиваются о пол. */
+const Drips = ({ xs, color = '#bcd4e0' }: { xs: number[]; color?: string }) => (
+  <g>
+    {xs.map((x, i) => (
+      <g key={x}>
+        <ellipse className="loc-drip" style={{ animationDelay: `${i * 1.1}s` }} cx={x} cy={8} rx={1.4} ry={2.4} fill={color} opacity={0.8} />
+        <ellipse className="loc-splash" style={{ animationDelay: `${i * 1.1}s` }} cx={x} cy={FLOOR + 6} rx={6} ry={1.5} fill="none" stroke={color} strokeWidth={0.8} />
+      </g>
+    ))}
+  </g>
+);
+
+/** Пыль в луче лампы. */
+const Dust = ({ x }: { x: number }) => (
+  <g>
+    {Array.from({ length: 10 }, (_, i) => (
+      <circle key={i} className="loc-dust" style={{ animationDelay: `${i * 0.7}s`, animationDuration: `${6 + (i % 4)}s` }} cx={x - 50 + ((i * 37) % 100)} cy={60 + ((i * 53) % 110)} r={0.9 + (i % 3) * 0.4} fill="#fff6c8" opacity={0.7} />
+    ))}
+  </g>
+);
+
+/** Часы на стене: секундная стрелка идёт. */
+const Clock = ({ x, y }: { x: number; y: number }) => (
+  <g transform={`translate(${x} ${y})`}>
+    <circle r={13} fill="#efe8d0" stroke="#3a3a30" strokeWidth={2} />
+    {Array.from({ length: 12 }, (_, i) => (
+      <path key={i} d="M0,-11 V-9" stroke="#333" strokeWidth={1} transform={`rotate(${i * 30})`} />
+    ))}
+    <path d="M0,0 V-6" stroke="#222" strokeWidth={1.6} transform="rotate(130)" />
+    <path d="M0,0 V-9" stroke="#222" strokeWidth={1.1} transform="rotate(40)" />
+    <path className="loc-tick" d="M0,2 V-10" stroke="#a02020" strokeWidth={0.7} />
+    <circle r={1.2} fill="#222" />
+  </g>
+);
+
+/** Крыса перебегает коридор раз в несколько секунд. */
+const Rat = () => (
+  <g className="loc-rat">
+    <g transform="translate(0 252)">
+      <ellipse cx={0} cy={0} rx={9} ry={4.5} fill="#3a3530" />
+      <circle cx={8} cy={-1} r={3.4} fill="#3a3530" />
+      <circle cx={10} cy={-2} r={0.7} fill="#c33" />
+      <path d="M-9,0 Q-20,4 -26,-2" stroke="#5a504a" strokeWidth={1.2} fill="none" />
+    </g>
+  </g>
+);
+
+/** Что двигается в каждом месте. */
+function Life({ place }: { place: PlaceId }) {
+  switch (place) {
+    case 'canteen':
+      return <Flies />;
+    case 'bath':
+      return <Drips xs={[44, 132, 214]} />;
+    case 'library':
+      return <Dust x={180} />;
+    case 'club':
+      return (
+        <g className="loc-sway">
+          <path d="M180,36 L120,176 H240 Z" fill="#fff2c0" opacity={0.14} />
+        </g>
+      );
+    case 'visits':
+      return <Clock x={320} y={30} />;
+    case 'factory':
+      return (
+        <g>
+          {[0, 1].map((i) => (
+            <rect key={i} className="loc-needle" style={{ animationDelay: `${i * 0.13}s` }} x={20 + i * 90 + 41} y={162} width={1.6} height={14} fill="#bbb" />
+          ))}
+          <g transform="translate(330 176)">
+            <g className="loc-spin">
+              <circle r={16} fill="#777" stroke="#333" />
+              {[0, 60, 120].map((a) => (
+                <path key={a} d="M-15,0 H15" stroke="#444" strokeWidth={2.4} transform={`rotate(${a})`} />
+              ))}
+              <circle r={4} fill="#222" />
+            </g>
+          </g>
+          <g transform="translate(220 100)">
+            <g className="loc-swing">
+              <path d="M0,10 V60" stroke="#333" strokeWidth={1.5} />
+              <path d="M-6,60 H6 L0,70 Z" fill="#555" />
+            </g>
+          </g>
+        </g>
+      );
+    case 'shizo':
+      return (
+        <>
+          <Drips xs={[96, 250]} color="#9aa6a0" />
+          <Rat />
+        </>
+      );
+  }
+  return null;
+}
+
 const BACKDROPS: Record<PlaceId, () => ReactNode> = { bath: Bath, canteen: Canteen, library: Library, club: Club, visits: Visits, factory: Factory, shizo: Shizo };
 
 export function LocationScene({ place, children }: { place: PlaceId; children?: ReactNode }) {
@@ -439,6 +553,7 @@ export function LocationScene({ place, children }: { place: PlaceId; children?: 
         </>
       )}
       {place !== 'bath' && place !== 'club' && <Lamp x={180} />}
+      <Life place={place} />
       {children}
     </Scene>
   );

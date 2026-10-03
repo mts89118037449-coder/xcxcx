@@ -8,7 +8,8 @@ import { EventButton } from './EventsLite.tsx';
 import type { Mini } from './Minigames.tsx';
 import { MAST_RULES } from '../shared/term.ts';
 import { frameClass } from './Season.tsx';
-import { play } from './sound.ts';
+import { play, setMusicTheme, type Theme } from './sound.ts';
+import { isNight } from '../shared/time.ts';
 import { GuideBar } from './Guide.tsx';
 import { UnlockModal, freshUnlocks } from './Unlocks.tsx';
 import { placeById, type PlaceId } from '../shared/places.ts';
@@ -57,6 +58,18 @@ const BeadsGame = named(() => import('./Minigames2.tsx'), 'BeadsGame');
 const FishGame = named(() => import('./Minigames2.tsx'), 'FishGame');
 const ShizoGame = named(() => import('./Minigames2.tsx'), 'ShizoGame');
 
+const PLACE_MUSIC: Partial<Record<string, Theme>> = {
+  bath: 'bath',
+  canteen: 'canteen',
+  library: 'library',
+  club: 'club',
+  visits: 'visits',
+  factory: 'factory',
+  shizo: 'shizo',
+  church: 'library',
+  medic: 'visits',
+};
+
 const TABS: { id: Tab; icon: string; label: string; also?: Tab[] }[] = [
   { id: 'home', icon: '🏚️', label: 'Хата' },
   { id: 'zone', icon: '🗺️', label: 'Зона' },
@@ -85,6 +98,16 @@ export function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [mini, setMini] = useState<Mini | null>(null);
   const hasBattle = !!player?.battle;
+  // музыка под место: свой мотив в каждом месте, в бою — быстрее, ночью — тише и со сверчками
+  const musicFor: Theme =
+    battleOn || hasBattle || place === 'escape' || tab === 'fight'
+      ? 'fight'
+      : place && place in PLACE_MUSIC
+        ? PLACE_MUSIC[place]!
+        : isNight(Date.now())
+          ? 'night'
+          : 'yard';
+  useEffect(() => setMusicTheme(musicFor), [musicFor]);
   // этапирование для новичка и приглашение выбрать масть — по одному разу за заход
   const [introOn, setIntroOn] = useState(false);
   const introPending = (player?.intro ?? -1) >= 0;

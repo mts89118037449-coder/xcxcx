@@ -2315,3 +2315,31 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .league-gain { margin: 6px 0; font-size: 14px; color: var(--muted); }
 .league-gain.up { color: var(--gold); }
 .league-gain.down { color: #e07a5f; }
+
+/* --- Жизнь в местах --- */
+.loc-fly { animation: loc-fly 3.2s linear infinite; }
+@keyframes loc-fly {
+  0% { transform: translate(0, 0); } 20% { transform: translate(14px, -8px); } 40% { transform: translate(4px, -18px); }
+  60% { transform: translate(-12px, -6px); } 80% { transform: translate(-6px, 6px); } 100% { transform: translate(0, 0); }
+}
+.loc-drip { animation: loc-drip 3.3s ease-in infinite; }
+@keyframes loc-drip { 0%, 60% { transform: translateY(0); opacity: 0; } 62% { opacity: 0.8; } 92% { transform: translateY(234px); opacity: 0.8; } 93%, 100% { transform: translateY(234px); opacity: 0; } }
+.loc-splash { transform-box: fill-box; transform-origin: center; animation: loc-splash 3.3s linear infinite; opacity: 0; }
+@keyframes loc-splash { 0%, 92% { opacity: 0; transform: scale(0.2); } 93% { opacity: 0.9; transform: scale(0.3); } 100% { opacity: 0; transform: scale(1.4); } }
+.loc-dust { animation: loc-dust 7s ease-in-out infinite alternate; }
+@keyframes loc-dust { 0% { transform: translate(0, 0); opacity: 0.2; } 50% { opacity: 0.8; } 100% { transform: translate(10px, -16px); opacity: 0.15; } }
+.loc-tick { transform-origin: 0 0; animation: loc-tick 60s steps(60) infinite; }
+@keyframes loc-tick { to { transform: rotate(360deg); } }
+.loc-rat { animation: loc-rat 9s linear infinite; }
+@keyframes loc-rat { 0%, 70% { transform: translateX(-40px); } 88%, 100% { transform: translateX(400px); } }
+.loc-sway { transform-origin: 180px 36px; animation: loc-sway 5s ease-in-out infinite alternate; }
+@keyframes loc-sway { from { transform: rotate(-14deg); } to { transform: rotate(14deg); } }
+.loc-needle { animation: loc-needle 0.26s ease-in-out infinite alternate; }
+@keyframes loc-needle { from { transform: translateY(-4px); } to { transform: translateY(2px); } }
+.loc-spin { animation: loc-spin 2.4s linear infinite; }
+@keyframes loc-spin { to { transform: rotate(360deg); } }
+.loc-swing { transform-origin: 0 10px; animation: loc-swing 3.6s ease-in-out infinite alternate; }
+@keyframes loc-swing { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .loc-fly, .loc-drip, .loc-splash, .loc-dust, .loc-rat, .loc-sway, .loc-needle, .loc-spin, .loc-swing { animation: none; }
+}

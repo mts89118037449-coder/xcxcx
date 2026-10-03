@@ -83,10 +83,8 @@ export function needFail(n: Need | undefined, p: NeedSubject): string | null {
 }
 
 /** Ночь по Москве: с 22 до 6. */
-export const isNight = (now: number) => {
-  const h = (new Date(now).getUTCHours() + 3) % 24;
-  return h >= 22 || h < 6;
-};
+import { isNight } from './time.ts';
+export { isNight };
 
 /** Может ли случай выпасть сам по себе этому игроку сейчас. */
 export function eventFits(e: GameEvent, p: NeedSubject, now: number): boolean {
