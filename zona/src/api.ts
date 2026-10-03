@@ -84,6 +84,8 @@ export const api = {
   report: (topic: string, text: string, ctx: unknown) => post<{ id: number }>('/report', { topic, text, ctx }),
   adminReports: (body: { done?: number; reply?: { id: number; text: string }; errDel?: string } = {}) =>
     post<{ reports: AdminReport[]; errors: AdminError[] }>('/admin/reports', body),
+  adminLive: (body: { start?: string; hours?: number; stop?: boolean } = {}) =>
+    post<{ cur: { id: string; startsAt: number; endsAt: number; by: 'auto' | 'admin' } | null; next: { id: string; startsAt: number; endsAt: number }; list: { id: string; name: string; emoji: string; short: string; desc: string }[] }>('/admin/live', body),
   adminSus: (id?: number, act?: 'clear' | 'ban' | 'unban') => post<{ list: SusRow[]; flagAt: number }>('/admin/sus', { id, act }),
   season: () => post<{ top: { id: number; name: string; face: number | null; frame: string | null; pts: number }[] }>('/season'),
   refs: () => post<{ refs: { id: number; name: string; level: number }[] }>('/refs'),

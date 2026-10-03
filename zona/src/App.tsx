@@ -16,6 +16,7 @@ import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Place as PlaceT, type Tab } from './game.tsx';
 import { logError, noteFailure } from './errlog.ts';
 import { TutorialCoach } from './Tutorial.tsx';
+import { LiveBanner } from './Live.tsx';
 import { Home } from './screens/Home.tsx';
 
 // Пять разделов внизу; «Братва» живёт внутри «Боя», «Ларёк» — кнопкой ⭐ в шапке.
@@ -231,6 +232,7 @@ export function App() {
       </header>
 
       <main>
+        {!place && <LiveBanner />}
         {!place && <GuideBar />}
         <Suspense fallback={null}>
         {place === 'church' && <Church onBack={() => { setPlace(null); setTab('zone'); }} />}

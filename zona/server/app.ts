@@ -4,6 +4,7 @@ import { OBSHAK } from '../shared/factions.ts';
 import { ANTICHEAT } from '../shared/anticheat.ts';
 import { isOpen } from '../shared/unlocks.ts';
 import { ERRLOG, REPORT } from '../shared/support.ts';
+import { LIVE, currentLive, liveById, nextAutoLive, type LiveId, type LiveRun } from '../shared/live.ts';
 import crypto from 'node:crypto';
 import { CHAT } from '../shared/chat.ts';
 import { seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
@@ -68,6 +69,7 @@ export function createApp(opts: AppOptions) {
   }
 
   function loadOrCreate(user: TgUser, startParam: string | null, t: number): g.Player {
+    liveNow(t);
     let p = db.getPlayer(user.id);
     if (!p) {
       const name = [user.first_name, user.last_name].filter(Boolean).join(' ');
@@ -105,8 +107,21 @@ export function createApp(opts: AppOptions) {
     hut: Partial<Record<HutId, number>>;
     boss: { day: string; hp: number; max: number; hits: Record<string, number>; killed: boolean } | null;
   }
-  // событие зоны для рассылки (заполняется в разделе событий)
-  const liveNotice = (_t: number): g.NoticeCtx['live'] => null;
+  // --- События зоны: запущенное админом лежит в kv, остальное — по расписанию выходных
+  let liveCache: { at: number; manual: LiveRun | null; skip: number } = { at: 0, manual: null, skip: 0 };
+  const liveNow = (t: number): LiveRun | null => {
+    if (Date.now() - liveCache.at > 5000) liveCache = { at: Date.now(), manual: db.kvGet<LiveRun | null>('live:manual', null), skip: db.kvGet<number>('live:skip', 0) };
+    let cur = currentLive(t, liveCache.manual);
+    // выходные по расписанию админ может отменить
+    if (cur?.by === 'auto' && cur.startsAt === liveCache.skip) cur = null;
+    g.live.cur = cur;
+    return cur;
+  };
+  const liveNotice = (t: number): g.NoticeCtx['live'] => {
+    const cur = liveNow(t);
+    const def = cur && liveById.get(cur.id);
+    return cur && def ? { startsAt: cur.startsAt, text: def.notice } : null;
+  };
   const clanState = (id: number) => db.kvGet<ClanState>(`clan:${id}`, { hut: {}, boss: null });
   const saveClanState = (id: number, st: ClanState) => db.kvSet(`clan:${id}`, st);
   const warTable = (week: number) => db.kvGet<Record<string, number>>(`clanwar:${week}`, {});
@@ -294,6 +309,11 @@ export function createApp(opts: AppOptions) {
       hodkaBonus: g.hodkaBonus(p),
       intro: p.intro,
       tut: p.tut >= 0 ? { step: p.tut, n: p.tutN } : null,
+      live: (() => {
+        const cur = liveNow(t);
+        const def = cur && liveById.get(cur.id);
+        return cur && def ? { id: def.id, name: def.name, emoji: def.emoji, desc: def.desc, short: def.short, endsAt: cur.endsAt } : null;
+      })(),
       notifyOn: p.notify.on,
       notifyOff: p.notify.off,
       games: {
@@ -919,6 +939,25 @@ export function createApp(opts: AppOptions) {
       reports: db.reports().map((r) => ({ ...r, ctx: JSON.parse(r.ctx) })),
       errors: db.errors(),
     });
+  });
+
+  // События зоны: что идёт, что дальше по расписанию, запустить или остановить
+  api.post('/admin/live', (req: AuthedRequest, res) => {
+    if (!opts.adminIds.includes(req.tgUser!.id)) return res.status(403).json({ error: 'Только для админа' });
+    const t = now();
+    const b = req.body ?? {};
+    if (b.stop) {
+      liveCache.at = 0;
+      const cur = liveNow(t);
+      if (cur?.by === 'admin') db.kvSet('live:manual', null);
+      else if (cur?.by === 'auto') db.kvSet('live:skip', cur.startsAt);
+    } else if (b.start && liveById.has(b.start)) {
+      const hours = Math.max(1, Math.min(72, Number(b.hours) || 3));
+      db.kvSet('live:manual', { id: b.start as LiveId, startsAt: t, endsAt: t + hours * 3600_000, by: 'admin' } satisfies LiveRun);
+    }
+    liveCache.at = 0;
+    const cur = liveNow(t);
+    res.json({ cur, next: nextAutoLive(t), list: LIVE.map((l) => ({ id: l.id, name: l.name, emoji: l.emoji, short: l.short, desc: l.desc })) });
   });
 
   api.post('/admin/stats', (req: AuthedRequest, res) => {

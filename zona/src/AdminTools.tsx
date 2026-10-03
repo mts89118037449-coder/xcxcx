@@ -179,4 +179,68 @@ export function AdminReports() {
     </div>
   );
 }
-export function AdminLive() { return null; }
+
+/** События зоны: что идёт сейчас, что по расписанию, запустить любое на N часов. */
+export function AdminLive() {
+  const { toast, refresh } = useGame();
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.adminLive>> | null>(null);
+  const [hours, setHours] = useState(3);
+  const load = (body: Parameters<typeof api.adminLive>[0] = {}) =>
+    api
+      .adminLive(body)
+      .then((d) => {
+        setData(d);
+        if (body.start || body.stop) refresh();
+      })
+      .catch((e) => toast(e instanceof Error ? e.message : 'Не загрузилось', 'err'));
+  useEffect(() => {
+    load();
+  }, []);
+  if (!data) return <div className="muted center">Загрузка…</div>;
+  const name = (id: string) => data.list.find((l) => l.id === id);
+  const cur = data.cur && name(data.cur.id);
+  const next = name(data.next.id);
+  return (
+    <div className="sus-list">
+      <div className={`sus-row ${cur ? 'hot' : ''}`}>
+        {cur ? (
+          <>
+            <b>
+              {cur.emoji} Сейчас: {cur.name}
+            </b>
+            <div className="sus-log">
+              {cur.short} · до {when(data.cur!.endsAt)} · {data.cur!.by === 'auto' ? 'по расписанию' : 'запущено вручную'}
+            </div>
+            <div className="row">
+              <button className="btn btn-s btn-red" onClick={() => confirm(`Остановить «${cur.name}»?`) && load({ stop: true })}>
+                ⏹ Остановить
+              </button>
+            </div>
+          </>
+        ) : (
+          <b className="muted">Сейчас ничего не идёт</b>
+        )}
+      </div>
+      <div className="muted small">
+        По расписанию: {next?.emoji} {next?.name} — {when(data.next.startsAt)}…{when(data.next.endsAt)}. Игрокам с включёнными напоминаниями бот напишет сам.
+      </div>
+      <div className="admin-row">
+        <span>Запустить на</span>
+        {[1, 3, 12, 48].map((h) => (
+          <button key={h} className={`btn btn-s ${hours === h ? '' : 'btn-dark'}`} onClick={() => setHours(h)}>
+            {h} ч
+          </button>
+        ))}
+      </div>
+      {data.list.map((l) => (
+        <button key={l.id} className="sus-row live-pick" onClick={() => confirm(`Запустить «${l.name}» на ${hours} ч для всей зоны?`) && load({ start: l.id, hours })}>
+          <b>
+            {l.emoji} {l.name}
+          </b>
+          <div className="sus-log">{l.short}</div>
+          <small className="muted">{l.desc}</small>
+        </button>
+      ))}
+    </div>
+  );
+}

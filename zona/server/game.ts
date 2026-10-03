@@ -58,6 +58,7 @@ import { SHIZO, SHIZO_CARDS, shizoCardById, type ShizoStat } from '../shared/min
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
 import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
 import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
+import { liveById, type LiveEffects, type LiveRun } from '../shared/live.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTICE_KINDS, NOTIFY, TERM, mastById, termDays, type Mast, type NoticeKind } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
@@ -497,6 +498,7 @@ export function gainRep(p: Player, id: FactionId, amount: number): number {
   const f = factionById.get(id)!;
   let n = amount;
   if (n > 0 && p.mast && f.mast.includes(p.mast)) n *= REP_RULES.mastMul;
+  if (n > 0) n *= liveFx(clock.now()).rep ?? 1;
   n = Math.round(n);
   p.rep[id] = Math.max(0, p.rep[id] + n);
   if (n > 0 && f.rival) p.rep[f.rival] = Math.max(0, p.rep[f.rival] - Math.round(n * REP_RULES.rivalShare));
@@ -539,7 +541,7 @@ export function stats(p: Player, now: number) {
 /** Восстановление энергии и здоровья по прошедшему времени. */
 export function tick(p: Player, now: number): void {
   const s = stats(p, now);
-  const regenSec = BALANCE.energyRegenSec / (isVip(p, now) ? 2 : 1) / (weeklyEvent(now).id === 'amnesty' ? 1.5 : 1);
+  const regenSec = BALANCE.energyRegenSec / (isVip(p, now) ? 2 : 1) / (weeklyEvent(now).id === 'amnesty' ? 1.5 : 1) / (liveFx(now).energy ?? 1);
   if (p.energy >= s.maxEnergy) {
     p.energyAt = now;
   } else {
@@ -597,7 +599,7 @@ function roll(rng: Rng, [min, max]: [number, number]): number {
 }
 
 export function addXp(p: Player, xp0: number, now: number): number {
-  const xp = Math.round(xp0 * (1 + hodkaBonus(p) / 100));
+  const xp = Math.round(xp0 * (1 + hodkaBonus(p) / 100) * (xp0 > 0 ? (liveFx(now).xp ?? 1) : 1));
   p.xp += xp;
   let ups = 0;
   while (p.xp >= xpToNext(p.level)) {
@@ -624,7 +626,7 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   spendEnergy(p, job.energy, now);
   // рандом смены: иногда премия от бригадира, иногда находка на промке
   const bonus = rng() < 0.1;
-  const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney') + repBonus(p, 'jobMoney')) / 100) * (bonus ? 2 : 1));
+  const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney') + repBonus(p, 'jobMoney')) / 100) * (bonus ? 2 : 1) * (liveFx(now).money ?? 1));
   p.money += money;
   let item: string | null = null;
   if (rng() < 0.05) {
@@ -636,7 +638,8 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   track(p, 'job');
   gainRep(p, 'work', 1);
   const mats = rng() < CRAFT.jobChance ? giveMats(p, { [rollMat(rng)]: 1 }) : {};
-  return { money, xp, levelUps, bonus, item, mats };
+  const found = liveFind(p, now, rng);
+  return { money, xp, levelUps, bonus, item, mats, found };
 }
 
 export function allocate(p: Player, stat: Stat) {
@@ -839,7 +842,7 @@ export function bossFinish(p: Player, bossId: string, result: FightResult, now: 
 
   const reward = { money: 0, xp: 0, authority: 0, gold: 0, drop: null as string | null, item: null as string | null, levelUps: 0 };
   if (result.win) {
-    reward.money = Math.round(roll(rng, boss.reward.money) * (1 + stats(p, now).moneyBonus / 100) * (weeklyEvent(now).id === 'search' ? 1.5 : 1) * (1 + result.lootBonus / 100));
+    reward.money = Math.round(roll(rng, boss.reward.money) * (1 + stats(p, now).moneyBonus / 100) * (weeklyEvent(now).id === 'search' ? 1.5 : 1) * (1 + result.lootBonus / 100) * (liveFx(now).money ?? 1));
     if (rng() < BOSS_ITEM_CHANCE) {
       reward.item = rollConsumable(rng);
       giveItem(p, reward.item);
@@ -863,6 +866,7 @@ export function bossFinish(p: Player, bossId: string, result: FightResult, now: 
     p.bossKills += 1;
     track(p, 'boss');
     if (rng() < CRAFT.bossChance) giveMats(p, { [rollMat(rng)]: 1 });
+    liveFind(p, now, rng);
     reward.levelUps = addXp(p, reward.xp, now);
     const drop = reward.drop ? itemById.get(reward.drop) : null;
     log(p, now, `${boss.emoji} Завалил «${boss.name}»${drop ? `, трофей: ${drop.emoji} ${drop.name}` : ''}`);
@@ -1574,6 +1578,32 @@ export function warPoints(p: Player, now: number, pts: number) {
 /** Часы для счётчиков без явного now (сюжет, неделя, сезон, война). Симуляция подменяет на своё время. */
 export const clock = { now: () => Date.now() };
 
+/** Событие зоны, которое идёт сейчас: сервер кладёт сюда текущее перед каждым запросом. */
+export const live = { cur: null as LiveRun | null };
+
+/** Эффекты текущего события зоны (пусто, если ничего не идёт). */
+export function liveFx(now: number): LiveEffects {
+  const c = live.cur;
+  return c && now >= c.startsAt && now < c.endsAt ? (liveById.get(c.id)?.fx ?? {}) : {};
+}
+
+/** Находка во время события: расходник или материал. */
+function liveFind(p: Player, now: number, rng: Rng): string | null {
+  const chance = liveFx(now).find ?? 0;
+  if (!chance || rng() >= chance) return null;
+  if (rng() < 0.5) {
+    const id = rollConsumable(rng);
+    giveItem(p, id);
+    const c = consumableById.get(id);
+    log(p, now, `🔦 Нашёл заныканное: ${c?.emoji ?? ''} ${c?.name ?? id}`);
+    return id;
+  }
+  const m = rollMat(rng);
+  giveMats(p, { [m]: 1 });
+  log(p, now, `🔦 Нашёл заныканное: ${matById.get(m)?.emoji ?? ''} ${matById.get(m)?.name ?? m}`);
+  return m;
+}
+
 /** Новый месяц — новый сезон: очки и пропуск обнуляются. */
 export function ensureSeason(p: Player, now: number) {
   const id = seasonIndex(now);
@@ -1992,7 +2022,7 @@ export function spawnEvent(p: Player, now: number, rng: Rng, where: 'any' | 'yar
     const ev = pool[Math.floor(rng() * pool.length)];
     p.event = { id: ev.id, until: now + EVENT_TIMING.ttlMin * MIN };
   }
-  const gap = EVENT_TIMING.minGapMin + rng() * (EVENT_TIMING.maxGapMin - EVENT_TIMING.minGapMin);
+  const gap = (EVENT_TIMING.minGapMin + rng() * (EVENT_TIMING.maxGapMin - EVENT_TIMING.minGapMin)) / (liveFx(now).events ?? 1);
   p.eventAt = now + gap * MIN;
 }
 

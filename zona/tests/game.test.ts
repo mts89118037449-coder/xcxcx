@@ -1412,3 +1412,39 @@ test('обучение: после вступления сыплет бычки,
   const old = g.migrate({ ...g.newPlayer(3, 'В', null, T0), tut: undefined } as never);
   assert.equal(old.tut, -1);
 });
+
+import { autoLive, currentLive, nextAutoLive } from '../shared/live.ts';
+
+test('события зоны: по выходным сами по кругу, ручное важнее; опыт и деньги умножаются', () => {
+  const fri = Date.UTC(2026, 9, 2, 12); // пятница
+  const sat = Date.UTC(2026, 9, 3, 9); // суббота 12:00 МСК
+  const sun = Date.UTC(2026, 9, 4, 19); // воскресенье 22:00 МСК
+  const mon = Date.UTC(2026, 9, 5, 9);
+  assert.equal(autoLive(fri), null);
+  assert.ok(autoLive(sat));
+  assert.equal(autoLive(sun)?.id, autoLive(sat)!.id);
+  assert.equal(autoLive(mon), null);
+  assert.notEqual(autoLive(sat + 7 * 24 * 3600_000)!.id, autoLive(sat)!.id, 'на следующих выходных — другое');
+  assert.equal(nextAutoLive(fri).startsAt, autoLive(sat)!.startsAt);
+  const manual = { id: 'payday' as const, startsAt: fri, endsAt: fri + 3600_000, by: 'admin' as const };
+  assert.equal(currentLive(fri + 1000, manual)?.id, 'payday');
+  assert.equal(currentLive(fri + 2 * 3600_000, manual), null);
+
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  const q = g.newPlayer(2, 'Петя', null, T0);
+  g.live.cur = { id: 'amnesty', startsAt: T0 - 1, endsAt: T0 + 3600_000, by: 'admin' };
+  g.addXp(p, 10, T0);
+  g.live.cur = null;
+  g.addXp(q, 10, T0);
+  assert.equal(p.xp, q.xp * 2);
+  g.live.cur = { id: 'payday', startsAt: T0 - 1, endsAt: T0 + 3600_000, by: 'admin' };
+  const rich = g.doJob(p, 'j_floor', T0, fixed(0.5)).money;
+  g.live.cur = null;
+  const poor = g.doJob(q, 'j_floor', T0, fixed(0.5)).money;
+  assert.equal(rich, Math.round(poor * 1.5));
+  // шмон: находки
+  g.live.cur = { id: 'shmon', startsAt: T0 - 1, endsAt: T0 + 3600_000, by: 'admin' };
+  const r = g.doJob(p, 'j_floor', T0, fixed(0.01));
+  assert.ok(r.found);
+  g.live.cur = null;
+});

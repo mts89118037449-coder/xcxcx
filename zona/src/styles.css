@@ -2275,3 +2275,17 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .tut-gift-list span { background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-weight: 700; }
 .tut-coach.top { bottom: auto; top: calc(8px + env(safe-area-inset-top)); z-index: 130; }
 body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
+
+/* --- События зоны --- */
+.live-strip { display: flex; align-items: center; gap: 8px; width: 100%; margin: 0 0 8px; padding: 7px 10px; border-radius: 10px; border: 1px solid #6a5a3a; background: linear-gradient(90deg, #3a2a14, #2a2418); text-align: left; font-size: 13px; }
+.live-strip small { color: var(--gold); white-space: nowrap; }
+.live-emoji { font-size: 22px; animation: tut-bob 1.6s ease-in-out infinite; }
+.live-amnesty { background: linear-gradient(90deg, #1e3346, #22283a); border-color: #4a7aa5; }
+.live-payday { background: linear-gradient(90deg, #3a3214, #2a2418); border-color: #b8952e; }
+.live-etap { background: linear-gradient(90deg, #2e2e36, #22222a); border-color: #6a6a80; }
+.live-shmon { background: linear-gradient(90deg, #3a1e1a, #2a1c18); border-color: #a5543a; }
+.live-hunger { background: linear-gradient(90deg, #2e3420, #22281a); border-color: #6a8a3a; }
+.live-modal { text-align: center; }
+.live-big { font-size: 64px; }
+.live-fx { display: inline-block; margin: 6px 0; padding: 6px 12px; border-radius: 16px; background: #0006; color: var(--gold); font-weight: 700; }
+.live-pick { width: 100%; text-align: left; display: block; }

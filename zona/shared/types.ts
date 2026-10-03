@@ -76,6 +76,8 @@ export interface PlayerView {
   intro: number;
   /** обучение первых минут: номер шага и прогресс; null — позади */
   tut: { step: number; n: number } | null;
+  /** событие зоны, которое идёт сейчас */
+  live: { id: string; name: string; emoji: string; desc: string; short: string; endsAt: number } | null;
   notifyOn: boolean;
   notifyOff: string[];
   games: {

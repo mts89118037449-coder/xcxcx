@@ -238,3 +238,10 @@ test('жалоба: сохраняется со снимком, уходит а�
   // админка — только админу
   assert.equal((await post('/api/admin/reports', auth)).status, 403);
 });
+
+test('событие зоны видно в профиле; запускать может только админ', async () => {
+  const auth = initData(9301, 'Зевака');
+  const me = await post('/api/me', auth);
+  assert.ok('live' in me.json.player);
+  assert.equal((await post('/api/admin/live', auth, { start: 'amnesty', hours: 3 })).status, 403);
+});
