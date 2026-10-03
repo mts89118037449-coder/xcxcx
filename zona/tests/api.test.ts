@@ -194,3 +194,20 @@ test('частые запросы одного игрока режутся, др
   assert.equal(codes[0], 200);
   assert.equal((await post('/api/me', initData(991, 'Честный'))).status, 200);
 });
+
+test('мини-игра с результатом на телефоне требует старта на сервере', async () => {
+  const auth = initData(9101, 'Шустрый');
+  await post('/api/me', auth);
+  const pl = db.getPlayer(9101)!;
+  pl.level = 10;
+  db.savePlayer(pl);
+  const cheat = await post('/api/action/darts', auth, { accs: [1, 1, 1] });
+  assert.equal(cheat.status, 400);
+  assert.match(cheat.json.error, /сбилась/);
+  const start = await post('/api/run', auth, { game: 'darts' });
+  assert.equal(start.status, 200);
+  const fast = await post('/api/action/darts', auth, { accs: [1, 1, 1] });
+  assert.equal(fast.status, 400);
+  assert.match(fast.json.error, /быстро/);
+  assert.ok(db.getPlayer(9101)!.sus.score >= 4, 'подозрение сохранилось, хотя действие отклонено');
+});

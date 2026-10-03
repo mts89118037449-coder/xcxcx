@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { PULLUPS } from '../shared/content.ts';
 import { PoseG } from './art/sprites.tsx';
 import { lookOf, timeLeft, useGame } from './game.tsx';
+import { startRun } from './api.ts';
 
 const SECONDS = 10;
 
@@ -29,7 +30,10 @@ export function Pullups({ onClose }: { onClose(): void }) {
   }, [left, phase, act, toast]);
 
   const tap = () => {
-    if (phase === 'ready') setPhase('go');
+    if (phase === 'ready') {
+      startRun('pullups');
+      setPhase('go');
+    }
     if (phase === 'done') return;
     repsRef.current = Math.min(PULLUPS.maxReps, repsRef.current + 1);
     setReps(repsRef.current);

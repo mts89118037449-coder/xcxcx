@@ -1,6 +1,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { EVENT_TIMING, MEDIC, eventById } from '../shared/events.ts';
 import { OBSHAK } from '../shared/factions.ts';
+import { ANTICHEAT } from '../shared/anticheat.ts';
 import { CHAT } from '../shared/chat.ts';
 import { seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT_RULES, PARCEL, REFERRAL, hutById, type HutId } from '../shared/clans.ts';
@@ -769,10 +770,17 @@ export function createApp(opts: AppOptions) {
     if (!handler) return res.status(404).json({ error: 'Нет такого действия' });
     const t = now();
     try {
-      const { p, result } = db.transaction(() => {
+      const { p, result, rejected } = db.transaction(() => {
         const p = loadOrCreate(req.tgUser!, req.startParam ?? null, t);
         const admin = opts.adminIds.includes(p.id);
         if (req.params.type.startsWith('admin') && !admin) throw new g.GameError('Только для админа');
+        if (p.banned) throw new g.GameError('Аккаунт заблокирован за накрутку. Вопросы — /paysupport в боте');
+        // результат мини-игры: сервер сверяет со временем старта; подозрение сохраняем даже при отказе
+        const rejected = g.runCheck(p, req.params.type, req.body ?? {}, t);
+        if (rejected) {
+          db.savePlayer(p);
+          return { p, result: null, rejected };
+        }
         if (admin && p.god.on) g.godTopUp(p, t);
         const week = g.weekIndex(t);
         const war0 = p.war.week === week ? p.war.pts : 0;
@@ -784,13 +792,56 @@ export function createApp(opts: AppOptions) {
         payReferral(p, t);
         if (admin && p.god.on) g.godTopUp(p, t);
         db.savePlayer(p);
-        return { p, result };
+        return { p, result, rejected: null };
       });
+      if (rejected) return res.status(400).json({ error: rejected, player: view(p, t) });
       res.json({ ok: true, result: result ?? true, player: view(p, t) });
     } catch (e) {
       if (e instanceof g.GameError) return res.status(400).json({ error: e.message });
       throw e;
     }
+  });
+
+  // Старт мини-игры с результатом на телефоне: сервер засекает время (и для чифира — когда закипит)
+  api.post('/run', (req: AuthedRequest, res) => {
+    const t = now();
+    try {
+      const r = db.transaction(() => {
+        const p = loadOrCreate(req.tgUser!, req.startParam ?? null, t);
+        if (p.banned) throw new g.GameError('Аккаунт заблокирован');
+        g.requireUnlock(p, str(req.body?.game));
+        const r = g.runStart(p, str(req.body?.game), t, rng);
+        db.savePlayer(p);
+        return r;
+      });
+      res.json(r);
+    } catch (e) {
+      if (e instanceof g.GameError) return res.status(400).json({ error: e.message });
+      throw e;
+    }
+  });
+
+  // Подозреваемые в накрутке: список и решение админа (простить или заблокировать)
+  api.post('/admin/sus', (req: AuthedRequest, res) => {
+    if (!opts.adminIds.includes(req.tgUser!.id)) return res.status(403).json({ error: 'Только для админа' });
+    const t = now();
+    const id = Number(req.body?.id);
+    const verdict = str(req.body?.act);
+    if (id && ['clear', 'ban', 'unban'].includes(verdict)) {
+      db.transaction(() => {
+        const p = db.getPlayer(id);
+        if (!p) return;
+        if (verdict === 'clear') p.sus = { score: 0, at: t, log: [] };
+        p.banned = verdict === 'ban';
+        db.savePlayer(p);
+      });
+    }
+    const list = db
+      .suspects()
+      .map((p) => ({ id: p.id, name: p.name, level: p.level, score: Math.round(g.susScore(p, t) * 10) / 10, banned: p.banned, log: p.sus.log.slice(0, 6) }))
+      .filter((x) => x.banned || x.score >= ANTICHEAT.flagAt / 2)
+      .sort((a, b) => Number(b.banned) - Number(a.banned) || b.score - a.score);
+    res.json({ list, flagAt: ANTICHEAT.flagAt });
   });
 
   api.post('/admin/stats', (req: AuthedRequest, res) => {

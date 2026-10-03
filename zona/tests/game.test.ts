@@ -1314,3 +1314,42 @@ test('открытия по уровням: сервер не пускает р�
   g.seeUnlocks(p, ['dice', 'dice', 'нет такого']);
   assert.deepEqual(p.unlocksSeen, ['dice']);
 });
+
+test('защита от накруток: без старта и слишком быстро не засчитывается, подозрение копится и остывает', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  assert.match(g.runCheck(p, 'darts', { accs: [1, 1, 1] }, T0)!, /сбилась/);
+  assert.ok(p.sus.score > 0);
+  g.runStart(p, 'darts', T0, fixed(0.5));
+  assert.match(g.runCheck(p, 'darts', { accs: [1, 1, 1] }, T0 + 100)!, /быстро/);
+  const afterFast = p.sus.score;
+  assert.ok(afterFast >= 4);
+  // честная игра проходит; идеальная — проходит, но отмечается
+  g.runStart(p, 'darts', T0, fixed(0.5));
+  assert.equal(g.runCheck(p, 'darts', { accs: [0.5, 0.6, 0.4] }, T0 + 3000), null);
+  assert.equal(p.sus.score, afterFast);
+  g.runStart(p, 'darts', T0, fixed(0.5));
+  assert.equal(g.runCheck(p, 'darts', { accs: [1, 1, 1] }, T0 + 3000), null);
+  assert.ok(p.sus.score > afterFast);
+  // старт одноразовый
+  assert.match(g.runCheck(p, 'darts', { accs: [0.5, 0.5, 0.5] }, T0 + 4000)!, /сбилась/);
+  // остывает
+  assert.ok(g.susScore(p, T0 + 10 * 24 * 60 * MIN) === 0);
+  // невозможное
+  g.runStart(p, 'conveyor', T0, fixed(0.5));
+  assert.match(g.runCheck(p, 'conveyor', { good: 30, missed: 30 }, T0 + 30_000)!, /не бывает/);
+  // не мини-игры не трогаем
+  assert.equal(g.runCheck(p, 'job', {}, T0), null);
+});
+
+test('чифир на скорость: паузу выбирает сервер, раньше неё результат не принимается, фальстарт честный', () => {
+  const p = g.newPlayer(1, 'Вася', null, T0);
+  const { delay } = g.runStart(p, 'speed', T0, fixed(0.5));
+  assert.ok(delay >= 1400 && delay <= 4000);
+  assert.match(g.runCheck(p, 'speed', { ms: 250 }, T0 + 300)!, /быстро/);
+  g.runStart(p, 'speed', T0, fixed(0.5));
+  assert.equal(g.runCheck(p, 'speed', { ms: 250 }, T0 + delay + 400), null);
+  const before = p.sus.score;
+  g.runStart(p, 'speed', T0, fixed(0.5));
+  assert.equal(g.runCheck(p, 'speed', { ms: 0 }, T0 + 200), null);
+  assert.equal(p.sus.score, before);
+});

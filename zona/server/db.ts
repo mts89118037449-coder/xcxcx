@@ -160,6 +160,7 @@ export function openDb(file: string) {
     levels: db.prepare('SELECT level, COUNT(*) AS n FROM players GROUP BY level ORDER BY level'),
     payByPack: db.prepare('SELECT pack_id AS pack, COUNT(*) AS n, SUM(stars) AS stars FROM payments WHERE refunded = 0 GROUP BY pack_id ORDER BY stars DESC'),
     paySince: db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(stars), 0) AS stars, COUNT(DISTINCT player_id) AS payers FROM payments WHERE refunded = 0 AND created_at >= ?'),
+    suspects: db.prepare("SELECT data FROM players WHERE json_extract(data, '$.sus.score') >= 1 OR json_extract(data, '$.banned') = 1 ORDER BY json_extract(data, '$.sus.score') DESC LIMIT 60"),
     kvGet: db.prepare('SELECT value FROM kv WHERE key = ?'),
     kvSet: db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
     get: db.prepare('SELECT data FROM players WHERE id = ?'),
@@ -283,6 +284,10 @@ export function openDb(file: string) {
           all: q.paySince.get(0) as { n: number; stars: number; payers: number },
         },
       };
+    },
+    /** Кого подозревают в накрутке (счёт без остывания — остывание считает сервер). */
+    suspects(): Player[] {
+      return (q.suspects.all() as { data: string }[]).map((r) => migrate(JSON.parse(r.data) as Player));
     },
     kvGet<T>(key: string, fallback: T): T {
       const row = q.kvGet.get(key) as { value: string } | undefined;

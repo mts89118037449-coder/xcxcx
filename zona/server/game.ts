@@ -56,6 +56,7 @@ import { chapterOf } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
 import { SHIZO, SHIZO_CARDS, shizoCardById, type ShizoStat } from '../shared/minigames2.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
+import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
@@ -217,6 +218,11 @@ export interface Player {
   title: string | null;
   offerDay: number;
   starsSpent: number;
+  /** начатые мини-игры: когда сервер засёк старт (защита от накруток) */
+  runs: Record<string, { at: number; delay: number }>;
+  /** подозрение в накрутке: счёт остывает со временем, журнал — для админа */
+  sus: { score: number; at: number; log: { t: number; game: string; why: string }[] };
+  banned: boolean;
   journal: JournalEntry[];
   createdAt: number;
   lastSeen: number;
@@ -329,6 +335,9 @@ export function newPlayer(id: number, name: string, username: string | null, now
     title: null,
     offerDay: -1,
     starsSpent: 0,
+    runs: {},
+    sus: { score: 0, at: now, log: [] },
+    banned: false,
     perks: ['crit_1'],
     belt: ['c_bandage', 'c_sand'],
     stash: { c_bandage: 2, c_sand: 1 },
@@ -392,6 +401,9 @@ export function migrate(p: Player): Player {
   p.frame ??= null;
   p.title ??= null;
   p.offerDay ??= -1;
+  p.runs ??= {};
+  p.sus ??= { score: 0, at: 0, log: [] };
+  p.banned ??= false;
   p.debt ??= null;
   p.mats ??= {};
   p.yardAt ??= 0;
@@ -2905,4 +2917,62 @@ export function brew(p: Player, quality: number, now: number) {
   const energy = Math.round(BREW.minEnergy + (BREW.maxEnergy - BREW.minEnergy) * q);
   p.energy += energy;
   return { energy, quality: q };
+}
+
+// --- Защита от накруток ----------------------------------------------------------------
+
+/** Сервер засёк начало мини-игры. Для чифира на скорость сам выбирает, когда закипит. */
+export function runStart(p: Player, game: string, now: number, rng: Rng) {
+  const rule = RUNS[game];
+  if (!rule) throw new GameError('Нет такой игры');
+  const delay = rule.delay ? Math.round(rule.delay[0] + rng() * (rule.delay[1] - rule.delay[0])) : 0;
+  p.runs[game] = { at: now, delay };
+  return { delay };
+}
+
+/** Текущий счёт подозрения с учётом остывания. */
+export function susScore(p: Player, now: number): number {
+  const days = Math.max(0, (now - p.sus.at) / (24 * 60 * MIN));
+  return Math.max(0, p.sus.score - days * ANTICHEAT.decayPerDay);
+}
+
+export function suspect(p: Player, game: string, why: string, pts: number, now: number) {
+  p.sus = {
+    score: Math.round((susScore(p, now) + pts) * 10) / 10,
+    at: now,
+    log: [{ t: now, game, why }, ...p.sus.log].slice(0, ANTICHEAT.keepLog),
+  };
+}
+
+/**
+ * Проверка результата мини-игры перед зачётом. Возвращает текст ошибки или null.
+ * Не бросает: подозрение должно сохраниться, даже если результат отклонён.
+ */
+export function runCheck(p: Player, game: string, body: Record<string, unknown>, now: number): string | null {
+  const rule = RUNS[game];
+  if (!rule) return null;
+  const run = p.runs[game];
+  delete p.runs[game];
+  // фальстарт на чифире честный: ничего не даёт, время не проверяем
+  const ms = game === 'speed' ? Number(body.ms) || 0 : 0;
+  if (!run || now - run.at > ANTICHEAT.ttlMs) {
+    if (!(game === 'speed' && ms <= 0)) suspect(p, game, 'результат без начала игры', ANTICHEAT.soft, now);
+    return 'Игра сбилась — начни заново';
+  }
+  const el = now - run.at;
+  if (!(game === 'speed' && ms <= 0)) {
+    const need = rule.minMs + run.delay + ms - ANTICHEAT.slackMs;
+    if (el < need) {
+      suspect(p, game, `за ${el} мс, а быстрее ${need} мс не сыграть`, ANTICHEAT.hard, now);
+      return 'Слишком быстро — так не бывает';
+    }
+  }
+  const bad = impossible(game, body, el);
+  if (bad) {
+    suspect(p, game, bad, ANTICHEAT.hard, now);
+    return 'Не засчитано: так не бывает';
+  }
+  const odd = tooPerfect(game, body);
+  if (odd) suspect(p, game, odd, ANTICHEAT.soft, now);
+  return null;
 }

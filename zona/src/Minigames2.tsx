@@ -7,6 +7,7 @@ import { PoseG } from './art/sprites.tsx';
 import { consumableById } from '../shared/perks.ts';
 import { Table } from './Minigames.tsx';
 import { fmt, lookOf, timeLeft, useGame } from './game.tsx';
+import { startRun } from './api.ts';
 
 /** Выбор ставки перед партией. */
 function Bets({ max, onBet, disabled }: { max: number; onBet(b: number): void; disabled: boolean }) {
@@ -279,13 +280,16 @@ export function SpeedGame({ onClose }: { onClose(): void }) {
   const boilAt = useRef(0);
   const timer = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
-  const start = () => {
+  const start = async () => {
     setRes(null);
     setPhase('wait');
+    // когда закипит — решает сервер, чтобы не подгадать
+    const r = await startRun('speed');
+    const delay = r?.delay ?? 1400 + Math.random() * 2600;
     timer.current = window.setTimeout(() => {
       boilAt.current = performance.now();
       setPhase('boil');
-    }, 1400 + Math.random() * 2600);
+    }, delay);
   };
   const grab = async () => {
     clearTimeout(timer.current);
@@ -370,6 +374,7 @@ export function ConveyorGame({ onClose }: { onClose(): void }) {
     setRes(null);
     score.current = { good: 0, missed: 0 };
     t0.current = performance.now();
+    startRun('conveyor');
     setOn(true);
   };
   const hit = (it: BeltItem) => {
@@ -432,6 +437,7 @@ export function BeadsGame({ onClose }: { onClose(): void }) {
     setAccs([]);
     setRes(null);
     t0.current = performance.now();
+    startRun('beads');
     setOn(true);
   };
   const tap = async () => {
@@ -509,6 +515,7 @@ export function FishGame({ onClose }: { onClose(): void }) {
     setRes(null);
     target.current = Math.random() * 1.2 - 0.6;
     t0.current = performance.now();
+    startRun('fish');
     setOn(true);
   };
   const cast = async () => {

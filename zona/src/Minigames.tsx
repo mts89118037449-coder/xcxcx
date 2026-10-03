@@ -4,6 +4,7 @@ import { RigHead } from './art/rig/Rig.tsx';
 import { NPC_RIGS } from './art/rig/npcs.ts';
 import { NpcPortrait, useNpc } from './art/sprites.tsx';
 import { fmt, lookOf, timeLeft, useGame } from './game.tsx';
+import { startRun } from './api.ts';
 import { play } from './sound.ts';
 
 export type Mini = 'cards' | 'race' | 'brew' | 'dice' | 'arm' | 'darts' | 'nardy' | 'domino' | 'chess' | 'speed' | 'conveyor' | 'beads' | 'fish' | 'shizo';
@@ -188,6 +189,7 @@ export function BrewGame({ onClose }: { onClose(): void }) {
     setRes(null);
     setHeat(0);
     t0.current = performance.now();
+    startRun('brew');
     setOn(true);
   };
   const take = async () => {
@@ -340,6 +342,7 @@ export function ArmGame({ onClose }: { onClose(): void }) {
     setTaps(0);
     tapsRef.current = 0;
     t0.current = performance.now();
+    startRun('arm');
     setPhase('go');
   };
   const tap = () => {
@@ -428,6 +431,7 @@ export function DartsGame({ onClose }: { onClose(): void }) {
     setHits([]);
     setRes(null);
     t0.current = performance.now();
+    startRun('darts');
     setOn(true);
   };
   const throwIt = async () => {

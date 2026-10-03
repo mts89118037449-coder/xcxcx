@@ -20,7 +20,21 @@ function authHeader(): string {
   return dev ? `tma dev:${dev}:${encodeURIComponent(`Тестер ${dev}`)}` : '';
 }
 
+export interface SusRow {
+  id: number;
+  name: string;
+  level: number;
+  score: number;
+  banned: boolean;
+  log: { t: number; game: string; why: string }[];
+}
+
 export class ApiError extends Error {}
+
+/** Начало мини-игры для сервера; ошибку покажет уже сам результат. */
+export function startRun(game: string): Promise<{ delay: number } | null> {
+  return api.run(game).catch(() => null);
+}
 
 async function post<T>(path: string, body: unknown = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -41,6 +55,7 @@ export const api = {
     post<{ top: { id: number; name: string; level: number; authority: number; rank: string; face: number | null; tag: string | null }[]; online: number; total: number }>('/top'),
   market: () => post<{ lots: MarketLot[] }>('/market'),
   adminStats: <T,>() => post<T>('/admin/stats'),
+  adminSus: (id?: number, act?: 'clear' | 'ban' | 'unban') => post<{ list: SusRow[]; flagAt: number }>('/admin/sus', { id, act }),
   season: () => post<{ top: { id: number; name: string; face: number | null; frame: string | null; pts: number }[] }>('/season'),
   refs: () => post<{ refs: { id: number; name: string; level: number }[] }>('/refs'),
   chat: (channel: 'all' | 'clan') => post<{ messages: { id: number; pid: number; name: string; face: number | null; phrase: string; at: number; frame: string | null; title: string | null }[] }>('/chat', { channel }),
@@ -49,5 +64,7 @@ export const api = {
   visit: (id: number, skip: number[] = []) => post<{ visit: VisitView }>('/visit', { id, skip }),
   clans: () => post<{ clans: { id: number; name: string; tag: string; level: number; members: number; authority: number }[] }>('/clans'),
   clan: (id: number) => post<{ clan: ClanView }>('/clan', { id }),
+  /** сервер засекает начало мини-игры (защита от накруток) */
+  run: (game: string) => post<{ delay: number }>('/run', { game }),
   invoice: (packId: string) => post<{ link: string }>('/invoice', { packId }),
 };
