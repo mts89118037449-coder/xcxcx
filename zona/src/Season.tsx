@@ -6,9 +6,8 @@ import { api } from './api.ts';
 import { Face } from './art/sprites.tsx';
 import { Card, Price, fmt, timeLeft, useGame } from './game.tsx';
 
-/** Рамка аватара: css-класс по надетой косметике. */
-export const frameClass = (frame: string | null | undefined) => (frame ? `frame-${cosmeticById.get(frame)?.value ?? ''}` : '');
-export const titleOf = (title: string | null | undefined) => (title ? cosmeticById.get(title)?.value : undefined);
+import { frameClass, titleOf } from './cosmetic.ts';
+export { frameClass, titleOf };
 
 function rewardIcon(r: PassReward): { icon: string; text: string } {
   if (r.gear) return { icon: itemById.get(r.gear)?.emoji ?? '🎖️', text: itemById.get(r.gear)?.name ?? '' };

@@ -1,21 +1,25 @@
-import { useState } from 'react';
-import { FURNITURE, GOLD_PRICES, TATTOOS, furnitureById } from '../../shared/content.ts';
-import { CellShop, withPreview } from '../Cell.tsx';
-import { StoryCard } from '../Leisure.tsx';
+import { Suspense, useState } from 'react';
+import { FURNITURE, TATTOOS, furnitureById } from '../../shared/content.ts';
+import { withPreview } from '../cellPreview.ts';
+import { named } from '../lazy.ts';
+import { StoryCard } from '../Story.tsx';
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
-import { CharacterEditor } from '../Editor.tsx';
-import { InteriorPicker } from '../Interior.tsx';
-import { BonusList, Price, fmt, lookOf, timeLeft, useAnim, useGame } from '../game.tsx';
+import { BonusList, Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
-import { DailyWeek, MastPicker, NotifyToggle, TermCard } from '../Term.tsx';
-import { SoundSettings } from '../SoundSettings.tsx';
-import { ReportButton } from '../Report.tsx';
 import { chapterOf } from '../../shared/story.ts';
 
 
+// всё, что не на первом экране, — грузится, когда понадобится
+const CharacterEditor = named(() => import('../Editor.tsx'), 'CharacterEditor');
+const InteriorPicker = named(() => import('../Interior.tsx'), 'InteriorPicker');
+const CellShop = named(() => import('../Cell.tsx'), 'CellShop');
+const ProfilePanel = named(() => import('../Profile.tsx'), 'ProfilePanel');
+const DailyWeek = named(() => import('../Term.tsx'), 'DailyWeek');
+const MastPicker = named(() => import('../Term.tsx'), 'MastPicker');
+
 export function Home() {
-  const { p, now, online, act, busy, go } = useGame();
+  const { p, now, online, act, busy } = useGame();
   const talk = useTalk();
   const [bare, setBare] = useState(false);
   const [anim, animKey, play] = useAnim();
@@ -109,46 +113,26 @@ export function Home() {
           </ul>
         </>
       )}
-      {panel === 'look' && <CharacterEditor />}
+      {panel === 'look' && (
+        <Suspense fallback={null}>
+          <CharacterEditor />
+        </Suspense>
+      )}
       {panel === 'cell' && (
-        <>
+        <Suspense fallback={null}>
           <InteriorPicker />
           <CellShop onChange={() => play('act-cheer')} onPreview={showPreview} />
-        </>
+        </Suspense>
       )}
       {panel === 'me' && (
-        <>
-          <div className="rank-line">🎖️ {p.rank} · ур. {p.level}</div>
-          <TermCard onMast={() => setMastOpen(true)} />
-          <div className="stat-row">
-            <div><span>⚔️</span>{p.stats.atk}<small>атака</small></div>
-            <div><span>🛡️</span>{p.stats.def}<small>защита</small></div>
-            <div><span>💥</span>{p.stats.crit}%<small>крит</small></div>
-            <div><span>🎖️</span>{fmt(p.authority)}<small>авторитет</small></div>
-            <div><span>🏆</span>#{p.place}<small>место</small></div>
-            <div><span>🥊</span>{p.wins}/{p.losses}<small>драки</small></div>
-          </div>
-          <div className="row gap">
-            <button className="btn btn-wide btn-dark" disabled={busy || p.hp >= p.stats.maxHp} onClick={() => act('heal')}>
-              💉 Подлечиться · {GOLD_PRICES.heal} 🪙
-            </button>
-            <button className="btn btn-wide btn-dark" disabled={busy || p.energy >= p.stats.maxEnergy} onClick={() => act('refill')}>
-              ☕ Энергия · {GOLD_PRICES.energyRefill} 🪙
-            </button>
-          </div>
-          {!p.vipUntil && (
-            <button className="vip-strip" onClick={() => go('shop')}>
-              👑 Блатной статус: ⚡×2 · ₽+20% · 🪙10/день <b>Хочу</b>
-            </button>
-          )}
-          {p.vipUntil && <div className="vip-strip on">👑 Блатной ещё {timeLeft(p.vipUntil - now)}</div>}
-          <NotifyToggle />
-          <SoundSettings />
-          <ReportButton />
-        </>
+        <Suspense fallback={null}>
+          <ProfilePanel onMast={() => setMastOpen(true)} />
+        </Suspense>
       )}
+      <Suspense fallback={null}>
       {weekOpen && <DailyWeek onClose={() => { setWeekOpen(false); play('act-cheer'); }} />}
       {mastOpen && <MastPicker onClose={() => setMastOpen(false)} />}
+      </Suspense>
     </>
   );
 }

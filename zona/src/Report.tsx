@@ -1,7 +1,7 @@
-import { Component, useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { REPORT, type ReportTopic } from '../shared/support.ts';
 import { ApiError, api } from './api.ts';
-import { BUILD, logError, recentErrors } from './errlog.ts';
+import { BUILD, recentErrors } from './errlog.ts';
 
 /** Окно жалобы: тема, пара слов и (по желанию) снимок состояния. Работает и без игрового контекста. */
 export function ReportModal({ onClose, where, preset }: { onClose(): void; where?: string; preset?: string }) {
@@ -69,34 +69,6 @@ export function ReportModal({ onClose, where, preset }: { onClose(): void; where
       </div>
     </div>
   );
-}
-
-/** Ловит падение экрана: вместо белого листа — «перезагрузить» и «сообщить». */
-export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: string | null; report: boolean }> {
-  state = { failed: null as string | null, report: false };
-  static getDerivedStateFromError(e: unknown) {
-    return { failed: e instanceof Error ? e.message : String(e) };
-  }
-  componentDidCatch(e: unknown, info: { componentStack?: string | null }) {
-    logError(`экран упал: ${e instanceof Error ? e.message : String(e)}`, (e instanceof Error ? e.stack ?? '' : '') + '\n' + (info.componentStack ?? ''));
-  }
-  render() {
-    if (!this.state.failed) return this.props.children;
-    return (
-      <div className="crash">
-        <div className="crash-ico">🧱</div>
-        <h2>Что-то сломалось</h2>
-        <p className="muted small">Ошибку уже передали. Перезагрузи игру — прогресс хранится на сервере.</p>
-        <button className="btn btn-wide" onClick={() => location.reload()}>
-          🔄 Перезагрузить
-        </button>
-        <button className="btn btn-wide btn-dark" onClick={() => this.setState({ report: true })}>
-          🆘 Рассказать, что делал
-        </button>
-        {this.state.report && <ReportModal where="crash" preset={`Игра упала: ${this.state.failed}\nДелал: `} onClose={() => this.setState({ report: false })} />}
-      </div>
-    );
-  }
 }
 
 /** Кнопка в профиле. */

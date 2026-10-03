@@ -67,6 +67,11 @@ export function openDb(file: string) {
   const db = new DatabaseSync(file);
   db.exec(`
     PRAGMA journal_mode = WAL;
+    -- с WAL так же надёжно при сбое процесса, но запись в разы быстрее
+    PRAGMA synchronous = NORMAL;
+    PRAGMA busy_timeout = 5000;
+    PRAGMA temp_store = MEMORY;
+    PRAGMA cache_size = -32000;
     CREATE TABLE IF NOT EXISTS players (
       id INTEGER PRIMARY KEY,
       data TEXT NOT NULL,
@@ -177,6 +182,16 @@ export function openDb(file: string) {
   const cols = db.prepare('PRAGMA table_info(players)').all() as { name: string }[];
   if (!cols.some((c) => c.name === 'clan_id')) db.exec('ALTER TABLE players ADD COLUMN clan_id INTEGER');
   db.exec('CREATE INDEX IF NOT EXISTS players_clan ON players(clan_id)');
+  // индексы по полям внутри JSON игрока: кого подтянул, сезон, подозрения
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS players_ref ON players(json_extract(data, '$.refBy'));
+    CREATE INDEX IF NOT EXISTS players_season ON players(json_extract(data, '$.season.id'), json_extract(data, '$.season.pts'));
+    CREATE INDEX IF NOT EXISTS players_league ON players(json_extract(data, '$.league.week'));
+    CREATE INDEX IF NOT EXISTS players_league_last ON players(json_extract(data, '$.league.last.week'));
+    CREATE INDEX IF NOT EXISTS players_sus ON players(json_extract(data, '$.sus.score'));
+    CREATE INDEX IF NOT EXISTS reports_done ON reports(done, id);
+    CREATE INDEX IF NOT EXISTS client_errors_last ON client_errors(last);
+  `);
 
   const seenCache = new Set<string>();
   const q = {
@@ -223,8 +238,9 @@ export function openDb(file: string) {
     errTrim: db.prepare('DELETE FROM client_errors WHERE hash IN (SELECT hash FROM client_errors ORDER BY last LIMIT 100)'),
     // очки лиги за неделю: у кого неделя ещё текущая — из pts, у кого уже перевалила — из last
     leagueTop: db.prepare(`SELECT id, name, level, json_extract(data, '$.face') AS face, json_extract(data, '$.frame') AS frame, json_extract(data, '$.title') AS title, ${LEAGUE_PTS} AS pts
-      FROM players WHERE ${LEAGUE_PTS} > 0 ORDER BY pts DESC, level DESC LIMIT ?`),
-    leagueRank: db.prepare(`SELECT COUNT(*) AS n FROM players WHERE ${LEAGUE_PTS} > ?`),
+      FROM players WHERE (json_extract(data, '$.league.week') = :w OR json_extract(data, '$.league.last.week') = :w) AND ${LEAGUE_PTS} > 0
+      ORDER BY pts DESC, level DESC LIMIT ?`),
+    leagueRank: db.prepare(`SELECT COUNT(*) AS n FROM players WHERE (json_extract(data, '$.league.week') = :w OR json_extract(data, '$.league.last.week') = :w) AND ${LEAGUE_PTS} > ?`),
     kvGet: db.prepare('SELECT value FROM kv WHERE key = ?'),
     kvSet: db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
     get: db.prepare('SELECT data FROM players WHERE id = ?'),

@@ -1,6 +1,6 @@
 // Лёгкая часть случаев: кнопка «!», строка наград, открытие. Тексты случаев — в Events.tsx, грузятся по требованию.
 import { useEffect } from 'react';
-import { itemLabel } from './Perks.tsx';
+import { itemLabel } from './itemLabel.ts';
 import { play } from './sound.ts';
 import { NpcPortrait } from './art/sprites.tsx';
 import { fmt, useGame } from './game.tsx';

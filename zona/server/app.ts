@@ -33,6 +33,8 @@ export interface AppOptions {
   now?: () => number;
   rng?: g.Rng;
   staticDir?: string;
+  /** сколько держать общие списки (топ, кланы, онлайн) в памяти, мс; 0 — не кэшировать */
+  cacheMs?: number;
   /** запросов на игрока: запас и пополнение в секунду (по умолчанию 40 и 8) */
   rateLimit?: { burst: number; perSec: number };
 }
@@ -47,6 +49,20 @@ export function createApp(opts: AppOptions) {
   const now = opts.now ?? Date.now;
   const rng = opts.rng ?? Math.random;
   const app = express();
+  // Общие для всех списки считаются раз в несколько секунд, а не на каждый запрос каждого игрока
+  const cacheMs = opts.cacheMs ?? 10_000;
+  const memoStore = new Map<string, { at: number; v: unknown }>();
+  function memo<T>(key: string, fn: () => T, ttl = cacheMs): T {
+    if (ttl <= 0) return fn();
+    const hit = memoStore.get(key);
+    const t = Date.now();
+    if (hit && t - hit.at < ttl) return hit.v as T;
+    const v = fn();
+    memoStore.set(key, { at: t, v });
+    if (memoStore.size > 500) memoStore.clear();
+    return v;
+  }
+  const onlineNow = (t: number) => memo('online', () => db.online(t - BALANCE.onlineWindowSec * 1000));
   // за Caddy: настоящий адрес игрока — из X-Forwarded-For (для ограничения частоты)
   app.set('trust proxy', 'loopback');
   app.use(express.json({ limit: '64kb' }));
@@ -460,7 +476,7 @@ export function createApp(opts: AppOptions) {
       db.savePlayer(p);
       return p;
     });
-    res.json({ player: view(p, t), online: db.online(t - BALANCE.onlineWindowSec * 1000), botUsername: opts.botUsername ?? '' });
+    res.json({ player: view(p, t), online: onlineNow(t), botUsername: opts.botUsername ?? '' });
   });
 
   type Handler = (p: g.Player, body: Record<string, unknown>, t: number) => unknown;
@@ -977,11 +993,12 @@ export function createApp(opts: AppOptions) {
   api.post('/admin/stats', (req: AuthedRequest, res) => {
     if (!opts.adminIds.includes(req.tgUser!.id)) return res.status(403).json({ error: 'Только для админа' });
     const t = now();
-    res.json({ stats: db.analytics(t, g.dayKey), total: db.totalPlayers(), online: db.online(t - BALANCE.onlineWindowSec * 1000) });
+    res.json({ stats: db.analytics(t, g.dayKey), total: db.totalPlayers(), online: onlineNow(t) });
   });
 
   api.post('/season', (_req, res) => {
-    res.json({ top: db.seasonTop(seasonIndex(now())) });
+    const season = seasonIndex(now());
+    res.json({ top: memo(`season:${season}`, () => db.seasonTop(season)) });
   });
 
   api.post('/refs', (req: AuthedRequest, res) => {
@@ -1017,8 +1034,8 @@ export function createApp(opts: AppOptions) {
     const me = db.getPlayer(req.tgUser!.id);
     const pts = me && me.league.week === week ? me.league.pts : 0;
     res.json({
-      top: db.leagueTop(week, LEAGUE.tableSize),
-      prev: db.leagueTop(week - 1, 3),
+      top: memo(`league:${week}`, () => db.leagueTop(week, LEAGUE.tableSize), Math.min(cacheMs, 5000)),
+      prev: memo(`league:${week - 1}:top3`, () => db.leagueTop(week - 1, 3), cacheMs * 6),
       myRank: pts > 0 ? db.leagueRank(week, pts) + 1 : null,
       endsAt: g.weekEndsAt(t),
     });
@@ -1031,9 +1048,9 @@ export function createApp(opts: AppOptions) {
   api.post('/top', (_req, res) => {
     const t = now();
     res.json({
-      top: db.top(50).map((r) => ({ ...r, rank: rankTitle(r.authority) })),
-      online: db.online(t - BALANCE.onlineWindowSec * 1000),
-      total: db.totalPlayers(),
+      top: memo('top', () => db.top(50).map((r) => ({ ...r, rank: rankTitle(r.authority) }))),
+      online: onlineNow(t),
+      total: memo('total', () => db.totalPlayers()),
     });
   });
 
@@ -1071,7 +1088,7 @@ export function createApp(opts: AppOptions) {
   });
 
   api.post('/clans', (_req, res) => {
-    res.json({ clans: db.clans() });
+    res.json({ clans: memo('clans', () => db.clans()) });
   });
 
   api.post('/clan', (req: AuthedRequest, res) => {
@@ -1117,7 +1134,7 @@ export function createApp(opts: AppOptions) {
   api.post('/world', (req: AuthedRequest, res) => {
     const t = now();
     const w = db.transaction(() => worldView(req.tgUser!.id, t));
-    res.json({ world: w, online: db.online(t - BALANCE.onlineWindowSec * 1000) });
+    res.json({ world: w, online: onlineNow(t) });
   });
 
   // Ссылка на оплату в Telegram Stars. Зачисление — только по webhook successful_payment.
@@ -1269,7 +1286,7 @@ export function createApp(opts: AppOptions) {
       await reply('Покупки — внутриигровая валюта и статусы без денежной ценности вне игры. Возврат — через /paysupport.');
     } else if (cmd === '/stats' && msg.from && opts.adminIds.includes(msg.from.id)) {
       const r = db.revenue();
-      await reply(`Игроков: ${db.totalPlayers()}\nОнлайн: ${db.online(t - BALANCE.onlineWindowSec * 1000)}\nПлатежей: ${r.n}\nЗвёзд: ${r.stars} ⭐`);
+      await reply(`Игроков: ${db.totalPlayers()}\nОнлайн: ${onlineNow(t)}\nПлатежей: ${r.n}\nЗвёзд: ${r.stars} ⭐`);
     }
   }
 

@@ -4,7 +4,7 @@ import { App } from './App.tsx';
 import './styles.css';
 import { initSound } from './sound.ts';
 import { initErrorLog } from './errlog.ts';
-import { ErrorBoundary } from './Report.tsx';
+import { ErrorBoundary } from './Crash.tsx';
 
 initErrorLog();
 initSound();

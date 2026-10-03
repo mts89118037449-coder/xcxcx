@@ -1485,3 +1485,12 @@ test('лиги: соперник по силе, за слабого очков �
   assert.ok(p.cosmetics.includes(LEAGUE.champTitle));
   assert.throws(() => g.leagueClaim(p, { week, pts: 350, rank: 0 }, T0), /уже получена/);
 });
+
+import { PLACES } from '../shared/places.ts';
+
+test('список экранов мест в клиенте совпадает с местами игры', async () => {
+  const src = (await import('node:fs')).readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const m = src.match(/PLACE_SCREENS = new Set<string>\(\[([^\]]*)\]\)/)!;
+  const ids = m[1].split(',').map((x) => x.trim().replace(/'/g, '')).sort();
+  assert.deepEqual(ids, PLACES.map((p) => p.id).sort());
+});

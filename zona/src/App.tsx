@@ -2,27 +2,25 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { PlayerView } from '../shared/types.ts';
 import { api, ApiError, tg } from './api.ts';
 import { Face } from './art/sprites.tsx';
-import { EnergySheet } from './Energy.tsx';
 import { DialogBox } from './Dialog.tsx';
 import { EventButton } from './EventsLite.tsx';
 import type { Mini } from './Minigames.tsx';
 import { MAST_RULES } from '../shared/term.ts';
-import { frameClass } from './Season.tsx';
+import { frameClass } from './cosmetic.ts';
 import { play, setMusicTheme, type Theme } from './sound.ts';
 import { isNight } from '../shared/time.ts';
 import { GuideBar } from './Guide.tsx';
 import { UnlockModal, freshUnlocks } from './Unlocks.tsx';
-import { placeById, type PlaceId } from '../shared/places.ts';
+import type { PlaceId } from '../shared/places.ts';
 import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Place as PlaceT, type Tab } from './game.tsx';
 import { logError, noteFailure } from './errlog.ts';
-import { TutorialCoach } from './Tutorial.tsx';
 import { LiveBanner } from './Live.tsx';
+import { named } from './lazy.ts';
 import { Home } from './screens/Home.tsx';
 
 // Пять разделов внизу; «Братва» живёт внутри «Боя», «Ларёк» — кнопкой ⭐ в шапке.
 // Окна, которые открываются не сразу, — отдельными кусками: первый запуск в Telegram быстрее.
-const named = <K extends string>(load: () => Promise<Record<K, React.ComponentType<any>>>, key: K) => lazy(() => load().then((m) => ({ default: m[key] })));
 const VisitModal = named(() => import('./Visit.tsx'), 'VisitModal');
 const ShellGame = named(() => import('./Shells.tsx'), 'ShellGame');
 const Church = named(() => import('./Church.tsx'), 'Church');
@@ -57,6 +55,11 @@ const ConveyorGame = named(() => import('./Minigames2.tsx'), 'ConveyorGame');
 const BeadsGame = named(() => import('./Minigames2.tsx'), 'BeadsGame');
 const FishGame = named(() => import('./Minigames2.tsx'), 'FishGame');
 const ShizoGame = named(() => import('./Minigames2.tsx'), 'ShizoGame');
+
+const EnergySheet = named(() => import('./Energy.tsx'), 'EnergySheet');
+const TutorialCoach = named(() => import('./Tutorial.tsx'), 'TutorialCoach');
+/** Места со своим экраном (без тяжёлого списка мест в первом файле; сверяется тестом). */
+export const PLACE_SCREENS = new Set<string>(['bath', 'canteen', 'library', 'club', 'visits', 'factory', 'shizo']);
 
 const PLACE_MUSIC: Partial<Record<string, Theme>> = {
   bath: 'bath',
@@ -98,6 +101,11 @@ export function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [mini, setMini] = useState<Mini | null>(null);
   const hasBattle = !!player?.battle;
+  // обучение грузим, только если оно было в этой игре (и держим до конца — там подарок)
+  const [tutOn, setTutOn] = useState(false);
+  useEffect(() => {
+    if (player?.tut) setTutOn(true);
+  }, [player?.tut]);
   // музыка под место: свой мотив в каждом месте, в бою — быстрее, ночью — тише и со сверчками
   const musicFor: Theme =
     battleOn || hasBattle || place === 'escape' || tab === 'fight'
@@ -261,7 +269,7 @@ export function App() {
         {place === 'church' && <Church onBack={() => { setPlace(null); setTab('zone'); }} />}
         {place === 'medic' && <Medic onBack={() => { setPlace(null); setTab('zone'); }} />}
         {place === 'escape' && <Escape onBack={() => { setPlace(null); setTab('zone'); }} />}
-        {place && placeById.has(place as PlaceId) && <PlaceScreen id={place as PlaceId} onBack={() => { setPlace(null); setTab('zone'); }} />}
+        {place && PLACE_SCREENS.has(place) && <PlaceScreen id={place as PlaceId} onBack={() => { setPlace(null); setTab('zone'); }} />}
         {!place && tab === 'home' && <Home />}
         {!place && tab === 'zone' && <Zone />}
         {!place && tab === 'work' && <Work />}
@@ -307,7 +315,7 @@ export function App() {
       {mini === 'shizo' && <ShizoGame onClose={() => setMini(null)} />}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
       {introOn && <IntroOverlay onDone={() => setIntroOn(false)} />}
-      {!introOn && <TutorialCoach tab={tab} />}
+      {!introOn && tutOn && <TutorialCoach tab={tab} />}
       {!introOn && fresh.length > 0 && <UnlockModal list={fresh} onClose={() => setUnlockHidden(fresh.map((u) => u.id))} />}
       {!introOn && !mastAsked && !p.mast && p.level >= MAST_RULES.minLevel && <MastPicker onClose={() => setMastAsked(true)} />}
       {battleOn && <BattleModal onClose={() => setBattleOn(false)} />}

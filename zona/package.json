@@ -13,7 +13,8 @@
     "start": "node --disable-warning=ExperimentalWarning server/index.ts",
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.ts",
     "lint": "tsc --noEmit",
-    "sim": "node --disable-warning=ExperimentalWarning scripts/sim.ts"
+    "sim": "node --disable-warning=ExperimentalWarning scripts/sim.ts",
+    "load": "node --disable-warning=ExperimentalWarning scripts/load.ts"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

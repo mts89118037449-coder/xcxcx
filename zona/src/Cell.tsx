@@ -2,12 +2,8 @@ import { useState } from 'react';
 import { CELL_THEMES, FURNITURE, SPOTS, SPOT_BARE, SPOT_NAMES, furnitureById, themeCount, type Furniture, type Spot } from '../shared/content.ts';
 import { BonusList, Price, useGame } from './game.tsx';
 
-/** Хата с примеркой: вещь на своём месте вместо того, что там стоит. */
-export function withPreview(cell: string[], preview: string | null): string[] {
-  const f = preview ? FURNITURE.find((x) => x.id === preview) : null;
-  if (!f) return cell;
-  return [...cell.filter((id) => FURNITURE.find((x) => x.id === id)?.spot !== f.spot), f.id];
-}
+import { withPreview } from './cellPreview.ts';
+export { withPreview };
 
 /** Обустройство хаты: по каждому месту лестница улучшений и выбор, что поставить. Нажатие на вещь — примерка. */
 export function CellShop({ onChange, onPreview }: { onChange(): void; onPreview(id: string | null): void }) {

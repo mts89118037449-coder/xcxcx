@@ -169,10 +169,8 @@ export function PerksPanel() {
 }
 
 /** «🩹 Бинт» — для тостов и итогов боя. */
-export function itemLabel(id: string): string {
-  const c = consumableById.get(id);
-  return c ? `${c.emoji} ${c.name}` : id;
-}
+import { itemLabel } from './itemLabel.ts';
+export { itemLabel };
 
 /** Строки итога боя про расходники: что потрачено и что нашлось. */
 export function itemLines(used: string[] | undefined, found: string | null | undefined): string[] {
