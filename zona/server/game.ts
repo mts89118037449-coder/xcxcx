@@ -57,12 +57,12 @@ import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, 
 import { SHIZO, SHIZO_CARDS, shizoCardById, type ShizoStat } from '../shared/minigames2.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
 import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
-import { DAILY_WEEK, INTRO, MAST_RULES, NOTIFY, TERM, mastById, termDays, type Mast } from '../shared/term.ts';
+import { DAILY_WEEK, INTRO, MAST_RULES, NOTICE_KINDS, NOTIFY, TERM, mastById, termDays, type Mast, type NoticeKind } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
-import { PASS, SEASON_PTS, cosmeticById, passReward, seasonIndex, seasonTheme } from '../shared/season.ts';
+import { PASS, SEASON_PTS, cosmeticById, passReward, seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
 import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
 import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
 import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
@@ -200,7 +200,7 @@ export interface Player {
   /** шаг вступления-этапирования; −1 — пройдено */
   intro: number;
   /** уведомления от бота: включены ли, сколько за сегодня, когда какое слали */
-  notify: { on: boolean; day: string; n: number; last: Record<string, number> };
+  notify: { on: boolean; day: string; n: number; last: Record<string, number>; off: string[] };
   pvpAt: number;
   shieldUntil: number;
   worldHitAt: number;
@@ -320,7 +320,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     hodka: 1,
     term: termDays(1),
     intro: 0,
-    notify: { on: true, day: '', n: 0, last: {} },
+    notify: { on: true, day: '', n: 0, last: {}, off: [] },
     pvpAt: 0,
     shieldUntil: 0,
     worldHitAt: 0,
@@ -358,7 +358,8 @@ export function migrate(p: Player): Player {
   p.hodka ??= 1;
   p.term ??= termDays(p.hodka);
   p.intro ??= -1; // старые игроки вступление уже прожили
-  p.notify ??= { on: true, day: '', n: 0, last: {} };
+  p.notify ??= { on: true, day: '', n: 0, last: {}, off: [] };
+  p.notify.off ??= [];
   p.cellShow ??= {};
   p.face ??= p.id % FACE_COUNT;
   p.faceChosen ??= false;
@@ -1106,6 +1107,18 @@ export function setNotify(p: Player, on: boolean) {
   return { on: p.notify.on };
 }
 
+/** Включить или выключить один вид напоминаний. */
+export function setNotifyKind(p: Player, kind: string, on: boolean) {
+  if (!NOTICE_KINDS.some((k) => k.id === kind)) throw new GameError('Нет таких напоминаний');
+  p.notify.off = on ? p.notify.off.filter((k) => k !== kind) : [...new Set([...p.notify.off, kind])];
+  return { off: p.notify.off };
+}
+
+/** Можно ли написать игроку именно об этом. */
+export function wantsNotice(p: Player, kind: NoticeKind, now: number): boolean {
+  return canNotify(p, now) && !p.notify.off.includes(kind);
+}
+
 /** Час по Москве — для тихих часов. */
 function mskHour(now: number): number {
   return new Date(now + 3 * 60 * MIN).getUTCHours();
@@ -1130,10 +1143,24 @@ export function markNotified(p: Player, kind: string, now: number) {
 }
 
 /** Что сказать игроку, если есть повод. Каждое напоминание — не чаще раза между заходами. */
-export function pendingNotice(p: Player, now: number): { kind: string; text: string } | null {
+export interface NoticeCtx {
+  /** клановый босс сегодня ещё жив */
+  clanBoss?: boolean;
+  /** идёт событие зоны */
+  live?: { startsAt: number; text: string } | null;
+}
+
+export function pendingNotice(p: Player, now: number, ctx: NoticeCtx = {}): { kind: NoticeKind; text: string } | null {
   if (!canNotify(p, now)) return null;
-  const fresh = (kind: string) => (p.notify.last[kind] ?? 0) < p.lastSeen;
+  const fresh = (kind: NoticeKind) => !p.notify.off.includes(kind) && (p.notify.last[kind] ?? 0) < p.lastSeen;
   const s = stats(p, now);
+  const H = 60 * MIN;
+  if (fresh('debt') && p.debt) {
+    const left = p.debt.due - now;
+    if (left <= 0) return { kind: 'debt', text: `💸 Долг просрочен — счётчик капает. Уже ${p.debt.amount} ₽. Отдай, пока не поставили на счётчик ещё.` };
+    if (left <= NOTIFY.debtWarnH * H) return { kind: 'debt', text: `💸 Долг ${p.debt.amount} ₽ горит через ${Math.ceil(left / H)} ч. Не отдашь — включат счётчик.` };
+  }
+  if (fresh('live') && ctx.live && (p.notify.last.live ?? 0) < ctx.live.startsAt) return { kind: 'live', text: ctx.live.text };
   if (fresh('daily') && now - p.dailyAt >= 24 * 60 * MIN) {
     const w = DAILY_WEEK[(p.dailyStreak % 7)];
     return { kind: 'daily', text: `📦 Грев пришёл: ${w.label.toLowerCase()} ждёт в хате. Заходи, пока серия не сгорела.` };
@@ -1146,6 +1173,13 @@ export function pendingNotice(p: Player, now: number): { kind: string; text: str
   if (fresh('boss')) {
     const ready = BOSSES.filter((b) => b.minLevel <= p.level && (p.bossCd[b.id] ?? 0) <= now).pop();
     if (ready && (p.bossCd[ready.id] ?? 0) > p.lastSeen) return { kind: 'boss', text: `${ready.emoji} ${ready.name} оклемался. Самое время снова разобраться.` };
+  }
+  if (fresh('clanBoss') && ctx.clanBoss && p.clanId && dayKey(p.clanHitAt) !== dayKey(now))
+    return { kind: 'clanBoss', text: `${CLAN_BOSS.emoji} Клан разбирается с беспредельщиками — подключайся, пока не добили без тебя.` };
+  if (fresh('season') && seasonEndsAt(now) - now <= NOTIFY.seasonWarnDays * 24 * H) {
+    const reached = Math.min(PASS.levels, Math.floor(p.season.pts / PASS.perLevel));
+    const left = reached - p.season.free.filter((l) => l <= reached).length;
+    if (p.season.id === seasonIndex(now) && left > 0) return { kind: 'season', text: `🏆 Сезон кончается через ${Math.ceil((seasonEndsAt(now) - now) / (24 * H))} дн. Не забрано наград: ${left}. Потом сгорят.` };
   }
   if (fresh('term') && p.term <= 0) return { kind: 'term', text: '🔓 Срок вышел! Можешь выйти по УДО и зайти следующей ходкой сильнее.' };
   return null;

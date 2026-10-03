@@ -141,9 +141,29 @@ export const DAILY_WEEK: { money?: number; butts?: number; gold?: number; item?:
 
 // --- Уведомления бота ----------------------------------------------------------------------
 
+/** Какие бывают напоминания от бота — каждое можно выключить отдельно. */
+export const NOTICE_KINDS = [
+  { id: 'daily', icon: '📦', label: 'Грев за вход' },
+  { id: 'energy', icon: '⚡', label: 'Энергия полная' },
+  { id: 'debt', icon: '💸', label: 'Долг горит' },
+  { id: 'clanBoss', icon: '🏴', label: 'Клановый босс' },
+  { id: 'ring', icon: '🥊', label: 'Твой бой на ринге' },
+  { id: 'season', icon: '🏆', label: 'Сезон кончается' },
+  { id: 'live', icon: '🎪', label: 'События зоны' },
+  { id: 'attacked', icon: '🤜', label: 'На тебя наехали' },
+  { id: 'event', icon: '❗', label: 'Случаи' },
+  { id: 'boss', icon: '👊', label: 'Боссы оклемались' },
+  { id: 'term', icon: '🔓', label: 'Срок вышел' },
+] as const;
+export type NoticeKind = (typeof NOTICE_KINDS)[number]['id'];
+
 export const NOTIFY = {
   maxPerDay: 3,
   quietFrom: 23, // по Москве
   quietTo: 9,
   activeWithinDays: 14, // кто давно не заходил — не беспокоим
+  /** долг напоминаем, когда до срока осталось столько часов */
+  debtWarnH: 4,
+  /** сезон — за столько дней до конца, если есть незабранные награды */
+  seasonWarnDays: 2,
 };

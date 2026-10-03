@@ -75,6 +75,7 @@ export interface PlayerView {
   hodkaBonus: number;
   intro: number;
   notifyOn: boolean;
+  notifyOff: string[];
   games: {
     cards: number; race: number; brew: number; brewReadyAt: number; cardsMaxBet: number; dice: number; diceMaxBet: number; arm: number; darts: number;
     nardy: number; domino: number; chess: number; speed: number; conveyor: number; beads: number; beadsReadyAt: number; fish: number; shizo: number; tableMaxBet: number;

@@ -2,9 +2,10 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import { EVENT_TIMING, MEDIC, eventById } from '../shared/events.ts';
 import { OBSHAK } from '../shared/factions.ts';
 import { ANTICHEAT } from '../shared/anticheat.ts';
+import { isOpen } from '../shared/unlocks.ts';
 import { CHAT } from '../shared/chat.ts';
 import { seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
-import { CLAN_BOSS, CLAN_WAR, HUT_RULES, PARCEL, REFERRAL, hutById, type HutId } from '../shared/clans.ts';
+import { CLAN_BOSS, CLAN_WAR, HUT_RULES, PARCEL, REFERRAL, RING, hutById, type HutId } from '../shared/clans.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SHIZO, SPEED } from '../shared/minigames2.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { NOTIFY, termDays } from '../shared/term.ts';
@@ -100,6 +101,8 @@ export function createApp(opts: AppOptions) {
     hut: Partial<Record<HutId, number>>;
     boss: { day: string; hp: number; max: number; hits: Record<string, number>; killed: boolean } | null;
   }
+  // событие зоны для рассылки (заполняется в разделе событий)
+  const liveNotice = (_t: number): g.NoticeCtx['live'] => null;
   const clanState = (id: number) => db.kvGet<ClanState>(`clan:${id}`, { hut: {}, boss: null });
   const saveClanState = (id: number, st: ClanState) => db.kvSet(`clan:${id}`, st);
   const warTable = (week: number) => db.kvGet<Record<string, number>>(`clanwar:${week}`, {});
@@ -150,8 +153,20 @@ export function createApp(opts: AppOptions) {
       ob.total += cut;
       db.kvSet('obshak', ob);
     }
+    const before = ring.cur?.id ?? 0;
     const r = fn(ring);
     db.kvSet('ring', ring);
+    // собралась новая пара — бойцам, кого нет в игре, пишет бот
+    if (ring.cur && ring.cur.id !== before && bot) {
+      for (const f of [ring.cur.a, ring.cur.b]) {
+        const who = p && f.id === p.id ? null : db.getPlayer(f.id);
+        if (!who || !g.wantsNotice(who, 'ring', t)) continue;
+        const rival = f.id === ring.cur.a.id ? ring.cur.b : ring.cur.a;
+        g.markNotified(who, 'ring', t);
+        db.savePlayer(who);
+        notifyPlayer(who.id, `🥊 Твой бой на ринге через ${RING.delayMin} мин: против ${rival.name}. Зайди поддержать себя ставкой.`);
+      }
+    }
     return r;
   }
 
@@ -275,6 +290,7 @@ export function createApp(opts: AppOptions) {
       hodkaBonus: g.hodkaBonus(p),
       intro: p.intro,
       notifyOn: p.notify.on,
+      notifyOff: p.notify.off,
       games: {
         cards: g.playsLeft(p, 'cards', CARDS.perDay, t),
         race: g.playsLeft(p, 'race', RACE.perDay, t),
@@ -357,9 +373,21 @@ export function createApp(opts: AppOptions) {
     if (!bot) return 0;
     const t = now();
     let sent = 0;
+    const today = g.dayKey(t);
+    // жив ли сегодня клановый босс — один раз на клан
+    const bossAlive = new Map<number, boolean>();
+    const clanBoss = (id: number | null) => {
+      if (!id) return false;
+      if (!bossAlive.has(id)) {
+        const b = clanState(id).boss;
+        bossAlive.set(id, !(b && b.day === today && b.killed));
+      }
+      return bossAlive.get(id)!;
+    };
+    const live = liveNotice(t);
     for (const p of db.recentPlayers(t - NOTIFY.activeWithinDays * 24 * 3600_000)) {
       g.tick(p, t);
-      const n = g.pendingNotice(p, t);
+      const n = g.pendingNotice(p, t, { clanBoss: isOpen('clans', p.level) && clanBoss(p.clanId), live });
       if (!n) continue;
       g.markNotified(p, n.kind, t);
       db.savePlayer(p);
@@ -420,6 +448,7 @@ export function createApp(opts: AppOptions) {
     upgrade: (p, b) => g.upgradeItem(p, str(b.itemId)),
     intro: (p, b, t) => g.introStep(p, num(b.choice), t),
     notify: (p, b) => g.setNotify(p, !!b.on),
+    notifyKind: (p, b) => g.setNotifyKind(p, str(b.kind), !!b.on),
     story: (p, _b, t) => g.claimStory(p, t),
     cardsStart: (p, b, t) => g.cardsStart(p, num(b.bet), t, rng),
     cardsHit: (p, _b, t) => g.cardsHit(p, t),
@@ -739,7 +768,7 @@ export function createApp(opts: AppOptions) {
       const r = g.pvpFinish(p, target, bt.loot, result, t, rng);
       if (target) {
         // на тебя наехали — сразу сообщение от бота (если можно писать)
-        if (r.win && bot && g.canNotify(target, t)) {
+        if (r.win && bot && g.wantsNotice(target, 'attacked', t)) {
           g.markNotified(target, 'attacked', t);
           notifyPlayer(target.id, `🥊 ${p.name} наехал и отжал ${r.loot} ₽. Отомстить?`);
         }

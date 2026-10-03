@@ -1,4 +1,4 @@
-import { DAILY_WEEK, MASTS, MAST_RULES, TERM, mastById, type Mast } from '../shared/term.ts';
+import { DAILY_WEEK, MASTS, MAST_RULES, NOTICE_KINDS, TERM, mastById, type Mast } from '../shared/term.ts';
 import { consumableById } from '../shared/perks.ts';
 import { NpcPortrait } from './art/sprites.tsx';
 import { fmt, timeLeft, useGame } from './game.tsx';
@@ -126,9 +126,24 @@ export function DailyWeek({ onClose }: { onClose(): void }) {
 export function NotifyToggle() {
   const { p, act, busy } = useGame();
   return (
-    <label className="notify-toggle">
-      <input type="checkbox" checked={p.notifyOn} disabled={busy} onChange={(e) => act('notify', { on: e.target.checked })} />
-      <span>🔔 Напоминания от бота: энергия, боссы, грев, наезды (не больше 3 в день, ночью молчим)</span>
-    </label>
+    <>
+      <label className="notify-toggle">
+        <input type="checkbox" checked={p.notifyOn} disabled={busy} onChange={(e) => act('notify', { on: e.target.checked })} />
+        <span>🔔 Напоминания от бота (не больше 3 в день, ночью молчим)</span>
+      </label>
+      {p.notifyOn && (
+        <div className="notify-kinds">
+          {NOTICE_KINDS.map((k) => {
+            const on = !p.notifyOff.includes(k.id);
+            return (
+              <button key={k.id} className={on ? 'on' : ''} disabled={busy} onClick={() => act('notifyKind', { kind: k.id, on: !on })}>
+                <span>{k.icon}</span>
+                {k.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </>
   );
 }

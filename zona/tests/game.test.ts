@@ -739,7 +739,7 @@ test('напоминания: не ночью, не больше трёх в д�
   const night = Date.UTC(2026, 0, 6, 21); // полночь по Москве
   p.lastSeen = night - 3600_000;
   assert.equal(g.pendingNotice(p, night), null);
-  p.notify = { on: true, day: g.dayKey(day), n: 3, last: {} };
+  p.notify = { on: true, day: g.dayKey(day), n: 3, last: {}, off: [] };
   assert.equal(g.canNotify(p, day), false);
   g.setNotify(p, false);
   p.notify.n = 0;
@@ -1352,4 +1352,28 @@ test('чифир на скорость: паузу выбирает сервер
   g.runStart(p, 'speed', T0, fixed(0.5));
   assert.equal(g.runCheck(p, 'speed', { ms: 0 }, T0 + 200), null);
   assert.equal(p.sus.score, before);
+});
+
+test('напоминания: долг горит, клановый босс, конец сезона, каждое выключается отдельно', () => {
+  const day = Date.UTC(2026, 0, 30, 10); // 13:00 по Москве, за два дня до конца сезона
+  const p = g.newPlayer(1, 'Вася', null, day - 24 * 3600_000);
+  p.lastSeen = day - 3600_000;
+  p.dailyAt = day;
+  p.energy = 0;
+  p.debt = { amount: 500, base: 400, due: day + 2 * 3600_000, from: 'baryga', counted: 0 } as never;
+  assert.equal(g.pendingNotice(p, day)?.kind, 'debt');
+  g.setNotifyKind(p, 'debt', false);
+  assert.notEqual(g.pendingNotice(p, day)?.kind, 'debt');
+  p.clanId = 5;
+  assert.equal(g.pendingNotice(p, day, { clanBoss: true })?.kind, 'clanBoss');
+  assert.equal(g.pendingNotice(p, day, { clanBoss: false }), null);
+  g.ensureSeason(p, day);
+  p.season.pts = 3 * 260;
+  assert.equal(g.pendingNotice(p, day)?.kind, 'season');
+  g.setNotifyKind(p, 'debt', true);
+  assert.equal(g.pendingNotice(p, day)?.kind, 'debt');
+  assert.throws(() => g.setNotifyKind(p, 'spam', false), /Нет таких/);
+  assert.equal(g.pendingNotice(p, day, { live: { startsAt: day - 1000, text: '🎪 Шмон!' } })?.kind, 'debt', 'долг важнее');
+  g.setNotifyKind(p, 'debt', false);
+  assert.equal(g.pendingNotice(p, day, { live: { startsAt: day - 1000, text: '🎪 Шмон!' } })?.text, '🎪 Шмон!');
 });

@@ -2242,3 +2242,6 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .sus-log { font-size: 12px; padding: 3px 0; border-top: 1px dashed var(--line); }
 .sus-log small { color: var(--muted); }
 .sus-row .row { display: flex; gap: 6px; margin-top: 6px; }
+.notify-kinds { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 10px; }
+.notify-kinds button { display: flex; align-items: center; gap: 4px; padding: 5px 8px; font-size: 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--card-2); color: var(--muted); text-decoration: line-through; }
+.notify-kinds button.on { color: var(--text); text-decoration: none; border-color: #6a5a3a; }
