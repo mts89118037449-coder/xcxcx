@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type SusRow } from './api.ts';
+import { api, type AdminError, type AdminReport, type SusRow } from './api.ts';
+import { REPORT } from '../shared/support.ts';
 import { useGame } from './game.tsx';
 
 const GAME_NAMES: Record<string, string> = {
@@ -70,3 +71,112 @@ export function AdminSus() {
     </div>
   );
 }
+
+/** Жалобы игроков и ошибки из браузеров. */
+export function AdminReports() {
+  const { toast } = useGame();
+  const [data, setData] = useState<{ reports: AdminReport[]; errors: AdminError[] } | null>(null);
+  const [view, setView] = useState<'reports' | 'errors'>('reports');
+  const [open, setOpen] = useState<number | string | null>(null);
+  const [reply, setReply] = useState('');
+  const load = (body: Parameters<typeof api.adminReports>[0] = {}) =>
+    api
+      .adminReports(body)
+      .then(setData)
+      .catch((e) => toast(e instanceof Error ? e.message : 'Не загрузилось', 'err'));
+  useEffect(() => {
+    load();
+  }, []);
+  if (!data) return <div className="muted center">Загрузка…</div>;
+  const fresh = data.reports.filter((r) => !r.done).length;
+  return (
+    <div className="sus-list">
+      <div className="seg">
+        <button className={view === 'reports' ? 'active' : ''} onClick={() => setView('reports')}>
+          🆘 Жалобы{fresh ? ` · ${fresh}` : ''}
+        </button>
+        <button className={view === 'errors' ? 'active' : ''} onClick={() => setView('errors')}>
+          🐞 Ошибки · {data.errors.length}
+        </button>
+      </div>
+      {view === 'reports' &&
+        (data.reports.length ? (
+          data.reports.map((r) => {
+            const t = REPORT.topics.find((x) => x.id === r.topic);
+            return (
+              <div key={r.id} className={`sus-row ${r.done ? 'banned' : 'hot'}`}>
+                <button className="sus-head" onClick={() => (setOpen(open === r.id ? null : r.id), setReply(''))}>
+                  <b>
+                    {t?.icon} #{r.id} {r.name}
+                  </b>
+                  <small>{when(r.at)}</small>
+                  <i>{r.done ? '✔' : '•'}</i>
+                </button>
+                <div className="report-body">{r.text}</div>
+                {open === r.id && (
+                  <>
+                    <pre className="report-ctx">{JSON.stringify({ ...r.ctx.snap, ...r.ctx.client }, null, 1)}</pre>
+                    <textarea className="input report-text" rows={2} placeholder="Ответ игроку (придёт от бота)" value={reply} onChange={(e) => setReply(e.target.value)} />
+                    <div className="row">
+                      <button className="btn btn-s" disabled={!reply.trim()} onClick={() => load({ reply: { id: r.id, text: reply } }).then(() => (setReply(''), toast('Ответ отправлен')))}>
+                        💬 Ответить
+                      </button>
+                      {!r.done && (
+                        <button className="btn btn-s btn-dark" onClick={() => load({ done: r.id })}>
+                          ✔ Закрыть
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="muted center small">Жалоб нет.</div>
+        ))}
+      {view === 'errors' && (
+        <>
+          {data.errors.length ? (
+            data.errors.map((e) => (
+              <div key={e.hash} className="sus-row">
+                <button className="sus-head" onClick={() => setOpen(open === e.hash ? null : e.hash)}>
+                  <b>{e.msg}</b>
+                  <small />
+                  <i>×{e.n}</i>
+                </button>
+                {open === e.hash && (
+                  <>
+                    <div className="sus-log">
+                      <small>
+                        первая {when(e.first)} · последняя {when(e.last)}
+                        {e.pid ? ` · игрок ${e.pid}` : ''}
+                      </small>
+                    </div>
+                    <pre className="report-ctx">{e.stack || 'без стека'}</pre>
+                    <div className="sus-log">
+                      <small>{e.ua}</small>
+                    </div>
+                    <div className="row">
+                      <button className="btn btn-s btn-dark" onClick={() => load({ errDel: e.hash })}>
+                        ✔ Починено
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="muted center small">Ошибок нет.</div>
+          )}
+          {data.errors.length > 1 && (
+            <button className="btn btn-s btn-dark" onClick={() => confirm('Очистить все ошибки?') && load({ errDel: 'all' })}>
+              Очистить всё
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+export function AdminLive() { return null; }

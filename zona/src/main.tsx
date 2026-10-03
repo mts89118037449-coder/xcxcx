@@ -3,7 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import './styles.css';
 import { initSound } from './sound.ts';
+import { initErrorLog } from './errlog.ts';
+import { ErrorBoundary } from './Report.tsx';
 
+initErrorLog();
 initSound();
 
 const tg = window.Telegram?.WebApp;
@@ -21,6 +24,8 @@ createRoot(document.getElementById('root')!).render(
       <RigGallery />
     </Suspense>
   ) : (
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   ),
 );

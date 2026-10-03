@@ -20,6 +20,28 @@ function authHeader(): string {
   return dev ? `tma dev:${dev}:${encodeURIComponent(`Тестер ${dev}`)}` : '';
 }
 
+export interface AdminReport {
+  id: number;
+  pid: number;
+  name: string;
+  topic: string;
+  text: string;
+  ctx: { client?: Record<string, unknown>; snap?: Record<string, unknown> };
+  at: number;
+  done: number;
+}
+
+export interface AdminError {
+  hash: string;
+  msg: string;
+  stack: string;
+  ua: string;
+  pid: number | null;
+  n: number;
+  first: number;
+  last: number;
+}
+
 export interface SusRow {
   id: number;
   name: string;
@@ -30,6 +52,10 @@ export interface SusRow {
 }
 
 export class ApiError extends Error {}
+
+export function authHeaderValue(): string {
+  return authHeader();
+}
 
 /** Начало мини-игры для сервера; ошибку покажет уже сам результат. */
 export function startRun(game: string): Promise<{ delay: number } | null> {
@@ -55,6 +81,9 @@ export const api = {
     post<{ top: { id: number; name: string; level: number; authority: number; rank: string; face: number | null; tag: string | null }[]; online: number; total: number }>('/top'),
   market: () => post<{ lots: MarketLot[] }>('/market'),
   adminStats: <T,>() => post<T>('/admin/stats'),
+  report: (topic: string, text: string, ctx: unknown) => post<{ id: number }>('/report', { topic, text, ctx }),
+  adminReports: (body: { done?: number; reply?: { id: number; text: string }; errDel?: string } = {}) =>
+    post<{ reports: AdminReport[]; errors: AdminError[] }>('/admin/reports', body),
   adminSus: (id?: number, act?: 'clear' | 'ban' | 'unban') => post<{ list: SusRow[]; flagAt: number }>('/admin/sus', { id, act }),
   season: () => post<{ top: { id: number; name: string; face: number | null; frame: string | null; pts: number }[] }>('/season'),
   refs: () => post<{ refs: { id: number; name: string; level: number }[] }>('/refs'),

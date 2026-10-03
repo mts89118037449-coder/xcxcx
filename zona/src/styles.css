@@ -2245,3 +2245,14 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .notify-kinds { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 10px; }
 .notify-kinds button { display: flex; align-items: center; gap: 4px; padding: 5px 8px; font-size: 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--card-2); color: var(--muted); text-decoration: line-through; }
 .notify-kinds button.on { color: var(--text); text-decoration: none; border-color: #6a5a3a; }
+.report-topics { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.report-topics button { display: flex; align-items: center; gap: 4px; padding: 6px 9px; font-size: 13px; border-radius: 16px; border: 1px solid var(--line); background: var(--card-2); }
+.report-topics button.active { border-color: var(--gold); background: #3a2f1c; }
+.report-text { width: 100%; resize: vertical; min-height: 84px; font: inherit; }
+.report-sent { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 6px; text-align: center; }
+.report-sent span { font-size: 40px; }
+.report-btn { margin-top: 8px; }
+.crash { max-width: 420px; margin: 0 auto; padding: 60px 16px; text-align: center; display: flex; flex-direction: column; gap: 10px; }
+.crash-ico { font-size: 56px; }
+.report-body { font-size: 13px; white-space: pre-wrap; padding: 2px 0 4px; }
+.report-ctx { font-size: 10px; line-height: 1.25; max-height: 180px; overflow: auto; background: #0e0d0b; border-radius: 6px; padding: 6px; margin: 4px 0; white-space: pre-wrap; word-break: break-all; }

@@ -3,6 +3,8 @@ import { EVENT_TIMING, MEDIC, eventById } from '../shared/events.ts';
 import { OBSHAK } from '../shared/factions.ts';
 import { ANTICHEAT } from '../shared/anticheat.ts';
 import { isOpen } from '../shared/unlocks.ts';
+import { ERRLOG, REPORT } from '../shared/support.ts';
+import crypto from 'node:crypto';
 import { CHAT } from '../shared/chat.ts';
 import { seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT_RULES, PARCEL, REFERRAL, RING, hutById, type HutId } from '../shared/clans.ts';
@@ -43,6 +45,8 @@ export function createApp(opts: AppOptions) {
   const now = opts.now ?? Date.now;
   const rng = opts.rng ?? Math.random;
   const app = express();
+  // за Caddy: настоящий адрес игрока — из X-Forwarded-For (для ограничения частоты)
+  app.set('trust proxy', 'loopback');
   app.use(express.json({ limit: '64kb' }));
 
   // --- Авторизация ---------------------------------------------------------
@@ -873,6 +877,47 @@ export function createApp(opts: AppOptions) {
     res.json({ list, flagAt: ANTICHEAT.flagAt });
   });
 
+  // Жалоба игрока: текст, тема и снимок состояния — уходит админам в бота и в админку
+  api.post('/report', (req: AuthedRequest, res) => {
+    const t = now();
+    const topic = REPORT.topics.find((x) => x.id === str(req.body?.topic));
+    const text = str(req.body?.text).trim().slice(0, REPORT.maxText);
+    if (!topic) return res.status(400).json({ error: 'Выбери, о чём жалоба' });
+    if (text.length < REPORT.minText) return res.status(400).json({ error: 'Напиши пару слов, что случилось' });
+    const p = db.getPlayer(req.tgUser!.id);
+    if (!p) return res.status(400).json({ error: 'Сначала зайди в игру' });
+    if (db.reportsSince(p.id, t - 24 * 3600_000) >= REPORT.perDay) return res.status(429).json({ error: 'Хватит на сегодня — мы уже читаем' });
+    const raw = JSON.stringify(req.body?.ctx ?? {});
+    const client = raw.length <= REPORT.maxCtx ? (req.body?.ctx ?? {}) : { cut: raw.slice(0, REPORT.maxCtx) };
+    const snap = {
+      level: p.level, money: p.money, gold: p.gold, butts: p.butts, hp: p.hp, energy: p.energy,
+      battle: p.battle ? p.battle.kind : null, event: p.event?.id ?? null, debt: p.debt, story: p.story,
+      clan: p.clanId, stars: p.starsSpent, journal: p.journal.slice(0, 6).map((j) => j.text),
+    };
+    const id = db.reportAdd({ pid: p.id, name: p.name, topic: topic.id, text, ctx: JSON.stringify({ client, snap }), at: t });
+    for (const a of opts.adminIds) bot?.call('sendMessage', { chat_id: a, text: `🆘 Жалоба #${id} · ${topic.icon} ${topic.label}\nОт: ${p.name} (id ${p.id}, ур. ${p.level})\n\n${text}` }).catch(() => null);
+    res.json({ id });
+  });
+
+  // Жалобы и ошибки для админа: прочитать, закрыть, ответить игроку через бота
+  api.post('/admin/reports', async (req: AuthedRequest, res) => {
+    if (!opts.adminIds.includes(req.tgUser!.id)) return res.status(403).json({ error: 'Только для админа' });
+    const b = req.body ?? {};
+    if (b.done) db.reportDone(Number(b.done));
+    if (b.reply && typeof b.reply.text === 'string' && b.reply.text.trim()) {
+      const r = db.reportGet(Number(b.reply.id));
+      if (r) {
+        await notifyPlayer(r.pid, `💬 Ответ администрации на твою жалобу:\n\n${b.reply.text.trim().slice(0, 1000)}`);
+        db.reportDone(r.id);
+      }
+    }
+    if (b.errDel) db.errorDel(b.errDel === 'all' ? null : str(b.errDel));
+    res.json({
+      reports: db.reports().map((r) => ({ ...r, ctx: JSON.parse(r.ctx) })),
+      errors: db.errors(),
+    });
+  });
+
   api.post('/admin/stats', (req: AuthedRequest, res) => {
     if (!opts.adminIds.includes(req.tgUser!.id)) return res.status(403).json({ error: 'Только для админа' });
     const t = now();
@@ -1028,6 +1073,28 @@ export function createApp(opts: AppOptions) {
   });
 
   app.use('/api', api);
+
+  // --- Ошибки из браузера --------------------------------------------------------
+  // Без обязательной авторизации: ошибка могла случиться до входа. Ограничение — по адресу.
+  const errBuckets = new Map<string, { n: number; at: number }>();
+  app.post('/log', (req, res) => {
+    const t = Date.now();
+    const ip = req.ip ?? '';
+    const bucket = errBuckets.get(ip);
+    if (bucket && t - bucket.at < 60_000 && bucket.n >= ERRLOG.perMinute) return res.sendStatus(429);
+    errBuckets.set(ip, bucket && t - bucket.at < 60_000 ? { n: bucket.n + 1, at: bucket.at } : { n: 1, at: t });
+    if (errBuckets.size > 10_000) errBuckets.clear();
+    const msg = str(req.body?.msg).slice(0, ERRLOG.maxMsg);
+    if (!msg) return res.sendStatus(400);
+    const stack = str(req.body?.stack).slice(0, ERRLOG.maxStack);
+    const header = req.get('authorization') ?? '';
+    const user = header.startsWith('tma ') ? validateInitData(header.slice(4), opts.botToken)?.user : null;
+    // одна и та же ошибка — одна строка: склеиваем по тексту и началу стека без номеров колонок
+    const sig = msg + stack.split('\n').slice(0, 3).join('\n').replace(/:\d+:\d+/g, '');
+    const hash = crypto.createHash('sha1').update(sig).digest('hex').slice(0, 16);
+    db.errorAdd(hash, msg, stack, str(req.body?.ua).slice(0, 200) || (req.get('user-agent') ?? '').slice(0, 200), user?.id ?? null, now());
+    res.sendStatus(204);
+  });
 
   // --- Webhook бота ----------------------------------------------------------
   app.post('/tg/webhook', async (req, res) => {

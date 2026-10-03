@@ -14,6 +14,7 @@ import { UnlockModal, freshUnlocks } from './Unlocks.tsx';
 import { placeById, type PlaceId } from '../shared/places.ts';
 import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Place as PlaceT, type Tab } from './game.tsx';
+import { logError, noteFailure } from './errlog.ts';
 import { Home } from './screens/Home.tsx';
 
 // Пять разделов внизу; «Братва» живёт внутри «Боя», «Ларёк» — кнопкой ⭐ в шапке.
@@ -146,6 +147,9 @@ export function App() {
         return r.result;
       } catch (e) {
         play('error');
+        if (e instanceof ApiError) noteFailure(`${type}: ${e.message}`);
+        else if (e instanceof TypeError && /fetch|network|Load failed/i.test(e.message)) noteFailure(`${type}: нет связи`);
+        else if (e instanceof Error) logError(`${type}: ${e.message}`, e.stack ?? '');
         toast(e instanceof ApiError ? e.message : 'Нет связи с сервером', 'err');
         if (e instanceof ApiError && e.message.startsWith('Не хватает энергии')) setEnergyOpen(true);
         return null;

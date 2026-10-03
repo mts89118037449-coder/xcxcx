@@ -211,3 +211,30 @@ test('мини-игра с результатом на телефоне треб
   assert.match(fast.json.error, /быстро/);
   assert.ok(db.getPlayer(9101)!.sus.score >= 4, 'подозрение сохранилось, хотя действие отклонено');
 });
+
+test('жалоба: сохраняется со снимком, уходит админу в бота; лимит в день; ошибки браузера склеиваются', async () => {
+  const auth = initData(9201, 'Жалобщик');
+  await post('/api/me', auth);
+  assert.equal((await post('/api/report', auth, { topic: 'bug', text: '' })).status, 400);
+  assert.equal((await post('/api/report', auth, { topic: 'nope', text: 'сломалось' })).status, 400);
+  calls.length = 0;
+  const r = await post('/api/report', auth, { topic: 'pay', text: 'купил золото, не пришло', ctx: { where: 'shop' } });
+  assert.equal(r.status, 200);
+  const saved = db.reports().find((x) => x.id === r.json.id)!;
+  assert.equal(saved.pid, 9201);
+  const ctx = JSON.parse(saved.ctx);
+  assert.equal(ctx.client.where, 'shop');
+  assert.equal(ctx.snap.level, 1);
+  for (let i = 0; i < 4; i++) await post('/api/report', auth, { topic: 'bug', text: `ещё ${i}` });
+  assert.equal((await post('/api/report', auth, { topic: 'bug', text: 'шестая' })).status, 429);
+  // ошибки
+  for (let i = 0; i < 3; i++) {
+    const res = await fetch(base + '/log', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ msg: 'x is undefined', stack: `at f (app.js:1:${i})` }) });
+    assert.equal(res.status, 204);
+  }
+  const errs = db.errors().filter((e) => e.msg === 'x is undefined');
+  assert.equal(errs.length, 1);
+  assert.equal(errs[0].n, 3);
+  // админка — только админу
+  assert.equal((await post('/api/admin/reports', auth)).status, 403);
+});

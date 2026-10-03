@@ -29,6 +29,28 @@ export interface Lot {
   created_at: number;
 }
 
+export interface Report {
+  id: number;
+  pid: number;
+  name: string;
+  topic: string;
+  text: string;
+  ctx: string;
+  at: number;
+  done: number;
+}
+
+export interface ClientError {
+  hash: string;
+  msg: string;
+  stack: string;
+  ua: string;
+  pid: number | null;
+  n: number;
+  first: number;
+  last: number;
+}
+
 export interface WorldBossRow {
   id: number;
   gen: number;
@@ -115,6 +137,29 @@ export function openDb(file: string) {
       pid INTEGER NOT NULL,
       PRIMARY KEY (day, pid)
     );
+    -- жалобы игроков: текст, тема и снимок состояния
+    CREATE TABLE IF NOT EXISTS reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pid INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      topic TEXT NOT NULL,
+      text TEXT NOT NULL,
+      ctx TEXT NOT NULL,
+      at INTEGER NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS reports_pid ON reports(pid, at);
+    -- ошибки в браузере игроков: одинаковые склеиваются в одну строку со счётчиком
+    CREATE TABLE IF NOT EXISTS client_errors (
+      hash TEXT PRIMARY KEY,
+      msg TEXT NOT NULL,
+      stack TEXT NOT NULL,
+      ua TEXT NOT NULL,
+      pid INTEGER,
+      n INTEGER NOT NULL,
+      first INTEGER NOT NULL,
+      last INTEGER NOT NULL
+    );
     -- общее состояние зоны: общак и прочее, JSON по ключу
     CREATE TABLE IF NOT EXISTS kv (
       key TEXT PRIMARY KEY,
@@ -161,6 +206,18 @@ export function openDb(file: string) {
     payByPack: db.prepare('SELECT pack_id AS pack, COUNT(*) AS n, SUM(stars) AS stars FROM payments WHERE refunded = 0 GROUP BY pack_id ORDER BY stars DESC'),
     paySince: db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(stars), 0) AS stars, COUNT(DISTINCT player_id) AS payers FROM payments WHERE refunded = 0 AND created_at >= ?'),
     suspects: db.prepare("SELECT data FROM players WHERE json_extract(data, '$.sus.score') >= 1 OR json_extract(data, '$.banned') = 1 ORDER BY json_extract(data, '$.sus.score') DESC LIMIT 60"),
+    reportAdd: db.prepare('INSERT INTO reports (pid, name, topic, text, ctx, at) VALUES (?, ?, ?, ?, ?, ?)'),
+    reportsSince: db.prepare('SELECT COUNT(*) AS n FROM reports WHERE pid = ? AND at >= ?'),
+    reports: db.prepare('SELECT id, pid, name, topic, text, ctx, at, done FROM reports ORDER BY done, id DESC LIMIT 60'),
+    reportGet: db.prepare('SELECT id, pid, name, topic, text, ctx, at, done FROM reports WHERE id = ?'),
+    reportDone: db.prepare('UPDATE reports SET done = 1 WHERE id = ?'),
+    errAdd: db.prepare(`INSERT INTO client_errors (hash, msg, stack, ua, pid, n, first, last) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+      ON CONFLICT(hash) DO UPDATE SET n = n + 1, last = excluded.last, pid = COALESCE(excluded.pid, pid), ua = excluded.ua`),
+    errs: db.prepare('SELECT hash, msg, stack, ua, pid, n, first, last FROM client_errors ORDER BY last DESC LIMIT 40'),
+    errCount: db.prepare('SELECT COUNT(*) AS n FROM client_errors'),
+    errDel: db.prepare('DELETE FROM client_errors WHERE hash = ?'),
+    errClear: db.prepare('DELETE FROM client_errors'),
+    errTrim: db.prepare('DELETE FROM client_errors WHERE hash IN (SELECT hash FROM client_errors ORDER BY last LIMIT 100)'),
     kvGet: db.prepare('SELECT value FROM kv WHERE key = ?'),
     kvSet: db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
     get: db.prepare('SELECT data FROM players WHERE id = ?'),
@@ -284,6 +341,33 @@ export function openDb(file: string) {
           all: q.paySince.get(0) as { n: number; stars: number; payers: number },
         },
       };
+    },
+    reportAdd(r: Omit<Report, 'id' | 'done'>): number {
+      return Number(q.reportAdd.run(r.pid, r.name, r.topic, r.text, r.ctx, r.at).lastInsertRowid);
+    },
+    reportsSince(pid: number, since: number): number {
+      return (q.reportsSince.get(pid, since) as { n: number }).n;
+    },
+    reports(): Report[] {
+      return q.reports.all() as unknown as Report[];
+    },
+    reportGet(id: number): Report | null {
+      return (q.reportGet.get(id) as Report | undefined) ?? null;
+    },
+    reportDone(id: number) {
+      q.reportDone.run(id);
+    },
+    /** Ошибка из браузера: одинаковые копятся счётчиком, таблица не растёт бесконечно. */
+    errorAdd(hash: string, msg: string, stack: string, ua: string, pid: number | null, at: number) {
+      q.errAdd.run(hash, msg, stack, ua, pid, at, at);
+      if ((q.errCount.get() as { n: number }).n > 500) q.errTrim.run();
+    },
+    errors(): ClientError[] {
+      return q.errs.all() as unknown as ClientError[];
+    },
+    errorDel(hash: string | null) {
+      if (hash) q.errDel.run(hash);
+      else q.errClear.run();
     },
     /** Кого подозревают в накрутке (счёт без остывания — остывание считает сервер). */
     suspects(): Player[] {
