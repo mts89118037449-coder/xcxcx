@@ -41,12 +41,15 @@ export function gainsOf(result: unknown): { chips: FxChip[]; levelUps: number } 
 export function FxLayer({ chips, levelUp }: { chips: FxChip[]; levelUp: boolean }) {
   return (
     <div className="fx-layer" aria-hidden>
-      {chips.map((c, i) => (
-        <div key={c.id} className={`fx-chip ${c.bad ? 'bad' : ''}`} style={{ animationDelay: `${i * 0.14}s`, left: '50%', top: `calc(30% + ${i * 50}px)` }}>
-          <span>{c.icon}</span>
-          {c.text}
-        </div>
-      ))}
+      {/* награды — строкой под шапкой, не поверх лица персонажа */}
+      <div className="fx-row">
+        {chips.map((c, i) => (
+          <div key={c.id} className={`fx-chip ${c.bad ? 'bad' : ''}`} style={{ animationDelay: `${i * 0.12}s` }}>
+            <span>{c.icon}</span>
+            {c.text}
+          </div>
+        ))}
+      </div>
       {levelUp && (
         <div className="fx-level">
           <b>НОВЫЙ УРОВЕНЬ</b>

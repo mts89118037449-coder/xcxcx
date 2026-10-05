@@ -56,13 +56,13 @@ const POSE_ANIM: Record<PoseName, RigAnim> = {
 };
 
 /** Персонаж игрока: кукла на скелете — одежда, наколки и внешность видны и двигаются вместе с телом. */
-export function PoseG({ name, mirror, tone, look, noShadow, anim, bare }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean; anim?: RigAnim; bare?: boolean }) {
+export function PoseG({ name, mirror, tone, look, noShadow, anim, bare, startKey }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean; anim?: RigAnim; bare?: boolean; startKey?: string | number }) {
   const l = look ?? { equipped: {}, tattoos: [], str: 5 };
   const a = anim ?? POSE_ANIM[name] ?? 'idle';
   return (
     <g style={tone ? { filter: tone } : undefined}>
       {a === 'sit' && <Stool />}
-      <Rig look={l} anim={a} mirror={mirror} shadow={!noShadow} bare={bare} />
+      <Rig look={l} anim={a} mirror={mirror} shadow={!noShadow} bare={bare} startKey={startKey} />
     </g>
   );
 }

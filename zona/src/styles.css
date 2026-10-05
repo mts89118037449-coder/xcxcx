@@ -708,13 +708,28 @@ main {
 }
 @keyframes lunge-r {
   40% {
-    transform: translateX(34px) rotate(4deg);
+    transform: translateX(40px);
   }
 }
 @keyframes lunge-l {
   40% {
-    transform: translateX(-34px) rotate(-4deg);
+    transform: translateX(-40px);
   }
+}
+/* тот же толчок второй раз подряд: другое имя анимации перезапускает её без пересоздания фигуры */
+.lunge-r.alt { animation-name: lunge-r-b; }
+.lunge-l.alt { animation-name: lunge-l-b; }
+.got-hit.alt { animation-name: got-hit-b; }
+.got-crit.alt { animation-name: got-crit-b; }
+@keyframes lunge-r-b { 40% { transform: translateX(40px); } }
+@keyframes lunge-l-b { 40% { transform: translateX(-40px); } }
+@keyframes got-hit-b {
+  20% { transform: translateX(-4px); filter: sepia(1) saturate(6) hue-rotate(-40deg) brightness(0.9); }
+  45% { transform: translateX(4px); }
+}
+@keyframes got-crit-b {
+  20% { transform: translateX(-8px) rotate(-6deg); filter: sepia(1) saturate(8) hue-rotate(-40deg) brightness(1.1); }
+  50% { transform: translateX(6px) rotate(3deg); }
 }
 .got-hit {
   animation: got-hit 0.4s ease-out;
@@ -1204,12 +1219,13 @@ main {
   transform-origin: 50% 100%;
   animation: yard-walk 14s linear infinite;
 }
+/* разворот — мгновенный, без «сплющивания» в плоскость; ходит между соседями, а не сквозь них */
 @keyframes yard-walk {
-  0% { transform: translateX(-80px) scaleX(1); }
-  46% { transform: translateX(80px) scaleX(1); }
-  50% { transform: translateX(80px) scaleX(-1); }
-  96% { transform: translateX(-80px) scaleX(-1); }
-  100% { transform: translateX(-80px) scaleX(1); }
+  0% { transform: translateX(-50px) scaleX(1); }
+  49.8% { transform: translateX(55px) scaleX(1); }
+  50% { transform: translateX(55px) scaleX(-1); }
+  99.8% { transform: translateX(-50px) scaleX(-1); }
+  100% { transform: translateX(-50px) scaleX(1); }
 }
 .face {
   border-radius: 50%;
@@ -1312,7 +1328,7 @@ main {
 
 /* --- Зона, бычки, диалоги --------------------------------------------------- */
 .butt { animation: butt-in 0.4s ease-out; }
-@keyframes butt-in { from { opacity: 0; transform: scale(0.2); } }
+@keyframes butt-in { from { opacity: 0; transform: translateY(-6px) scale(0.2); } }
 .butt-glint { animation: twinkle 1.2s infinite alternate; }
 .butt-pop {
   font-weight: 900;
@@ -1327,7 +1343,8 @@ main {
 .zone-tag:active rect { opacity: 0.9; }
 
 .talk-bubble { animation: bob 1.6s ease-in-out infinite; cursor: pointer; }
-@keyframes bob { 50% { transform: translateY(-3px); } }
+/* translate, а не transform: у облачка своё место в атрибуте transform, его нельзя перетирать */
+@keyframes bob { 50% { translate: 0 -3px; } }
 .npc-click { cursor: pointer; }
 
 .dialog-modal { align-items: flex-end; }
@@ -1586,15 +1603,16 @@ main {
 
 /* награды всплывают иконками */
 .fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
-.fx-chip { position: absolute; top: 34%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 6px 14px 6px 8px; border-radius: 22px; background: rgba(20, 17, 12, 0.88); border: 1px solid var(--gold); color: var(--gold); font-weight: 800; font-size: 18px; white-space: nowrap; box-shadow: 0 6px 18px #000a; opacity: 0; animation: fx-up 1.9s cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
-.fx-chip span { font-size: 24px; }
+.fx-row { position: absolute; left: 8px; right: 8px; top: calc(98px + env(safe-area-inset-top)); display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.fx-chip { display: flex; align-items: center; gap: 6px; padding: 6px 14px 6px 8px; border-radius: 22px; background: rgba(20, 17, 12, 0.88); border: 1px solid var(--gold); color: var(--gold); font-weight: 800; font-size: 16px; white-space: nowrap; box-shadow: 0 6px 18px #000a; opacity: 0; animation: fx-up 1.9s cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
+.fx-chip span { font-size: 20px; }
 .fx-chip.bad { border-color: var(--red); color: #ff8a7a; }
 @keyframes fx-up {
-  0% { opacity: 0; transform: translate(-50%, 30px) scale(0.6); }
-  15% { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
-  25% { transform: translate(-50%, -6px) scale(1); }
+  0% { opacity: 0; transform: translateY(18px) scale(0.6); }
+  15% { opacity: 1; transform: translateY(0) scale(1.08); }
+  25% { transform: translateY(-2px) scale(1); }
   80% { opacity: 1; }
-  100% { opacity: 0; transform: translate(-50%, -120px) scale(0.9); }
+  100% { opacity: 0; transform: translateY(-40px) scale(0.9); }
 }
 .fx-level { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); text-align: center; animation: fx-level 2.4s ease-out forwards; }
 .fx-level b { display: block; font-size: 26px; letter-spacing: 2px; color: var(--gold); text-shadow: 0 0 18px #f2c14e, 0 2px 4px #000; }
@@ -2343,3 +2361,18 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 @media (prefers-reduced-motion: reduce) {
   .loc-fly, .loc-drip, .loc-splash, .loc-dust, .loc-rat, .loc-sway, .loc-needle, .loc-spin, .loc-swing { animation: none; }
 }
+
+/* --- Бой: вспышка удара и тряска на крит --- */
+.impact { opacity: 0; transform-origin: 0 0; animation: impact 0.42s ease-out 0.1s forwards; }
+.impact.crit { animation-duration: 0.55s; }
+@keyframes impact {
+  0% { opacity: 1; transform: scale(0.2) rotate(0deg); }
+  35% { opacity: 1; transform: scale(1.15) rotate(12deg); }
+  100% { opacity: 0; transform: scale(1.5) rotate(20deg); }
+}
+.impact.crit path { filter: drop-shadow(0 0 6px #ffb02a); }
+.arena.shake { animation: shake 0.38s ease-out 0.1s; }
+.arena.shake.alt { animation-name: shake-b; }
+@keyframes shake { 20% { transform: translate(-5px, 2px); } 40% { transform: translate(5px, -2px); } 60% { transform: translate(-3px, 1px); } 80% { transform: translate(2px, 0); } }
+@keyframes shake-b { 20% { transform: translate(-5px, 2px); } 40% { transform: translate(5px, -2px); } 60% { transform: translate(-3px, 1px); } 80% { transform: translate(2px, 0); } }
+@media (prefers-reduced-motion: reduce) { .arena.shake { animation: none; } }

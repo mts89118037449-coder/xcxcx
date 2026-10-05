@@ -5,7 +5,7 @@ const L = (equipped: Look['equipped'], face = 0, extra: Partial<Look> = {}): Loo
 
 /** Отладка рига: /?rig=1 — все анимации и вещи на одном экране. */
 export function RigGallery() {
-  const anims: RigAnim[] = ['idle', 'walk', 'run', 'sit', 'guard', 'punch', 'kick', 'dodge', 'hit', 'taunt', 'cheer', 'work', 'crossed', 'floor', 'ko', 'smoke', 'drink', 'eat', 'think', 'stretch', 'wave', 'flex', 'cold', 'squat', 'pushup', 'sleep', 'dance', 'pullup'];
+  const anims: RigAnim[] = ['idle', 'walk', 'run', 'sit', 'guard', 'punch', 'kick', 'dodge', 'hit', 'taunt', 'cheer', 'work', 'crossed', 'floor', 'ko', 'smoke', 'drink', 'eat', 'think', 'stretch', 'wave', 'flex', 'cold', 'squat', 'pushup', 'sleep', 'dance', 'pullup', 'crouch'];
   const looks: Look[] = [
     L({}, 0, { tattoos: ['t_church', 't_stars', 't_spider', 't_rose', 't_eagle', 't_rings', 't_dagger', 't_skull', 't_epaulets'] }),
     L({ body: 'body_tank', legs: 'legs_pants', feet: 'feet_slippers' }, 17),

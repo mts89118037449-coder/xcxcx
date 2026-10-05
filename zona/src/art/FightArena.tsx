@@ -28,6 +28,10 @@ function rivalLook(enemy: Fighter): Look {
 }
 
 /** Проигрывает бой, пришедший с сервера, удар за ударом. */
+/** Где стоят бойцы: близко, чтобы удар с выпадом доставал. */
+const ME_X = 118;
+const EN_X = 242;
+
 export function FightArena({
   me,
   enemy,
@@ -81,7 +85,9 @@ export function FightArena({
   // победа и нокаут — анимации рига; здесь только толчки при ударах
   const meCls = done ? '' : !last ? '' : last.by === 0 ? (strike ? 'lunge-r' : '') : hurt ? hitCls : '';
   const enemyCls = done ? '' : !last ? '' : last.by === 1 ? (strike ? 'lunge-l' : '') : hurt ? hitCls : '';
-  const popX = last?.by === 0 ? 256 : 104;
+  const popX = last?.by === 0 ? EN_X : ME_X;
+  // фигуры не пересоздаются на каждый удар — поза перетекает; толчок перезапускаем сменой имени анимации
+  const alt = i % 2 ? ' alt' : '';
   // всплывашки: урон — над целью, лечение и перк — над тем, кто действует
   const notes = last && !done && (
     <>
@@ -121,25 +127,36 @@ export function FightArena({
   );
 
   return (
-    <div className="arena">
+    <div className={`arena ${last && !done && last.crit && last.dmg > 0 ? `shake${alt}` : ''}`}>
       <YardScene tower={false}>
-          <Place x={104} y={266} scale={0.98} key={`me${i}`} className={`pose ${meCls}`}>
+          <Place x={ME_X} y={266} scale={0.98} className={`pose ${meCls}${meCls ? alt : ''}`}>
             <PoseG
+              startKey={i}
               name="guard34"
               anim={done ? (replay.win ? 'cheer' : 'ko') : !last ? 'guard' : last.by === 0 ? (strike ? (last.crit || i % 3 === 2 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'}
               look={me.look}
             />
           </Place>
-          <Place x={256} y={266} scale={0.98} key={`en${i}`} className={`pose ${enemyCls}`}>
+          <Place x={EN_X} y={266} scale={0.98} className={`pose ${enemyCls}${enemyCls ? alt : ''}`}>
             <PoseG
+              startKey={i}
               name="guard34"
               anim={done ? (replay.win ? 'ko' : 'taunt') : !last ? 'guard' : last.by === 1 ? (strike ? (last.crit || i % 3 === 1 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'}
               look={enemyLook}
               mirror
             />
           </Place>
+          {/* вспышка удара — там, куда пришёлся кулак или нога */}
+          {last && !done && strike && last.dmg > 0 && (
+            <g key={`imp${i}`} transform={`translate(${last.by === 0 ? EN_X - 16 : ME_X + 16} ${i % 3 === (last.by === 0 ? 2 : 1) || last.crit ? 178 : 146})`}>
+              <g className={`impact ${last.crit ? 'crit' : ''}`}>
+                <path d="M0,-16 L4,-5 L15,-8 L7,1 L14,11 L2,6 L-3,16 L-5,5 L-16,7 L-7,-1 L-13,-12 L-3,-5 Z" fill={last.crit ? '#ffd24a' : '#fff4c8'} stroke="#ff7a2a" strokeWidth={1.4} strokeLinejoin="round" />
+                <circle r={4} fill="#fff" />
+              </g>
+            </g>
+          )}
           {last && !done && (last.dmg > 0 || last.miss) && (
-            <text key={`d${i}`} className="dmg-pop" x={popX} y={84} textAnchor="middle" fontSize={last.crit ? 26 : 18} fill={last.miss ? '#9fd3ff' : last.crit ? '#ffcf5a' : '#fff'}>
+            <text key={`d${i}`} className="dmg-pop" x={popX} y={84} textAnchor="middle" fontSize={last.crit ? 30 : 22} fill={last.miss ? '#9fd3ff' : last.crit ? '#ffcf5a' : '#fff'}>
               {last.miss ? 'мимо' : `−${last.dmg}${last.crit ? '!' : ''}`}
             </text>
           )}

@@ -32,6 +32,8 @@ interface Props {
   onTalk?: (kind: TalkKind) => void;
 }
 
+const RIG_DRIVEN = new Set(['act-work', 'lunge-r', 'act-cheer', 'act-dress']);
+
 export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, animKey, onClick, onTalk }: Props) {
   // Короткая «рабочая» поза после действия, потом снова обычная.
   const [busyPose, setBusyPose] = useState<RigAnim | null>(null);
@@ -49,10 +51,12 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, a
   const at = PLACE[loc];
   // раненый в хате сидит на полу
   const idle: PoseName = loc === 'cell' ? (mood === 'hurt' ? 'floor' : 'sit') : loc === 'work' ? 'stand34' : 'walk1';
+  // движения, которые делает сам скелет, не пересоздают фигуру — поза перетекает плавно, без рывка
+  const rigDriven = !!anim && RIG_DRIVEN.has(anim);
   const fig = (
-    <Place x={at.x} y={at.y} scale={at.scale} key={animKey} className={`pose ${busyPose ? '' : anim}`}>
+    <Place x={at.x} y={at.y} scale={at.scale} key={rigDriven ? 'fig' : animKey} className={`pose ${rigDriven ? '' : anim}`}>
       <g className={walking ? 'yard-walk' : undefined}>
-        <PoseG name={idle} anim={busyPose ?? undefined} look={look} bare={bare} />
+        <PoseG name={idle} anim={busyPose ?? undefined} look={look} bare={bare} startKey={animKey} />
       </g>
     </Place>
   );

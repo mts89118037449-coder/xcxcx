@@ -67,10 +67,10 @@ const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
 export type RigAnim =
   | 'idle' | 'walk' | 'run' | 'sit' | 'floor' | 'guard' | 'punch' | 'hit' | 'ko' | 'cheer' | 'work' | 'crossed' | 'pullup'
-  | 'smoke' | 'drink' | 'eat' | 'think' | 'stretch' | 'wave' | 'flex' | 'squat' | 'pushup' | 'sleep' | 'dance' | 'taunt' | 'kick' | 'dodge' | 'cold';
+  | 'smoke' | 'drink' | 'eat' | 'think' | 'stretch' | 'wave' | 'flex' | 'squat' | 'pushup' | 'sleep' | 'dance' | 'taunt' | 'kick' | 'dodge' | 'cold' | 'crouch';
 
 /** Что персонаж держит в руках в этой анимации. */
-export const ANIM_PROP: Partial<Record<RigAnim, 'cig' | 'mug' | 'bowl' | 'zzz'>> = { smoke: 'cig', drink: 'mug', eat: 'bowl', sleep: 'zzz' };
+export const ANIM_PROP: Partial<Record<RigAnim, 'cig' | 'mug' | 'bowl' | 'zzz' | 'hammer'>> = { smoke: 'cig', drink: 'mug', eat: 'bowl', sleep: 'zzz', work: 'hammer' };
 
 /** Бытовые движения, которыми персонаж сам себя занимает, пока стоит без дела (длительность в мс). */
 const FIDGETS: [RigAnim, number][] = [['smoke', 4400], ['think', 3600], ['drink', 3400], ['stretch', 2600], ['wave', 2000], ['flex', 2200], ['cold', 2600]];
@@ -143,12 +143,23 @@ export function poseAt(anim: RigAnim, t: number): Pose {
       return mix(poseAt('guard', 0), lie, k);
     }
     case 'cheer': {
+      // руки вверх буквой V: ближняя — чуть назад, чтобы не закрывать лицо
       const b = Math.abs(Math.sin(s * 5));
-      return { ...P0, y: -b * 5, nS: -166, nE: -18, fS: -150, fE: -30, fist: 1, mouth: 1, brow: 0.4, nH: -6, fH: 8, nK: b * 6 };
+      return { ...P0, y: -b * 5, nS: -196 - b * 4, nE: 14, fS: -150, fE: -24, fist: 1, mouth: 1, brow: 0.4, nH: -6, fH: 8, nK: b * 6, head: -6 };
     }
     case 'work': {
-      const b = Math.sin(s * 5.2);
-      return { ...P0, y: 6, lean: -18 + b * 4, nH: -22, nK: 20, fH: 18, fK: 6, nS: -62 + b * 14, nE: -34, fS: -52 + b * 14, fE: -40, fist: 1, head: 8 };
+      // молотком: медленный замах над головой, быстрый удар вниз, корпус чуть вперёд
+      const c = (s * 1.7) % 1;
+      const k = c < 0.6 ? ease(c / 0.6) : Math.max(0, 1 - (c - 0.6) / 0.12);
+      return {
+        ...P0,
+        y: lerp(4, 1, k),
+        lean: lerp(-9, 3, k),
+        nH: -12, nK: 10, fH: 12, fK: 4,
+        nS: lerp(-58, -170, k), nE: lerp(-28, -56, k), nW: lerp(-40, 10, k),
+        fS: lerp(-4, -12, k), fE: lerp(-38, -56, k),
+        fist: 1, head: lerp(12, 0, k), brow: 0.6, mouth: k < 0.1 ? 0.5 : 0,
+      };
     }
     case 'smoke': {
       // затяжка: рука ко рту, выдох, рука вниз
@@ -178,7 +189,8 @@ export function poseAt(anim: RigAnim, t: number): Pose {
     }
     case 'wave': {
       const k = step(s, 0, 0.3) - step(s, 1.6, 2);
-      return { ...P0, nS: lerp(-3, -150, k), nE: lerp(-10, -34 + 22 * Math.sin(s * 14), k), nW: 10 * Math.sin(s * 14) * k, mouth: k > 0.5 ? 0.6 : 0, head: -3 * k };
+      // машет над головой, а не перед лицом
+      return { ...P0, nS: lerp(-3, -192, k), nE: lerp(-10, 18 + 22 * Math.sin(s * 14), k), nW: 10 * Math.sin(s * 14) * k, mouth: k > 0.5 ? 0.6 : 0, head: -3 * k };
     }
     case 'flex': {
       // «двойной бицепс» — похвастаться обновкой
@@ -194,6 +206,12 @@ export function poseAt(anim: RigAnim, t: number): Pose {
     case 'squat': {
       const k = (1 - Math.cos(s * 3.6)) / 2;
       return { ...P0, x: -14 * k, y: 44 * k, lean: -22 * k, nH: -84 * k, nK: 124 * k, fH: -80 * k, fK: 120 * k, nS: -84 * k, nE: -8, fS: -90 * k, fE: -6, fist: 1, head: 8 * k, brow: k };
+    }
+    case 'crouch': {
+      // «на кортах»: сидит на пятках, локти на коленях, покачивается и поглядывает по сторонам
+      const b = Math.sin(s * 1.4);
+      const sq = poseAt('squat', Math.PI / 3.6 * 1000);
+      return { ...sq, y: sq.y + b * 0.8, lean: -14, nS: -62, nE: 34, nW: 10, fS: -52, fE: 28, fist: 0, head: 6 + Math.sin(s * 0.5) * 6, brow: 0.3 };
     }
     case 'pushup': {
       // тело прямое, опора на носки и ладони; вниз — локти назад
@@ -1036,7 +1054,7 @@ export function Rig({ look, anim = 'idle', mirror, still, shadow = true, startKe
   if (keyRef.current !== startKey || prev.current?.anim !== eff) {
     // смена анимации: плавно перетекаем из последней позы (в бытовые движения — медленнее)
     const dur = fid.current || prev.current?.anim !== anim ? 360 : 180;
-    if (prev.current && prev.current.anim !== eff) prev.current = { anim: eff, pose: lastPose.current, at: now, dur };
+    if (prev.current) prev.current = { anim: eff, pose: lastPose.current, at: now, dur };
     if (!prev.current) prev.current = { anim: eff, pose: P0, at: -1e9, dur };
     keyRef.current = startKey;
     t0.current = now;
@@ -1050,7 +1068,16 @@ export function Rig({ look, anim = 'idle', mirror, still, shadow = true, startKe
 }
 
 /** Предмет в руке: сигарета, кружка, миска с ложкой. */
-function HandProp({ kind, near, fist }: { kind: 'cig' | 'mug' | 'bowl'; near: boolean; fist: boolean }) {
+function HandProp({ kind, near, fist }: { kind: 'cig' | 'mug' | 'bowl' | 'hammer'; near: boolean; fist: boolean }) {
+  if (kind === 'hammer' && near)
+    // молоток в кулаке: рукоять поперёк ладони, боёк на конце
+    return (
+      <g transform="translate(1.5 7) rotate(180)">
+        <rect x={-4} y={-1.2} width={22} height={2.4} rx={1} fill="#9a6a3a" stroke={INK} strokeWidth={0.5} />
+        <rect x={16} y={-5} width={5.5} height={10} rx={0.8} fill="#6d7378" stroke={INK} strokeWidth={0.6} />
+        <rect x={16.6} y={-4.4} width={1.6} height={8.8} fill="#a7adb2" />
+      </g>
+    );
   if (kind === 'cig' && near)
     return (
       <g transform={`translate(${fist ? 3 : 1.4} ${fist ? 8 : 12.6}) rotate(-72)`}>
@@ -1266,7 +1293,15 @@ export function RigBody({ look, pose, uid, mirror, shadow = true, bare, prop, ti
 
   const parts: ReactNode[] = [];
   // тень
-  if (shadow && Math.abs(pose.root) < 30) parts.push(<ellipse key="sh" cx={60 + pose.x} cy={210} rx={24 * body.bw} ry={4.2} fill="#000" opacity={0.38} />);
+  if (shadow && Math.abs(pose.root) < 30) {
+    // тень — под ступнями, где бы они ни были (присед, шаг, удар ногой), а не под тазом
+    const an = apply(m.nl.a, 5, 0);
+    const af = apply(m.fl.a, 5, 0);
+    const down = [an, af].filter((p) => p[1] > 180);
+    const cx = down.length ? down.reduce((a, p) => a + p[0], 0) / down.length : 60 + pose.x;
+    const spread = down.length === 2 ? Math.abs(an[0] - af[0]) / 2 : 0;
+    parts.push(<ellipse key="sh" cx={cx} cy={210} rx={Math.max(20 * body.bw, spread + 12)} ry={4.2} fill="#000" opacity={0.38} />);
+  }
   parts.push(<g key="fa">{drawArm(m.f, false)}</g>);
   parts.push(<g key="fl">{drawLeg(m.fl)}</g>);
   // таз

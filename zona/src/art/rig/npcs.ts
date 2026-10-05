@@ -23,7 +23,7 @@ export const NPC_RIGS: Record<string, NpcRig> = {
   'sheet/cast/ushanka': { look: L({ body: 'body_quilted', legs: 'legs_pants', feet: 'feet_kirza', head: 'cap_ushanka' }, f(7, 5, 0), { skin: 1 }), anim: 'idle' },
   'sheet/cast/worker': { look: L({ body: 'body_overalls', legs: 'legs_pants', feet: 'feet_kirza', head: 'cap_knit' }, f(2, 3, 2), { build: 2 }), anim: 'crossed' },
   'sheet/cast/coverall': { look: L({ body: 'body_overalls', legs: 'legs_pants', feet: 'feet_kirza' }, f(4, 0, 1), { build: 0 }), anim: 'idle' },
-  'sheet/cast/sport': { look: L({ body: 'body_tracksuit', feet: 'feet_sneakers', charm: 'charm_cross' }, f(1, 1, 0), { build: 1 }), anim: 'squat' },
+  'sheet/cast/sport': { look: L({ body: 'body_tracksuit', feet: 'feet_sneakers', charm: 'charm_cross' }, f(1, 1, 0), { build: 1 }), anim: 'crouch' },
   'sheet/cast/doctor': { look: L({ body: 'npc_whitecoat', feet: 'feet_sneakers' }, f(3, 3, 1), { skin: 1 }), anim: 'crossed' },
   'sheet/cast/priest': { look: L({ body: 'npc_cassock', feet: 'feet_kirza', charm: 'charm_cross' }, f(6, 5, 0), { skin: 1 }), anim: 'idle' },
   'sheet/cast/officer': { look: L({ body: 'npc_guard', feet: 'feet_kirza', head: 'hat_police' }, f(2, 3, 0, 1)), anim: 'crossed' },

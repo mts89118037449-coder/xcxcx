@@ -890,7 +890,8 @@ function ZoneBackdrop() {
 export function ButtG({ x, y, pack, onPick }: { x: number; y: number; pack: boolean; onPick(): void }) {
   const rot = ((x * 997 + y * 131) % 1) * 360;
   return (
-    <g className="butt" data-tut="butt" transform={`translate(${x * W} ${y * H})`} onClick={onPick} style={{ cursor: 'pointer' }}>
+    <g data-tut="butt" transform={`translate(${x * W} ${y * H})`} onClick={onPick} style={{ cursor: 'pointer' }}>
+      <g className="butt">
       <circle r={13} fill="#fff" opacity={0.001} />
       <ellipse cx={0} cy={3} rx={7} ry={2} fill="#000" opacity={0.3} />
       {pack ? (
@@ -906,6 +907,7 @@ export function ButtG({ x, y, pack, onPick }: { x: number; y: number; pack: bool
           <circle cx={-5} cy={0} r={1.1} fill="#3a2a1c" />
         </g>
       )}
+      </g>
     </g>
   );
 }
@@ -935,7 +937,7 @@ export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace
       {tag(163, 106, '⭐ Ларёк', 'kiosk')}
       {tag(163, 12, '⛪ Церковь', 'church', 60)}
       {tag(250, 64, '⚒️ Промка', 'work')}
-      {tag(331, 100, '💉 Санчасть', 'medic', 62)}
+      {tag(324, 100, '💉 Санчасть', 'medic', 62)}
       {tag(58, 196, '🥊 Во двор', 'yard', 60)}
       {tag(68, 128, '🚪 По хатам', 'walk', 58)}
       {/* подкоп у забора — вход в побег */}
