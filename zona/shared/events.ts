@@ -500,6 +500,9 @@ export const ESCAPE = {
   qualityBonus: 0.15, // за идеальный тап
 };
 
+/** Побег вдвоём: награда больше, вместе чуть легче; прошедший тянет сорвавшегося. */
+export const DUO = { minLevel: 5, inviteH: 1, turnH: 6, rewardMul: 1.3, teamBonus: 0.03, pullBase: 0.45, pullMax: 0.8 };
+
 /** Награда за этапы: растёт быстрее, чем линейно. */
 export function escapeReward(level: number, stages: number) {
   const k = Math.pow(stages, 1.6);

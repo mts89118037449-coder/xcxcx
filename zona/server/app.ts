@@ -12,6 +12,7 @@ import { seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT_RULES, PARCEL, REFERRAL, RING, hutById, type HutId } from '../shared/clans.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SHIZO, SPEED } from '../shared/minigames2.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
+import { DUO } from '../shared/events.ts';
 import { NOTIFY, termDays } from '../shared/term.ts';
 import { BALANCE, CHURCH, cellView, comfortOf, CLAN, offerOfDay, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
 import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
@@ -104,12 +105,46 @@ export function createApp(opts: AppOptions) {
       }
     }
     g.tick(p, t);
+    duoTidy(p, t);
     db.markSeen(g.dayKey(t), p.id);
     syncClan(p);
     g.ensureBoard(p, rng);
     p.lastSeen = t;
     return p;
   }
+
+  // --- Побег вдвоём: общий забег в kv, игроки ссылаются на него
+  const duoGet = (id: string | null) => (id ? db.kvGet<g.DuoRun | null>(`duo:${id}`, null) : null);
+  const duoSave = (run: g.DuoRun) => db.kvSet(`duo:${run.id}`, run);
+  /** Висящие ссылки на закончившиеся забеги и протухшие приглашения — убрать. */
+  function duoTidy(p: g.Player, t: number) {
+    if (p.duoInvite && t - p.duoInvite.at > DUO.inviteH * 3600_000) {
+      const run = duoGet(p.duoInvite.run);
+      const a = run ? db.getPlayer(run.a) : null;
+      if (run && run.status === 'invite') {
+        g.duoDecline(p, a, run);
+        duoSave(run);
+        if (a) db.savePlayer(a);
+      } else p.duoInvite = null;
+    }
+    if (p.duo) {
+      const run = duoGet(p.duo);
+      if (!run || run.status === 'over') p.duo = null;
+      else if (run.status === 'invite' && t - run.at > DUO.inviteH * 3600_000) {
+        const b = db.getPlayer(run.b);
+        if (b) {
+          g.duoDecline(b, p, run);
+          db.savePlayer(b);
+        } else p.duo = null;
+        duoSave(run);
+      }
+    }
+  }
+  const duoOther = (p: g.Player, run: g.DuoRun) => {
+    const o = db.getPlayer(run.a === p.id ? run.b : run.a);
+    if (!o) throw new g.GameError('Кент пропал');
+    return o;
+  };
 
   /** Уровень клана кэшируется в игроке: от него зависят бонусы в stats(). */
   function syncClan(p: g.Player) {
@@ -327,6 +362,23 @@ export function createApp(opts: AppOptions) {
       intro: p.intro,
       tut: p.tut >= 0 ? { step: p.tut, n: p.tutN } : null,
       trophies: p.trophies,
+      duo: (() => {
+        const run = duoGet(p.duo);
+        if (!run) return null;
+        const meA = run.a === p.id;
+        const other = meA ? run.b : run.a;
+        return {
+          status: run.status,
+          partner: meA ? run.names[1] : run.names[0],
+          partnerId: other,
+          stage: run.stage,
+          myMove: run.moves[p.id] !== undefined,
+          theirMove: run.moves[other] !== undefined,
+          log: run.log.slice(0, 6),
+          inviteUntil: run.at + DUO.inviteH * 3600_000,
+        };
+      })(),
+      duoInvite: p.duoInvite,
       wall: p.wall,
       albums: p.albums,
       attacks: p.attacks.map((a) => ({ at: a.at, by: a.by, name: a.name, won: a.won, loot: a.loot, canAvenge: g.canAvenge(a, t), avenged: a.avenged })),
@@ -808,6 +860,56 @@ export function createApp(opts: AppOptions) {
       const at = num(b.at);
       const rec = p.attacks.find((a) => a.at === at);
       return g.revengeStart(p, at, rec ? db.getPlayer(rec.by) : null, t, rng);
+    },
+    duoInvite: (p, b, t) => {
+      const target = db.getPlayer(num(b.id));
+      if (!target) throw new g.GameError('Нет такого игрока');
+      duoTidy(target, t);
+      const run = g.duoNew(p, target, t);
+      g.duoInvite(p, target, run, t);
+      duoSave(run);
+      db.savePlayer(target);
+      notifyPlayer(target.id, `🤝 ${p.name} зовёт тебя в побег вдвоём. Приглашение — час.`);
+      return { run: run.id };
+    },
+    duoAccept: (p, _b, t) => {
+      const run = duoGet(p.duoInvite?.run ?? null);
+      if (!run) throw new g.GameError('Приглашение уже не действует');
+      g.duoAccept(p, run, t);
+      duoSave(run);
+      notifyPlayer(run.a, `🤝 ${p.name} согласился бежать. Первый этап — твой ход!`);
+    },
+    duoDecline: (p) => {
+      const run = duoGet(p.duoInvite?.run ?? null);
+      if (!run) {
+        p.duoInvite = null;
+        return;
+      }
+      const a = db.getPlayer(run.a);
+      g.duoDecline(p, a, run);
+      duoSave(run);
+      if (a) db.savePlayer(a);
+    },
+    duoStep: (p, b, t) => {
+      const run = duoGet(p.duo);
+      if (!run) throw new g.GameError('Забега нет');
+      const other = duoOther(p, run);
+      const r = g.duoStep(p, other, run, num(b.quality), t, rng);
+      duoSave(run);
+      db.savePlayer(other);
+      notifyPlayer(other.id, !r.resolved ? `🏃 ${p.name} прошёл свою часть этапа — твой ход в побеге!` : 'caught' in r && r.caught ? `🚨 Побег вдвоём кончился: ${run.log[0]}` : `🏃 ${run.log[1] ?? ''} Твой ход: ${run.log[0]}`);
+      return r;
+    },
+    duoBail: (p, _b, t) => {
+      const run = duoGet(p.duo);
+      if (!run) throw new g.GameError('Забега нет');
+      const other = duoOther(p, run);
+      run.log.unshift(`🤫 ${p.name} дал отбой — вернулись тихо`);
+      const r = g.duoFinish(p, other, run, false, t, rng);
+      duoSave(run);
+      db.savePlayer(other);
+      notifyPlayer(other.id, `🤫 ${p.name} дал отбой — побег окончен, вернулись тихо`);
+      return r;
     },
     albumClaim: (p, b, t) => g.albumClaim(p, str(b.id), t),
     wall: (p, b) => g.wallToggle(p, str(b.id)),

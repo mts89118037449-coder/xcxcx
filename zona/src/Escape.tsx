@@ -5,6 +5,7 @@ import { Place } from './art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from './art/sprites.tsx';
 import { itemLabel } from './Perks.tsx';
 import { fmt, lookOf, timeLeft, useGame } from './game.tsx';
+import { DuoPanel } from './Duo.tsx';
 
 type Phase = 'intro' | 'play' | 'passed' | 'caught' | 'bailed';
 interface EndResult {
@@ -80,7 +81,8 @@ export function Escape({ onBack }: { onBack(): void }) {
         ))}
       </div>
 
-      {phase === 'intro' && (
+      {phase === 'intro' && <DuoPanel />}
+      {phase === 'intro' && !p.duo && (
         <div className="card">
           <b>Уйти в побег</b>
           <p className="muted small">
@@ -146,7 +148,7 @@ export function Escape({ onBack }: { onBack(): void }) {
 }
 
 /** Мини-игры этапа: «поймай момент» или «жми быстрее». */
-function StageGame({ kind, name, text, onDone }: { kind: 'timing' | 'mash' | 'hold'; name: string; text: string; onDone(q: number): void }) {
+export function StageGame({ kind, name, text, onDone }: { kind: 'timing' | 'mash' | 'hold'; name: string; text: string; onDone(q: number): void }) {
   const [pos, setPos] = useState(0);
   const [zone] = useState(() => 0.25 + Math.random() * 0.5);
   const [taps, setTaps] = useState(0);

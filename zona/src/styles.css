@@ -2451,3 +2451,12 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .album-cell.wall { border-color: var(--gold); }
 .album-cell i { position: absolute; top: 2px; right: 3px; font-style: normal; font-size: 12px; }
 .album-cell:disabled { cursor: default; }
+
+/* --- Побег вдвоём --- */
+.duo { display: flex; flex-direction: column; gap: 6px; border-color: #6a5a3a; }
+.duo-status { display: flex; gap: 6px; }
+.duo-status span { flex: 1; padding: 5px 8px; border-radius: 8px; font-size: 12px; background: var(--card-2); text-align: center; }
+.duo-status .ok { color: #9be08f; }
+.duo-status .wait { color: var(--gold); }
+.duo-log { margin: 0; padding-left: 16px; font-size: 12px; color: var(--muted); }
+.duo-mates { display: flex; flex-wrap: wrap; gap: 5px; }

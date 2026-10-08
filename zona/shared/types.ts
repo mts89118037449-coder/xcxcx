@@ -77,6 +77,8 @@ export interface PlayerView {
   /** обучение первых минут: номер шага и прогресс; null — позади */
   tut: { step: number; n: number } | null;
   trophies: string[];
+  duo: { status: 'invite' | 'run' | 'over'; partner: string; partnerId: number; stage: number; myMove: boolean; theirMove: boolean; log: string[]; inviteUntil: number } | null;
+  duoInvite: { run: string; from: number; name: string; at: number } | null;
   wall: string[];
   albums: string[];
   attacks: { at: number; by: number; name: string; won: boolean; loot: number; canAvenge: boolean; avenged: boolean }[];

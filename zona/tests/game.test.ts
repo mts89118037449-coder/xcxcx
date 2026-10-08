@@ -1564,3 +1564,52 @@ test('альбом: трофеи за боссов, награда только 
   const old = g.migrate({ ...g.newPlayer(3, 'В', null, T0), bossGold: { b_rat: '2026-01-01' }, trophies: undefined } as never);
   assert.deepEqual(old.trophies, ['b_rat']);
 });
+
+import { DUO, ESCAPE as ESC2 } from '../shared/events.ts';
+
+test('побег вдвоём: приглашение, ходят оба, прошедший тянет сорвавшегося, награда больше; отказ возвращает энергию', () => {
+  const mk = (id: number) => Object.assign(g.newPlayer(id, `Б${id}`, null, T0), { level: 10, energy: 100 });
+  const a = mk(1);
+  const b = mk(2);
+  const run = g.duoNew(a, b, T0);
+  g.duoInvite(a, b, run, T0);
+  assert.equal(a.energy, 100 - ESC2.energy);
+  assert.throws(() => g.escapeStart(a, T0), /кентом/);
+  g.duoAccept(b, run, T0 + 1000);
+  assert.equal(run.status, 'run');
+  // первый ход — ждём второго
+  assert.equal(g.duoStep(a, b, run, 1, T0, fixed(0)).resolved, false);
+  assert.throws(() => g.duoStep(a, b, run, 1, T0, fixed(0)), /ждём/);
+  const r1 = g.duoStep(b, a, run, 1, T0, fixed(0));
+  assert.ok(r1.resolved && 'passed' in r1);
+  assert.equal(run.stage, 1);
+  // вернулись тихо: каждому — доля награды ×DUO
+  const money = a.money;
+  const end = g.duoFinish(a, b, run, false, T0, fixed(0.5));
+  assert.ok(end.rewards[1].reward.money > 0);
+  assert.ok(a.money > money);
+  assert.equal(a.duo, null);
+  assert.equal(b.duo, null);
+  // отказ: позвавшему энергия назад
+  const c = mk(3);
+  const d = mk(4);
+  const run2 = g.duoNew(c, d, T0);
+  g.duoInvite(c, d, run2, T0);
+  g.duoDecline(d, c, run2);
+  assert.equal(c.energy, 100);
+  assert.equal(c.duo, null);
+  // сорвался один, вытащить не вышло — берут обоих
+  const e = mk(5);
+  const f = mk(6);
+  const run3 = g.duoNew(e, f, T0);
+  g.duoInvite(e, f, run3, T0);
+  g.duoAccept(f, run3, T0);
+  g.duoStep(e, f, run3, 0, T0, fixed(0.99));
+  let k = 0;
+  const seq = [0.0, 0.99, 0.99];
+  const r3 = g.duoStep(f, e, run3, 0, T0, () => seq[k++ % 3]);
+  assert.ok(r3.resolved && 'caught' in r3 && r3.caught);
+  assert.ok(e.escape.cdUntil > T0 && f.escape.cdUntil > T0, 'оба в ШИЗО');
+  assert.equal(DUO.rewardMul > 1, true);
+  assert.ok(ESCAPE_STAGES.length > 1);
+});

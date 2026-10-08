@@ -71,7 +71,7 @@ import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
 import { PASS, SEASON_PTS, cosmeticById, passReward, seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
 import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
 import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
-import { ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
+import { DUO, ESCAPE, ESCAPE_STAGES, EVENTS, EVENT_TIMING, MEDIC, VISIT, escapeReward, eventById, eventFits, needFail, type Effects } from '../shared/events.ts';
 import { CONSUMABLES as CONSUMABLES_ALL, CONSUMABLE_SLOTS, PERK_SLOTS, consumableById, perkById, rollConsumable } from '../shared/perks.ts';
 
 export { fight, npcPerks };
@@ -241,6 +241,9 @@ export interface Player {
   trophies: string[];
   wall: string[];
   albums: string[];
+  /** побег вдвоём: идущий забег и приглашение от кента */
+  duo: string | null;
+  duoInvite: { run: string; from: number; name: string; at: number } | null;
   /** кого сегодня уже били — не больше двух раз одного */
   pvpDay: { day: string; hits: Record<string, number> };
   /** подозрение в накрутке: счёт остывает со временем, журнал — для админа */
@@ -379,6 +382,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     trophies: [],
     wall: [],
     albums: [],
+    duo: null,
+    duoInvite: null,
     pvpDay: { day: '', hits: {} },
     sus: { score: 0, at: now, log: [] },
     banned: false,
@@ -456,6 +461,8 @@ export function migrate(p: Player): Player {
   p.trophies ??= Object.keys(p.bossGold ?? {});
   p.wall ??= [];
   p.albums ??= [];
+  p.duo ??= null;
+  p.duoInvite ??= null;
   p.pvpDay ??= { day: '', hits: {} };
   p.sus ??= { score: 0, at: 0, log: [] };
   p.banned ??= false;
@@ -2427,6 +2434,7 @@ export function yardWalk(p: Player, now: number, rng: Rng) {
 
 export function escapeStart(p: Player, now: number) {
   if (p.escape.run) throw new GameError('Ты уже в бегах');
+  if (p.duo) throw new GameError('Ты в побеге с кентом');
   if (p.escape.cdUntil > now) throw new GameError('Сидишь в ШИЗО');
   if (p.level < 3) throw new GameError('Побег — с 3 уровня. Сначала осмотрись');
   spendEnergy(p, ESCAPE.energy, now);
@@ -2450,7 +2458,7 @@ export function escapeStep(p: Player, quality: number, now: number, rng: Rng) {
 }
 
 /** Конец побега: пойман (ШИЗО, побои) или вернулся сам (меньше награды). */
-export function escapeEnd(p: Player, caught: boolean, now: number, rng: Rng) {
+export function escapeEnd(p: Player, caught: boolean, now: number, rng: Rng, mul = 1) {
   const run = p.escape.run;
   if (!run) throw new GameError('Ты не в бегах');
   p.escape.run = null;
@@ -2458,7 +2466,7 @@ export function escapeEnd(p: Player, caught: boolean, now: number, rng: Rng) {
   p.escape.best = Math.max(p.escape.best, stages);
   if (stages > 0) track(p, 'escape', stages);
   const r = escapeReward(p.level, stages);
-  const k = caught ? 1 : ESCAPE.bailShare;
+  const k = (caught ? 1 : ESCAPE.bailShare) * mul;
   const reward = applyEffects(p, { xp: Math.round(r.xp * k), authority: Math.round(r.authority * k), gold: caught ? r.gold : 0, item: r.item && caught }, now, rng);
   const money = Math.round(r.money * k * (1 + mastBonus(p, 'escape') / 100));
   p.money += money;
@@ -3279,4 +3287,124 @@ export function wallToggle(p: Player, bossId: string) {
   if (p.wall.length >= WALL_MAX) throw new GameError(`На стене места на ${WALL_MAX} трофея — сними один`);
   p.wall.push(bossId);
   return { wall: p.wall };
+}
+
+// --- Побег вдвоём ----------------------------------------------------------------------------
+// Забег общий: на каждом этапе ходят оба (каждый в своё время). Кто прошёл — пытается вытащить
+// сорвавшегося кента: вытащил — бегут дальше, нет — берут обоих. Награда каждому — больше, чем в одиночку.
+
+export interface DuoRun {
+  id: string;
+  a: number;
+  b: number;
+  names: [string, string];
+  status: 'invite' | 'run' | 'over';
+  stage: number;
+  /** качество хода на текущем этапе: кто уже сходил */
+  moves: Record<string, number>;
+  at: number;
+  /** последний ход — для таймаута «кент пропал» */
+  turnAt: number;
+  log: string[];
+  result: { caught: boolean; stage: number } | null;
+}
+
+export function duoNew(a: Player, b: Player, now: number): DuoRun {
+  return { id: `${a.id}-${b.id}-${now}`, a: a.id, b: b.id, names: [a.name, b.name], status: 'invite', stage: 0, moves: {}, at: now, turnAt: now, log: [], result: null };
+}
+
+function duoReady(p: Player, now: number) {
+  if (p.level < DUO.minLevel) throw new GameError(`Побег вдвоём — с ${DUO.minLevel} уровня`);
+  if (p.escape.run) throw new GameError('Ты уже в бегах');
+  if (p.escape.cdUntil > now) throw new GameError('Сидишь в ШИЗО');
+  if (p.duo) throw new GameError('Уже бежишь с кентом');
+}
+
+/** Позвать кента: энергия списывается сразу, у кента появляется приглашение на час. */
+export function duoInvite(a: Player, b: Player, run: DuoRun, now: number) {
+  if (a.id === b.id) throw new GameError('С самим собой не бегут');
+  duoReady(a, now);
+  if (b.level < DUO.minLevel) throw new GameError(`Кенту нужен ${DUO.minLevel} уровень`);
+  if (b.duo || (b.duoInvite && now - b.duoInvite.at < DUO.inviteH * 60 * MIN)) throw new GameError('Кент уже занят другим побегом');
+  spendEnergy(a, ESCAPE.energy, now);
+  a.duo = run.id;
+  b.duoInvite = { run: run.id, from: a.id, name: a.name, at: now };
+  log(b, now, `🤝 ${a.name} зовёт тебя в побег вдвоём`);
+}
+
+export function duoAccept(b: Player, run: DuoRun, now: number) {
+  if (!b.duoInvite || b.duoInvite.run !== run.id || run.status !== 'invite') throw new GameError('Приглашение уже не действует');
+  if (now - b.duoInvite.at > DUO.inviteH * 60 * MIN) throw new GameError('Кент ждал час и передумал');
+  duoReady(b, now);
+  spendEnergy(b, ESCAPE.energy, now);
+  b.duo = run.id;
+  b.duoInvite = null;
+  run.status = 'run';
+  run.turnAt = now;
+  run.log.unshift(`${run.names[1]} в деле. Этап 1: ${ESCAPE_STAGES[0].name}`);
+}
+
+/** Отказ от приглашения (или оно протухло): позвавшему возвращаем энергию. */
+export function duoDecline(b: Player, a: Player | null, run: DuoRun) {
+  b.duoInvite = null;
+  run.status = 'over';
+  run.result = { caught: false, stage: 0 };
+  if (a && a.duo === run.id) {
+    a.duo = null;
+    a.energy += ESCAPE.energy;
+  }
+}
+
+/**
+ * Ход на этапе. Когда сходили оба — этап разрешается. Возвращает, что случилось.
+ * Игроки — оба загружены (второй может быть не в сети).
+ */
+export function duoStep(me: Player, other: Player, run: DuoRun, quality: number, now: number, rng: Rng) {
+  if (run.status !== 'run' || me.duo !== run.id) throw new GameError('Забега нет');
+  if (run.moves[me.id] !== undefined) throw new GameError('Ты свой ход сделал — ждём кента');
+  run.moves[me.id] = Math.max(0, Math.min(1, Number(quality) || 0));
+  run.turnAt = now;
+  if (run.moves[other.id] === undefined) return { resolved: false as const };
+  const st = ESCAPE_STAGES[run.stage];
+  const wx = weatherFx(weatherAt(now)).escape;
+  const chance = (pl: Player) => (st.pass ? Math.max(0.05, Math.min(0.97, st.pass + run.moves[pl.id] * ESCAPE.qualityBonus + Math.min(0.1, pl.agi * 0.002) + wx + DUO.teamBonus)) : 0);
+  const okMe = rng() < chance(me);
+  const okOther = rng() < chance(other);
+  run.moves = {};
+  let caught = false;
+  const name = (pl: Player) => (pl.id === run.a ? run.names[0] : run.names[1]);
+  if (okMe && okOther) run.log.unshift(`✅ ${st.name}: прошли оба`);
+  else if (okMe || okOther) {
+    const helper = okMe ? me : other;
+    const fell = okMe ? other : me;
+    const pull = Math.min(DUO.pullMax, DUO.pullBase + helper.str * 0.003);
+    if (rng() < pull) run.log.unshift(`🤝 ${st.name}: ${name(fell)} сорвался — ${name(helper)} вытащил!`);
+    else {
+      run.log.unshift(`🚨 ${st.name}: ${name(fell)} сорвался, ${name(helper)} не бросил — взяли обоих`);
+      caught = true;
+    }
+  } else {
+    run.log.unshift(`🚨 ${st.name}: взяли обоих`);
+    caught = true;
+  }
+  run.log = run.log.slice(0, 12);
+  if (!caught) run.stage += 1;
+  if (!caught && run.stage >= ESCAPE_STAGES.length) caught = true;
+  if (caught) return { resolved: true as const, ...duoFinish(me, other, run, true, now, rng) };
+  run.log.unshift(`Дальше: ${ESCAPE_STAGES[run.stage].name}`);
+  return { resolved: true as const, passed: true, stage: run.stage };
+}
+
+/** Конец забега для обоих: пойманы или вернулись тихо. */
+export function duoFinish(a: Player, b: Player, run: DuoRun, caught: boolean, now: number, rng: Rng) {
+  run.status = 'over';
+  run.result = { caught, stage: run.stage };
+  const rewards: Record<number, ReturnType<typeof escapeEnd>> = {};
+  for (const pl of [a, b]) {
+    if (pl.duo !== run.id) continue;
+    pl.duo = null;
+    pl.escape.run = { stage: run.stage, at: run.at };
+    rewards[pl.id] = escapeEnd(pl, caught, now, rng, DUO.rewardMul);
+  }
+  return { caught, stage: run.stage, rewards };
 }
