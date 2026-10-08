@@ -2383,3 +2383,30 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .attack-row.lost { border-left-color: var(--red); }
 .attack-row.held { border-left-color: var(--green); }
 .attack-row small { display: block; color: var(--muted); font-size: 12px; }
+
+/* --- Фирменные приёмы боссов --- */
+.boss-throw { animation: boss-throw 0.42s cubic-bezier(0.3, 0, 0.7, 1) forwards; }
+@keyframes boss-throw {
+  0% { transform: translate(0, 0); opacity: 1; }
+  50% { transform: translate(calc(var(--dx) * 0.5), -34px); }
+  92% { transform: translate(var(--dx), 0); opacity: 1; }
+  100% { transform: translate(var(--dx), 6px); opacity: 0; }
+}
+.boss-throw.dog { animation: boss-dog-run 0.5s ease-in forwards; }
+@keyframes boss-dog-run {
+  0% { transform: translate(0, 0); opacity: 1; }
+  85% { transform: translate(var(--dx), -6px); opacity: 1; }
+  100% { transform: translate(var(--dx), 0); opacity: 0; }
+}
+.boss-spin { animation: boss-spin 0.42s linear; }
+@keyframes boss-spin { to { transform: rotate(-540deg); } }
+.boss-dog { animation: boss-gallop 0.12s ease-in-out infinite alternate; }
+@keyframes boss-gallop { to { transform: translateY(-4px) rotate(-6deg); } }
+.boss-swing { stroke-dasharray: 90; stroke-dashoffset: 90; animation: boss-swing 0.32s ease-out 0.06s forwards; filter: drop-shadow(0 0 4px #fff); }
+@keyframes boss-swing { 60% { stroke-dashoffset: 0; opacity: 0.9; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+.boss-move-name { position: absolute; left: 50%; top: 26%; transform: translateX(-50%); padding: 3px 10px; border-radius: 12px; background: #7a1a12e6; color: #ffe0c8; font-weight: 800; font-size: 13px; white-space: nowrap; animation: boss-name 1s ease-out forwards; pointer-events: none; }
+@keyframes boss-name { 0% { opacity: 0; transform: translate(-50%, 6px) scale(0.8); } 15% { opacity: 1; transform: translate(-50%, 0) scale(1.05); } 80% { opacity: 1; } 100% { opacity: 0; } }
+.boss-intro { position: absolute; left: 8px; right: 8px; top: 34%; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px; border-radius: 12px; background: #000b; text-align: center; animation: boss-intro 1.6s ease-out forwards; pointer-events: none; }
+.boss-intro b { font-size: 18px; color: var(--gold); letter-spacing: 1px; text-transform: uppercase; }
+.boss-intro span { font-size: 13px; color: #ddd; font-style: italic; }
+@keyframes boss-intro { 0% { opacity: 0; transform: scale(1.2); } 15% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; } }

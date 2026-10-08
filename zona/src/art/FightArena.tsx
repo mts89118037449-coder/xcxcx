@@ -7,6 +7,7 @@ import { NPC_RIGS } from './rig/npcs.ts';
 import { PoseG } from './sprites.tsx';
 import { play } from '../sound.ts';
 import { Place, YardScene } from './Scenes.tsx';
+import { BOSS_MOVES, BossStrike } from './BossMoves.tsx';
 
 export interface Fighter {
   name: string;
@@ -89,8 +90,14 @@ export function FightArena({
   // фигуры не пересоздаются на каждый удар — поза перетекает; толчок перезапускаем сменой имени анимации
   const alt = i % 2 ? ' alt' : '';
   // всплывашки: урон — над целью, лечение и перк — над тем, кто действует
+  const move = enemy.npc ? BOSS_MOVES[enemy.npc] : undefined;
   const notes = last && !done && (
     <>
+      {move && last.by === 1 && strike && (
+        <div key={`mv${i}`} className="boss-move-name">
+          {move.name}
+        </div>
+      )}
       {last.note && (
         <div key={`n${i}`} className="perk-note" style={{ left: last.by === 0 ? '29%' : '71%' }}>
           {last.note}
@@ -146,6 +153,8 @@ export function FightArena({
               mirror
             />
           </Place>
+          {/* фирменный приём босса: бросок, пёс или росчерк */}
+          {move && last && !done && last.by === 1 && strike && <BossStrike key={`bm${i}`} fx={move.fx} from={EN_X - 20} to={ME_X + 10} />}
           {/* вспышка удара — там, куда пришёлся кулак или нога */}
           {last && !done && strike && last.dmg > 0 && (
             <g key={`imp${i}`} transform={`translate(${last.by === 0 ? EN_X - 16 : ME_X + 16} ${i % 3 === (last.by === 0 ? 2 : 1) || last.crit ? 178 : 146})`}>
@@ -162,6 +171,12 @@ export function FightArena({
           )}
       </YardScene>
       {notes}
+      {move && !last && !done && (
+        <div className="boss-intro">
+          <b>{enemy.name}</b>
+          <span>{move.intro}</span>
+        </div>
+      )}
       {hp}
       {skip}
     </div>
