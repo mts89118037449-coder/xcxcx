@@ -19,6 +19,22 @@ export const NARDY = {
 };
 
 /** Куда встанет фишка с учётом ловушек и мостиков. */
+/** Турнир за столами: нарды с живыми игроками, ход раз в несколько часов, таблица на неделю. */
+export const TOURNEY = {
+  minLevel: 3,
+  /** сколько партий можно начать в день и держать одновременно */
+  perDay: 5,
+  maxActive: 4,
+  /** не ходит дольше — соперник может забрать победу */
+  turnH: 8,
+  win: 3,
+  /** победа, потому что соперник пропал, — меньше */
+  forfeitWin: 1,
+  loss: 0,
+  topGold: [40, 25, 15],
+  tableSize: 15,
+};
+
 export function nardyLand(pos: number, step: number): number {
   let to = Math.min(NARDY.finish, pos + step);
   if (NARDY.traps.includes(to)) to = Math.max(0, to - NARDY.trapBack);

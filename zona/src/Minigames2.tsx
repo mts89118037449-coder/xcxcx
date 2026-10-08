@@ -23,33 +23,19 @@ function Bets({ max, onBet, disabled }: { max: number; onBet(b: number): void; d
   );
 }
 
-const Die = ({ v }: { v: number }) => <span className="die2">{'⚀⚁⚂⚃⚄⚅'[v - 1]}</span>;
+export const Die = ({ v }: { v: number }) => <span className="die2">{'⚀⚁⚂⚃⚄⚅'[v - 1]}</span>;
 
 // --- Нарды ---------------------------------------------------------------------------------
 
-export function NardyGame({ onClose }: { onClose(): void }) {
-  const { p, act, busy } = useGame();
-  const g = p.tables.nardy;
-  const [res, setRes] = useState<{ result: 'win' | 'lose'; money: number; me: number; him: number } | null>(null);
-  const start = async (bet: number) => {
-    setRes(null);
-    await act('nardyStart', { bet });
-  };
-  const move = async (pick: NardyPick) => {
-    const r = await act<{ state: { me: number; him: number }; result: 'win' | 'lose' | null; money: number }>('nardyMove', { pick });
-    if (r?.result) setRes({ result: r.result, money: r.money, me: r.state.me, him: r.state.him });
-  };
-  const me = g?.me ?? res?.me ?? 0;
-  const him = g?.him ?? res?.him ?? 0;
-  // доска: 25 клеток змейкой в два ряда
+/** Доска нард: 25 клеток змейкой в два ряда, ⚪ — ты, ⚫ — соперник. */
+export function NardyBoard({ me, him }: { me: number; him: number }) {
   const cell = (i: number) => {
     const row = i <= 12 ? 1 : 0;
     const col = i <= 12 ? i : 24 - i;
     return { x: 12 + col * 22.3, y: 22 + row * 44 };
   };
   return (
-    <Table who="sheet/cast/gypsy" title="🎲 Нарды с цыганом" left={`партий сегодня: ${p.games.nardy} · до ${NARDY.finish} клетки`} onClose={onClose}>
-      <svg viewBox="0 0 300 92" className="nardy-board">
+    <svg viewBox="0 0 300 92" className="nardy-board">
         <rect width={300} height={92} rx={8} fill="#6a3f1e" />
         <rect x={4} y={4} width={292} height={84} rx={6} fill="#c9a06a" />
         {Array.from({ length: 25 }, (_, i) => {
@@ -68,6 +54,26 @@ export function NardyGame({ onClose }: { onClose(): void }) {
         <circle cx={cell(him).x + 4} cy={cell(him).y - 5} r={5.5} fill="#1a1a1a" stroke="#888" className="nardy-piece" />
         <circle cx={cell(me).x - 4} cy={cell(me).y + 5} r={5.5} fill="#f4f1ea" stroke="#333" className="nardy-piece" />
       </svg>
+  );
+}
+
+export function NardyGame({ onClose }: { onClose(): void }) {
+  const { p, act, busy } = useGame();
+  const g = p.tables.nardy;
+  const [res, setRes] = useState<{ result: 'win' | 'lose'; money: number; me: number; him: number } | null>(null);
+  const start = async (bet: number) => {
+    setRes(null);
+    await act('nardyStart', { bet });
+  };
+  const move = async (pick: NardyPick) => {
+    const r = await act<{ state: { me: number; him: number }; result: 'win' | 'lose' | null; money: number }>('nardyMove', { pick });
+    if (r?.result) setRes({ result: r.result, money: r.money, me: r.state.me, him: r.state.him });
+  };
+  const me = g?.me ?? res?.me ?? 0;
+  const him = g?.him ?? res?.him ?? 0;
+  return (
+    <Table who="sheet/cast/gypsy" title="🎲 Нарды с цыганом" left={`партий сегодня: ${p.games.nardy} · до ${NARDY.finish} клетки`} onClose={onClose}>
+      <NardyBoard me={me} him={him} />
       <div className="muted small center">⛓ ловушка — назад на {NARDY.trapBack} · ↗ мостик — вперёд на {NARDY.bridgeFwd} · ⚪ ты, ⚫ цыган</div>
       {g ? (
         <>

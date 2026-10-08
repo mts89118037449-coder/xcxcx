@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { named } from '../lazy.ts';
+
+const TourneyCard = named(() => import('../Tourney.tsx'), 'TourneyCard');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
@@ -87,6 +90,11 @@ export function Zone() {
           { id: 'week', icon: '📅', label: 'Неделя' },
         ]}
       />
+      {seg === 'games' && (
+        <Suspense fallback={null}>
+          <TourneyCard />
+        </Suspense>
+      )}
       {seg === 'games' && <GameTiles />}
       {seg === 'places' && <PlaceTiles />}
       {seg === 'people' &&

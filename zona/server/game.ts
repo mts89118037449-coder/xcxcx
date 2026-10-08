@@ -55,7 +55,7 @@ import {
 import { battleAct, battleAuto, battleControls, battleResult, fight, newBattle, npcPerks, type BattleAction, type BattleState, type Fighter, type FightResult, type Round } from './combat.ts';
 import { chapterOf } from '../shared/story.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES, RANKS, SUITS, cardValue, dartPoints } from '../shared/minigames.ts';
-import { SHIZO, SHIZO_CARDS, shizoCardById, type ShizoStat } from '../shared/minigames2.ts';
+import { SHIZO, SHIZO_CARDS, TOURNEY, shizoCardById, type ShizoStat } from '../shared/minigames2.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
 import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
 import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
@@ -244,6 +244,9 @@ export interface Player {
   albums: string[];
   /** побег вдвоём: идущий забег и приглашение от кента */
   duo: string | null;
+  /** турнир за столами: партий начато сегодня, за какую неделю забран приз */
+  duelsDay: { day: string; n: number };
+  tourneyClaimed: number;
   /** обмены за сегодня */
   tradesDay: { day: string; n: number };
   duoInvite: { run: string; from: number; name: string; at: number } | null;
@@ -388,6 +391,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     duo: null,
     duoInvite: null,
     tradesDay: { day: '', n: 0 },
+    duelsDay: { day: '', n: 0 },
+    tourneyClaimed: 0,
     pvpDay: { day: '', hits: {} },
     sus: { score: 0, at: now, log: [] },
     banned: false,
@@ -467,6 +472,8 @@ export function migrate(p: Player): Player {
   p.albums ??= [];
   p.duo ??= null;
   p.tradesDay ??= { day: '', n: 0 };
+  p.duelsDay ??= { day: '', n: 0 };
+  p.tourneyClaimed ??= 0;
   p.duoInvite ??= null;
   p.pvpDay ??= { day: '', hits: {} };
   p.sus ??= { score: 0, at: 0, log: [] };
@@ -3460,4 +3467,111 @@ export function tradeAccept(to: Player, from: Player | null, give: TradeLine[], 
 /** Вернуть залог (отказ, отмена, протухло). */
 export function tradeRefund(from: Player, give: TradeLine[]) {
   for (const l of give) giveGoods(from, l.kind, l.ref, l.qty);
+}
+
+// --- Турнир за столами: нарды с живыми игроками ---------------------------------------------
+
+export interface Duel {
+  id: string;
+  ids: [number, number];
+  names: [string, string];
+  pos: [number, number];
+  /** чей ход: 0 или 1 */
+  turn: 0 | 1;
+  dice: [number, number];
+  status: 'play' | 'over';
+  winner: 0 | 1 | null;
+  forfeit: boolean;
+  week: number;
+  at: number;
+  turnAt: number;
+  log: string[];
+}
+
+export function duelNew(a: Player, b: Player, now: number, rng: Rng): Duel {
+  if (a.id === b.id) throw new GameError('С самим собой не играют');
+  if (a.level < TOURNEY.minLevel || b.level < TOURNEY.minLevel) throw new GameError(`Турнир — с ${TOURNEY.minLevel} уровня`);
+  const day = dayKey(now);
+  if (a.duelsDay.day !== day) a.duelsDay = { day, n: 0 };
+  if (a.duelsDay.n >= TOURNEY.perDay) throw new GameError('На сегодня партий хватит');
+  a.duelsDay.n++;
+  // кто ходит первым — жребий
+  const turn: 0 | 1 = rng() < 0.5 ? 0 : 1;
+  return {
+    id: `${a.id}-${b.id}-${now}`,
+    ids: [a.id, b.id],
+    names: [a.name, b.name],
+    pos: [0, 0],
+    turn,
+    dice: [die(rng), die(rng)],
+    status: 'play',
+    winner: null,
+    forfeit: false,
+    week: weekIndex(now),
+    at: now,
+    turnAt: now,
+    log: [`Жребий: первым ходит ${[a.name, b.name][turn]}`],
+  };
+}
+
+/** Ход: выбрать кубик или сумму. Возвращает, кончилась ли партия. */
+export function duelMove(d: Duel, pid: number, pick: NardyPick, now: number, rng: Rng) {
+  if (d.status !== 'play') throw new GameError('Партия окончена');
+  const idx = d.ids.indexOf(pid);
+  if (idx < 0) throw new GameError('Это не твоя партия');
+  const me = idx as 0 | 1;
+  if (d.turn !== me) throw new GameError('Сейчас ход соперника');
+  if (!['a', 'b', 'sum'].includes(pick)) throw new GameError('Нет такого хода');
+  const step = nardyStep(d.dice, pick);
+  const from = d.pos[me];
+  d.pos[me] = nardyLand(from, step);
+  const note = d.pos[me] < from + step && d.pos[me] < NARDY.finish ? ' (ловушка!)' : d.pos[me] > from + step ? ' (мостик!)' : '';
+  d.log.unshift(`${d.names[me]}: ${d.dice.join('·')} → ${pick === 'sum' ? 'сумма' : 'кубик'} ${step}, клетка ${d.pos[me]}${note}`);
+  d.log = d.log.slice(0, 10);
+  d.turnAt = now;
+  if (d.pos[me] >= NARDY.finish) {
+    d.status = 'over';
+    d.winner = me;
+    d.log.unshift(`🏆 ${d.names[me]} выиграл`);
+    return { over: true, winner: me };
+  }
+  d.turn = me === 0 ? 1 : 0;
+  d.dice = [die(rng), die(rng)];
+  return { over: false, winner: null };
+}
+
+/** Соперник не ходит дольше срока — забрать победу (поменьше очков). Или сдаться самому. */
+export function duelForfeit(d: Duel, pid: number, now: number, resign: boolean) {
+  if (d.status !== 'play') throw new GameError('Партия окончена');
+  const idx = d.ids.indexOf(pid);
+  if (idx < 0) throw new GameError('Это не твоя партия');
+  const me = idx as 0 | 1;
+  const other: 0 | 1 = me === 0 ? 1 : 0;
+  if (!resign) {
+    if (d.turn === me) throw new GameError('Сейчас твой ход');
+    if (now - d.turnAt < TOURNEY.turnH * 60 * MIN) throw new GameError('Соперник ещё может походить');
+  }
+  const winner: 0 | 1 = resign ? other : me;
+  d.winner = winner;
+  d.status = 'over';
+  d.forfeit = true;
+  d.log.unshift(resign ? `🏳️ ${d.names[me]} сдался` : `⌛ ${d.names[other]} пропал — победа ${d.names[winner]}`);
+}
+
+/** Очки турнира за законченную партию: [первому, второму]. */
+export function duelPoints(d: Duel): [number, number] {
+  if (d.winner === null) return [0, 0];
+  const w = d.forfeit ? TOURNEY.forfeitWin : TOURNEY.win;
+  return d.winner === 0 ? [w, TOURNEY.loss] : [TOURNEY.loss, w];
+}
+
+/** Приз за прошлую неделю: место в таблице считает сервер. */
+export function tourneyClaim(p: Player, week: number, rank: number | null, now: number) {
+  if (p.tourneyClaimed >= week) throw new GameError('Приз за ту неделю уже получен');
+  if (rank === null || rank >= TOURNEY.topGold.length) throw new GameError('Приз — первым трём');
+  p.tourneyClaimed = week;
+  const gold = TOURNEY.topGold[rank];
+  p.gold += gold;
+  log(p, now, `🎲 Турнир за столами: ${rank + 1} место, +${gold} 🪙`);
+  return { gold, rank: rank + 1 };
 }

@@ -2478,3 +2478,18 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .trades { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
 .trade-row { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 10px; background: var(--card-2); border-left: 3px solid var(--line); font-size: 13px; }
 .trade-row.in { border-left-color: var(--gold); }
+
+/* --- Турнир в нарды --- */
+.tourney-card { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; margin-bottom: 8px; border-radius: 12px; border: 1px solid #6a5a3a; background: linear-gradient(90deg, #2e2414, #22201a); text-align: left; }
+.tourney-card.ready { border-color: var(--gold); box-shadow: 0 0 10px #f2c14e55; }
+.tourney-card b { display: block; }
+.tourney-card small { color: var(--muted); font-size: 12px; }
+.tourney-ico { font-size: 28px; }
+.tourney-list { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 4px; margin: 6px 0; }
+.tourney-duel { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 104px; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--card-2); text-align: left; }
+.tourney-duel small { color: var(--muted); font-size: 11px; }
+.tourney-duel.mine { border-color: var(--gold); }
+.tourney-duel.active { background: #3a2f1c; }
+.tourney-duel.new { border-style: dashed; }
+.duel-board { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 10px; }
+.tourney-table { display: flex; flex-direction: column; gap: 3px; }

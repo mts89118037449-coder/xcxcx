@@ -14,6 +14,7 @@ import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SHIZO, SPEED } from '../shared
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { DUO } from '../shared/events.ts';
 import { TRADE } from '../shared/trade.ts';
+import { TOURNEY } from '../shared/minigames2.ts';
 import { NOTIFY, termDays } from '../shared/term.ts';
 import { BALANCE, CHURCH, cellView, comfortOf, CLAN, offerOfDay, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
 import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
@@ -146,6 +147,33 @@ export function createApp(opts: AppOptions) {
     if (!o) throw new g.GameError('Кент пропал');
     return o;
   };
+
+  // --- Турнир за столами: партии в kv, у каждого — список своих, таблица недели
+  type TourneyRow = { name: string; pts: number; w: number; l: number };
+  const duelGet = (id: string) => db.kvGet<g.Duel | null>(`nduel:${id}`, null);
+  const duelSave = (d: g.Duel) => db.kvSet(`nduel:${d.id}`, d);
+  const duelList = (pid: number) => db.kvGet<string[]>(`nduels:${pid}`, []);
+  const duelLink = (pid: number, id: string) => db.kvSet(`nduels:${pid}`, [id, ...duelList(pid).filter((x) => x !== id)].slice(0, 12));
+  const activeDuels = (pid: number) => duelList(pid).filter((id) => duelGet(id)?.status === 'play').length;
+  const tourney = (week: number) => db.kvGet<Record<string, TourneyRow>>(`tourney:${week}`, {});
+  const tourneyRank = (week: number) =>
+    Object.entries(tourney(week))
+      .map(([id, r]) => ({ id: Number(id), ...r }))
+      .sort((a, b) => b.pts - a.pts || b.w - a.w);
+  /** Партия кончилась: очки в таблицу недели, весть обоим. */
+  function duelOver(d: g.Duel, by: number) {
+    const pts = g.duelPoints(d);
+    const tb = tourney(d.week);
+    d.ids.forEach((id, i) => {
+      const row = tb[id] ?? { name: d.names[i], pts: 0, w: 0, l: 0 };
+      row.pts += pts[i];
+      if (d.winner === i) row.w++;
+      else row.l++;
+      tb[id] = row;
+      if (id !== by) notifyPlayer(id, `🎲 Нарды с ${d.names[i === 0 ? 1 : 0]}: ${d.winner === i ? 'победа! +' + pts[i] + ' очк. турнира' : 'проигрыш'}`);
+    });
+    db.kvSet(`tourney:${d.week}`, tb);
+  }
 
   /** Уровень клана кэшируется в игроке: от него зависят бонусы в stats(). */
   function syncClan(p: g.Player) {
@@ -961,6 +989,46 @@ export function createApp(opts: AppOptions) {
       db.tradeSet(tr.id, tr.from_id === p.id ? 'cancelled' : 'declined');
       if (from && from !== p) db.savePlayer(from);
     },
+    duelChallenge: (p, b, t) => {
+      if (activeDuels(p.id) >= TOURNEY.maxActive) throw new g.GameError(`Не больше ${TOURNEY.maxActive} партий сразу`);
+      let rival = num(b.id) ? db.getPlayer(num(b.id)) : null;
+      // случайный соперник: из недавно заходивших, своего уровня допуска
+      for (let i = 0; !num(b.id) && i < 8 && !rival; i++) {
+        const c = db.getPlayer(db.randomNeighbour(p.id) ?? 0);
+        if (c && c.level >= TOURNEY.minLevel && activeDuels(c.id) < TOURNEY.maxActive) rival = c;
+      }
+      if (!rival) throw new g.GameError('Соперника не нашлось — попробуй позже');
+      if (activeDuels(rival.id) >= TOURNEY.maxActive) throw new g.GameError('У него и так много партий');
+      const d = g.duelNew(p, rival, t, rng);
+      duelSave(d);
+      duelLink(p.id, d.id);
+      duelLink(rival.id, d.id);
+      notifyPlayer(rival.id, `🎲 ${p.name} вызвал тебя на нарды в турнире${d.turn === 1 ? '. Твой ход!' : ''}`);
+      return { id: d.id, rival: rival.name };
+    },
+    duelMove: (p, b, t) => {
+      const d = duelGet(str(b.id));
+      if (!d) throw new g.GameError('Нет такой партии');
+      const r = g.duelMove(d, p.id, str(b.pick) as 'a' | 'b' | 'sum', t, rng);
+      duelSave(d);
+      const other = d.ids[0] === p.id ? d.ids[1] : d.ids[0];
+      if (r.over) duelOver(d, p.id);
+      else notifyPlayer(other, `🎲 ${p.name} походил в нардах — твой ход`);
+      return { duel: d, ...r };
+    },
+    duelForfeit: (p, b, t) => {
+      const d = duelGet(str(b.id));
+      if (!d) throw new g.GameError('Нет такой партии');
+      g.duelForfeit(d, p.id, t, b.resign === true);
+      duelSave(d);
+      duelOver(d, p.id);
+      return { duel: d };
+    },
+    tourneyClaim: (p, _b, t) => {
+      const prev = g.weekIndex(t) - 1;
+      const rank = tourneyRank(prev).findIndex((r) => r.id === p.id);
+      return g.tourneyClaim(p, prev, rank < 0 ? null : rank, t);
+    },
     albumClaim: (p, b, t) => g.albumClaim(p, str(b.id), t),
     wall: (p, b) => g.wallToggle(p, str(b.id)),
     leagueClaim: (p, _b, t) => {
@@ -1188,6 +1256,29 @@ export function createApp(opts: AppOptions) {
       return r;
     });
     res.json({ ring, now: t });
+  });
+
+  // Турнир за столами: мои партии, таблица недели и итоги прошлой
+  api.post('/duels', (req: AuthedRequest, res) => {
+    const t = now();
+    const me = req.tgUser!.id;
+    const week = g.weekIndex(t);
+    const duels = duelList(me)
+      .map(duelGet)
+      .filter((d): d is g.Duel => !!d && (d.status === 'play' || t - d.turnAt < 3 * 24 * 3600_000));
+    const rank = tourneyRank(week);
+    const prev = tourneyRank(week - 1);
+    const p = db.getPlayer(me);
+    const prevPlace = prev.findIndex((r) => r.id === me);
+    res.json({
+      duels,
+      table: rank.slice(0, TOURNEY.tableSize),
+      myPlace: rank.findIndex((r) => r.id === me) + 1 || null,
+      prevTop: prev.slice(0, 3),
+      claimable: !!p && prevPlace >= 0 && prevPlace < TOURNEY.topGold.length && p.tourneyClaimed < week - 1,
+      endsAt: g.weekEndsAt(t),
+      now: t,
+    });
   });
 
   // Обмены: входящие и свои; протухшие — назад отправителю

@@ -1613,3 +1613,34 @@ test('побег вдвоём: приглашение, ходят оба, про
   assert.equal(DUO.rewardMul > 1, true);
   assert.ok(ESCAPE_STAGES.length > 1);
 });
+
+import { TOURNEY } from '../shared/minigames2.ts';
+
+test('турнир в нарды: жребий, ходы по очереди, победа на финише, забрать победу у пропавшего', () => {
+  const mk = (id: number) => Object.assign(g.newPlayer(id, `Н${id}`, null, T0), { level: 5 });
+  const a = mk(1);
+  const b = mk(2);
+  const d = g.duelNew(a, b, T0, fixed(0.1));
+  assert.equal(d.turn, 0);
+  assert.throws(() => g.duelMove(d, 2, 'a', T0, fixed(0.5)), /соперника/);
+  assert.throws(() => g.duelMove(d, 3, 'a', T0, fixed(0.5)), /не твоя/);
+  d.pos = [22, 0];
+  d.dice = [2, 5];
+  const r = g.duelMove(d, 1, 'a', T0, fixed(0.5));
+  assert.ok(r.over);
+  assert.equal(d.winner, 0);
+  assert.deepEqual(g.duelPoints(d), [TOURNEY.win, TOURNEY.loss]);
+  // пропал — забрать победу можно только после срока
+  const d2 = g.duelNew(a, b, T0, fixed(0.9));
+  assert.equal(d2.turn, 1);
+  assert.throws(() => g.duelForfeit(d2, 1, T0 + 1000, false), /ещё может/);
+  g.duelForfeit(d2, 1, T0 + (TOURNEY.turnH + 1) * 3600_000, false);
+  assert.equal(d2.winner, 0);
+  assert.deepEqual(g.duelPoints(d2), [TOURNEY.forfeitWin, TOURNEY.loss]);
+  // лимит партий в день
+  for (let i = 0; i < TOURNEY.perDay - 2; i++) g.duelNew(a, b, T0, fixed(0.5));
+  assert.throws(() => g.duelNew(a, b, T0, fixed(0.5)), /хватит/);
+  // приз
+  assert.equal(g.tourneyClaim(a, 5, 0, T0).gold, TOURNEY.topGold[0]);
+  assert.throws(() => g.tourneyClaim(a, 5, 0, T0), /уже/);
+});

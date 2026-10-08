@@ -95,6 +95,7 @@ export const api = {
   attack: (at: number) => post<{ attack: { name: string; look: import('../shared/types.ts').Look; won: boolean; loot: number; replay: import('../shared/types.ts').FightReplay }; me: { name: string; look: import('../shared/types.ts').Look } }>('/attack', { at }),
   clanBoss: () => post<{ boss: NonNullable<ClanView['boss']> | null }>('/clanBoss'),
   trades: () => post<{ trades: TradeView[]; ttlMs: number }>('/trades'),
+  duels: <T,>() => post<T>('/duels'),
   league: () =>
     post<{ top: { id: number; name: string; level: number; pts: number; title: string | null }[]; prev: { id: number; name: string; level: number; pts: number; title: string | null }[]; myRank: number | null; endsAt: number }>('/league'),
   adminStats: <T,>() => post<T>('/admin/stats'),
