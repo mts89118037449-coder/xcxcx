@@ -4,6 +4,7 @@ import { MATS, matById, type MatId } from '../shared/craft.ts';
 import { consumableById } from '../shared/perks.ts';
 import { api, type MarketLot } from './api.ts';
 import { ItemIcon } from './art/Icons.tsx';
+import { TradesInbox } from './Trade.tsx';
 import { fmt, useGame } from './game.tsx';
 
 type Kind = MarketLot['kind'];
@@ -74,6 +75,7 @@ export function Market() {
 
   return (
     <>
+      <TradesInbox />
       <div className="market-head">
         <b>🛒 Барахолка</b>
         <small className="muted">Торгуй с зэками: расходники, материалы, шмот. С каждой сделки 5% — на общак.</small>

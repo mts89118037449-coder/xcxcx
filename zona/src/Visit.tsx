@@ -8,6 +8,8 @@ import { itemLabel } from './Perks.tsx';
 import { PARCEL } from '../shared/clans.ts';
 import { MATS } from '../shared/craft.ts';
 import { consumableById } from '../shared/perks.ts';
+import { TradeComposer } from './Trade.tsx';
+import { TRADE } from '../shared/trade.ts';
 import { fmt, useGame } from './game.tsx';
 
 type Snoop =
@@ -50,6 +52,7 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
     setV((x) => (x ? { ...x, giftedToday: true, authority: x.authority + 2 } : x));
   };
   const [parcelOpen, setParcelOpen] = useState(false);
+  const [tradeOpen, setTradeOpen] = useState(false);
   const sendParcel = async (kind: 'item' | 'mat', ref: string) => {
     const r = await act<{ label: string; qty: number; left: number }>('parcel', { id: v!.id, kind, ref, qty: 1 });
     if (!r) return;
@@ -129,8 +132,12 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
                 <button className="btn btn-dark" disabled={busy || p.parcelsLeft <= 0 || p.level < PARCEL.minLevel} onClick={() => setParcelOpen(!parcelOpen)}>
                   📦 Грев посылкой · {p.parcelsLeft}
                 </button>
+                <button className="btn btn-dark" disabled={busy || p.level < TRADE.minLevel || v.level < TRADE.minLevel} onClick={() => setTradeOpen(true)}>
+                  🔄 Обмен
+                </button>
               </div>
             )}
+            {tradeOpen && !self && <TradeComposer to={{ id: v.id, name: v.name }} onClose={() => setTradeOpen(false)} />}
             {parcelOpen && !self && (
               <div className="parcel-pick">
                 <small className="muted">Что отправить? По одной штуке, {PARCEL.perDay} посылки в день.</small>

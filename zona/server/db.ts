@@ -29,6 +29,18 @@ export interface Lot {
   created_at: number;
 }
 
+export interface TradeRow {
+  id: number;
+  from_id: number;
+  from_name: string;
+  to_id: number;
+  to_name: string;
+  give: string;
+  want: string;
+  status: 'open' | 'done' | 'declined' | 'cancelled' | 'expired';
+  created_at: number;
+}
+
 export interface Report {
   id: number;
   pid: number;
@@ -168,6 +180,20 @@ export function openDb(file: string) {
       first INTEGER NOT NULL,
       last INTEGER NOT NULL
     );
+    -- обмены между игроками: отданное — в залоге до ответа
+    CREATE TABLE IF NOT EXISTS trades (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_id INTEGER NOT NULL,
+      from_name TEXT NOT NULL,
+      to_id INTEGER NOT NULL,
+      to_name TEXT NOT NULL,
+      give TEXT NOT NULL,
+      want TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS trades_to ON trades(to_id, status);
+    CREATE INDEX IF NOT EXISTS trades_from ON trades(from_id, status);
     -- общее состояние зоны: общак и прочее, JSON по ключу
     CREATE TABLE IF NOT EXISTS kv (
       key TEXT PRIMARY KEY,
@@ -241,6 +267,12 @@ export function openDb(file: string) {
       FROM players WHERE (json_extract(data, '$.league.week') = :w OR json_extract(data, '$.league.last.week') = :w) AND ${LEAGUE_PTS} > 0
       ORDER BY pts DESC, level DESC LIMIT ?`),
     leagueRank: db.prepare(`SELECT COUNT(*) AS n FROM players WHERE (json_extract(data, '$.league.week') = :w OR json_extract(data, '$.league.last.week') = :w) AND ${LEAGUE_PTS} > ?`),
+    tradeAdd: db.prepare('INSERT INTO trades (from_id, from_name, to_id, to_name, give, want, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
+    tradeGet: db.prepare('SELECT * FROM trades WHERE id = ?'),
+    tradeSet: db.prepare('UPDATE trades SET status = ? WHERE id = ?'),
+    tradesOf: db.prepare("SELECT * FROM trades WHERE (from_id = ? OR to_id = ?) AND (status = 'open' OR created_at > ?) ORDER BY id DESC LIMIT 20"),
+    tradesOpenFrom: db.prepare("SELECT COUNT(*) AS n FROM trades WHERE from_id = ? AND status = 'open'"),
+    tradesStale: db.prepare("SELECT * FROM trades WHERE status = 'open' AND created_at < ? LIMIT 50"),
     kvGet: db.prepare('SELECT value FROM kv WHERE key = ?'),
     kvSet: db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
     get: db.prepare('SELECT data FROM players WHERE id = ?'),
@@ -398,6 +430,24 @@ export function openDb(file: string) {
     /** Место по очкам лиги за неделю, с нуля. */
     leagueRank(week: number, pts: number): number {
       return (q.leagueRank.get({ w: week }, pts) as { n: number }).n;
+    },
+    tradeAdd(t: Omit<TradeRow, 'id' | 'status'>): number {
+      return Number(q.tradeAdd.run(t.from_id, t.from_name, t.to_id, t.to_name, t.give, t.want, 'open', t.created_at).lastInsertRowid);
+    },
+    tradeGet(id: number): TradeRow | null {
+      return (q.tradeGet.get(id) as TradeRow | undefined) ?? null;
+    },
+    tradeSet(id: number, status: TradeRow['status']) {
+      q.tradeSet.run(status, id);
+    },
+    tradesOf(pid: number, since: number): TradeRow[] {
+      return q.tradesOf.all(pid, pid, since) as unknown as TradeRow[];
+    },
+    tradesOpenFrom(pid: number): number {
+      return (q.tradesOpenFrom.get(pid) as { n: number }).n;
+    },
+    tradesStale(before: number): TradeRow[] {
+      return q.tradesStale.all(before) as unknown as TradeRow[];
     },
     /** Кого подозревают в накрутке (счёт без остывания — остывание считает сервер). */
     suspects(): Player[] {

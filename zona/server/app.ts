@@ -13,6 +13,7 @@ import { CLAN_BOSS, CLAN_WAR, HUT_RULES, PARCEL, REFERRAL, RING, hutById, type H
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SHIZO, SPEED } from '../shared/minigames2.ts';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { DUO } from '../shared/events.ts';
+import { TRADE } from '../shared/trade.ts';
 import { NOTIFY, termDays } from '../shared/term.ts';
 import { BALANCE, CHURCH, cellView, comfortOf, CLAN, offerOfDay, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
 import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
@@ -933,6 +934,33 @@ export function createApp(opts: AppOptions) {
       notifyPlayer(other.id, `🤫 ${p.name} дал отбой — побег окончен, вернулись тихо`);
       return r;
     },
+    tradeOffer: (p, b, t) => {
+      const to = db.getPlayer(num(b.to));
+      if (!to) throw new g.GameError('Нет такого игрока');
+      const give = g.tradeLines(b.give);
+      const want = g.tradeLines(b.want);
+      g.tradeOffer(p, to, give, want, db.tradesOpenFrom(p.id), t);
+      const id = db.tradeAdd({ from_id: p.id, from_name: p.name, to_id: to.id, to_name: to.name, give: JSON.stringify(give), want: JSON.stringify(want), created_at: t });
+      notifyPlayer(to.id, `🔄 ${p.name} предлагает обмен. Ответь в течение суток.`);
+      return { id };
+    },
+    tradeAccept: (p, b, t) => {
+      const tr = db.tradeGet(num(b.id));
+      if (!tr || tr.to_id !== p.id || tr.status !== 'open') throw new g.GameError('Обмен уже не действует');
+      const from = db.getPlayer(tr.from_id);
+      g.tradeAccept(p, from, JSON.parse(tr.give), JSON.parse(tr.want), t);
+      db.tradeSet(tr.id, 'done');
+      if (from) db.savePlayer(from);
+      notifyPlayer(tr.from_id, `🔄 ${p.name} принял твой обмен`);
+    },
+    tradeDecline: (p, b) => {
+      const tr = db.tradeGet(num(b.id));
+      if (!tr || tr.status !== 'open' || (tr.to_id !== p.id && tr.from_id !== p.id)) throw new g.GameError('Обмен уже не действует');
+      const from = tr.from_id === p.id ? p : db.getPlayer(tr.from_id);
+      if (from) g.tradeRefund(from, JSON.parse(tr.give));
+      db.tradeSet(tr.id, tr.from_id === p.id ? 'cancelled' : 'declined');
+      if (from && from !== p) db.savePlayer(from);
+    },
     albumClaim: (p, b, t) => g.albumClaim(p, str(b.id), t),
     wall: (p, b) => g.wallToggle(p, str(b.id)),
     leagueClaim: (p, _b, t) => {
@@ -1160,6 +1188,23 @@ export function createApp(opts: AppOptions) {
       return r;
     });
     res.json({ ring, now: t });
+  });
+
+  // Обмены: входящие и свои; протухшие — назад отправителю
+  api.post('/trades', (req: AuthedRequest, res) => {
+    const t = now();
+    const list = db.transaction(() => {
+      for (const tr of db.tradesStale(t - TRADE.ttlH * 3600_000)) {
+        const from = db.getPlayer(tr.from_id);
+        if (from) {
+          g.tradeRefund(from, JSON.parse(tr.give));
+          db.savePlayer(from);
+        }
+        db.tradeSet(tr.id, 'expired');
+      }
+      return db.tradesOf(req.tgUser!.id, t - 3 * 24 * 3600_000);
+    });
+    res.json({ trades: list.map((x) => ({ ...x, give: JSON.parse(x.give), want: JSON.parse(x.want) })), ttlMs: TRADE.ttlH * 3600_000 });
   });
 
   // Повтор наезда на меня: кто, как и чем кончилось

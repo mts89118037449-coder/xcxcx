@@ -285,3 +285,32 @@ test('клановый босс: лента ударов и ответ по пл
   assert.ok(live.json.boss.feed.some((f: { aoe?: boolean }) => f.aoe));
   assert.ok(live.json.boss.feed.some((f: { name: string }) => f.name === 'Главарь'));
 });
+
+test('обмен: отданное в залоге, принятие меняет вещи, отказ возвращает, у кого нет — не примет', async () => {
+  const a = initData(9601, 'Меняла');
+  const b = initData(9602, 'Покупатель');
+  await post('/api/me', a);
+  await post('/api/me', b);
+  const pa = db.getPlayer(9601)!;
+  pa.level = 6;
+  pa.stash = { c_bandage: 3 };
+  db.savePlayer(pa);
+  const pb = db.getPlayer(9602)!;
+  pb.level = 6;
+  pb.mats = { thread: 5 } as never;
+  db.savePlayer(pb);
+  const off = await post('/api/action/tradeOffer', a, { to: 9602, give: [{ kind: 'item', ref: 'c_bandage', qty: 2 }], want: [{ kind: 'mat', ref: 'thread', qty: 3 }] });
+  assert.equal(off.status, 200, JSON.stringify(off.json));
+  assert.equal(db.getPlayer(9601)!.stash.c_bandage, 1, 'в залоге');
+  const acc = await post('/api/action/tradeAccept', b, { id: off.json.result.id });
+  assert.equal(acc.status, 200, JSON.stringify(acc.json));
+  assert.equal(db.getPlayer(9602)!.stash.c_bandage, (pb.stash.c_bandage ?? 0) + 2);
+  assert.equal((db.getPlayer(9601)!.mats as Record<string, number>).thread, 3);
+  // второй раз ниток уже не хватает — обмен не пройдёт, залог цел; отказ вернёт
+  const off2 = await post('/api/action/tradeOffer', a, { to: 9602, give: [{ kind: 'mat', ref: 'thread', qty: 1 }], want: [{ kind: 'mat', ref: 'thread', qty: 9 }] });
+  assert.equal((await post('/api/action/tradeAccept', b, { id: off2.json.result.id })).status, 400);
+  assert.equal((await post('/api/action/tradeDecline', b, { id: off2.json.result.id })).status, 200);
+  assert.equal((db.getPlayer(9601)!.mats as Record<string, number>).thread, 3);
+  const list = await post('/api/trades', a);
+  assert.ok(list.json.trades.length >= 2);
+});

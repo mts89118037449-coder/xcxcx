@@ -2467,3 +2467,14 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .clan-feed li small { color: var(--muted); }
 .clan-feed li.crit { color: var(--gold); }
 .clan-feed li.aoe { color: #ff8a6a; background: #3a1a14; }
+
+/* --- Обмен --- */
+.trade-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0 10px; }
+.trade-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.trade-opts { display: flex; flex-direction: column; gap: 3px; max-height: 42vh; overflow: auto; }
+.trade-opt { display: flex; align-items: center; gap: 3px; padding: 3px 4px; border-radius: 8px; background: var(--card-2); font-size: 11.5px; }
+.trade-opt.on { outline: 1px solid var(--gold); }
+.trade-opt .btn-s { padding: 2px 7px; min-width: 0; }
+.trades { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.trade-row { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 10px; background: var(--card-2); border-left: 3px solid var(--line); font-size: 13px; }
+.trade-row.in { border-left-color: var(--gold); }

@@ -42,6 +42,18 @@ export interface AdminError {
   last: number;
 }
 
+export interface TradeView {
+  id: number;
+  from_id: number;
+  from_name: string;
+  to_id: number;
+  to_name: string;
+  give: import('../shared/trade.ts').TradeLine[];
+  want: import('../shared/trade.ts').TradeLine[];
+  status: 'open' | 'done' | 'declined' | 'cancelled' | 'expired';
+  created_at: number;
+}
+
 export interface SusRow {
   id: number;
   name: string;
@@ -82,6 +94,7 @@ export const api = {
   market: () => post<{ lots: MarketLot[] }>('/market'),
   attack: (at: number) => post<{ attack: { name: string; look: import('../shared/types.ts').Look; won: boolean; loot: number; replay: import('../shared/types.ts').FightReplay }; me: { name: string; look: import('../shared/types.ts').Look } }>('/attack', { at }),
   clanBoss: () => post<{ boss: NonNullable<ClanView['boss']> | null }>('/clanBoss'),
+  trades: () => post<{ trades: TradeView[]; ttlMs: number }>('/trades'),
   league: () =>
     post<{ top: { id: number; name: string; level: number; pts: number; title: string | null }[]; prev: { id: number; name: string; level: number; pts: number; title: string | null }[]; myRank: number | null; endsAt: number }>('/league'),
   adminStats: <T,>() => post<T>('/admin/stats'),

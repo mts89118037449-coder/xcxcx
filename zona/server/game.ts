@@ -60,6 +60,7 @@ import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits
 import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
 import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
 import { weatherAt, weatherFx } from '../shared/weather.ts';
+import { TRADE, type TradeKind, type TradeLine } from '../shared/trade.ts';
 import { WALL_MAX, albumById, albumProgress, type AlbumId } from '../shared/album.ts';
 import { liveById, type LiveEffects, type LiveRun } from '../shared/live.ts';
 import { LEAGUE, LEAGUE_TIERS, REVENGE, leaguePoints, leagueTier, powerOf } from '../shared/league.ts';
@@ -243,6 +244,8 @@ export interface Player {
   albums: string[];
   /** побег вдвоём: идущий забег и приглашение от кента */
   duo: string | null;
+  /** обмены за сегодня */
+  tradesDay: { day: string; n: number };
   duoInvite: { run: string; from: number; name: string; at: number } | null;
   /** кого сегодня уже били — не больше двух раз одного */
   pvpDay: { day: string; hits: Record<string, number> };
@@ -384,6 +387,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     albums: [],
     duo: null,
     duoInvite: null,
+    tradesDay: { day: '', n: 0 },
     pvpDay: { day: '', hits: {} },
     sus: { score: 0, at: now, log: [] },
     banned: false,
@@ -462,6 +466,7 @@ export function migrate(p: Player): Player {
   p.wall ??= [];
   p.albums ??= [];
   p.duo ??= null;
+  p.tradesDay ??= { day: '', n: 0 };
   p.duoInvite ??= null;
   p.pvpDay ??= { day: '', hits: {} };
   p.sus ??= { score: 0, at: 0, log: [] };
@@ -3407,4 +3412,52 @@ export function duoFinish(a: Player, b: Player, run: DuoRun, caught: boolean, no
     rewards[pl.id] = escapeEnd(pl, caught, now, rng, DUO.rewardMul);
   }
   return { caught, stage: run.stage, rewards };
+}
+
+// --- Обмен между игроками ---------------------------------------------------------------------
+
+/** Проверить и привести строки обмена к порядку. */
+export function tradeLines(raw: unknown): TradeLine[] {
+  const list = Array.isArray(raw) ? raw : [];
+  if (!list.length || list.length > TRADE.maxLines) throw new GameError(`От 1 до ${TRADE.maxLines} вещей с каждой стороны`);
+  return list.map((x) => {
+    const l = x as Record<string, unknown>;
+    const kind = String(l.kind) as TradeKind;
+    const ref = String(l.ref);
+    const qty = Math.floor(Number(l.qty));
+    if (!['item', 'mat', 'gear'].includes(kind)) throw new GameError('Такое не меняют');
+    if (kind === 'item' && !consumableById.has(ref)) throw new GameError('Нет такой вещи');
+    if (kind === 'mat' && !matById.has(ref as MatId)) throw new GameError('Нет такого материала');
+    if (kind === 'gear' && !itemById.has(ref)) throw new GameError('Нет такого шмота');
+    if (!(qty >= 1 && qty <= (kind === 'gear' ? 1 : TRADE.maxQty))) throw new GameError('Сколько штук?');
+    return { kind, ref, qty };
+  });
+}
+
+/** Предложить обмен: отдаваемое уходит в залог. */
+export function tradeOffer(p: Player, to: Player, give: TradeLine[], want: TradeLine[], openCount: number, now: number) {
+  if (p.id === to.id) throw new GameError('Сам с собой не меняются');
+  if (p.level < TRADE.minLevel || to.level < TRADE.minLevel) throw new GameError(`Обмен — с ${TRADE.minLevel} уровня у обоих`);
+  if (openCount >= TRADE.maxOpen) throw new GameError(`Не больше ${TRADE.maxOpen} открытых предложений`);
+  const day = dayKey(now);
+  if (p.tradesDay.day !== day) p.tradesDay = { day, n: 0 };
+  if (p.tradesDay.n >= TRADE.perDay) throw new GameError('На сегодня обменов хватит');
+  for (const l of give) takeGoods(p, l.kind, l.ref, l.qty);
+  p.tradesDay.n++;
+}
+
+/** Принять: у второго берём то, что просили, и раздаём обоим. */
+export function tradeAccept(to: Player, from: Player | null, give: TradeLine[], want: TradeLine[], now: number) {
+  for (const l of want) if (l.kind === 'gear' && from?.inventory.includes(l.ref)) throw new GameError('Такая вещь у него уже есть');
+  for (const l of give) if (l.kind === 'gear' && to.inventory.includes(l.ref)) throw new GameError('Такая вещь у тебя уже есть');
+  for (const l of want) takeGoods(to, l.kind, l.ref, l.qty);
+  for (const l of give) giveGoods(to, l.kind, l.ref, l.qty);
+  if (from) for (const l of want) giveGoods(from, l.kind, l.ref, l.qty);
+  log(to, now, `🔄 Обмен с ${from?.name ?? '?'} состоялся`);
+  if (from) log(from, now, `🔄 ${to.name} принял твой обмен`);
+}
+
+/** Вернуть залог (отказ, отмена, протухло). */
+export function tradeRefund(from: Player, give: TradeLine[]) {
+  for (const l of give) giveGoods(from, l.kind, l.ref, l.qty);
 }
