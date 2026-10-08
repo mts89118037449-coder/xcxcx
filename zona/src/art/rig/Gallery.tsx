@@ -36,12 +36,14 @@ export function RigGallery() {
   const only = q.get('anim') as RigAnim | null;
   // ?t=мс — застывший кадр анимации в этот момент (проверка поз)
   const at = q.get('t');
+  // ?fx=1 — все следы на лице сразу (проверка эмоций)
+  const fx = q.get('fx') ? { sweat: true, blood: true, bruise: true, smile: q.get('fx') === 'smile' } : undefined;
   return (
     <div style={{ background: '#6e6b5c', padding: 8 }}>
       <svg viewBox={`0 0 ${120 * 4} ${220 * Math.ceil(anims.length / 4)}`} width="100%" style={{ background: '#57544a' }}>
         {anims.map((a, i) => (
           <g key={a} transform={`translate(${(i % 4) * 120} ${Math.floor(i / 4) * 220})`}>
-            {at ? <RigBody look={looks[6]} pose={poseAt(only ?? a, +at)} uid={`g${i}`} prop={ANIM_PROP[only ?? a]} time={+at} /> : <Rig look={looks[6]} anim={only ?? a} fidget={false} />}
+            {at ? <RigBody look={looks[6]} pose={poseAt(only ?? a, +at)} uid={`g${i}`} prop={ANIM_PROP[only ?? a]} time={+at} fx={fx} /> : <Rig look={looks[6]} anim={only ?? a} fidget={false} />}
             <text x={4} y={14} fontSize={10} fill="#fff">{a}</text>
           </g>
         ))}

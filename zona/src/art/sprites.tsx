@@ -3,7 +3,7 @@
 
 import { type ReactNode } from 'react';
 import type { Look } from '../../shared/types.ts';
-import { Rig, RigHead, type RigAnim } from './rig/Rig.tsx';
+import { Rig, RigHead, type FaceFx, type RigAnim } from './rig/Rig.tsx';
 import { NPC_RIGS } from './rig/npcs.ts';
 
 export type PoseName =
@@ -56,13 +56,13 @@ const POSE_ANIM: Record<PoseName, RigAnim> = {
 };
 
 /** Персонаж игрока: кукла на скелете — одежда, наколки и внешность видны и двигаются вместе с телом. */
-export function PoseG({ name, mirror, tone, look, noShadow, anim, bare, startKey }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean; anim?: RigAnim; bare?: boolean; startKey?: string | number }) {
+export function PoseG({ name, mirror, tone, look, noShadow, anim, bare, startKey, fx }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean; anim?: RigAnim; bare?: boolean; startKey?: string | number; fx?: FaceFx }) {
   const l = look ?? { equipped: {}, tattoos: [], str: 5 };
   const a = anim ?? POSE_ANIM[name] ?? 'idle';
   return (
     <g style={tone ? { filter: tone } : undefined}>
       {a === 'sit' && <Stool />}
-      <Rig look={l} anim={a} mirror={mirror} shadow={!noShadow} bare={bare} startKey={startKey} />
+      <Rig look={l} anim={a} mirror={mirror} shadow={!noShadow} bare={bare} startKey={startKey} fx={fx} />
     </g>
   );
 }

@@ -37,14 +37,18 @@ const RIG_DRIVEN = new Set(['act-work', 'lunge-r', 'act-cheer', 'act-dress']);
 export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, animKey, onClick, onTalk }: Props) {
   // Короткая «рабочая» поза после действия, потом снова обычная.
   const [busyPose, setBusyPose] = useState<RigAnim | null>(null);
+  const [face, setFace] = useState<'sweat' | 'smile' | null>(null);
   useEffect(() => {
     if (!animKey) return;
     const pose: RigAnim | null =
       anim === 'act-work' ? 'work' : anim === 'lunge-r' ? (Math.random() < 0.35 ? 'kick' : 'punch') : anim === 'act-cheer' ? 'cheer' : anim === 'act-dress' ? 'flex' : null;
     if (!pose) return;
     setBusyPose(pose);
+    // после смены — пот, после радости — улыбка; держится несколько секунд
+    setFace(pose === 'work' ? 'sweat' : pose === 'cheer' || pose === 'flex' ? 'smile' : null);
     const t = setTimeout(() => setBusyPose(null), pose === 'flex' ? 2100 : 1200);
-    return () => clearTimeout(t);
+    const t2 = setTimeout(() => setFace(null), pose === 'work' ? 6000 : 3500);
+    return () => (clearTimeout(t), clearTimeout(t2));
   }, [animKey, anim, loc]);
   const walking = loc === 'yard' && !busyPose;
 
@@ -56,7 +60,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, anim, a
   const fig = (
     <Place x={at.x} y={at.y} scale={at.scale} key={rigDriven ? 'fig' : animKey} className={`pose ${rigDriven ? '' : anim}`}>
       <g className={walking ? 'yard-walk' : undefined}>
-        <PoseG name={idle} anim={busyPose ?? undefined} look={look} bare={bare} startKey={animKey} />
+        <PoseG name={idle} anim={busyPose ?? undefined} look={look} bare={bare} startKey={animKey} fx={{ bruise: mood === 'hurt', sweat: face === 'sweat', smile: face === 'smile' }} />
       </g>
     </Place>
   );

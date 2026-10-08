@@ -2410,3 +2410,9 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .boss-intro b { font-size: 18px; color: var(--gold); letter-spacing: 1px; text-transform: uppercase; }
 .boss-intro span { font-size: 13px; color: #ddd; font-style: italic; }
 @keyframes boss-intro { 0% { opacity: 0; transform: scale(1.2); } 15% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* --- Лицо: пот и кровь --- */
+.face-sweat { animation: face-sweat 2s ease-in infinite; }
+@keyframes face-sweat { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateY(9px); opacity: 0; } }
+.face-drip { animation: face-drip 1.8s ease-in infinite; }
+@keyframes face-drip { 0%, 40% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(8px); opacity: 0; } }

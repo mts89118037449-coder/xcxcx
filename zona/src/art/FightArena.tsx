@@ -77,6 +77,13 @@ export function FightArena({
     hpNow[r.by] = Math.min(replay.maxHp[r.by], hpNow[r.by] + (r.heal ?? 0));
   }
   const [myHp, enemyHp] = hpNow;
+  // следы на лицах: кровь — после пропущенного крита, фингал — когда здоровья мало, улыбка — у победителя
+  const critTaken = (side: 0 | 1) => played.some((r) => r.crit && r.dmg > 0 && r.by !== side);
+  const fxOf = (side: 0 | 1) => ({
+    blood: critTaken(side),
+    bruise: hpNow[side] < replay.maxHp[side] * 0.3,
+    smile: !!done && (side === 0 ? replay.win : !replay.win),
+  });
   const last = played[played.length - 1];
   // удар — с выпадом; кровотечение и перки без урона — без
   const strike = !!last && (last.miss || (last.dmg > 0 && last.note !== '🩸'));
@@ -142,6 +149,7 @@ export function FightArena({
               name="guard34"
               anim={done ? (replay.win ? 'cheer' : 'ko') : !last ? 'guard' : last.by === 0 ? (strike ? (last.crit || i % 3 === 2 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'}
               look={me.look}
+              fx={fxOf(0)}
             />
           </Place>
           <Place x={EN_X} y={266} scale={0.98} className={`pose ${enemyCls}${enemyCls ? alt : ''}`}>
@@ -150,6 +158,7 @@ export function FightArena({
               name="guard34"
               anim={done ? (replay.win ? 'ko' : 'taunt') : !last ? 'guard' : last.by === 1 ? (strike ? (last.crit || i % 3 === 1 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'}
               look={enemyLook}
+              fx={fxOf(1)}
               mirror
             />
           </Place>

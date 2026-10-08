@@ -574,7 +574,7 @@ function headPath(jaw: number): string {
   ].join(' ');
 }
 
-function Head({ look, pose, uid, skin }: { look: Look; pose: Pose; uid: string; skin: (typeof SKIN_TONES)[number] }) {
+function Head({ look, pose, uid, skin, fx }: { look: Look; pose: Pose; uid: string; skin: (typeof SKIN_TONES)[number]; fx?: FaceFx }) {
   const fp = faceParts(look.face ?? 0);
   const hairC = HAIR_COLORS[(look.face ?? 0) % HAIR_COLORS.length];
   const hat = look.equipped.head ? HATS[look.equipped.head] : undefined;
@@ -610,6 +610,13 @@ function Head({ look, pose, uid, skin }: { look: Look; pose: Pose; uid: string; 
         <path d="M 3.6,-33.6 C 7,-34.4 10,-31.6 11,-27.6" fill="none" stroke="#fff" strokeOpacity={0.22} strokeWidth={1.6} strokeLinecap="round" />
         <path d="M 13.2,-16.6 C 14,-14.4 14.8,-12.6 15,-11" fill="none" stroke="#fff" strokeOpacity={0.3} strokeWidth={0.9} strokeLinecap="round" />
       </g>
+      {/* фингал: синяк вокруг ближнего глаза */}
+      {fx?.bruise && (
+        <g clipPath={`url(#${clip})`}>
+          <ellipse cx={3.8} cy={-18.6} rx={4.6} ry={3.6} fill="#5a2a6a" opacity={0.5} />
+          <ellipse cx={3.8} cy={-17.6} rx={3.6} ry={2.2} fill="#7a3a5a" opacity={0.35} />
+        </g>
+      )}
       {/* глаза вполоборота: ближний крупный, дальний за переносицей и частично закрыт контуром */}
       <path d="M 1,-19.2 C 2,-20.7 4.9,-20.9 6.3,-19.4 C 5,-18 2.4,-17.8 1,-19.2 Z" fill="#efe8dc" />
       <circle cx={4} cy={-19.3} r={1.3} fill="#3a2a1c" />
@@ -642,13 +649,30 @@ function Head({ look, pose, uid, skin }: { look: Look; pose: Pose; uid: string; 
         </g>
       ) : (
         <g>
-          <path d={angry < 0 ? 'M 6.6,-3.9 C 8.8,-5 11.2,-5.1 12.9,-4.5' : 'M 6.6,-4.4 C 8.8,-4.1 11.2,-4.2 12.9,-4.9'} fill="none" stroke={INK} strokeWidth={1.1} strokeLinecap="round" />
+          <path d={fx?.smile ? 'M 6.4,-5.6 C 8.6,-3.4 11.4,-3.4 13.1,-5.8' : angry < 0 ? 'M 6.6,-3.9 C 8.8,-5 11.2,-5.1 12.9,-4.5' : 'M 6.6,-4.4 C 8.8,-4.1 11.2,-4.2 12.9,-4.9'} fill="none" stroke={INK} strokeWidth={1.1} strokeLinecap="round" />
+          {fx?.smile && <path d="M 13,-6.4 C 13.6,-6 13.8,-5.4 13.6,-4.8" fill="none" stroke={skin.shade} strokeWidth={0.7} />}
           <path d="M 8.4,-3 C 10,-2.6 11.6,-2.8 12.4,-3.4" fill="none" stroke={skin.shade} strokeWidth={0.8} strokeLinecap="round" />
         </g>
       )}
       {look.equipped.charm === 'charm_fiksa' &&
         (pose.mouth > 0.5 ? <rect x={10.2} y={-5.1} width={1.6} height={1.3} rx={0.3} fill="#f0c850" stroke={INK} strokeWidth={0.3} /> : <path d="M 10.2,-4.3 L 11.8,-4.5" stroke="#f0c850" strokeWidth={1} strokeLinecap="round" />)}
       <Beard kind={fp.beard} color={hairC} jaw={fp.jaw} clip={clip} />
+      {/* кровь из разбитой губы */}
+      {fx?.blood && (
+        <g>
+          <path d="M 7.4,-4 C 7.9,-2.4 7.2,-0.6 7.6,1.4" fill="none" stroke="#9a1414" strokeWidth={1.3} strokeLinecap="round" />
+          <circle className="face-drip" cx={7.6} cy={2.2} r={0.9} fill="#b01a1a" />
+          <path d="M 12.6,-8.8 C 12.8,-7.8 12.4,-7.2 12.7,-6.4" fill="none" stroke="#9a1414" strokeWidth={0.9} strokeLinecap="round" />
+        </g>
+      )}
+      {/* пот: капли на виске и лбу */}
+      {fx?.sweat && (
+        <g>
+          {[[0.5, -24.5, 0], [-6.5, -20, 0.7], [14.2, -15.5, 1.3]].map(([x, y, d]) => (
+            <path key={x} className="face-sweat" style={{ animationDelay: `${d}s` }} d={`M ${x},${y} C ${x - 1},${y + 1.6} ${x - 1},${y + 2.8} ${x},${y + 3} C ${x + 1},${y + 2.8} ${x + 1},${y + 1.6} ${x},${y} Z`} fill="#cfe6f4" stroke="#7aa6c4" strokeWidth={0.4} />
+          ))}
+        </g>
+      )}
       {!hat && <Hair kind={fp.hair} color={hairC} />}
       {/* ухо поверх волос */}
       <g transform="translate(-2.4 0.6)">
@@ -1016,7 +1040,17 @@ function fillOf(uid: string, key: string, color: string, pattern?: Pattern): str
 
 let uidSeq = 0;
 
+/** Следы на лице: пот после работы, кровь после крита, фингал при низком здоровье, улыбка после победы. */
+export interface FaceFx {
+  sweat?: boolean;
+  blood?: boolean;
+  bruise?: boolean;
+  smile?: boolean;
+}
+
 export interface RigProps {
+  /** следы и эмоции на лице */
+  fx?: FaceFx;
   look: Look;
   anim?: RigAnim;
   mirror?: boolean;
@@ -1030,7 +1064,7 @@ export interface RigProps {
   fidget?: boolean;
 }
 
-export function Rig({ look, anim = 'idle', mirror, still, shadow = true, startKey, bare, fidget = true }: RigProps) {
+export function Rig({ look, anim = 'idle', mirror, still, shadow = true, startKey, bare, fidget = true, fx }: RigProps) {
   const uid = useRef(`rg${++uidSeq}`).current;
   const t = useClock(!still);
   const now = performance.now();
@@ -1064,7 +1098,7 @@ export function Rig({ look, anim = 'idle', mirror, still, shadow = true, startKe
   const blend = prev.current ? (now - prev.current.at) / prev.current.dur : 1;
   if (prev.current && blend < 1) pose = mix(prev.current.pose, pose, ease(Math.max(0, blend)));
   lastPose.current = pose;
-  return <RigBody look={look} pose={pose} uid={uid} mirror={mirror} shadow={shadow} bare={bare} prop={ANIM_PROP[eff]} time={local} />;
+  return <RigBody look={look} pose={pose} uid={uid} mirror={mirror} shadow={shadow} bare={bare} prop={ANIM_PROP[eff]} time={local} fx={fx} />;
 }
 
 /** Предмет в руке: сигарета, кружка, миска с ложкой. */
@@ -1109,7 +1143,7 @@ function HandProp({ kind, near, fist }: { kind: 'cig' | 'mug' | 'bowl' | 'hammer
 /** Точка в системе координат части → координаты рига. */
 const apply = (m: M, x: number, y: number): Pt => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 
-export function RigBody({ look, pose, uid, mirror, shadow = true, bare, prop, time = 0 }: { look: Look; pose: Pose; uid: string; mirror?: boolean; shadow?: boolean; bare?: boolean; prop?: (typeof ANIM_PROP)[RigAnim]; time?: number }) {
+export function RigBody({ look, pose, uid, mirror, shadow = true, bare, prop, time = 0, fx }: { look: Look; pose: Pose; uid: string; mirror?: boolean; shadow?: boolean; bare?: boolean; prop?: (typeof ANIM_PROP)[RigAnim]; time?: number; fx?: FaceFx }) {
   const skin = SKIN_TONES[look.skin ?? 0] ?? SKIN_TONES[0];
   const build = [0.9, 1, 1.12][look.build ?? 1] ?? 1;
   const muscle = Math.min(1.25, 0.92 + (look.str ?? 5) * 0.006);
@@ -1373,7 +1407,7 @@ export function RigBody({ look, pose, uid, mirror, shadow = true, bare, prop, ti
   );
   parts.push(
     <g key="head" transform={mat(m.head)}>
-      <Head look={look} pose={pose} uid={uid} skin={skin} />
+      <Head look={look} pose={pose} uid={uid} skin={skin} fx={fx} />
     </g>,
   );
   parts.push(<g key="na">{drawArm(m.n, true)}</g>);

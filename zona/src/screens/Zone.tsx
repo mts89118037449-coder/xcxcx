@@ -47,7 +47,7 @@ export function Zone() {
           }}
         >
           <Place x={112} y={262} scale={0.7}>
-            <PoseG name="crossed" look={lookOf(p)} />
+            <PoseG name="crossed" look={lookOf(p)} fx={{ bruise: p.hp < p.stats.maxHp * 0.3 }} />
           </Place>
           {baryga && (
             <g className="npc-click" data-tut="baryga" onClick={() => talk('baryga')}>
