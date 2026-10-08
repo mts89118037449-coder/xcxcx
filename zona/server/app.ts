@@ -157,7 +157,7 @@ export function createApp(opts: AppOptions) {
   // Состояние клана сверх таблицы: постройки хаты и босс дня
   interface ClanState {
     hut: Partial<Record<HutId, number>>;
-    boss: { day: string; hp: number; max: number; hits: Record<string, number>; killed: boolean } | null;
+    boss: { day: string; hp: number; max: number; hits: Record<string, number>; killed: boolean; feed?: { name: string; dmg: number; crit: boolean; at: number; aoe?: boolean }[]; aoe?: number[] } | null;
   }
   // --- События зоны: запущенное админом лежит в kv, остальное — по расписанию выходных
   let liveCache: { at: number; manual: LiveRun | null; skip: number } = { at: 0, manual: null, skip: 0 };
@@ -780,8 +780,30 @@ export function createApp(opts: AppOptions) {
       if (boss.killed) throw new g.GameError('Сегодня уже разобрались — завтра новые');
       const hit = g.clanBossHit(p, t, rng);
       const damage = Math.min(hit.damage, boss.hp);
+      const before = boss.hp;
       boss.hp -= damage;
       boss.hits[p.id] = (boss.hits[p.id] ?? 0) + damage;
+      boss.feed = [{ name: p.name, dmg: damage, crit: hit.crit, at: t }, ...(boss.feed ?? [])].slice(0, CLAN_BOSS.feedKeep);
+      // перешли порог — беспредельщики отвечают по всем, кто сегодня бил
+      boss.aoe ??= [];
+      let aoe = false;
+      for (const th of CLAN_BOSS.aoeAt) {
+        if (boss.hp > 0 && before > boss.max * th && boss.hp <= boss.max * th && !boss.aoe.includes(th)) {
+          boss.aoe.push(th);
+          aoe = true;
+          for (const pid of Object.keys(boss.hits)) {
+            const who = Number(pid) === p.id ? p : db.getPlayer(Number(pid));
+            if (!who) continue;
+            g.tick(who, t);
+            const max = g.stats(who, t).maxHp;
+            who.hp = Math.max(1, who.hp - Math.round(max * CLAN_BOSS.aoeShare));
+            who.hpAt = t;
+            g.log(who, t, `${CLAN_BOSS.emoji} Беспредельщики ответили всей толпой: −${Math.round(CLAN_BOSS.aoeShare * 100)}% здоровья`);
+            if (who !== p) db.savePlayer(who);
+          }
+          boss.feed.unshift({ name: 'Беспредельщики', dmg: Math.round(CLAN_BOSS.aoeShare * 100), crit: false, at: t, aoe: true });
+        }
+      }
       let reward: { money: number; gold: number } | null = null;
       if (boss.hp <= 0) {
         boss.killed = true;
@@ -804,7 +826,7 @@ export function createApp(opts: AppOptions) {
         addWar(c.id, g.weekIndex(t), CLAN_WAR.points.clanBoss);
       }
       saveClanState(c.id, st);
-      return { damage, crit: hit.crit, killed: boss.killed, reward };
+      return { damage, crit: hit.crit, killed: boss.killed, reward, aoe };
     },
     clanWarClaim: (p, _b, t) => {
       const c = clanOf(p);
@@ -1242,6 +1264,7 @@ export function createApp(opts: AppOptions) {
         hp: st.boss!.hp,
         max: st.boss!.max,
         killed: st.boss!.killed,
+        feed: st.boss!.feed ?? [],
         top: Object.entries(st.boss!.hits)
           .sort((a, b) => b[1] - a[1])
           .slice(0, 5)
@@ -1251,6 +1274,28 @@ export function createApp(opts: AppOptions) {
     };
     res.json({ clan: { ...clan, ...extra } });
     return;
+  });
+
+  // Клановый босс вживую: опрашивается раз в несколько секунд, пока экран открыт
+  api.post('/clanBoss', (req: AuthedRequest, res) => {
+    const p = db.getPlayer(req.tgUser!.id);
+    if (!p?.clanId) return res.status(404).json({ error: 'Ты не в клане' });
+    const st = clanState(p.clanId);
+    const b = st.boss && st.boss.day === g.dayKey(now()) ? st.boss : null;
+    if (!b) return res.json({ boss: null });
+    const names = new Map(db.clanMembers(p.clanId).map((m) => [String(m.id), m.name]));
+    res.json({
+      boss: {
+        hp: b.hp,
+        max: b.max,
+        killed: b.killed,
+        feed: b.feed ?? [],
+        top: Object.entries(b.hits)
+          .sort((x, y) => y[1] - x[1])
+          .slice(0, 5)
+          .map(([id, dmg]) => ({ name: names.get(id) ?? '—', dmg })),
+      },
+    });
   });
 
   api.post('/world', (req: AuthedRequest, res) => {

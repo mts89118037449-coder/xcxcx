@@ -224,7 +224,7 @@ export interface ClanView {
   members: { id: number; name: string; level: number; authority: number; face: number | null }[];
   upgradeCost: number | null;
   hut?: Partial<Record<'kitchen' | 'gym' | 'cash' | 'lookout', number>>;
-  boss?: { hp: number; max: number; killed: boolean; top: { name: string; dmg: number }[] };
+  boss?: { hp: number; max: number; killed: boolean; top: { name: string; dmg: number }[]; feed?: { name: string; dmg: number; crit: boolean; at: number; aoe?: boolean }[] };
   war?: { ranking: { id: number; name: string; tag: string; pts: number }[]; prevTop: { id: number; name: string; tag: string; pts: number }[]; prevRank: number };
 }
 

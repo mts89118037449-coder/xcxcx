@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CLAN } from '../shared/content.ts';
 import type { ClanView } from '../shared/types.ts';
 import { api } from './api.ts';
@@ -165,14 +165,39 @@ function ClanCard({ id, mine = false, onChange }: { id: number; mine?: boolean; 
 
 /** Хата клана, босс дня и война кланов — только в своём клане. */
 function ClanExtras({ c, owner, run, reload }: { c: ClanView; owner: boolean; run(type: string, body?: Record<string, unknown>, msg?: string): Promise<void>; reload(): void }) {
-  const { p, now, busy, act, toast } = useGame();
+  const { p, now, busy, act, toast, refresh } = useGame();
   const [tab, setTab] = useState<'hut' | 'boss' | 'war'>('boss');
   const [hitFx, setHitFx] = useState<{ dmg: number; crit: boolean; k: number } | null>(null);
-  const boss = c.boss;
+  // босс вживую: пока вкладка открыта, раз в 3 секунды смотрим, кто бьёт
+  const [live, setLive] = useState(c.boss);
+  const [pops, setPops] = useState<{ k: number; name: string; dmg: number; crit: boolean; aoe?: boolean }[]>([]);
+  const lastAt = useRef(c.boss?.feed?.[0]?.at ?? 0);
+  useEffect(() => setLive(c.boss), [c.boss]);
+  useEffect(() => {
+    if (tab !== 'boss') return;
+    const id = setInterval(() => {
+      api
+        .clanBoss()
+        .then((r) => {
+          if (!r.boss) return;
+          const fresh = (r.boss.feed ?? []).filter((f) => f.at > lastAt.current && f.name !== p.name);
+          if (r.boss.feed?.[0]) lastAt.current = r.boss.feed[0].at;
+          if (fresh.length) {
+            setPops((a) => [...a, ...fresh.slice(0, 3).map((f, i) => ({ k: f.at + i, name: f.name, dmg: f.dmg, crit: f.crit, aoe: f.aoe }))].slice(-4));
+            if (fresh.some((f) => f.aoe)) refresh();
+          }
+          setLive(r.boss);
+        })
+        .catch(() => null);
+    }, 3000);
+    return () => clearInterval(id);
+  }, [tab]);
+  const boss = live;
   const hit = async () => {
-    const r = await act<{ damage: number; crit: boolean; killed: boolean; reward: { money: number; gold: number } | null }>('clanBossHit');
+    const r = await act<{ damage: number; crit: boolean; killed: boolean; aoe: boolean; reward: { money: number; gold: number } | null }>('clanBossHit');
     if (!r) return;
     setHitFx({ dmg: r.damage, crit: r.crit, k: Date.now() });
+    if (r.aoe) toast(`💥 Беспредельщики ответили всей толпой: −${Math.round(CLAN_BOSS.aoeShare * 100)}% здоровья всем, кто бил`, 'err');
     if (r.killed) toast(`${CLAN_BOSS.emoji} Разобрались!${r.reward ? ` +${fmt(r.reward.money)} ₽ +${r.reward.gold} 🪙` : ''}`);
     reload();
   };
@@ -206,12 +231,31 @@ function ClanExtras({ c, owner, run, reload }: { c: ClanView; owner: boolean; ru
               {hitFx.crit ? ' КРИТ' : ''}
             </div>
           )}
+          {/* удары своих — всплывают вживую */}
+          {pops.map((x, i) => (
+            <div key={x.k} className={`clan-hit other ${x.aoe ? 'aoe' : x.crit ? 'crit' : ''}`} style={{ left: `${20 + i * 18}%` }} onAnimationEnd={() => setPops((a) => a.filter((y) => y.k !== x.k))}>
+              {x.aoe ? `💥 по всем −${x.dmg}%` : `${x.name}: −${fmt(x.dmg)}`}
+            </div>
+          ))}
+          <div className="muted small">
+            💥 На {CLAN_BOSS.aoeAt.map((t) => `${t * 100}%`).join(' и ')} здоровья отвечают всей толпой: −{CLAN_BOSS.aoeShare * 100}% здоровья каждому, кто бил. Лечись заранее.
+          </div>
           <button className="btn btn-wide btn-red" disabled={busy || boss.killed || !ready || p.energy < CLAN_BOSS.energy} onClick={hit}>
             {boss.killed ? 'Завтра новые' : ready ? `🥊 Бить · ${CLAN_BOSS.energy} ⚡` : `⏳ ${timeLeft(p.clanHitReadyAt - now)}`}
           </button>
           <small className="muted">
             Бьют все свои. Добили — каждому деньги по доле урона (около {CLAN_BOSS.rationsPerMember} паек) и {CLAN_BOSS.gold} 🪙, общаку клана — доля, клану +{CLAN_WAR.points.clanBoss} очков войны.
           </small>
+          {!!boss.feed?.length && (
+            <ul className="clan-feed">
+              {boss.feed.slice(0, 6).map((f) => (
+                <li key={f.at + f.name} className={f.aoe ? 'aoe' : f.crit ? 'crit' : ''}>
+                  {f.aoe ? `💥 Беспредельщики ответили всем: −${f.dmg}% здоровья` : `🥊 ${f.name}: −${fmt(f.dmg)}${f.crit ? ' крит' : ''}`}
+                  <small>{Math.max(0, Math.round((now - f.at) / 60_000))} мин</small>
+                </li>
+              ))}
+            </ul>
+          )}
           {boss.top.length > 0 && (
             <ol className="clan-top">
               {boss.top.map((h, i) => (

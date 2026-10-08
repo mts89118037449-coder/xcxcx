@@ -261,3 +261,27 @@ test('таблица лиги: очки за неделю считаются и 
   assert.deepEqual(r.json.top.slice(0, 2).map((x: { id: number }) => x.id), [9101, 9401]);
   assert.equal(r.json.myRank, 2);
 });
+
+test('клановый босс: лента ударов и ответ по площади всем, кто бил, на пороге здоровья', async () => {
+  const auth = initData(9501, 'Главарь');
+  await post('/api/me', auth);
+  const pl = db.getPlayer(9501)!;
+  pl.level = 20;
+  pl.money = 1_000_000;
+  db.savePlayer(pl);
+  const c = await post('/api/action/clanCreate', auth, { name: 'Тестовые', tag: 'TST' });
+  assert.equal(c.status, 200);
+  const clanId = c.json.result.id;
+  await post('/api/clan', auth, { id: clanId }); // босс появился
+  const { dayKey } = await import('../server/game.ts');
+  const st = db.kvGet<any>(`clan:${clanId}`, null);
+  st.boss = { day: dayKey(Date.now()), hp: 5001, max: 10000, hits: {}, killed: false };
+  db.kvSet(`clan:${clanId}`, st);
+  const r = await post('/api/action/clanBossHit', auth);
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.json.result.aoe, true);
+  assert.ok(r.json.player.hp < r.json.player.stats.maxHp, 'досталось и тому, кто бил');
+  const live = await post('/api/clanBoss', auth);
+  assert.ok(live.json.boss.feed.some((f: { aoe?: boolean }) => f.aoe));
+  assert.ok(live.json.boss.feed.some((f: { name: string }) => f.name === 'Главарь'));
+});

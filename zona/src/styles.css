@@ -2460,3 +2460,10 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .duo-status .wait { color: var(--gold); }
 .duo-log { margin: 0; padding-left: 16px; font-size: 12px; color: var(--muted); }
 .duo-mates { display: flex; flex-wrap: wrap; gap: 5px; }
+.clan-hit.other { right: auto; font-size: 13px; color: #ffd8a8; top: 22px; white-space: nowrap; }
+.clan-hit.aoe { color: #ff6a4a; font-size: 15px; }
+.clan-feed { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.clan-feed li { display: flex; justify-content: space-between; gap: 6px; padding: 3px 6px; border-radius: 6px; background: var(--card-2); }
+.clan-feed li small { color: var(--muted); }
+.clan-feed li.crit { color: var(--gold); }
+.clan-feed li.aoe { color: #ff8a6a; background: #3a1a14; }
