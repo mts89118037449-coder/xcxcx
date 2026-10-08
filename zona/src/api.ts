@@ -80,6 +80,7 @@ export const api = {
   top: () =>
     post<{ top: { id: number; name: string; level: number; authority: number; rank: string; face: number | null; tag: string | null }[]; online: number; total: number }>('/top'),
   market: () => post<{ lots: MarketLot[] }>('/market'),
+  attack: (at: number) => post<{ attack: { name: string; look: import('../shared/types.ts').Look; won: boolean; loot: number; replay: import('../shared/types.ts').FightReplay }; me: { name: string; look: import('../shared/types.ts').Look } }>('/attack', { at }),
   league: () =>
     post<{ top: { id: number; name: string; level: number; pts: number; title: string | null }[]; prev: { id: number; name: string; level: number; pts: number; title: string | null }[]; myRank: number | null; endsAt: number }>('/league'),
   adminStats: <T,>() => post<T>('/admin/stats'),

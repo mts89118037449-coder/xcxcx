@@ -326,6 +326,7 @@ export function createApp(opts: AppOptions) {
       hodkaBonus: g.hodkaBonus(p),
       intro: p.intro,
       tut: p.tut >= 0 ? { step: p.tut, n: p.tutN } : null,
+      attacks: p.attacks.map((a) => ({ at: a.at, by: a.by, name: a.name, won: a.won, loot: a.loot, canAvenge: g.canAvenge(a, t), avenged: a.avenged })),
       league: (() => {
         g.ensureLeague(p, t);
         const last = p.league.last;
@@ -800,6 +801,11 @@ export function createApp(opts: AppOptions) {
       const target = g.pickOpponent(p, db.opponents(p), t, rng);
       return g.pvpStart(p, target, t, rng);
     },
+    revenge: (p, b, t) => {
+      const at = num(b.at);
+      const rec = p.attacks.find((a) => a.at === at);
+      return g.revengeStart(p, at, rec ? db.getPlayer(rec.by) : null, t, rng);
+    },
     leagueClaim: (p, _b, t) => {
       g.ensureLeague(p, t);
       const last = p.league.last;
@@ -821,16 +827,16 @@ export function createApp(opts: AppOptions) {
         return { rounds: step.rounds, done: true, win: r.win, reward: r.reward, used: r.used };
       }
       const target = bt.targetId ? db.getPlayer(bt.targetId) : null;
-      const r = g.pvpFinish(p, target, bt.loot, result, t, rng, bt.ratio ?? null);
+      const r = g.pvpFinish(p, target, bt.loot, result, t, rng, bt.ratio ?? null, bt.revenge ?? null);
       if (target) {
         // на тебя наехали — сразу сообщение от бота (если можно писать)
         if (r.win && bot && g.wantsNotice(target, 'attacked', t)) {
           g.markNotified(target, 'attacked', t);
-          notifyPlayer(target.id, `🥊 ${p.name} наехал и отжал ${r.loot} ₽. Отомстить?`);
+          notifyPlayer(target.id, r.revenge ? `😤 ${p.name} отомстил тебе и забрал ${r.loot} ₽` : `🥊 ${p.name} наехал и отжал ${r.loot} ₽. Отомстить можно сутки — двойные очки лиги.`);
         }
         db.savePlayer(target);
       }
-      return { rounds: step.rounds, done: true, win: r.win, reward: { money: r.loot, xp: r.xp, authority: r.authority, item: r.item, levelUps: r.levelUps, league: r.league }, used: r.used };
+      return { rounds: step.rounds, done: true, win: r.win, reward: { money: r.loot, xp: r.xp, authority: r.authority, item: r.item, levelUps: r.levelUps, league: r.league, revenge: r.revenge }, used: r.used };
     },
     worldHit: (p, _b, t) => {
       const boss = worldBoss(t);
@@ -1025,6 +1031,14 @@ export function createApp(opts: AppOptions) {
       return r;
     });
     res.json({ ring, now: t });
+  });
+
+  // Повтор наезда на меня: кто, как и чем кончилось
+  api.post('/attack', (req: AuthedRequest, res) => {
+    const p = db.getPlayer(req.tgUser!.id);
+    const a = p?.attacks.find((x) => x.at === Number(req.body?.at));
+    if (!p || !a) return res.status(404).json({ error: 'Нет такого наезда' });
+    res.json({ attack: { name: a.name, look: a.look, won: a.won, loot: a.loot, replay: { ...a.replay, win: !a.won, log: [] } }, me: { name: p.name, look: g.lookOf(p) } });
   });
 
   // Таблица лиги за неделю и итоги прошлой

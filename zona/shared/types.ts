@@ -76,6 +76,7 @@ export interface PlayerView {
   intro: number;
   /** обучение первых минут: номер шага и прогресс; null — позади */
   tut: { step: number; n: number } | null;
+  attacks: { at: number; by: number; name: string; won: boolean; loot: number; canAvenge: boolean; avenged: boolean }[];
   league: { week: number; pts: number; wins: number; last: { week: number; pts: number } | null; claimable: boolean; power: number };
   /** событие зоны, которое идёт сейчас */
   live: { id: string; name: string; emoji: string; desc: string; short: string; endsAt: number } | null;

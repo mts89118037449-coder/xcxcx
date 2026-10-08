@@ -59,7 +59,7 @@ import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits
 import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
 import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
 import { liveById, type LiveEffects, type LiveRun } from '../shared/live.ts';
-import { LEAGUE, LEAGUE_TIERS, leaguePoints, leagueTier, powerOf } from '../shared/league.ts';
+import { LEAGUE, LEAGUE_TIERS, REVENGE, leaguePoints, leagueTier, powerOf } from '../shared/league.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTICE_KINDS, NOTIFY, TERM, mastById, termDays, type Mast, type NoticeKind } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
@@ -153,6 +153,8 @@ export interface Player {
     loot: number;
     /** сила соперника к твоей (для очков лиги); null — бот */
     ratio?: number | null;
+    /** месть: время того наезда, за который мстим */
+    revenge?: number | null;
     enemy: { name: string; npc?: string; look?: Look };
     st: BattleState;
     at: number;
@@ -230,6 +232,8 @@ export interface Player {
   tutN: number;
   /** лига наездов: очки за неделю и за какую неделю забрана награда */
   league: { week: number; pts: number; wins: number; claimed: number; last: { week: number; pts: number } | null };
+  /** кто на меня наезжал: повтор боя и можно отомстить */
+  attacks: AttackRec[];
   /** кого сегодня уже били — не больше двух раз одного */
   pvpDay: { day: string; hits: Record<string, number> };
   /** подозрение в накрутке: счёт остывает со временем, журнал — для админа */
@@ -241,6 +245,19 @@ export interface Player {
 }
 
 export type { Fighter, Round, FightResult } from './combat.ts';
+
+export interface AttackRec {
+  at: number;
+  by: number;
+  name: string;
+  look: Look;
+  /** наехавший победил */
+  won: boolean;
+  loot: number;
+  avenged: boolean;
+  /** повтор с точки зрения того, на кого наехали: он слева */
+  replay: { rounds: Round[]; startHp: [number, number]; maxHp: [number, number] };
+}
 
 const MIN = 60_000;
 const BOSS_ITEM_CHANCE = 0.4;
@@ -351,6 +368,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     tut: 0,
     tutN: 0,
     league: { week: 0, pts: 0, wins: 0, claimed: 0, last: null },
+    attacks: [],
     pvpDay: { day: '', hits: {} },
     sus: { score: 0, at: now, log: [] },
     banned: false,
@@ -423,6 +441,7 @@ export function migrate(p: Player): Player {
   p.tut ??= -1;
   p.tutN ??= 0;
   p.league ??= { week: 0, pts: 0, wins: 0, claimed: 0, last: null };
+  p.attacks ??= [];
   p.pvpDay ??= { day: '', hits: {} };
   p.sus ??= { score: 0, at: 0, log: [] };
   p.banned ??= false;
@@ -962,7 +981,7 @@ export function canBeAttacked(target: Player, now: number): boolean {
 }
 
 /** Начать наезд: противник — живой игрок (бьётся сам) или бот. */
-export function pvpStart(p: Player, target: Player | null, now: number, rng: Rng) {
+export function pvpStart(p: Player, target: Player | null, now: number, rng: Rng, revenge: number | null = null) {
   if (p.pvpAt + BALANCE.pvpCooldownSec * 1000 > now) throw new GameError('Отдышись немного');
   noBattle(p);
   requireHp(p, now);
@@ -985,13 +1004,16 @@ export function pvpStart(p: Player, target: Player | null, now: number, rng: Rng
     loot = bot.money;
     enemyLook = bot.look;
   }
-  p.battle = { kind: 'pvp', bossId: null, targetId: target?.id ?? null, loot, ratio, enemy: { name: enemy.name, look: enemyLook }, st: newBattle(fighter(p, now), enemy), at: now };
+  p.battle = { kind: 'pvp', bossId: null, targetId: target?.id ?? null, loot, ratio, revenge, enemy: { name: enemy.name, look: enemyLook }, st: newBattle(fighter(p, now), enemy), at: now };
   return battleView(p);
 }
 
-export function pvpFinish(p: Player, target: Player | null, loot0: number, result: FightResult, now: number, rng: Rng, ratio: number | null = null) {
+export function pvpFinish(p: Player, target: Player | null, loot0: number, result: FightResult, now: number, rng: Rng, ratio: number | null = null, revenge: number | null = null) {
   let loot = loot0;
-  const league = leagueAdd(p, result.win, target ? ratio : null, now);
+  // месть: очки лиги вдвойне и можно вернуть отжатое
+  const rec = revenge !== null && target ? p.attacks.find((a) => a.at === revenge && a.by === target.id) : null;
+  if (rec) loot = Math.max(loot, rec.loot);
+  const league = leagueAdd(p, result.win, target ? ratio : null, now, rec ? REVENGE.leagueMul : 1);
   if (target) {
     const day = dayKey(now);
     if (p.pvpDay.day !== day) p.pvpDay = { day, hits: {} };
@@ -1022,8 +1044,9 @@ export function pvpFinish(p: Player, target: Player | null, loot0: number, resul
       target.money = Math.max(0, target.money - loot);
       target.losses += 1;
       target.shieldUntil = now + 15 * MIN;
-      log(target, now, `🥊 ${p.name} наехал и отжал ${loot} ₽`);
+      log(target, now, rec ? `😤 ${p.name} отомстил и забрал ${loot} ₽` : `🥊 ${p.name} наехал и отжал ${loot} ₽`);
     }
+    if (rec) log(p, now, `😤 Отомстил ${target!.name}: вернул ${loot} ₽`);
   } else {
     loot = 0;
     authority = -Math.min(p.authority, 2);
@@ -1036,8 +1059,44 @@ export function pvpFinish(p: Player, target: Player | null, loot0: number, resul
       log(target, now, `🛡️ ${p.name} полез на тебя и огрёб. +2 авторитета`);
     }
   }
+  if (target && !rec) recordAttack(target, p, result, loot, now);
   const levelUps = addXp(p, xp, now);
-  return { ...result, loot, authority, xp, levelUps, item, league };
+  return { ...result, loot, authority, xp, levelUps, item, league, revenge: !!rec };
+}
+
+/** Запомнить наезд у того, на кого наехали: повтор и право отомстить. */
+function recordAttack(target: Player, by: Player, result: FightResult, loot: number, now: number) {
+  const rec: AttackRec = {
+    at: now,
+    by: by.id,
+    name: by.name,
+    look: lookOf(by),
+    won: result.win,
+    loot: result.win ? loot : 0,
+    avenged: false,
+    // в повторе защищающийся — слева: стороны меняются местами
+    replay: {
+      rounds: (result.rounds ?? []).map((r) => ({ ...r, by: (r.by === 0 ? 1 : 0) as 0 | 1 })),
+      startHp: [result.startHp?.[1] ?? 0, result.startHp?.[0] ?? 0],
+      maxHp: [result.maxHp?.[1] ?? 1, result.maxHp?.[0] ?? 1],
+    },
+  };
+  target.attacks = [rec, ...target.attacks].slice(0, REVENGE.keep);
+}
+
+/** Можно ли ещё отомстить за этот наезд. */
+export function canAvenge(rec: AttackRec, now: number) {
+  return rec.won && !rec.avenged && now - rec.at < REVENGE.hours * 60 * MIN;
+}
+
+/** Начать месть: бой с тем, кто наехал, — без щита и лимита «двух раз». Попытка одна. */
+export function revengeStart(p: Player, at: number, target: Player | null, now: number, rng: Rng) {
+  const rec = p.attacks.find((a) => a.at === at);
+  if (!rec || !target || rec.by !== target.id) throw new GameError('Некому мстить');
+  if (!canAvenge(rec, now)) throw new GameError(rec.avenged ? 'Уже мстил' : 'Поздно — дело остыло');
+  const view = pvpStart(p, target, now, rng, at);
+  rec.avenged = true;
+  return view;
 }
 
 /** Наезд целиком автоматически (тесты). */
@@ -3131,9 +3190,10 @@ export function ensureLeague(p: Player, now: number) {
 }
 
 /** Очки лиги за наезд. Возвращает, сколько добавилось и почему ноль. */
-function leagueAdd(p: Player, win: boolean, ratio: number | null, now: number) {
+function leagueAdd(p: Player, win: boolean, ratio: number | null, now: number, mul = 1) {
   ensureLeague(p, now);
-  const pts = leaguePoints(win, ratio);
+  const base = leaguePoints(win, ratio);
+  const pts = base > 0 ? base * mul : base;
   const before = leagueTier(p.league.pts);
   p.league.pts = Math.max(0, p.league.pts + pts);
   if (win) p.league.wins += 1;

@@ -11,6 +11,7 @@ import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame, usePvp } from '../g
 import { SegBar, useSeg } from '../Seg.tsx';
 import { RingPanel } from '../Ring.tsx';
 import { LeagueCard } from '../League.tsx';
+import { AttacksCard } from '../Revenge.tsx';
 import { LockedCard } from '../Unlocks.tsx';
 import { isOpen } from '../../shared/unlocks.ts';
 
@@ -117,6 +118,7 @@ export function Fight() {
 
       {seg === 'ring' && (isOpen('ring', p.level) ? <RingPanel /> : <LockedCard id="ring" />)}
       {seg === 'pvp' && <LeagueCard />}
+      {seg === 'pvp' && <AttacksCard />}
       {seg === 'pvp' && (
       <Card>
         <div className="row">

@@ -1494,3 +1494,33 @@ test('список экранов мест в клиенте совпадает 
   const ids = m[1].split(',').map((x) => x.trim().replace(/'/g, '')).sort();
   assert.deepEqual(ids, PLACES.map((p) => p.id).sort());
 });
+
+import { REVENGE } from '../shared/league.ts';
+
+test('месть: наезд записывается с повтором, отомстить можно сутки один раз, очки лиги вдвойне и отжатое назад', () => {
+  const a = Object.assign(g.newPlayer(1, 'Наглый', null, T0), { level: 10, str: 30, money: 5000 });
+  const v = Object.assign(g.newPlayer(2, 'Жертва', null, T0), { level: 10, str: 30, money: 5000 });
+  const win = { win: true, hpLeft: 50, used: [], lootBonus: 0, rounds: [{ by: 0, dmg: 10, crit: false }], startHp: [100, 90], maxHp: [100, 90], log: [], damageDealt: 10 } as never;
+  const r1 = g.pvpFinish(a, v, 400, win, T0, fixed(0.9), 1);
+  assert.equal(v.attacks.length, 1);
+  const rec = v.attacks[0];
+  assert.equal(rec.by, 1);
+  assert.equal(rec.replay.rounds[0].by, 1, 'в повторе жертва слева');
+  assert.deepEqual(rec.replay.startHp, [90, 100]);
+  assert.ok(g.canAvenge(rec, T0 + 3600_000));
+  assert.ok(!g.canAvenge(rec, T0 + (REVENGE.hours + 1) * 3600_000));
+  assert.throws(() => g.revengeStart(v, rec.at, null, T0 + 1000, fixed(0.5)), /Некому/);
+  v.pvpAt = 0;
+  g.revengeStart(v, rec.at, a, T0 + 1000, fixed(0.5));
+  assert.ok(rec.avenged);
+  const bt = v.battle!;
+  v.battle = null;
+  assert.equal(bt.revenge, rec.at);
+  const r2 = g.pvpFinish(v, a, 10, win, T0 + 2000, fixed(0.9), 1, bt.revenge);
+  assert.ok(r2.revenge);
+  assert.equal(r2.league.pts, r1.league.pts * REVENGE.leagueMul);
+  assert.ok(r2.loot >= r1.loot, 'вернул отжатое');
+  assert.equal(a.attacks.length, 0, 'месть не плодит новый «наезд»');
+  v.pvpAt = 0;
+  assert.throws(() => g.revengeStart(v, rec.at, a, T0 + 3000, fixed(0.5)), /Уже/);
+});

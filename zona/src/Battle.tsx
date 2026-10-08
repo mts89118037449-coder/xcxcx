@@ -11,7 +11,7 @@ import { leagueTier } from '../shared/league.ts';
 
 interface Final {
   win: boolean;
-  reward: { money?: number; xp?: number; authority?: number; gold?: number; drop?: string | null; item?: string | null; league?: { pts: number; total: number; weak: boolean; up: string | null } };
+  reward: { money?: number; xp?: number; authority?: number; gold?: number; drop?: string | null; item?: string | null; league?: { pts: number; total: number; weak: boolean; up: string | null }; revenge?: boolean };
   used: string[];
 }
 
@@ -103,6 +103,7 @@ export function BattleModal({ onClose }: { onClose(): void }) {
         {over && shown && (
           <div className="result-in">
             <h2 className={final!.win ? 'win' : 'lose'}>{final!.win ? '🏆 Победа' : '💀 Поражение'}</h2>
+            {final!.reward.revenge && final!.win && <div className="league-gain up">😤 Отомстил! Очки лиги вдвойне</div>}
             {final!.reward.league && (
               <div className={`league-gain ${final!.reward.league.pts > 0 ? 'up' : final!.reward.league.pts < 0 ? 'down' : ''}`}>
                 🏆 {final!.reward.league.pts > 0 ? '+' : ''}

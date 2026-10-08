@@ -40,6 +40,9 @@ export const LEAGUE = {
   tableSize: 20,
 };
 
+/** Месть за наезд: сутки на ответ, одна попытка, очки лиги вдвойне, отжатое — назад. */
+export const REVENGE = { hours: 24, leagueMul: 2, keep: 6 };
+
 export function leagueTier(pts: number): LeagueTier {
   let t = LEAGUE_TIERS[0];
   for (const x of LEAGUE_TIERS) if (pts >= x.min) t = x;

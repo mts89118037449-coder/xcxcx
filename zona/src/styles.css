@@ -2376,3 +2376,10 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 @keyframes shake { 20% { transform: translate(-5px, 2px); } 40% { transform: translate(5px, -2px); } 60% { transform: translate(-3px, 1px); } 80% { transform: translate(2px, 0); } }
 @keyframes shake-b { 20% { transform: translate(-5px, 2px); } 40% { transform: translate(5px, -2px); } 60% { transform: translate(-3px, 1px); } 80% { transform: translate(2px, 0); } }
 @media (prefers-reduced-motion: reduce) { .arena.shake { animation: none; } }
+
+/* --- Наезды на тебя --- */
+.attacks { display: flex; flex-direction: column; gap: 6px; }
+.attack-row { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 10px; background: var(--card-2); border-left: 3px solid var(--line); }
+.attack-row.lost { border-left-color: var(--red); }
+.attack-row.held { border-left-color: var(--green); }
+.attack-row small { display: block; color: var(--muted); font-size: 12px; }
