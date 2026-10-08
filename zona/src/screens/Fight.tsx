@@ -138,7 +138,7 @@ export function Fight() {
       {seg === 'bosses' && lowHp && <div className="warn">Здоровья меньше 30% — сначала в санчасть или подожди</div>}
       {seg === 'bosses' && (
       <div className="boss-grid">
-        {BOSSES.map((b) => {
+        {BOSSES.filter((b) => !b.colony || b.colony === p.colony).map((b) => {
           const locked = p.level < b.minLevel;
           const cd = (p.bossCd[b.id] ?? 0) - now;
           return (

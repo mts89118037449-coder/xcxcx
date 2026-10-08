@@ -31,9 +31,9 @@ export const WALL_MAX = 3;
 export function albumProgress(p: { trophies: string[]; tattoos: string[]; story: { ch: number }; placeCd: Record<string, number> }) {
   const placeIds = new Set(Object.keys(p.placeCd).map((k) => k.split('.')[0]));
   return {
-    bosses: { have: BOSSES.filter((b) => p.trophies.includes(b.id)).map((b) => b.id), total: BOSSES.map((b) => b.id) },
+    bosses: { have: BOSSES.filter((b) => !b.colony && p.trophies.includes(b.id)).map((b) => b.id), total: BOSSES.filter((b) => !b.colony).map((b) => b.id) },
     tattoos: { have: TATTOOS.filter((t) => p.tattoos.includes(t.id)).map((t) => t.id), total: TATTOOS.map((t) => t.id) },
     story: { have: STORY.slice(0, p.story.ch).map((c) => c.id), total: STORY.map((c) => c.id) },
-    places: { have: PLACES.filter((pl) => placeIds.has(pl.id)).map((pl): string => pl.id), total: PLACES.map((pl): string => pl.id) },
+    places: { have: PLACES.filter((pl) => !pl.colony && placeIds.has(pl.id)).map((pl): string => pl.id), total: PLACES.filter((pl) => !pl.colony).map((pl): string => pl.id) },
   } satisfies Record<AlbumId, { have: string[]; total: string[] }>;
 }

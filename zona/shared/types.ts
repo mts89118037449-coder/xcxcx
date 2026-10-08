@@ -76,6 +76,7 @@ export interface PlayerView {
   intro: number;
   /** обучение первых минут: номер шага и прогресс; null — позади */
   tut: { step: number; n: number } | null;
+  colony: 'general' | 'north' | 'krytka' | 'red';
   trophies: string[];
   duo: { status: 'invite' | 'run' | 'over'; partner: string; partnerId: number; stage: number; myMove: boolean; theirMove: boolean; log: string[]; inviteUntil: number } | null;
   duoInvite: { run: string; from: number; name: string; at: number } | null;

@@ -16,6 +16,7 @@ import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
 import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Place as PlaceT, type Tab } from './game.tsx';
 import { logError, noteFailure } from './errlog.ts';
 import { LiveBanner } from './Live.tsx';
+import { setSceneColony } from './art/Weather.tsx';
 import { named } from './lazy.ts';
 import { Home } from './screens/Home.tsx';
 
@@ -59,7 +60,7 @@ const ShizoGame = named(() => import('./Minigames2.tsx'), 'ShizoGame');
 const EnergySheet = named(() => import('./Energy.tsx'), 'EnergySheet');
 const TutorialCoach = named(() => import('./Tutorial.tsx'), 'TutorialCoach');
 /** Места со своим экраном (без тяжёлого списка мест в первом файле; сверяется тестом). */
-export const PLACE_SCREENS = new Set<string>(['bath', 'canteen', 'library', 'club', 'visits', 'factory', 'shizo']);
+export const PLACE_SCREENS = new Set<string>(['bath', 'canteen', 'library', 'club', 'visits', 'factory', 'shizo', 'logging', 'kamera', 'plac']);
 
 const PLACE_MUSIC: Partial<Record<string, Theme>> = {
   bath: 'bath',
@@ -70,6 +71,9 @@ const PLACE_MUSIC: Partial<Record<string, Theme>> = {
   factory: 'factory',
   shizo: 'shizo',
   church: 'library',
+  logging: 'factory',
+  kamera: 'shizo',
+  plac: 'club',
   medic: 'visits',
 };
 
@@ -116,6 +120,7 @@ export function App() {
           ? 'night'
           : 'yard';
   useEffect(() => setMusicTheme(musicFor), [musicFor]);
+  if (player) setSceneColony(player.colony);
   // этапирование для новичка и приглашение выбрать масть — по одному разу за заход
   const [introOn, setIntroOn] = useState(false);
   const introPending = (player?.intro ?? -1) >= 0;

@@ -81,7 +81,7 @@ export function PlaceTiles() {
         { icon: '💪', name: 'Турник', left: p.pullupsLeft, on: () => openPlace('pullups') },
         { icon: '⛪', name: 'Церковь', left: null, on: () => openPlace('church') },
         { icon: '🏥', name: 'Санчасть', left: null, on: () => openPlace('medic') },
-        ...PLACES.map((pl) => {
+        ...PLACES.filter((pl) => !pl.colony || pl.colony === p.colony).map((pl) => {
           const ready = pl.activities.filter((a) => (p.placeCd[`${pl.id}.${a.id}`] ?? 0) <= now).length;
           const locked = p.level < pl.minLevel;
           return {

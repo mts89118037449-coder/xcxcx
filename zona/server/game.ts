@@ -59,7 +59,8 @@ import { SHIZO, SHIZO_CARDS, TOURNEY, shizoCardById, type ShizoStat } from '../s
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
 import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
 import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
-import { weatherAt, weatherFx } from '../shared/weather.ts';
+import { weatherAt, weatherFor, weatherFx } from '../shared/weather.ts';
+import { colonyById, colonyFx, type ColonyId } from '../shared/colonies.ts';
 import { TRADE, type TradeKind, type TradeLine } from '../shared/trade.ts';
 import { WALL_MAX, albumById, albumProgress, type AlbumId } from '../shared/album.ts';
 import { liveById, type LiveEffects, type LiveRun } from '../shared/live.ts';
@@ -243,6 +244,8 @@ export interface Player {
   wall: string[];
   albums: string[];
   /** побег вдвоём: идущий забег и приглашение от кента */
+  /** колония этой ходки */
+  colony: ColonyId;
   duo: string | null;
   /** турнир за столами: партий начато сегодня, за какую неделю забран приз */
   duelsDay: { day: string; n: number };
@@ -388,6 +391,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     trophies: [],
     wall: [],
     albums: [],
+    colony: 'general',
     duo: null,
     duoInvite: null,
     tradesDay: { day: '', n: 0 },
@@ -471,6 +475,7 @@ export function migrate(p: Player): Player {
   p.wall ??= [];
   p.albums ??= [];
   p.duo ??= null;
+  p.colony ??= 'general';
   p.tradesDay ??= { day: '', n: 0 };
   p.duelsDay ??= { day: '', n: 0 };
   p.tourneyClaimed ??= 0;
@@ -562,6 +567,7 @@ export function gainRep(p: Player, id: FactionId, amount: number): number {
   let n = amount;
   if (n > 0 && p.mast && f.mast.includes(p.mast)) n *= REP_RULES.mastMul;
   if (n > 0) n *= liveFx(clock.now()).rep ?? 1;
+  if (n > 0) n *= colonyFx(p.colony).rep?.[id] ?? 1;
   n = Math.round(n);
   p.rep[id] = Math.max(0, p.rep[id] + n);
   if (n > 0 && f.rival) p.rep[f.rival] = Math.max(0, p.rep[f.rival] - Math.round(n * REP_RULES.rivalShare));
@@ -604,7 +610,7 @@ export function stats(p: Player, now: number) {
 /** Восстановление энергии и здоровья по прошедшему времени. */
 export function tick(p: Player, now: number): void {
   const s = stats(p, now);
-  const regenSec = BALANCE.energyRegenSec / (isVip(p, now) ? 2 : 1) / (weeklyEvent(now).id === 'amnesty' ? 1.5 : 1) / (liveFx(now).energy ?? 1);
+  const regenSec = BALANCE.energyRegenSec / (isVip(p, now) ? 2 : 1) / (weeklyEvent(now).id === 'amnesty' ? 1.5 : 1) / (liveFx(now).energy ?? 1) / (colonyFx(p.colony).energy ?? 1);
   if (p.energy >= s.maxEnergy) {
     p.energyAt = now;
   } else {
@@ -689,7 +695,7 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   spendEnergy(p, job.energy, now);
   // рандом смены: иногда премия от бригадира, иногда находка на промке
   const bonus = rng() < 0.1;
-  const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney') + repBonus(p, 'jobMoney')) / 100) * (bonus ? 2 : 1) * (liveFx(now).money ?? 1));
+  const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney') + repBonus(p, 'jobMoney')) / 100) * (bonus ? 2 : 1) * (liveFx(now).money ?? 1) * (colonyFx(p.colony).jobMoney ?? 1));
   p.money += money;
   let item: string | null = null;
   if (rng() < 0.05) {
@@ -886,6 +892,7 @@ function noBattle(p: Player) {
 export function bossStart(p: Player, bossId: string, now: number) {
   const boss = bossById.get(bossId);
   if (!boss) throw new GameError('Нет такого босса');
+  if (boss.colony && boss.colony !== p.colony) throw new GameError('Этот босс — на другой зоне');
   noBattle(p);
   if (p.level < boss.minLevel) throw new GameError(`Доступно с ${boss.minLevel} уровня`);
   const cd = p.bossCd[bossId] ?? 0;
@@ -911,7 +918,7 @@ export function bossFinish(p: Player, bossId: string, result: FightResult, now: 
       giveItem(p, reward.item);
     }
     reward.xp = boss.reward.xp;
-    reward.authority = Math.round(boss.reward.authority * (1 + mastBonus(p, 'authority') / 100));
+    reward.authority = Math.round(boss.reward.authority * (1 + mastBonus(p, 'authority') / 100) * (colonyFx(p.colony).authority ?? 1));
     serve(p, TERM.bossWin);
     // золото — только за первую победу над этим боссом за сутки, иначе фарм обесценивает донат
     reward.gold = p.bossGold[bossId] === dayKey(now) ? 0 : roll(rng, boss.reward.gold);
@@ -1060,11 +1067,11 @@ export function pvpFinish(p: Player, target: Player | null, loot0: number, resul
   let authority = 0;
   let xp = 0;
   if (result.win) {
-    authority = Math.round((3 + Math.floor(rng() * 6)) * (weeklyEvent(now).id === 'tournament' ? 2 : 1) * (1 + mastBonus(p, 'authority') / 100));
+    authority = Math.round((3 + Math.floor(rng() * 6)) * (weeklyEvent(now).id === 'tournament' ? 2 : 1) * (1 + mastBonus(p, 'authority') / 100) * (colonyFx(p.colony).authority ?? 1));
     serve(p, TERM.pvpWin);
     xp = 8 + p.level * 2;
     if (target) loot = Math.min(loot, Math.max(0, target.money));
-    loot = Math.round(loot * (1 + (result.lootBonus + mastBonus(p, 'pvpLoot') + repBonus(p, 'pvpLoot')) / 100));
+    loot = Math.round(loot * (1 + (result.lootBonus + mastBonus(p, 'pvpLoot') + repBonus(p, 'pvpLoot')) / 100) * (colonyFx(p.colony).pvpLoot ?? 1));
     p.money += loot;
     p.authority += authority;
     if (rng() < PVP_ITEM_CHANCE) {
@@ -1181,9 +1188,12 @@ export function chooseMast(p: Player, id: string, now: number) {
 }
 
 /** Выход по УДО: следующая ходка с нуля по уровню, но с бонусом к деньгам и опыту навсегда. */
-export function release(p: Player, now: number) {
+export function release(p: Player, now: number, colony: string = 'general') {
   if (p.term > 0) throw new GameError(`До УДО ещё ${Math.ceil(p.term)} дн.`);
   noBattle(p);
+  if (!colonyById.has(colony as ColonyId)) throw new GameError('Нет такой колонии');
+  if (p.duo) throw new GameError('Сначала закончи побег с кентом');
+  p.colony = colony as ColonyId;
   const done = p.hodka;
   const gold = TERM.releaseGold * done;
   p.hodka += 1;
@@ -1203,8 +1213,8 @@ export function release(p: Player, now: number) {
   p.hpAt = now;
   p.energy = Math.max(p.energy, s.maxEnergy);
   p.energyAt = now;
-  log(p, now, `🔓 Вышел по УДО после ${done}-й ходки. Бонус ходок: +${hodkaBonus(p)}% к деньгам и опыту`);
-  return { hodka: p.hodka, gold, bonus: hodkaBonus(p), term: p.term };
+  log(p, now, `🔓 Вышел по УДО после ${done}-й ходки. Бонус ходок: +${hodkaBonus(p)}% к деньгам и опыту. Новый этап — ${colonyById.get(p.colony)!.name}`);
+  return { hodka: p.hodka, gold, bonus: hodkaBonus(p), term: p.term, colony: p.colony };
 }
 
 /** Шаг вступления: выбор ответа в сцене этапирования. */
@@ -1297,7 +1307,7 @@ export function pendingNotice(p: Player, now: number, ctx: NoticeCtx = {}): { ki
     if (ev) return { kind: 'event', text: `❗ ${ev.name}: ${ev.text}` };
   }
   if (fresh('boss')) {
-    const ready = BOSSES.filter((b) => b.minLevel <= p.level && (p.bossCd[b.id] ?? 0) <= now).pop();
+    const ready = BOSSES.filter((b) => (!b.colony || b.colony === p.colony) && b.minLevel <= p.level && (p.bossCd[b.id] ?? 0) <= now).pop();
     if (ready && (p.bossCd[ready.id] ?? 0) > p.lastSeen) return { kind: 'boss', text: `${ready.emoji} ${ready.name} оклемался. Самое время снова разобраться.` };
   }
   if (fresh('clanBoss') && ctx.clanBoss && p.clanId && dayKey(p.clanHitAt) !== dayKey(now))
@@ -2134,7 +2144,7 @@ export function spawnEvent(p: Player, now: number, rng: Rng, where: 'any' | 'yar
     const ev = pool[Math.floor(rng() * pool.length)];
     p.event = { id: ev.id, until: now + EVENT_TIMING.ttlMin * MIN };
   }
-  const gap = (EVENT_TIMING.minGapMin + rng() * (EVENT_TIMING.maxGapMin - EVENT_TIMING.minGapMin)) / (liveFx(now).events ?? 1);
+  const gap = (EVENT_TIMING.minGapMin + rng() * (EVENT_TIMING.maxGapMin - EVENT_TIMING.minGapMin)) / (liveFx(now).events ?? 1) / (colonyFx(p.colony).events ?? 1);
   p.eventAt = now + gap * MIN;
 }
 
@@ -2411,6 +2421,7 @@ export function placeDo(p: Player, placeId: string, actId: string, now: number, 
   const pl = placeById.get(placeId as PlaceId);
   const a = pl?.activities.find((x) => x.id === actId);
   if (!pl || !a) throw new GameError('Нет такого места');
+  if (pl.colony && pl.colony !== p.colony) throw new GameError('Это место — на другой зоне');
   if (p.level < pl.minLevel) throw new GameError(`Сюда пускают с ${pl.minLevel} уровня`);
   const why = needFail(a.need, p);
   if (why) throw new GameError(`Не получится: ${why}`);
@@ -2461,7 +2472,7 @@ export function escapeStep(p: Player, quality: number, now: number, rng: Rng) {
   const st = ESCAPE_STAGES[run.stage];
   const q = Math.max(0, Math.min(1, Number(quality) || 0));
   const agi = Math.min(0.1, p.agi * 0.002);
-  const chance = st.pass ? Math.max(0.05, Math.min(0.97, st.pass + q * ESCAPE.qualityBonus + agi + weatherFx(weatherAt(now)).escape)) : 0;
+  const chance = st.pass ? Math.max(0.05, Math.min(0.97, st.pass + q * ESCAPE.qualityBonus + agi + weatherFx(weatherFor(now, p.colony)).escape)) : 0;
   if (rng() < chance) {
     run.stage += 1;
     return { passed: true, stage: run.stage, caught: false as const };
@@ -3010,7 +3021,7 @@ export function shizoPick(p: Player, choice: number, now: number, rng: Rng) {
   }
   const failed = !!o.risk && rng() < o.risk.chance;
   const d = failed ? o.risk!.d : o.d;
-  for (const k of ['heat', 'food', 'spirit'] as ShizoStat[]) s[k] = Math.min(SHIZO.max, s[k] + (d[k] ?? 0) - SHIZO.nightLoss - (k === 'heat' ? weatherFx(weatherAt(now)).shizoCold : 0));
+  for (const k of ['heat', 'food', 'spirit'] as ShizoStat[]) s[k] = Math.min(SHIZO.max, s[k] + (d[k] ?? 0) - SHIZO.nightLoss - (k === 'heat' ? weatherFx(weatherFor(now, p.colony)).shizoCold : 0));
   const text = failed ? o.risk!.text : o.text;
   const broke = s.heat <= 0 || s.food <= 0 || s.spirit <= 0;
   let end: null | { won: boolean; authority: number; xp: number; rep: number; term: number; levelUps: number } = null;
@@ -3378,7 +3389,7 @@ export function duoStep(me: Player, other: Player, run: DuoRun, quality: number,
   run.turnAt = now;
   if (run.moves[other.id] === undefined) return { resolved: false as const };
   const st = ESCAPE_STAGES[run.stage];
-  const wx = weatherFx(weatherAt(now)).escape;
+  const wx = weatherFx(weatherFor(now, me.colony)).escape;
   const chance = (pl: Player) => (st.pass ? Math.max(0.05, Math.min(0.97, st.pass + run.moves[pl.id] * ESCAPE.qualityBonus + Math.min(0.1, pl.agi * 0.002) + wx + DUO.teamBonus)) : 0);
   const okMe = rng() < chance(me);
   const okOther = rng() < chance(other);

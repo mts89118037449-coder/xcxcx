@@ -2493,3 +2493,15 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .tourney-duel.new { border-style: dashed; }
 .duel-board { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 10px; }
 .tourney-table { display: flex; flex-direction: column; gap: 3px; }
+.flag-wave { transform-origin: 3px 18px; animation: flag-wave 2.4s ease-in-out infinite alternate; }
+@keyframes flag-wave { from { transform: skewY(-3deg) scaleX(0.94); } to { transform: skewY(3deg) scaleX(1.02); } }
+
+/* --- Колонии --- */
+.colonies { display: flex; flex-direction: column; gap: 6px; }
+.colony { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card-2); text-align: left; }
+.colony.cur { border-color: var(--gold); }
+.colony-ico { font-size: 30px; }
+.colony b { display: block; }
+.colony small { display: block; font-size: 12px; color: var(--muted); }
+.colony small.pro { color: #9be08f; }
+.colony small.con { color: #e89a8a; }

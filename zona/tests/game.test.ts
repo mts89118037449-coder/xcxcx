@@ -834,7 +834,8 @@ test('случаи: больше сотни, цепочки ведут к про
 test('места зоны: откат, цена, условия, срок скашивается', async () => {
   const { PLACES } = await import('../shared/places.ts');
   const { NPC_RIGS } = await import('../src/art/rig/npcs.ts');
-  assert.equal(PLACES.length, 7);
+  assert.equal(PLACES.filter((x) => !x.colony).length, 7);
+  assert.equal(PLACES.filter((x) => x.colony).length, 3);
   for (const pl of PLACES) {
     assert.ok(NPC_RIGS[pl.who], `нет НПС у ${pl.id}`);
     assert.ok(pl.activities.length >= 3);
@@ -1643,4 +1644,36 @@ test('турнир в нарды: жребий, ходы по очереди, п
   // приз
   assert.equal(g.tourneyClaim(a, 5, 0, T0).gold, TOURNEY.topGold[0]);
   assert.throws(() => g.tourneyClaim(a, 5, 0, T0), /уже/);
+});
+
+import { COLONIES } from '../shared/colonies.ts';
+import { weatherFor } from '../shared/weather.ts';
+
+test('колонии: выбор на УДО, свои места и боссы, правила зоны', () => {
+  const p = g.newPlayer(1, 'Этапник', null, T0);
+  p.term = 0;
+  assert.throws(() => g.release(p, T0, 'mars'), /Нет такой/);
+  g.release(p, T0, 'north');
+  assert.equal(p.colony, 'north');
+  p.level = 30;
+  p.energy = 500;
+  // своё место и свой босс доступны, чужие — нет
+  assert.ok(g.placeDo(p, 'logging', 'fire', T0, fixed(0.1)).text);
+  assert.throws(() => g.placeDo(p, 'plac', 'sport', T0, fixed(0.1)), /другой зоне/);
+  assert.throws(() => g.bossStart(p, 'b_pakhan', T0), /другой зоне/);
+  assert.ok(g.bossStart(p, 'b_lumber', T0));
+  p.battle = null;
+  // на Севере смены платят больше, погода — зима круглый год
+  const q = Object.assign(g.newPlayer(2, 'Общий', null, T0), { level: 30, energy: 500 });
+  const mNorth = g.doJob(p, 'j_floor', T0, fixed(0.5)).money;
+  const mGen = g.doJob(q, 'j_floor', T0, fixed(0.5)).money;
+  assert.ok(mNorth > mGen);
+  const july = Date.UTC(2027, 6, 1, 9);
+  assert.equal(weatherFor(july, 'north').season, 'winter');
+  assert.equal(weatherFor(july, 'general').season, 'summer');
+  // красная зона: администрация ×2, братва ×0.5
+  const r = Object.assign(g.newPlayer(3, 'Красный', null, T0), { colony: 'red' as const });
+  const admin = g.gainRep(r, 'admin', 10);
+  assert.equal(admin, 20);
+  assert.equal(COLONIES.length, 4);
 });

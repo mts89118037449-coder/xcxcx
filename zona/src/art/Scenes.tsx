@@ -6,7 +6,7 @@
 
 import type { ReactNode } from 'react';
 import { FURNITURE, bossById, interiorById, type Spot } from '../../shared/content.ts';
-import { WeatherGround, WeatherLayer } from './Weather.tsx';
+import { WeatherGround, WeatherLayer, sceneColony } from './Weather.tsx';
 import { BearSkin, Canopy, Deco, Dog, Drapes, Featherbed, FloorCarpet, Garland, Light, MiniBar, Music, Painting, Pet, Photos, Poster, Samovar, Shelf, SilkCarpet, Sport, Stash, Stool, Stove, WallTv } from './CellDecor.tsx';
 
 const W = 360;
@@ -819,6 +819,7 @@ function FloorPattern({ id, accent }: { id: string; accent: string }) {
 
 function ZoneBackdrop() {
   const s = sky(new Date().getHours());
+  const colony = sceneColony();
   return (
     <>
       <linearGradient id="zone-sky" x1="0" y1="0" x2="0" y2="1">
@@ -826,6 +827,14 @@ function ZoneBackdrop() {
         <stop offset="1" stopColor={s.bottom} />
       </linearGradient>
       <rect width={W} height={120} fill="url(#zone-sky)" />
+      {/* Север: тайга за забором */}
+      {colony === 'north' &&
+        Array.from({ length: 16 }, (_, i) => (
+          <g key={`pine${i}`} transform={`translate(${i * 24 + (i % 2) * 6} ${80 - (i % 3) * 4})`}>
+            <path d="M0,-30 L10,-8 L5,-8 L13,4 L-13,4 L-5,-8 L-10,-8 Z" fill="#2c4636" />
+            <path d="M0,-30 L4,-22 L-4,-22 Z M-8,-10 L8,-10 L5,-7 L-5,-7 Z" fill="#eef4f8" opacity={0.85} />
+          </g>
+        ))}
       {/* дальний забор с колючкой и вышками */}
       <rect y={78} width={W} height={34} fill="#7c7a70" />
       <Grime x={0} y={78} w={W} h={34} stains={0.8} grime={0.5} />
@@ -847,6 +856,20 @@ function ZoneBackdrop() {
       <path d="M20,230 L60,236 L70,252 M260,210 L280,222 L300,221" stroke="#2a2a26" strokeWidth={0.9} fill="none" />
       <ellipse cx={250} cy={255} rx={40} ry={6} fill="#6d7478" opacity={0.4} />
 
+      {colony === 'krytka' && (
+        <g>
+          {/* крытка: высокая глухая стена вместо забора, неба почти нет */}
+          <rect y={30} width={W} height={84} fill="#6a675e" />
+          <rect y={30} width={W} height={84} filter="url(#sc-grime)" opacity={0.5} />
+          {Array.from({ length: 12 }, (_, i) => (
+            <path key={i} d={`M${i * 30},30 V114`} stroke="#5a574e" strokeWidth={1} />
+          ))}
+          <rect y={24} width={W} height={8} fill="#4a4840" />
+          <text x={180} y={58} fontSize={11} textAnchor="middle" fill="#2e2c28" fontWeight="bold" letterSpacing={3}>
+            ТЮРЬМА № 2
+          </text>
+        </g>
+      )}
       {/* барак */}
       <g>
         <rect x={6} y={96} width={124} height={74} fill="#8a7e68" />
@@ -912,6 +935,21 @@ function ZoneBackdrop() {
         <rect x={329} y={126} width={4} height={12} fill="#b8342e" />
         <rect x={322} y={148} width={16} height={22} fill="#4a4034" />
       </g>
+      {colony === 'red' && (
+        <g>
+          {/* красная зона: флаги и лозунг над бараком */}
+          <rect x={20} y={88} width={96} height={12} fill="#b8241e" />
+          <text x={68} y={97} fontSize={6.5} textAnchor="middle" fill="#ffe9c0" fontWeight="bold">
+            НА СВОБОДУ — С ЧИСТОЙ СОВЕСТЬЮ
+          </text>
+          {[150, 200, 250].map((x) => (
+            <g key={x} transform={`translate(${x} 40)`}>
+              <rect x={0} y={0} width={1.6} height={60} fill="#9aa2ab" />
+              <path className="flag-wave" d="M1.6,2 C9,0 15,5 22,3 L22,15 C15,17 9,12 1.6,14 Z" fill="#c22a22" />
+            </g>
+          ))}
+        </g>
+      )}
     </>
   );
 }

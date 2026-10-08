@@ -65,6 +65,14 @@ export function weatherAt(now: number): Weather {
   return { season, kind, temp, ...WEATHER_LOOK[kind] };
 }
 
+/** Погода у игрока: на Севере зима круглый год. */
+export function weatherFor(now: number, colony?: string | null): Weather {
+  const w = weatherAt(now);
+  if (colony !== 'north') return w;
+  const kind: WeatherKind = w.kind === 'frost' || w.kind === 'clear' ? 'frost' : 'snow';
+  return { ...w, season: 'winter', kind, temp: Math.min(w.temp - 22, -14), ...WEATHER_LOOK[kind] };
+}
+
 /** Влияние погоды на игру. */
 export function weatherFx(w: Weather) {
   return {

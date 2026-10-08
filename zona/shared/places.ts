@@ -3,7 +3,7 @@
 import type { Need, Outcome } from './events.ts';
 import type { FactionId } from './factions.ts';
 
-export type PlaceId = 'bath' | 'canteen' | 'library' | 'club' | 'visits' | 'factory' | 'shizo';
+export type PlaceId = 'bath' | 'canteen' | 'library' | 'club' | 'visits' | 'factory' | 'shizo' | 'logging' | 'kamera' | 'plac';
 
 export interface PlaceActivity {
   id: string;
@@ -26,11 +26,43 @@ export interface PlaceDef {
   host: string;
   greet: string;
   activities: PlaceActivity[];
+  /** место только в этой колонии */
+  colony?: import('./colonies.ts').ColonyId;
 }
 
 const H = 60;
 
 export const PLACES: PlaceDef[] = [
+  {
+    id: 'logging', name: 'Лесоповал', icon: '🪓', minLevel: 1, who: 'sheet/cast/worker', host: 'Бригадир Тайга', colony: 'north',
+    greet: 'Норма — сорок кубов. Кто не выполнил — ночует у костра.',
+    activities: [
+      { id: 'saw', icon: '🪚', label: 'Валить лес', hint: 'тяжело, но платят', cost: { energy: 15 }, cdMin: 2 * H, outcomes: [{ w: 8, text: 'Сосна легла, куда надо. Бригадир доволен.', money: 3, xp: 8 }, { w: 2, text: 'Пила заела, норму не сделал.', money: 1, hp: -0.05 }] },
+      { id: 'stack', icon: '🪵', label: 'Складывать штабель', hint: 'дерево и опыт', cost: { energy: 8 }, cdMin: 2 * H, outcomes: [{ w: 1, text: 'Ровный штабель. Пару досок прибрал себе.', xp: 10 }] },
+      { id: 'fire', icon: '🔥', label: 'Погреться у костра', hint: 'лечит, бесплатно', cdMin: 4 * H, outcomes: [{ w: 8, text: 'Отогрелся, кружку кипятка налили.', hp: 0.3, energy: 10 }, { w: 2, text: 'Дым в глаза, но тепло.', hp: 0.15 }] },
+      { id: 'top', icon: '🌲', label: 'Верхолаз', hint: 'лезть на кедр за шишкой', need: { level: 8 }, cdMin: 8 * H, outcomes: [{ w: 6, text: 'Мешок кедровых шишек — барыга возьмёт!', money: 4, authority: 2 }, { w: 4, text: 'Сорвался с сука. Повезло, что в сугроб.', hp: -0.2, xp: 6 }] },
+    ],
+  },
+  {
+    id: 'kamera', name: 'Камера', icon: '🗝️', minLevel: 1, who: 'sheet/cast/blatnoy', host: 'Смотрящий хаты', colony: 'krytka',
+    greet: 'Заходи, присаживайся. Тут все на виду — и все друг про друга знают.',
+    activities: [
+      { id: 'road', icon: '🧵', label: 'Гнать коня', hint: 'дорога между камерами', cdMin: 3 * H, outcomes: [{ w: 6, text: 'Малява дошла, обратно — грев.', item: true, xp: 6 }, { w: 4, text: 'Коня перехватил продольный.', xp: 3 }] },
+      { id: 'talk', icon: '🗣️', label: 'Рассказать за жизнь', hint: 'авторитет', cdMin: 4 * H, outcomes: [{ w: 7, text: 'Слушали молча. Уважают.', authority: 3 }, { w: 3, text: 'Перебили: «Не гони».', authority: -1 }] },
+      { id: 'cards', icon: '🃏', label: 'Партейка под нары', hint: 'на бычки', cost: { butts: 5 }, cdMin: 3 * H, outcomes: [{ w: 5, text: 'Поднял банк.', butts: 12, authority: 1 }, { w: 5, text: 'Проигрался в пух.', butts: 0 }] },
+      { id: 'quiet', icon: '😶', label: 'Отлежаться', hint: 'лечит', cdMin: 4 * H, outcomes: [{ w: 1, text: 'Тишина. Даже вертухай не стучит.', hp: 0.35 }] },
+    ],
+  },
+  {
+    id: 'plac', name: 'Плац', icon: '🚩', minLevel: 1, who: 'sheet/cast/officer', host: 'Дневальный СДП', colony: 'red',
+    greet: 'Шаг чеканить! Здесь порядок, а не ваш «понятийный» базар.',
+    activities: [
+      { id: 'drill', icon: '🥾', label: 'Строевая', hint: 'опыт, уважение начальства', cost: { energy: 8 }, cdMin: 2 * H, outcomes: [{ w: 1, text: 'Отмаршировал. Начальник отряда кивнул.', xp: 10 }] },
+      { id: 'paper', icon: '📰', label: 'Стенгазета', hint: 'деньги, почёт у администрации', cdMin: 6 * H, outcomes: [{ w: 7, text: 'Повесили на видном месте. Премия!', money: 2, xp: 6 }, { w: 3, text: 'Нашли ошибку в лозунге. Переписывай.', xp: 3 }] },
+      { id: 'report', icon: '📝', label: 'Доложить дневальному', hint: 'администрации — да, братве — нет', cdMin: 8 * H, outcomes: [{ w: 1, text: 'Доклад принят. Братва косо смотрит.', xp: 8, authority: -2 }] },
+      { id: 'sport', icon: '🏋️', label: 'Зарядка на плацу', hint: 'бодрость', cdMin: 4 * H, outcomes: [{ w: 1, text: 'Сто приседаний под счёт. Бодрит!', energy: 15, hp: 0.1 }] },
+    ],
+  },
   {
     id: 'canteen', name: 'Столовая', icon: '🍲', minLevel: 1, who: 'sheet/cast/cook', host: 'Повар Жора',
     greet: 'Баланда сегодня густая. Чего стоишь — миску бери.',
@@ -108,6 +140,13 @@ export const placeById = new Map(PLACES.map((p) => [p.id, p]));
 /** Репутация за занятие: «место.занятие» → кому и сколько. */
 export const PLACE_REP: Record<string, Partial<Record<FactionId, number>>> = {
   'canteen.kitchen': { work: 2 },
+  'logging.saw': { work: 4 },
+  'logging.stack': { work: 2 },
+  'kamera.talk': { brat: 3 },
+  'kamera.road': { brat: 2 },
+  'plac.drill': { admin: 2 },
+  'plac.paper': { admin: 3 },
+  'plac.report': { admin: 5, brat: -5 },
   'canteen.blat_table': { brat: 3 },
   'bath.back': { brat: 2 },
   'library.read': { admin: 1 },

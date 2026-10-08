@@ -63,6 +63,8 @@ export interface Boss {
   perks?: string[];
   /** чем опасен — подпись на плитке */
   trait?: string;
+  /** босс только в этой колонии */
+  colony?: 'north' | 'krytka' | 'red';
 }
 
 export interface StarPack {
@@ -246,6 +248,43 @@ export const JOBS: Job[] = [
 ];
 
 const BOSS_LIST: Boss[] = [
+  // --- боссы колоний: только на своей зоне ---
+  {
+    id: 'b_lumber', name: 'Бригадир лесоповала', emoji: '🪓', description: 'Норму требует с кулаками. Топор держит не для красоты.', colony: 'north',
+    minLevel: 8, hp: 1500, atk: 50, def: 22, energy: 32, cooldownMin: 120, perks: ['double_3'], trait: '🪓 рубит дважды',
+    reward: { money: [1500, 2300], xp: 200, authority: 36, gold: [1, 2] },
+    drops: [],
+  },
+  {
+    id: 'b_frost', name: 'Начальник лагпункта Мороз', emoji: '🥶', description: 'Сорок лет на Севере. Холоднее только его взгляд.', colony: 'north',
+    minLevel: 20, hp: 6400, atk: 160, def: 88, energy: 70, cooldownMin: 360, perks: ['armor_5', 'stun_5'], trait: '❄️ ледяная броня',
+    reward: { money: [8000, 12000], xp: 950, authority: 260, gold: [2, 3] },
+    drops: [],
+  },
+  {
+    id: 'b_pakhan', name: 'Камерный пахан', emoji: '🗝️', description: 'Держит хату на крытке. Слово — закон, рука — тяжёлая.', colony: 'krytka',
+    minLevel: 10, hp: 2100, atk: 62, def: 28, energy: 38, cooldownMin: 150, perks: ['counter_6'], trait: '😤 отвечает на удар',
+    reward: { money: [2200, 3200], xp: 290, authority: 52, gold: [1, 2] },
+    drops: [],
+  },
+  {
+    id: 'b_korpus', name: 'Корпусной Цербер', emoji: '🔒', description: 'Ключи от всех дверей. И от твоей — тоже.', colony: 'krytka',
+    minLevel: 22, hp: 7000, atk: 175, def: 95, energy: 75, cooldownMin: 420, perks: ['heal_6', 'stun_5'], trait: '💚 лечится, оглушает',
+    reward: { money: [9000, 13000], xp: 1050, authority: 300, gold: [2, 3] },
+    drops: [],
+  },
+  {
+    id: 'b_sdp', name: 'Председатель СДП', emoji: '📋', description: 'Секция дисциплины и порядка. Пишет на всех — и прикрывается начальством.', colony: 'red',
+    minLevel: 9, hp: 1700, atk: 54, def: 26, energy: 35, cooldownMin: 120, perks: ['block_3', 'heal_2'], trait: '📋 прикрывается',
+    reward: { money: [1600, 2500], xp: 210, authority: 40, gold: [1, 2] },
+    drops: [],
+  },
+  {
+    id: 'b_podpolkovnik', name: 'Режимный подполковник', emoji: '🚩', description: 'Красная зона — его рук дело. Режим превыше всего.', colony: 'red',
+    minLevel: 23, hp: 7400, atk: 180, def: 100, energy: 78, cooldownMin: 420, perks: ['armor_5', 'counter_6'], trait: '🚩 держит режим',
+    reward: { money: [9500, 14000], xp: 1100, authority: 320, gold: [2, 3] },
+    drops: [],
+  },
   {
     id: 'b_rat', name: 'Крыса Шнырь', emoji: '🐀', description: 'Ворует пайки у своих. Пора наказать.',
     minLevel: 2, hp: 220, atk: 14, def: 4, energy: 15, cooldownMin: 30,

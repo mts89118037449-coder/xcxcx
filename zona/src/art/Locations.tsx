@@ -421,6 +421,161 @@ function Shizo() {
   );
 }
 
+// --- Лесоповал (Север) -------------------------------------------------------------------
+
+function Logging() {
+  const pine = (x: number, y: number, s: number, c = '#1f3a2a') => (
+    <g key={`${x}-${y}`} transform={`translate(${x} ${y}) scale(${s})`}>
+      <rect x={-2} y={0} width={4} height={14} fill="#4a3220" />
+      <path d="M0,-46 L16,-14 L8,-14 L20,6 L-20,6 L-8,-14 L-16,-14 Z" fill={c} />
+      <path d="M0,-46 L6,-34 L-6,-34 Z M-12,-16 L12,-16 L8,-12 L-8,-12 Z M-16,2 L16,2 L12,6 L-12,6 Z" fill="#eef4f8" opacity={0.85} />
+    </g>
+  );
+  return (
+    <>
+      <linearGradient id="log-sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#7e94a8" />
+        <stop offset="1" stopColor="#d6dee4" />
+      </linearGradient>
+      <rect width={W} height={FLOOR} fill="url(#log-sky)" />
+      {/* дальний лес */}
+      {Array.from({ length: 14 }, (_, i) => pine(i * 28 + 6, 150 + (i % 3) * 6, 0.7, '#3a5244'))}
+      {/* вышка и колючка вдалеке */}
+      <g transform="translate(300 70)" opacity={0.8}>
+        <rect x={0} y={20} width={4} height={80} fill="#3a3530" />
+        <rect x={24} y={20} width={4} height={80} fill="#3a3530" />
+        <rect x={-6} y={0} width={40} height={22} fill="#4a4038" />
+        <path d="M-10,0 L14,-12 L38,0 Z" fill="#3a3530" />
+      </g>
+      <path d="M0,176 H360" stroke="#555" strokeWidth={1} />
+      <path d="M0,170 H360" stroke="#555" strokeWidth={1} strokeDasharray="3 4" />
+      {/* ближний лес */}
+      {[[20, 210, 1.3], [74, 220, 1.1], [330, 214, 1.4]].map(([x, y, s]) => pine(x, y, s))}
+      {/* пни и штабель брёвен */}
+      {[[130, 226], [250, 232]].map(([x, y]) => (
+        <g key={x} transform={`translate(${x} ${y})`}>
+          <rect x={-9} y={-10} width={18} height={12} fill="#6a4a2a" />
+          <ellipse cx={0} cy={-10} rx={9} ry={3} fill="#c9a06a" />
+          <ellipse cx={0} cy={-10} rx={5} ry={1.6} fill="none" stroke="#8a6a3a" strokeWidth={0.6} />
+          <ellipse cx={0} cy={-11} rx={10} ry={2} fill="#f2f6f8" opacity={0.8} />
+        </g>
+      ))}
+      <g transform="translate(160 196)">
+        {[0, 1, 2].map((r) =>
+          Array.from({ length: 4 - r }, (_, i) => (
+            <g key={`${r}-${i}`} transform={`translate(${i * 16 + r * 8} ${-r * 13})`}>
+              <rect x={0} y={0} width={60} height={13} rx={6} fill="#7a5530" stroke="#3a2210" strokeWidth={0.6} />
+              <circle cx={60} cy={6.5} r={6.5} fill="#c9a06a" stroke="#3a2210" strokeWidth={0.6} />
+              <circle cx={60} cy={6.5} r={3} fill="none" stroke="#8a6a3a" strokeWidth={0.5} />
+            </g>
+          )),
+        )}
+        <path d="M14,-26 Q50,-34 92,-26" stroke="#f2f6f8" strokeWidth={4} opacity={0.8} fill="none" />
+      </g>
+      {/* костёр */}
+      <g transform="translate(58 246)">
+        <path d="M-14,0 L14,-4 M-12,-4 L12,0" stroke="#4a3220" strokeWidth={3} />
+        <path className="flame" d="M-6,-2 C-8,-12 -2,-14 0,-24 C3,-14 8,-12 6,-2 Z" fill="#ff8a2a" />
+        <path className="flame" d="M-3,-2 C-4,-8 -1,-10 0,-15 C2,-10 4,-8 3,-2 Z" fill="#ffd24a" />
+      </g>
+      <Floor color="#e4eaee" />
+      <rect y={FLOOR} width={W} height={H - FLOOR} fill="#fff" opacity={0.25} />
+    </>
+  );
+}
+
+// --- Камера на крытке ----------------------------------------------------------------------
+
+function Kamera() {
+  return (
+    <>
+      <rect width={W} height={FLOOR} fill="#5e5a50" />
+      <rect y={140} width={W} height={FLOOR - 140} fill="#4c5a52" />
+      <Grime o={0.6} />
+      {/* узкое окно с «ресничками» под потолком */}
+      <g transform="translate(140 22)">
+        <rect x={-4} y={-4} width={88} height={44} fill="#2e2c28" />
+        <rect width={80} height={36} fill="#9ab0c0" />
+        {Array.from({ length: 9 }, (_, i) => (
+          <rect key={i} x={i * 9 + 2} width={3} height={36} fill="#2a2a28" />
+        ))}
+        {Array.from({ length: 6 }, (_, i) => (
+          <rect key={`r${i}`} y={i * 6 + 1} width={80} height={3} fill="#3a3a36" opacity={0.9} />
+        ))}
+      </g>
+      {/* двухъярусные шконки */}
+      {[16, 250].map((x) => (
+        <g key={x} transform={`translate(${x} 100)`}>
+          <rect x={0} y={0} width={94} height={6} fill="#5a6a6a" stroke="#2a2a2a" />
+          <rect x={0} y={6} width={94} height={8} fill="#b8b0a0" />
+          <rect x={0} y={66} width={94} height={6} fill="#5a6a6a" stroke="#2a2a2a" />
+          <rect x={0} y={72} width={94} height={10} fill="#8a7a6a" />
+          <rect x={4} y={-6} width={22} height={10} rx={3} fill="#d8d2c2" />
+          {[0, 90].map((px) => (
+            <rect key={px} x={px} y={-10} width={4} height={136} fill="#3a4040" />
+          ))}
+        </g>
+      ))}
+      {/* «дорога»: нитка из окна к решётке */}
+      <path d="M150,58 C180,90 200,80 230,120" stroke="#e8e0c8" strokeWidth={0.8} fill="none" strokeDasharray="2 2" />
+      {/* стол-дубок и шахматы */}
+      <g transform="translate(140 182)">
+        <rect x={0} y={0} width={80} height={6} fill="#6a4a2a" stroke="#3a2210" />
+        <rect x={8} y={6} width={6} height={48} fill="#4a3018" />
+        <rect x={66} y={6} width={6} height={48} fill="#4a3018" />
+        <rect x={20} y={-6} width={20} height={6} fill="#e8e0d0" />
+        <rect x={50} y={-8} width={10} height={8} fill="#8a8e94" />
+      </g>
+      <Floor color="#3e3c36" tiles="#2e2c28" />
+    </>
+  );
+}
+
+// --- Плац (красная зона) ---------------------------------------------------------------------
+
+function Plac() {
+  return (
+    <>
+      <linearGradient id="plac-sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#7d9cb8" />
+        <stop offset="1" stopColor="#d0dce2" />
+      </linearGradient>
+      <rect width={W} height={FLOOR} fill="url(#plac-sky)" />
+      {/* барак с лозунгом */}
+      <rect x={0} y={110} width={W} height={FLOOR - 110} fill="#c8bfa8" />
+      <rect x={0} y={104} width={W} height={8} fill="#7a3a2a" />
+      <g transform="translate(60 124)">
+        <rect width={240} height={28} fill="#b8241e" />
+        <text x={120} y={18.5} fontSize={9.6} textAnchor="middle" fill="#ffe9c0" fontWeight="bold" letterSpacing={0.5}>
+          ПОРЯДОК — ОСНОВА ИСПРАВЛЕНИЯ
+        </text>
+      </g>
+      {[20, 120, 220, 320].map((x) => (
+        <g key={x}>
+          <rect x={x} y={164} width={30} height={36} fill="#5a6a72" stroke="#3a3a36" />
+          <rect x={x + 3} y={167} width={24} height={30} fill="#9ab0c0" />
+        </g>
+      ))}
+      {/* флагшток с красным флагом */}
+      <g transform="translate(300 30)">
+        <rect x={0} y={0} width={3} height={206} fill="#9aa2ab" />
+        <path className="flag-wave" d="M3,4 C18,0 30,10 46,6 L46,32 C30,36 18,26 3,30 Z" fill="#c22a22" />
+      </g>
+      {/* трибуна */}
+      <g transform="translate(40 196)">
+        <rect width={70} height={40} fill="#7a3a2a" stroke="#3a1a10" />
+        <rect x={-4} y={-6} width={78} height={8} fill="#5a2a1a" />
+        <path d="M35,8 L39,16 L48,16 L41,22 L44,31 L35,25 L26,31 L29,22 L22,16 L31,16 Z" fill="#e8c34a" />
+      </g>
+      <Floor color="#8a8a86" />
+      {/* разметка строя */}
+      {[150, 190, 230, 270].map((x) => (
+        <path key={x} d={`M${x},244 l12,0`} stroke="#fff" strokeWidth={2} opacity={0.7} />
+      ))}
+    </>
+  );
+}
+
 // --- Жизнь в местах: то, что двигается поверх фона ---------------------------------------------
 
 /** Мухи над столом: каждая по своей петле. */
@@ -539,7 +694,7 @@ function Life({ place }: { place: PlaceId }) {
   return null;
 }
 
-const BACKDROPS: Record<PlaceId, () => ReactNode> = { bath: Bath, canteen: Canteen, library: Library, club: Club, visits: Visits, factory: Factory, shizo: Shizo };
+const BACKDROPS: Record<PlaceId, () => ReactNode> = { bath: Bath, canteen: Canteen, library: Library, club: Club, visits: Visits, factory: Factory, shizo: Shizo, logging: Logging, kamera: Kamera, plac: Plac };
 
 export function LocationScene({ place, children }: { place: PlaceId; children?: ReactNode }) {
   const B = BACKDROPS[place];
@@ -552,7 +707,7 @@ export function LocationScene({ place, children }: { place: PlaceId; children?: 
           ))}
         </>
       )}
-      {place !== 'bath' && place !== 'club' && <Lamp x={180} />}
+      {place !== 'bath' && place !== 'club' && place !== 'logging' && place !== 'plac' && <Lamp x={180} />}
       <Life place={place} />
       {children}
     </Scene>

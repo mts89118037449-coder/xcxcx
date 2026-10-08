@@ -390,6 +390,7 @@ export function createApp(opts: AppOptions) {
       hodkaBonus: g.hodkaBonus(p),
       intro: p.intro,
       tut: p.tut >= 0 ? { step: p.tut, n: p.tutN } : null,
+      colony: p.colony,
       trophies: p.trophies,
       duo: (() => {
         const run = duoGet(p.duo);
@@ -577,7 +578,7 @@ export function createApp(opts: AppOptions) {
   const actions: Record<string, Handler> = {
     look: (p, b) => g.setLook(p, num(b.build), num(b.skin)),
     mast: (p, b, t) => g.chooseMast(p, str(b.id), t),
-    release: (p, _b, t) => g.release(p, t),
+    release: (p, b, t) => g.release(p, t, str(b.colony) || 'general'),
     upgrade: (p, b) => g.upgradeItem(p, str(b.itemId)),
     intro: (p, b, t) => g.introStep(p, num(b.choice), t),
     notify: (p, b) => g.setNotify(p, !!b.on),

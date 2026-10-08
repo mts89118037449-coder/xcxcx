@@ -47,6 +47,13 @@ export const NPC_RIGS: Record<string, NpcRig> = {
   'sheet/cast/librarian': { look: L({ body: 'body_flannel', legs: 'legs_pants', feet: 'feet_slippers', charm: 'charm_watch' }, f(7, 4, 1), { build: 0, skin: 1 }), anim: 'think' },
   'sheet/cast/gypsy': { look: L({ body: 'body_crimson', legs: 'legs_black', feet: 'feet_lacquer', charm: 'charm_fiksa', head: 'cap_mink' }, f(6, 2, 0), { skin: 2 }), anim: 'smoke' },
   // боссы
+  // боссы колоний
+  'sheet/boss/b_lumber': { look: L({ body: 'body_quilted', legs: 'legs_wadded', feet: 'feet_valenki', head: 'cap_ushanka', weapon: 'wpn_axe' }, f(0, 2, 2), { build: 2, str: 45 }), anim: 'guard' },
+  'sheet/boss/b_frost': { look: L({ body: 'drop_greatcoat', feet: 'feet_valenki', head: 'cap_ushanka', weapon: 'drop_baton' }, f(7, 3, 2, 1), { build: 2, str: 55 }), anim: 'guard' },
+  'sheet/boss/b_pakhan': { look: L({ body: 'body_tank', legs: 'legs_black', feet: 'feet_slippers', charm: 'charm_cross' }, f(6, 2, 2, 1), { build: 2, str: 45, tattoos: ['t_church', 't_stars', 't_epaulets'] }), anim: 'guard' },
+  'sheet/boss/b_korpus': { look: L({ body: 'npc_guard', feet: 'feet_kirza', head: 'hat_police', weapon: 'drop_baton', charm: 'charm_watch' }, f(1, 3, 2, 1), { build: 2, str: 55 }), anim: 'guard' },
+  'sheet/boss/b_sdp': { look: L({ body: 'body_robe', legs: 'legs_pants', feet: 'feet_kirza', head: 'cap_knit' }, f(3, 4, 1, 1), { build: 1, str: 35 }), anim: 'guard' },
+  'sheet/boss/b_podpolkovnik': { look: L({ body: 'npc_general', feet: 'feet_kirza', head: 'drop_major_cap', weapon: 'drop_baton' }, f(2, 3, 2, 1), { build: 2, str: 58 }), anim: 'guard' },
   'sheet/boss/b_rat': { look: L({ body: 'body_smock', legs: 'legs_pants', feet: 'feet_slippers', weapon: 'wpn_spoon' }, f(4, 1, 1, 1), { build: 0 }), anim: 'guard' },
   'sheet/boss/b_guard': { look: L({ body: 'npc_guard', feet: 'feet_kirza', head: 'hat_police', weapon: 'drop_baton' }, f(2, 3, 0, 1), { build: 1 }), anim: 'guard' },
   'sheet/boss/b_chief': { look: L({ body: 'npc_black', feet: 'feet_kirza', head: 'hat_police', weapon: 'drop_baton' }, f(0, 2, 2, 1), { build: 2, str: 50 }), anim: 'guard' },

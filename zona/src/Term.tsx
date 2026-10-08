@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { COLONIES, colonyById } from '../shared/colonies.ts';
 import { DAILY_WEEK, MASTS, MAST_RULES, NOTICE_KINDS, TERM, mastById, type Mast } from '../shared/term.ts';
 import { consumableById } from '../shared/perks.ts';
 import { NpcPortrait } from './art/sprites.tsx';
@@ -51,16 +53,23 @@ export function TermCard({ onMast }: { onMast(): void }) {
   const { p, act, busy, toast } = useGame();
   const m = p.mast ? mastById.get(p.mast) : null;
   const served = Math.max(0, p.termTotal - p.term);
-  const release = async () => {
-    if (!confirm(`Выйти по УДО? Уровень, навыки и деньги начнутся заново, шмот, наколки, хата и золото останутся. Навсегда: +${TERM.bonusPerHodka}% к деньгам и опыту за ходку, сейчас +${TERM.releaseGold * p.hodka} 🪙.`)) return;
-    const r = await act<{ hodka: number; bonus: number }>('release');
-    if (r) toast(`🔓 Свобода! Ходка №${r.hodka}, бонус +${r.bonus}%`);
+  const [pick, setPick] = useState(false);
+  const release = async (colony: string) => {
+    if (!confirm(`Выйти по УДО и заехать: ${colonyById.get(colony as 'general')?.name}? Уровень, навыки и деньги начнутся заново, шмот, наколки, хата и золото останутся. Навсегда: +${TERM.bonusPerHodka}% к деньгам и опыту за ходку, сейчас +${TERM.releaseGold * p.hodka} 🪙.`)) return;
+    const r = await act<{ hodka: number; bonus: number }>('release', { colony });
+    if (r) {
+      setPick(false);
+      toast(`🔓 Свобода! Ходка №${r.hodka}, бонус +${r.bonus}%`);
+    }
   };
+  const col = colonyById.get(p.colony);
   return (
     <div className="term-card">
       <div className="term-row">
         <div>
-          <b>⛓️ Ходка №{p.hodka}</b>
+          <b>
+            ⛓️ Ходка №{p.hodka} · {col?.emoji} {col?.name}
+          </b>
           <small>{p.hodkaBonus ? `бонус ходок +${p.hodkaBonus}% к деньгам и опыту` : 'первая ходка'}</small>
         </div>
         <button className="btn btn-s btn-dark" onClick={onMast} disabled={p.level < MAST_RULES.minLevel}>
@@ -74,9 +83,36 @@ export function TermCard({ onMast }: { onMast(): void }) {
       {p.term > 0 ? (
         <small className="muted">Срок скашивают смены, боссы, дела дня, сюжет и случаи. Пойманный в побеге — довесок.</small>
       ) : (
-        <button className="btn btn-wide btn-gold" disabled={busy} onClick={release}>
+        <button className="btn btn-wide btn-gold" disabled={busy} onClick={() => setPick(true)}>
           🔓 Выйти по УДО и зайти следующей ходкой
         </button>
+      )}
+      {pick && (
+        <div className="modal" onClick={() => setPick(false)}>
+          <div className="modal-body colonies" onClick={(e) => e.stopPropagation()}>
+            <h2>🚌 Куда этапируют?</h2>
+            <p className="muted small">Новая ходка — можно заехать на другую зону: свои правила, боссы и место. Выбор — до следующего УДО.</p>
+            {COLONIES.map((c) => (
+              <button key={c.id} className={`colony ${c.id === p.colony ? 'cur' : ''}`} disabled={busy} onClick={() => release(c.id)}>
+                <span className="colony-ico">{c.emoji}</span>
+                <span className="grow">
+                  <b>{c.name}</b>
+                  <small>{c.desc}</small>
+                  {c.pros.map((x) => (
+                    <small key={x} className="pro">
+                      ＋ {x}
+                    </small>
+                  ))}
+                  {c.cons.map((x) => (
+                    <small key={x} className="con">
+                      － {x}
+                    </small>
+                  ))}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -3,7 +3,9 @@
 // Профили: казуал (3 захода в день), активный (8) и задрот (16). Никто не донатит.
 import { PASS } from '../shared/season.ts';
 import * as g from '../server/game.ts';
-import { BOSSES, CLAN, FURNITURE, ITEMS, JOBS, TATTOOS, trainCost, type Item } from '../shared/content.ts';
+import { BOSSES as ALL_BOSSES, CLAN, FURNITURE, ITEMS, JOBS, TATTOOS, trainCost, type Item } from '../shared/content.ts';
+// симуляция идёт на общем режиме: боссы колоний не в счёт
+const BOSSES = ALL_BOSSES.filter((b) => !b.colony);
 import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { DOMINO, NARDY, PUZZLES, SHIZO_CARDS, isMateMove, legalMoves, nardyLand, nardyStep } from '../shared/minigames2.ts';
 import { PLACES } from '../shared/places.ts';

@@ -47,6 +47,8 @@ export const recipeById = new Map(RECIPES.map((r) => [r.id, r]));
 /** Где берутся материалы: «место.занятие» → что даёт. Смены и боссы — случайный материал. */
 export const PLACE_MATS: Record<string, Partial<Record<MatId, number>>> = {
   'factory.sew': { thread: 2, cloth: 1 },
+  'logging.stack': { wood: 3 },
+  'kamera.road': { thread: 1, tea: 1 },
   'factory.wood': { wood: 2 },
   'factory.foundry': { wire: 2 },
   'factory.carry': { blade: 1, wire: 1 },

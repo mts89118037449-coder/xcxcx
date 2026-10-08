@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { WEATHER_LOOK, weatherAt, type Weather } from '../../shared/weather.ts';
+import { WEATHER_LOOK, weatherFor, type Weather } from '../../shared/weather.ts';
+
+/** Колония игрока: на Севере — вечная зима, зона выглядит по-своему. Ставит App. */
+let colonyNow: string = 'general';
+export const setSceneColony = (c: string) => {
+  colonyNow = c;
+};
+export const sceneColony = () => colonyNow;
 
 const W = 360;
 const H = 280;
@@ -11,9 +18,9 @@ const forced = (w: Weather): Weather =>
   FORCE && FORCE in WEATHER_LOOK ? { ...w, ...WEATHER_LOOK[FORCE as Weather['kind']], kind: FORCE as Weather['kind'], season: FORCE === 'snow' || FORCE === 'frost' ? 'winter' : w.season, temp: FORCE === 'snow' || FORCE === 'frost' ? -18 : w.temp } : w;
 
 export function useWeather(): Weather {
-  const [w, setW] = useState(() => forced(weatherAt(Date.now())));
+  const [w, setW] = useState(() => forced(weatherFor(Date.now(), colonyNow)));
   useEffect(() => {
-    const id = setInterval(() => setW(forced(weatherAt(Date.now()))), 60_000);
+    const id = setInterval(() => setW(forced(weatherFor(Date.now(), colonyNow))), 60_000);
     return () => clearInterval(id);
   }, []);
   return w;
