@@ -9,6 +9,7 @@ import {
   CHURCH,
   PULLUPS,
   WEEKLY_EVENTS,
+  TATTOOS,
   WEEKLY_REWARDS,
   type TrackKind,
   BUTTS,
@@ -59,6 +60,7 @@ import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits
 import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
 import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
 import { weatherAt, weatherFx } from '../shared/weather.ts';
+import { WALL_MAX, albumById, albumProgress, type AlbumId } from '../shared/album.ts';
 import { liveById, type LiveEffects, type LiveRun } from '../shared/live.ts';
 import { LEAGUE, LEAGUE_TIERS, REVENGE, leaguePoints, leagueTier, powerOf } from '../shared/league.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTICE_KINDS, NOTIFY, TERM, mastById, termDays, type Mast, type NoticeKind } from '../shared/term.ts';
@@ -235,6 +237,10 @@ export interface Player {
   league: { week: number; pts: number; wins: number; claimed: number; last: { week: number; pts: number } | null };
   /** кто на меня наезжал: повтор боя и можно отомстить */
   attacks: AttackRec[];
+  /** боссы, которых побеждал хоть раз (трофеи), и что висит на стене хаты */
+  trophies: string[];
+  wall: string[];
+  albums: string[];
   /** кого сегодня уже били — не больше двух раз одного */
   pvpDay: { day: string; hits: Record<string, number> };
   /** подозрение в накрутке: счёт остывает со временем, журнал — для админа */
@@ -370,6 +376,9 @@ export function newPlayer(id: number, name: string, username: string | null, now
     tutN: 0,
     league: { week: 0, pts: 0, wins: 0, claimed: 0, last: null },
     attacks: [],
+    trophies: [],
+    wall: [],
+    albums: [],
     pvpDay: { day: '', hits: {} },
     sus: { score: 0, at: now, log: [] },
     banned: false,
@@ -443,6 +452,10 @@ export function migrate(p: Player): Player {
   p.tutN ??= 0;
   p.league ??= { week: 0, pts: 0, wins: 0, claimed: 0, last: null };
   p.attacks ??= [];
+  // кто бил боссов до трофеев — трофеи по золоту за первую победу
+  p.trophies ??= Object.keys(p.bossGold ?? {});
+  p.wall ??= [];
+  p.albums ??= [];
   p.pvpDay ??= { day: '', hits: {} };
   p.sus ??= { score: 0, at: 0, log: [] };
   p.banned ??= false;
@@ -895,6 +908,7 @@ export function bossFinish(p: Player, bossId: string, result: FightResult, now: 
     p.gold += reward.gold;
     p.authority += reward.authority;
     p.bossKills += 1;
+    if (!p.trophies.includes(bossId)) p.trophies.push(bossId);
     track(p, 'boss');
     if (rng() < CRAFT.bossChance) giveMats(p, { [rollMat(rng)]: 1 });
     liveFind(p, now, rng);
@@ -3237,3 +3251,32 @@ export function leagueClaim(p: Player, prev: { week: number; pts: number; rank: 
 }
 
 export { LEAGUE_TIERS };
+
+// --- Альбом и стена трофеев ----------------------------------------------------------------
+
+export { albumProgress };
+
+export function albumClaim(p: Player, id: string, now: number) {
+  const a = albumById.get(id as AlbumId);
+  if (!a) throw new GameError('Нет такой коллекции');
+  if (p.albums.includes(a.id)) throw new GameError('Уже забрал');
+  const pr = albumProgress(p)[a.id];
+  if (pr.have.length < pr.total.length) throw new GameError(`Собрано ${pr.have.length} из ${pr.total.length}`);
+  p.albums.push(a.id);
+  p.gold += a.gold;
+  if (!p.cosmetics.includes(a.cosmetic)) p.cosmetics.push(a.cosmetic);
+  log(p, now, `${a.emoji} Коллекция «${a.name}» собрана: +${a.gold} 🪙 и ${cosmeticById.get(a.cosmetic)?.name ?? 'награда'}`);
+  return { gold: a.gold, cosmetic: a.cosmetic };
+}
+
+/** Повесить трофей на стену хаты или снять. */
+export function wallToggle(p: Player, bossId: string) {
+  if (p.wall.includes(bossId)) {
+    p.wall = p.wall.filter((x) => x !== bossId);
+    return { wall: p.wall };
+  }
+  if (!p.trophies.includes(bossId)) throw new GameError('Этого трофея у тебя нет');
+  if (p.wall.length >= WALL_MAX) throw new GameError(`На стене места на ${WALL_MAX} трофея — сними один`);
+  p.wall.push(bossId);
+  return { wall: p.wall };
+}

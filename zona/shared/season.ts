@@ -87,5 +87,9 @@ export const COSMETICS: Cosmetic[] = [
   { id: 'title_boss', kind: 'title', name: 'Титул «Хозяин положения»', value: 'Хозяин положения' },
   { id: 'title_season', kind: 'title', name: 'Титул «Ветеран сезона»', value: 'Ветеран сезона' },
   { id: 'title_champ', kind: 'title', name: 'Титул «Чемпион двора»', value: 'Чемпион двора' },
+  { id: 'frame_trophy', kind: 'frame', name: 'Рамка трофеев', value: 'trophy' },
+  { id: 'title_ink', kind: 'title', name: 'Титул «Расписной»', value: 'Расписной' },
+  { id: 'title_chronicler', kind: 'title', name: 'Титул «Летописец зоны»', value: 'Летописец зоны' },
+  { id: 'title_everywhere', kind: 'title', name: 'Титул «Свой везде»', value: 'Свой везде' },
 ];
 export const cosmeticById = new Map(COSMETICS.map((c) => [c.id, c]));

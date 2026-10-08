@@ -76,6 +76,9 @@ export interface PlayerView {
   intro: number;
   /** обучение первых минут: номер шага и прогресс; null — позади */
   tut: { step: number; n: number } | null;
+  trophies: string[];
+  wall: string[];
+  albums: string[];
   attacks: { at: number; by: number; name: string; won: boolean; loot: number; canAvenge: boolean; avenged: boolean }[];
   league: { week: number; pts: number; wins: number; last: { week: number; pts: number } | null; claimable: boolean; power: number };
   /** событие зоны, которое идёт сейчас */
@@ -202,6 +205,7 @@ export interface VisitView {
   str: number;
   interior: { wall: string; floor: string };
   tattoos: string[];
+  wall: string[];
   clan: { id: number; name: string; tag: string } | null;
   respectedToday: boolean;
   giftedToday: boolean;

@@ -2158,7 +2158,8 @@ main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .ref-list button { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 3px 8px; color: var(--text); font-size: 12px; }
 
 /* рамки аватара */
-.frame-gold, .frame-fire, .frame-ice, .frame-blood, .frame-season { border-radius: 14px; }
+.frame-gold, .frame-fire, .frame-ice, .frame-blood, .frame-season, .frame-trophy { border-radius: 14px; }
+.frame-trophy { box-shadow: 0 0 0 3px #8a5a2c, 0 0 0 5px #e0b84a, 0 0 12px #e0b84a88; }
 .frame-gold { box-shadow: 0 0 0 3px #e0b84a, 0 0 10px #e0b84a88; }
 .frame-fire { box-shadow: 0 0 0 3px #ff6a2a, 0 0 12px #ff3a0a; animation: fire-glow 1.2s ease-in-out infinite alternate; }
 .frame-ice { box-shadow: 0 0 0 3px #9fdcff, 0 0 12px #6ac0ff88; }
@@ -2431,3 +2432,22 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .wx-tag { white-space: nowrap; }
 .wx-note { position: absolute; left: 8px; top: 40px; max-width: 70%; padding: 3px 8px; border-radius: 10px; background: #000a; font-size: 11px; color: #dde6ee; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .wx-rain, .wx-snow, .wx-fog, .wx-splash { animation: none; } }
+
+/* --- Альбом --- */
+.album-btn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; padding: 8px 10px; margin-bottom: 8px; border-radius: 12px; background: linear-gradient(90deg, #3a2a14, #2a2418); border: 1px solid #6a5a3a; text-align: left; }
+.album-btn span { font-size: 22px; }
+.album-btn small { flex-basis: 100%; color: var(--muted); font-size: 12px; }
+.album-btn.ready { border-color: var(--gold); box-shadow: 0 0 10px #f2c14e55; }
+.album-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 8px; }
+.album-tabs button { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; font-size: 11px; border-radius: 10px; border: 1px solid var(--line); background: var(--card-2); }
+.album-tabs button span { font-size: 20px; }
+.album-tabs button small { color: var(--muted); }
+.album-tabs button.active { border-color: var(--gold); background: #3a2f1c; }
+.album-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 8px 0; max-height: 46vh; overflow: auto; }
+.album-cell { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border-radius: 10px; border: 1px dashed var(--line); background: #0004; opacity: 0.55; }
+.album-cell span { font-size: 24px; }
+.album-cell small { font-size: 10px; line-height: 1.15; text-align: center; color: var(--muted); }
+.album-cell.have { opacity: 1; border-style: solid; background: var(--card-2); }
+.album-cell.wall { border-color: var(--gold); }
+.album-cell i { position: absolute; top: 2px; right: 3px; font-style: normal; font-size: 12px; }
+.album-cell:disabled { cursor: default; }

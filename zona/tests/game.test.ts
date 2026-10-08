@@ -1542,3 +1542,25 @@ test('погода: по сезону, одна на 6 часов, влияет 
   assert.ok(weatherFx({ ...weatherAt(jan), kind: 'snow' }).escape < 0);
   assert.equal(weatherFx({ ...weatherAt(jan), kind: 'frost' }).shizoCold, 1);
 });
+
+import { ALBUMS } from '../shared/album.ts';
+
+test('альбом: трофеи за боссов, награда только за полную коллекцию и один раз, стена до трёх трофеев', () => {
+  const p = g.newPlayer(1, 'Коллекционер', null, T0);
+  assert.throws(() => g.albumClaim(p, 'bosses', T0), /Собрано 0/);
+  p.trophies = BOSSES.map((b) => b.id);
+  const gold = p.gold;
+  const r = g.albumClaim(p, 'bosses', T0);
+  assert.equal(p.gold, gold + ALBUMS[0].gold);
+  assert.ok(p.cosmetics.includes(r.cosmetic));
+  assert.throws(() => g.albumClaim(p, 'bosses', T0), /Уже/);
+  for (const b of BOSSES.slice(0, 3)) g.wallToggle(p, b.id);
+  assert.throws(() => g.wallToggle(p, BOSSES[3].id), /места/);
+  g.wallToggle(p, BOSSES[0].id);
+  assert.equal(p.wall.length, 2);
+  const q = g.newPlayer(2, 'Б', null, T0);
+  assert.throws(() => g.wallToggle(q, BOSSES[0].id), /нет/);
+  // старые игроки: трофеи — по золоту за первую победу
+  const old = g.migrate({ ...g.newPlayer(3, 'В', null, T0), bossGold: { b_rat: '2026-01-01' }, trophies: undefined } as never);
+  assert.deepEqual(old.trophies, ['b_rat']);
+});

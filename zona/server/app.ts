@@ -326,6 +326,9 @@ export function createApp(opts: AppOptions) {
       hodkaBonus: g.hodkaBonus(p),
       intro: p.intro,
       tut: p.tut >= 0 ? { step: p.tut, n: p.tutN } : null,
+      trophies: p.trophies,
+      wall: p.wall,
+      albums: p.albums,
       attacks: p.attacks.map((a) => ({ at: a.at, by: a.by, name: a.name, won: a.won, loot: a.loot, canAvenge: g.canAvenge(a, t), avenged: a.avenged })),
       league: (() => {
         g.ensureLeague(p, t);
@@ -806,6 +809,8 @@ export function createApp(opts: AppOptions) {
       const rec = p.attacks.find((a) => a.at === at);
       return g.revengeStart(p, at, rec ? db.getPlayer(rec.by) : null, t, rng);
     },
+    albumClaim: (p, b, t) => g.albumClaim(p, str(b.id), t),
+    wall: (p, b) => g.wallToggle(p, str(b.id)),
     leagueClaim: (p, _b, t) => {
       g.ensureLeague(p, t);
       const last = p.league.last;
@@ -1093,6 +1098,7 @@ export function createApp(opts: AppOptions) {
       str: v.str,
       interior: v.interior,
       tattoos: v.tattoos,
+      wall: v.wall,
       clan: c ? { id: c.id, name: c.name, tag: c.tag } : null,
       respectedToday: !!me && me.respect[v.id] === g.dayKey(t),
       giftedToday: !!me && me.respect[`g${v.id}`] === g.dayKey(t),

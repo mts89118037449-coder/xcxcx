@@ -3,12 +3,24 @@ import { fmt, timeLeft, useGame } from './game.tsx';
 import { NotifyToggle, TermCard } from './Term.tsx';
 import { SoundSettings } from './SoundSettings.tsx';
 import { ReportButton } from './Report.tsx';
+import { useState } from 'react';
+import { AlbumModal } from './Album.tsx';
+import { ALBUMS, albumProgress } from '../shared/album.ts';
 
 /** Профиль: срок, характеристики, лечение, статус, настройки и жалоба. */
 export function ProfilePanel({ onMast }: { onMast(): void }) {
   const { p, now, act, busy, go } = useGame();
+  const [album, setAlbum] = useState(false);
+  const prog = albumProgress(p);
+  const ready = ALBUMS.some((a) => !p.albums.includes(a.id) && prog[a.id].have.length >= prog[a.id].total.length);
   return (
         <>
+          <button className={`album-btn ${ready ? 'ready' : ''}`} onClick={() => setAlbum(true)}>
+            <span>📒</span>
+            <b>Альбом</b>
+            <small>{ALBUMS.map((a) => `${a.emoji} ${prog[a.id].have.length}/${prog[a.id].total.length}`).join('  ')}</small>
+          </button>
+          {album && <AlbumModal onClose={() => setAlbum(false)} />}
           <div className="rank-line">🎖️ {p.rank} · ур. {p.level}</div>
           <TermCard onMast={onMast} />
           <div className="stat-row">

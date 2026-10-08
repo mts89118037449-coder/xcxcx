@@ -5,7 +5,7 @@
 // Система координат 360×280, пол на y≈236.
 
 import type { ReactNode } from 'react';
-import { FURNITURE, interiorById, type Spot } from '../../shared/content.ts';
+import { FURNITURE, bossById, interiorById, type Spot } from '../../shared/content.ts';
 import { WeatherGround, WeatherLayer } from './Weather.tsx';
 import { BearSkin, Canopy, Deco, Dog, Drapes, Featherbed, FloorCarpet, Garland, Light, MiniBar, Music, Painting, Pet, Photos, Poster, Samovar, Shelf, SilkCarpet, Sport, Stash, Stool, Stove, WallTv } from './CellDecor.tsx';
 
@@ -518,9 +518,33 @@ function Crow({ x, y }: { x: number; y: number }) {
   );
 }
 
-export function CellScene({ furniture, interior, children, onClick }: { furniture: string[]; interior?: InteriorIds; children?: ReactNode; onClick?: () => void }) {
+/** Полка трофеев на стене хаты: таблички с боссами, которых завалил. */
+function TrophyShelf({ wall }: { wall: string[] }) {
+  if (!wall.length) return null;
   return (
-    <Scene backdrop={<CellBackdrop furniture={furniture} interior={interior} />} onClick={onClick}>
+    <g transform="translate(186 54) scale(0.76)" pointerEvents="none">
+      <rect x={-4} y={30} width={wall.length * 30 + 4} height={4} rx={1} fill="#6b4420" stroke="#3a2210" strokeWidth={0.6} />
+      {wall.map((id, i) => {
+        const b = bossById.get(id);
+        return (
+          <g key={id} transform={`translate(${i * 30} 0)`}>
+            <path d="M2,30 L13,4 L24,30" fill="none" stroke="#2a1a0a" strokeWidth={0.4} opacity={0.5} />
+            <rect x={1} y={6} width={24} height={24} rx={3} fill="#8a5a2c" stroke="#3a2210" strokeWidth={1} />
+            <rect x={3.5} y={8.5} width={19} height={19} rx={2} fill="#e8d6a8" stroke="#b8952e" strokeWidth={0.8} />
+            <text x={13} y={22} fontSize={12} textAnchor="middle">
+              {b?.emoji ?? '🏆'}
+            </text>
+            <circle cx={13} cy={4} r={1.4} fill="#555" />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+export function CellScene({ furniture, interior, children, onClick, wall = [] }: { furniture: string[]; interior?: InteriorIds; children?: ReactNode; onClick?: () => void; wall?: string[] }) {
+  return (
+    <Scene backdrop={<><CellBackdrop furniture={furniture} interior={interior} /><TrophyShelf wall={wall} /></>} onClick={onClick}>
       <CellLive furniture={furniture} />
       {children}
     </Scene>

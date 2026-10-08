@@ -92,6 +92,7 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
                 mood="idle"
                 furniture={v.furniture}
                 interior={v.interior}
+                wall={v.wall}
                 anim=""
                 animKey={0}
               />

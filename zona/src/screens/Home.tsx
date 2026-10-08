@@ -60,6 +60,7 @@ export function Home() {
           mood={hurt ? 'hurt' : 'idle'}
           furniture={withPreview(p.cell, preview)}
           interior={p.interior}
+          wall={p.wall}
           anim={anim}
           animKey={animKey}
           onClick={() => play('act-cheer')}
