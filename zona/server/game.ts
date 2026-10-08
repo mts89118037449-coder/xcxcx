@@ -58,6 +58,7 @@ import { SHIZO, SHIZO_CARDS, shizoCardById, type ShizoStat } from '../shared/min
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits, isMateMove, nardyLand, nardyStep, puzzleById, speedButts, type NardyPick, type Tile } from '../shared/minigames2.ts';
 import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
 import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
+import { weatherAt, weatherFx } from '../shared/weather.ts';
 import { liveById, type LiveEffects, type LiveRun } from '../shared/live.ts';
 import { LEAGUE, LEAGUE_TIERS, REVENGE, leaguePoints, leagueTier, powerOf } from '../shared/league.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTICE_KINDS, NOTIFY, TERM, mastById, termDays, type Mast, type NoticeKind } from '../shared/term.ts';
@@ -2426,7 +2427,7 @@ export function escapeStep(p: Player, quality: number, now: number, rng: Rng) {
   const st = ESCAPE_STAGES[run.stage];
   const q = Math.max(0, Math.min(1, Number(quality) || 0));
   const agi = Math.min(0.1, p.agi * 0.002);
-  const chance = st.pass ? Math.min(0.97, st.pass + q * ESCAPE.qualityBonus + agi) : 0;
+  const chance = st.pass ? Math.max(0.05, Math.min(0.97, st.pass + q * ESCAPE.qualityBonus + agi + weatherFx(weatherAt(now)).escape)) : 0;
   if (rng() < chance) {
     run.stage += 1;
     return { passed: true, stage: run.stage, caught: false as const };
@@ -2975,7 +2976,7 @@ export function shizoPick(p: Player, choice: number, now: number, rng: Rng) {
   }
   const failed = !!o.risk && rng() < o.risk.chance;
   const d = failed ? o.risk!.d : o.d;
-  for (const k of ['heat', 'food', 'spirit'] as ShizoStat[]) s[k] = Math.min(SHIZO.max, s[k] + (d[k] ?? 0) - SHIZO.nightLoss);
+  for (const k of ['heat', 'food', 'spirit'] as ShizoStat[]) s[k] = Math.min(SHIZO.max, s[k] + (d[k] ?? 0) - SHIZO.nightLoss - (k === 'heat' ? weatherFx(weatherAt(now)).shizoCold : 0));
   const text = failed ? o.risk!.text : o.text;
   const broke = s.heat <= 0 || s.food <= 0 || s.spirit <= 0;
   let end: null | { won: boolean; authority: number; xp: number; rep: number; term: number; levelUps: number } = null;

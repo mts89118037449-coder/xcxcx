@@ -8,6 +8,7 @@ import { WeeklyCard } from '../Weekly.tsx';
 import { GameTiles, PlaceTiles } from '../Leisure.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { play } from '../sound.ts';
+import { WeatherTag, useWeather } from '../art/Weather.tsx';
 import { DebtCard, FactionCards, ObshakCard } from '../Factions.tsx';
 import { Market } from '../Market.tsx';
 import { LockedCard } from '../Unlocks.tsx';
@@ -17,6 +18,7 @@ import { isOpen } from '../../shared/unlocks.ts';
 export function Zone() {
   const { p, now, act, go, openPlace, visit } = useGame();
   const talk = useTalk();
+  const wx = useWeather();
   const baryga = useNpc('sheet/cast/sport');
   const [taken, setTaken] = useState<number[]>([]);
   const [pops, setPops] = useState<{ id: number; x: number; y: number; n: number }[]>([]);
@@ -47,7 +49,7 @@ export function Zone() {
           }}
         >
           <Place x={112} y={262} scale={0.7}>
-            <PoseG name="crossed" look={lookOf(p)} fx={{ bruise: p.hp < p.stats.maxHp * 0.3 }} />
+            <PoseG name="crossed" look={lookOf(p)} fx={{ bruise: p.hp < p.stats.maxHp * 0.3, breath: wx.temp < 0 }} />
           </Place>
           {baryga && (
             <g className="npc-click" data-tut="baryga" onClick={() => talk('baryga')}>
@@ -70,7 +72,8 @@ export function Zone() {
             </text>
           ))}
         </ZoneScene>
-        <div className="scene-tag">🗺️ Зона · 🚬 {p.butts}</div>
+        <div className="scene-tag">🗺️ Зона · 🚬 {p.butts} · <WeatherTag /></div>
+        {wx.effect && <div className="wx-note">{wx.emoji} {wx.effect}</div>}
       </div>
       {p.nextButtAt && !field.length && <div className="muted small center">🚬 через {timeLeft(p.nextButtAt - now)}</div>}
       <SegBar

@@ -1524,3 +1524,21 @@ test('месть: наезд записывается с повтором, от�
   v.pvpAt = 0;
   assert.throws(() => g.revengeStart(v, rec.at, a, T0 + 3000, fixed(0.5)), /Уже/);
 });
+
+import { weatherAt, weatherFx, seasonOf } from '../shared/weather.ts';
+
+test('погода: по сезону, одна на 6 часов, влияет на побег и ШИЗО', () => {
+  const jan = Date.UTC(2027, 0, 10, 9);
+  const jul = Date.UTC(2027, 6, 10, 9);
+  assert.equal(seasonOf(jan), 'winter');
+  assert.equal(seasonOf(jul), 'summer');
+  assert.deepEqual(weatherAt(jan), weatherAt(jan + 3600_000), 'внутри шести часов — та же');
+  for (let d = 0; d < 60; d++) {
+    const w = weatherAt(jan + d * 6 * 3600_000);
+    assert.ok(w.temp < 5, 'зимой не тепло');
+    assert.ok(['snow', 'frost', 'cloudy', 'clear'].includes(w.kind));
+  }
+  assert.ok(weatherFx({ ...weatherAt(jan), kind: 'rain' }).escape > 0);
+  assert.ok(weatherFx({ ...weatherAt(jan), kind: 'snow' }).escape < 0);
+  assert.equal(weatherFx({ ...weatherAt(jan), kind: 'frost' }).shizoCold, 1);
+});

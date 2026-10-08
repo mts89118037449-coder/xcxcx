@@ -6,6 +6,7 @@
 
 import type { ReactNode } from 'react';
 import { FURNITURE, interiorById, type Spot } from '../../shared/content.ts';
+import { WeatherGround, WeatherLayer } from './Weather.tsx';
 import { BearSkin, Canopy, Deco, Dog, Drapes, Featherbed, FloorCarpet, Garland, Light, MiniBar, Music, Painting, Pet, Photos, Poster, Samovar, Shelf, SilkCarpet, Sport, Stash, Stool, Stove, WallTv } from './CellDecor.tsx';
 
 const W = 360;
@@ -106,11 +107,14 @@ export function Scene({
   children,
   className = '',
   onClick,
+  outdoor,
 }: {
   backdrop: ReactNode;
   children?: ReactNode;
   className?: string;
   onClick?: () => void;
+  /** улица: поверх — погода */
+  outdoor?: boolean;
 }) {
   const box = `0 0 ${W} ${H}`;
   return (
@@ -118,10 +122,12 @@ export function Scene({
       <svg className="scene-layer" viewBox={box} preserveAspectRatio="xMidYMid slice" aria-hidden>
         <SceneDefs />
         {backdrop}
+        {outdoor && <WeatherGround />}
       </svg>
       <svg className="scene-layer" viewBox={box} preserveAspectRatio="xMidYMid slice">
         <SceneDefs />
         {children}
+        {outdoor && <WeatherLayer />}
       </svg>
       <div className="scene-fx" />
     </div>
@@ -716,7 +722,7 @@ function YardLive({ tower }: { tower: boolean }) {
 
 export function YardScene({ children, tower = true }: { children?: ReactNode; tower?: boolean }) {
   return (
-    <Scene backdrop={<YardBackdrop tower={tower} />}>
+    <Scene backdrop={<YardBackdrop tower={tower} />} outdoor>
       <YardLive tower={tower} />
       {children}
     </Scene>
@@ -922,7 +928,7 @@ export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace
     </g>
   );
   return (
-    <Scene backdrop={<ZoneBackdrop />} className="map">
+    <Scene backdrop={<ZoneBackdrop />} className="map" outdoor>
       {/* кликабельные здания */}
       <rect x={6} y={70} width={130} height={100} fill="#fff" opacity={0.001} onClick={() => onPlace('barrack')} style={{ cursor: 'pointer' }} />
       <rect x={140} y={14} width={46} height={98} fill="#fff" opacity={0.001} onClick={() => onPlace('church')} style={{ cursor: 'pointer' }} />

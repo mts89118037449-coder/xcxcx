@@ -665,6 +665,13 @@ function Head({ look, pose, uid, skin, fx }: { look: Look; pose: Pose; uid: stri
           <path d="M 12.6,-8.8 C 12.8,-7.8 12.4,-7.2 12.7,-6.4" fill="none" stroke="#9a1414" strokeWidth={0.9} strokeLinecap="round" />
         </g>
       )}
+      {fx?.breath && (
+        <g className="face-breath">
+          <circle cx={17} cy={-5} r={2.2} fill="#fff" opacity={0.5} />
+          <circle cx={21} cy={-7} r={3} fill="#fff" opacity={0.35} />
+          <circle cx={26} cy={-9} r={3.6} fill="#fff" opacity={0.2} />
+        </g>
+      )}
       {/* пот: капли на виске и лбу */}
       {fx?.sweat && (
         <g>
@@ -1046,6 +1053,8 @@ export interface FaceFx {
   blood?: boolean;
   bruise?: boolean;
   smile?: boolean;
+  /** мороз: пар изо рта */
+  breath?: boolean;
 }
 
 export interface RigProps {
