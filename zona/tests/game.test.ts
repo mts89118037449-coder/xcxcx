@@ -1704,3 +1704,41 @@ test('слово дня: одинаковое для всех, подсветк�
   assert.ok(p.word.done && !p.word.won);
   assert.equal(p.wordStreak.n, 0);
 });
+
+import { PET } from '../shared/pets.ts';
+
+test('питомцы: покупка, кормёжка с откатом, кот лечит и добавляет здоровья, голодный слабее, голубь — посылки', () => {
+  const H = 3600_000;
+  const p = g.newPlayer(1, 'Кошатник', null, T0);
+  p.money = 10_000;
+  assert.throws(() => g.petBuy(p, 'cat', 'Барсик', T0), /уровня/);
+  p.level = 10;
+  const hp0 = g.stats(p, T0).maxHp;
+  g.petBuy(p, 'cat', '  Барсик  ', T0);
+  assert.equal(p.pet!.name, 'Барсик');
+  assert.equal(p.money, 8_500);
+  assert.throws(() => g.petBuy(p, 'rat', '', T0), /уже/);
+  assert.ok(g.stats(p, T0).maxHp > hp0);
+  assert.throws(() => g.petFeed(p, T0), /сытый/);
+  const t1 = T0 + PET.feedH * H;
+  p.butts = 10;
+  p.hp = 1;
+  const r = g.petFeed(p, t1);
+  assert.ok(r.heal > 0 && p.hp > 1);
+  assert.equal(p.butts, 10 - PET.feedButts);
+  // тренировка до 2 уровня
+  p.energy = 100;
+  g.petTrain(p, t1);
+  assert.throws(() => g.petTrain(p, t1), /Устал/);
+  g.petTrain(p, t1 + PET.trainH * H);
+  assert.equal(p.pet!.level, 2);
+  // двое суток без еды — сила вдвое меньше
+  assert.equal(g.petPower(p, 'cat', t1 + (PET.hungryH + 1) * H), 1);
+  assert.equal(g.petPower(p, 'rat', t1), 0);
+  const q = g.newPlayer(2, 'Голубятник', null, T0);
+  q.level = 10;
+  q.money = 10_000;
+  g.petBuy(q, 'pigeon', '', T0);
+  assert.equal(q.pet!.name, 'Голубь');
+  assert.equal(g.petParcels(q, T0), 1);
+});

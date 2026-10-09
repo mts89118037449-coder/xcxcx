@@ -77,6 +77,7 @@ export interface PlayerView {
   /** обучение первых минут: номер шага и прогресс; null — позади */
   tut: { step: number; n: number } | null;
   word: { len: number; guesses: { g: string; marks: ('g' | 'y' | 'x')[] }[]; done: boolean; won: boolean; answer: string | null; meaning: string | null; streak: number; best: number };
+  pet: { kind: 'cat' | 'rat' | 'pigeon'; name: string; level: number; xp: number; fedAt: number; trainAt: number } | null;
   colony: 'general' | 'north' | 'krytka' | 'red';
   trophies: string[];
   duo: { status: 'invite' | 'run' | 'over'; partner: string; partnerId: number; stage: number; myMove: boolean; theirMove: boolean; log: string[]; inviteUntil: number } | null;
@@ -210,6 +211,7 @@ export interface VisitView {
   interior: { wall: string; floor: string };
   tattoos: string[];
   wall: string[];
+  pet: { kind: 'cat' | 'rat' | 'pigeon'; name: string; level: number } | null;
   clan: { id: number; name: string; tag: string } | null;
   respectedToday: boolean;
   giftedToday: boolean;

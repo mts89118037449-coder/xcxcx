@@ -7,7 +7,7 @@
 import type { ReactNode } from 'react';
 import { FURNITURE, bossById, interiorById, type Spot } from '../../shared/content.ts';
 import { WeatherGround, WeatherLayer, sceneColony } from './Weather.tsx';
-import { BearSkin, Canopy, Deco, Dog, Drapes, Featherbed, FloorCarpet, Garland, Light, MiniBar, Music, Painting, Pet, Photos, Poster, Samovar, Shelf, SilkCarpet, Sport, Stash, Stool, Stove, WallTv } from './CellDecor.tsx';
+import { BearSkin, Canopy, Deco, Dog, Drapes, Featherbed, FloorCarpet, Garland, Light, MiniBar, Music, Painting, Pet, Photos, PlayerPet, Poster, Samovar, Shelf, SilkCarpet, Sport, Stash, Stool, Stove, WallTv } from './CellDecor.tsx';
 
 const W = 360;
 const H = 280;
@@ -463,7 +463,7 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
   );
 }
 
-function CellLive({ furniture }: { furniture: string[] }) {
+function CellLive({ furniture, pet }: { furniture: string[]; pet?: string | null }) {
   const f = bestBySpot(furniture);
   const tech = techPos(f);
   const night = sky(new Date().getHours()).night;
@@ -498,6 +498,7 @@ function CellLive({ furniture }: { furniture: string[] }) {
       )}
       {f.tech === 'f_tv' && <rect className="tv-screen" x={tech.x + 4} y={tech.y} width={26} height={24} rx={4} opacity={0.75} />}
       {f.pet === 'f_roach' && <Pet kind="f_roach" />}
+      {pet && <PlayerPet kind={pet} />}
     </>
   );
 }
@@ -542,10 +543,10 @@ function TrophyShelf({ wall }: { wall: string[] }) {
   );
 }
 
-export function CellScene({ furniture, interior, children, onClick, wall = [] }: { furniture: string[]; interior?: InteriorIds; children?: ReactNode; onClick?: () => void; wall?: string[] }) {
+export function CellScene({ furniture, interior, children, onClick, wall = [], pet }: { furniture: string[]; interior?: InteriorIds; children?: ReactNode; onClick?: () => void; wall?: string[]; pet?: string | null }) {
   return (
     <Scene backdrop={<><CellBackdrop furniture={furniture} interior={interior} /><TrophyShelf wall={wall} /></>} onClick={onClick}>
-      <CellLive furniture={furniture} />
+      <CellLive furniture={furniture} pet={pet} />
       {children}
     </Scene>
   );

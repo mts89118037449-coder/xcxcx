@@ -368,7 +368,7 @@ export function createApp(opts: AppOptions) {
       frame: p.frame,
       title: p.title,
       offer: { id: offerOfDay(t).id, bought: p.offerDay === Math.floor((t + 3 * 3600_000) / 86_400_000) },
-      parcelsLeft: p.parcels.day === g.dayKey(t) ? Math.max(0, PARCEL.perDay - p.parcels.n) : PARCEL.perDay,
+      parcelsLeft: Math.max(0, PARCEL.perDay + g.petParcels(p, t) - (p.parcels.day === g.dayKey(t) ? p.parcels.n : 0)),
       clanHitReadyAt: p.clanHitAt + CLAN_BOSS.cooldownSec * 1000,
       war: p.war,
       warClaimed: p.warClaimed,
@@ -392,6 +392,7 @@ export function createApp(opts: AppOptions) {
       intro: p.intro,
       tut: p.tut >= 0 ? { step: p.tut, n: p.tutN } : null,
       colony: p.colony,
+      pet: p.pet,
       word: (() => {
         g.ensureWord(p, t);
         const ans = wordOfDay(p.word.day);
@@ -1055,6 +1056,9 @@ export function createApp(opts: AppOptions) {
       }
       return r;
     },
+    petBuy: (p, b, t) => g.petBuy(p, str(b.kind), str(b.name), t),
+    petFeed: (p, _b, t) => g.petFeed(p, t),
+    petTrain: (p, _b, t) => g.petTrain(p, t),
     albumClaim: (p, b, t) => g.albumClaim(p, str(b.id), t),
     wall: (p, b) => g.wallToggle(p, str(b.id)),
     leagueClaim: (p, _b, t) => {
@@ -1392,6 +1396,7 @@ export function createApp(opts: AppOptions) {
       interior: v.interior,
       tattoos: v.tattoos,
       wall: v.wall,
+      pet: v.pet ? { kind: v.pet.kind, name: v.pet.name, level: v.pet.level } : null,
       clan: c ? { id: c.id, name: c.name, tag: c.tag } : null,
       respectedToday: !!me && me.respect[v.id] === g.dayKey(t),
       giftedToday: !!me && me.respect[`g${v.id}`] === g.dayKey(t),

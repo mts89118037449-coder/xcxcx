@@ -2529,3 +2529,27 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .word-done .lose { color: #e89a8a; }
 /* пока открыто окно — кнопка случая под ним, чтобы не закрывать кнопки */
 body:has(.modal) .event-btn { z-index: 20; }
+
+/* питомец */
+.pet-card { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; margin: 8px 0; border-radius: 12px; border: 1px solid #5a4a3a; background: linear-gradient(90deg, #2a2016, #1e1c18); text-align: left; }
+.pet-card.on { align-items: flex-start; }
+.pet-card.hungry { border-color: #a0442a; }
+.pet-card b { display: block; }
+.pet-card small { display: block; color: var(--muted); font-size: 12px; }
+.pet-card .btn { flex: 1; padding: 6px 4px; font-size: 13px; margin-top: 6px; }
+.pet-ico { font-size: 26px; }
+.pet-ico.big { font-size: 40px; line-height: 1; }
+.pet-bar { height: 6px; border-radius: 3px; background: #0006; margin: 4px 0; overflow: hidden; }
+.pet-bar i { display: block; height: 100%; background: linear-gradient(90deg, #6ab04c, #c8e06a); transition: width 0.4s; }
+.pet-shop { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0; }
+.pet-offer { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px; border-radius: 12px; border: 1px solid #5a4a3a; background: #241e16; text-align: center; }
+.pet-offer small { color: var(--muted); font-size: 11px; line-height: 1.2; }
+.pet-offer i { font-style: normal; color: var(--gold); font-size: 13px; }
+.pet-offer:disabled { opacity: 0.5; }
+.pet-tail { animation: cat-tail 2.4s infinite ease-in-out; transform-origin: 16px 20px; transform-box: view-box; }
+.pet-head { animation: pet-look 5s infinite ease-in-out; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes pet-look { 40% { transform: rotate(0); } 50% { transform: rotate(-10deg); } 70% { transform: rotate(6deg); } }
+.pet-rat { animation: pet-rat 9s infinite ease-in-out; }
+@keyframes pet-rat { 0%, 100% { transform: translate(30px, 290px) scale(1.4); } 45% { transform: translate(130px, 290px) scale(1.4); } 50% { transform: translate(130px, 290px) scale(-1.4, 1.4); } 95% { transform: translate(30px, 290px) scale(-1.4, 1.4); } }
+.pet-pigeon { animation: pet-pigeon 6s infinite ease-in-out; }
+@keyframes pet-pigeon { 0%, 100% { transform: translate(244px, 112px) scale(1.5); } 45% { transform: translate(258px, 112px) scale(1.5); } 50% { transform: translate(258px, 112px) scale(-1.5, 1.5); } 95% { transform: translate(244px, 112px) scale(-1.5, 1.5); } }

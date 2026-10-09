@@ -61,6 +61,7 @@ import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts'
 import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
 import { weatherAt, weatherFor, weatherFx } from '../shared/weather.ts';
 import { WORD, markGuess, normWord, wordOfDay } from '../shared/fenya.ts';
+import { PET, petByKind, type PetKind } from '../shared/pets.ts';
 import { colonyById, colonyFx, type ColonyId } from '../shared/colonies.ts';
 import { TRADE, type TradeKind, type TradeLine } from '../shared/trade.ts';
 import { WALL_MAX, albumById, albumProgress, type AlbumId } from '../shared/album.ts';
@@ -245,6 +246,8 @@ export interface Player {
   wall: string[];
   albums: string[];
   /** побег вдвоём: идущий забег и приглашение от кента */
+  /** питомец в хате */
+  pet: { kind: PetKind; name: string; level: number; xp: number; fedAt: number; trainAt: number } | null;
   /** слово дня: попытки сегодня и серия дней подряд */
   word: { day: number; guesses: string[]; done: boolean; won: boolean };
   wordStreak: { n: number; last: number; best: number };
@@ -397,6 +400,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     albums: [],
     colony: 'general',
     word: { day: 0, guesses: [], done: false, won: false },
+    pet: null,
     wordStreak: { n: 0, last: 0, best: 0 },
     duo: null,
     duoInvite: null,
@@ -483,6 +487,7 @@ export function migrate(p: Player): Player {
   p.duo ??= null;
   p.colony ??= 'general';
   p.word ??= { day: 0, guesses: [], done: false, won: false };
+  p.pet ??= null;
   p.wordStreak ??= { n: 0, last: 0, best: 0 };
   p.tradesDay ??= { day: '', n: 0 };
   p.duelsDay ??= { day: '', n: 0 };
@@ -608,7 +613,7 @@ export function stats(p: Player, now: number) {
   return {
     atk: Math.round((5 + p.str * 3 + b.atk) * (1 + (mastBonus(p, 'atk') + hutBonus(p, 'atk')) / 100)),
     def: Math.round((p.agi * 2 + b.def) * (1 + hutBonus(p, 'def') / 100)),
-    maxHp: 80 + p.end * 12 + b.hp,
+    maxHp: Math.round((80 + p.end * 12 + b.hp) * (1 + petPower(p, 'cat', now) * 0.02)),
     crit: Math.min(40, 2 + Math.floor(p.agi * 0.3) + b.crit + mastBonus(p, 'crit') + (p.blessUntil > now ? CHURCH.blessCrit : 0)),
     maxEnergy: BALANCE.baseEnergy + b.energy + mastBonus(p, 'energy') + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel + hutBonus(p, 'energy'),
     moneyBonus: b.money + hutBonus(p, 'money') + hodkaBonus(p) + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel + (p.blessUntil > now ? CHURCH.blessMoney : 0),
@@ -710,12 +715,12 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
     item = rollConsumable(rng);
     giveItem(p, item);
   }
-  const xp = Math.round(job.xp * (1 + mastBonus(p, 'jobXp') / 100));
+  const xp = Math.round(job.xp * (1 + (mastBonus(p, 'jobXp') + petPower(p, 'pigeon', now)) / 100));
   const levelUps = addXp(p, xp, now);
   track(p, 'job');
   gainRep(p, 'work', 1);
   const mats = rng() < CRAFT.jobChance ? giveMats(p, { [rollMat(rng)]: 1 }) : {};
-  const found = liveFind(p, now, rng);
+  const found = liveFind(p, now, rng) ?? petFind(p, now, rng);
   return { money, xp, levelUps, bonus, item, mats, found };
 }
 
@@ -946,6 +951,7 @@ export function bossFinish(p: Player, bossId: string, result: FightResult, now: 
     track(p, 'boss');
     if (rng() < CRAFT.bossChance) giveMats(p, { [rollMat(rng)]: 1 });
     liveFind(p, now, rng);
+    petFind(p, now, rng);
     reward.levelUps = addXp(p, reward.xp, now);
     const drop = reward.drop ? itemById.get(reward.drop) : null;
     log(p, now, `${boss.emoji} Завалил «${boss.name}»${drop ? `, трофей: ${drop.emoji} ${drop.name}` : ''}`);
@@ -1898,7 +1904,7 @@ export function sendParcel(p: Player, target: Player, kind: 'item' | 'mat', ref:
   if (qty > (kind === 'item' ? PARCEL.maxItems : PARCEL.maxMats)) throw new GameError('Слишком много в одну посылку');
   const day = dayKey(now);
   if (p.parcels.day !== day) p.parcels = { day, n: 0 };
-  if (p.parcels.n >= PARCEL.perDay) throw new GameError('На сегодня посылок хватит');
+  if (p.parcels.n >= PARCEL.perDay + petParcels(p, now)) throw new GameError('На сегодня посылок хватит');
   takeGoods(p, kind, ref, qty);
   giveGoods(target, kind, ref, qty);
   p.parcels.n++;
@@ -3633,4 +3639,84 @@ export function wordGuess(p: Player, raw: string, now: number) {
     } else p.wordStreak.n = 0;
   }
   return { marks, won, done: p.word.done, reward, answer: p.word.done ? ans.word : null, meaning: p.word.done ? ans.meaning : null, tries: p.word.guesses.length };
+}
+
+// --- Питомцы -------------------------------------------------------------------------------------
+
+/** Уровень пользы питомца нужного вида (0 — нет такого); голодный — вдвое слабее. */
+export function petPower(p: Player, kind: PetKind, now: number): number {
+  const pet = p.pet;
+  if (!pet || pet.kind !== kind) return 0;
+  return now - pet.fedAt > PET.hungryH * 60 * MIN ? pet.level / 2 : pet.level;
+}
+
+export const petParcels = (p: Player, now: number) => (p.pet?.kind === 'pigeon' ? 1 + Math.floor(petPower(p, 'pigeon', now) / 4) : 0);
+
+/** Крыса притащила: расходник или материал. */
+function petFind(p: Player, now: number, rng: Rng): string | null {
+  const lvl = petPower(p, 'rat', now);
+  if (!lvl || rng() >= (3 + lvl) / 100) return null;
+  if (rng() < 0.5) {
+    const id = rollConsumable(rng);
+    giveItem(p, id);
+    log(p, now, `🐀 ${p.pet!.name} притащила: ${consumableById.get(id)?.emoji ?? ''} ${consumableById.get(id)?.name ?? id}`);
+    return id;
+  }
+  const m = rollMat(rng);
+  giveMats(p, { [m]: 1 });
+  log(p, now, `🐀 ${p.pet!.name} притащила: ${matById.get(m)?.emoji ?? ''} ${matById.get(m)?.name ?? m}`);
+  return m;
+}
+
+function petXp(p: Player, xp: number, now: number) {
+  const pet = p.pet!;
+  if (pet.level >= PET.maxLevel) return false;
+  pet.xp += xp;
+  let up = false;
+  while (pet.level < PET.maxLevel && pet.xp >= PET.xpTo(pet.level)) {
+    pet.xp -= PET.xpTo(pet.level);
+    pet.level++;
+    up = true;
+  }
+  if (up) log(p, now, `🐾 ${pet.name} подрос: ${pet.level} уровень`);
+  return up;
+}
+
+export function petBuy(p: Player, kind: string, name: string, now: number) {
+  const def = petByKind.get(kind as PetKind);
+  if (!def) throw new GameError('Такого не держат');
+  if (p.pet) throw new GameError('Питомец уже есть');
+  if (p.level < def.minLevel) throw new GameError(`С ${def.minLevel} уровня`);
+  spend(p, def.price, 'money');
+  const nm = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 16) || def.name;
+  p.pet = { kind: def.kind, name: nm, level: 1, xp: 0, fedAt: now, trainAt: 0 };
+  log(p, now, `${def.emoji} В хате завёлся ${def.name.toLowerCase()} — ${nm}`);
+  return p.pet;
+}
+
+export function petFeed(p: Player, now: number) {
+  const pet = p.pet;
+  if (!pet) throw new GameError('Питомца нет');
+  if (now - pet.fedAt < PET.feedH * 60 * MIN) throw new GameError('Ещё сытый');
+  if (p.butts < PET.feedButts) throw new GameError(`Нужно ${PET.feedButts} 🚬 на корм`);
+  p.butts -= PET.feedButts;
+  pet.fedAt = now;
+  const up = petXp(p, PET.feedXp, now);
+  // кот на руках — лечит
+  let heal = 0;
+  if (pet.kind === 'cat') {
+    const max = stats(p, now).maxHp;
+    heal = Math.min(max - p.hp, Math.round(max * (10 + 2 * pet.level) / 100));
+    p.hp += heal;
+  }
+  return { up, heal, level: pet.level };
+}
+
+export function petTrain(p: Player, now: number) {
+  const pet = p.pet;
+  if (!pet) throw new GameError('Питомца нет');
+  if (now - pet.trainAt < PET.trainH * 60 * MIN) throw new GameError('Устал — дай отдохнуть');
+  spendEnergy(p, PET.trainEnergy, now);
+  pet.trainAt = now;
+  return { up: petXp(p, PET.trainXp, now), level: pet.level };
 }

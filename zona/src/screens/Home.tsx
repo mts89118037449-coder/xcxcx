@@ -61,6 +61,7 @@ export function Home() {
           furniture={withPreview(p.cell, preview)}
           interior={p.interior}
           wall={p.wall}
+          pet={p.pet?.kind}
           anim={anim}
           animKey={animKey}
           onClick={() => play('act-cheer')}

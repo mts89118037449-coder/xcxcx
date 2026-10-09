@@ -884,3 +884,52 @@ export function Photos({ kind, tv }: { kind: string; tv: boolean }) {
     </g>
   );
 }
+
+/** Свой питомец игрока: кот сидит у ног, крыса шныряет вдоль стены, голубь ходит по подоконнику. */
+export function PlayerPet({ kind }: { kind: string }) {
+  if (kind === 'cat')
+    return (
+      <g transform="translate(278 248) scale(1.15)">
+        <path className="pet-tail" d="M16,20 C26,22 30,14 26,8" stroke="#c77a2e" strokeWidth={3.2} strokeLinecap="round" fill="none" />
+        <ellipse cx={10} cy={16} rx={9} ry={8} fill="#d88a3a" />
+        <path d="M4,12 q6,-3 12,0 M3,17 q7,-3 14,0" stroke="#a8641f" strokeWidth={1.2} fill="none" />
+        <g className="pet-head">
+          <circle cx={10} cy={4} r={6} fill="#e09444" />
+          <path d="M5,0 L5,-7 L9,-2 Z M11,-2 L15,-7 L15,0 Z" fill="#e09444" />
+          <path d="M6,-1 L6,-4 L8,-2 Z M12,-2 L14,-4 L14,-1 Z" fill="#f2b8a0" />
+          <ellipse cx={7.6} cy={3.4} rx={1.1} ry={1.5} fill="#2a3a1a" />
+          <ellipse cx={12.4} cy={3.4} rx={1.1} ry={1.5} fill="#2a3a1a" />
+          <path d="M9.2,6 L10.8,6 L10,7 Z" fill="#c45a5a" />
+          <path d="M3,6 H7 M13,6 H17" stroke="#fff" strokeWidth={0.35} />
+        </g>
+        <ellipse cx={6} cy={23} rx={2.6} ry={1.4} fill="#e8a050" />
+        <ellipse cx={14} cy={23} rx={2.6} ry={1.4} fill="#e8a050" />
+      </g>
+    );
+  if (kind === 'rat')
+    return (
+      <g className="pet-rat" transform="translate(40 262)">
+        <path d="M-2,2 C-12,4 -18,0 -22,4" stroke="#c99a9a" strokeWidth={1.2} fill="none" />
+        <ellipse cx={6} cy={0} rx={9} ry={5} fill="#7d7570" />
+        <path d="M14,-2 L20,1 L14,3 Z" fill="#8a827c" />
+        <circle cx={20} cy={1} r={0.9} fill="#e0a0a0" />
+        <circle cx={12} cy={-4} r={2.4} fill="#c99a9a" />
+        <circle cx={15.4} cy={-0.6} r={0.8} fill="#111" />
+        <path d="M2,4 v2 M9,4 v2" stroke="#5a5450" strokeWidth={1} />
+      </g>
+    );
+  return (
+    <g className="pet-pigeon" transform="translate(228 118)">
+      <ellipse cx={0} cy={0} rx={7} ry={5} fill="#8b93a0" />
+      <path d="M-6,-1 L-12,2 L-6,3 Z" fill="#5d6470" />
+      <path d="M-3,-2 C0,-5 4,-4 5,-1" stroke="#6a7280" strokeWidth={1.2} fill="none" />
+      <g className="pet-head">
+        <circle cx={6} cy={-5} r={3.4} fill="#7a8290" />
+        <path d="M4,-2 C5,0 7,0 8,-2" stroke="#5bb08a" strokeWidth={1.4} fill="none" />
+        <path d="M9,-5.6 L11.6,-4.6 L9,-4 Z" fill="#d9a07a" />
+        <circle cx={7.2} cy={-5.8} r={0.7} fill="#d0502a" />
+      </g>
+      <path d="M-1,5 v3 M2,5 v3" stroke="#c0605a" strokeWidth={0.9} />
+    </g>
+  );
+}
