@@ -2590,3 +2590,31 @@ body:has(.modal) .event-btn { z-index: 20; }
 .tree-light { animation: tree-blink 1.6s infinite steps(2); }
 .tree-light:nth-child(2n) { animation-delay: 0.8s; }
 @keyframes tree-blink { 50% { opacity: 0.25; } }
+
+/* стройка зоны */
+.build-card { display: flex; flex-direction: column; gap: 5px; width: 100%; padding: 8px 10px; margin: 6px 0; border-radius: 12px; border: 1px dashed #c9a040; background: repeating-linear-gradient(135deg, #2a2418 0 12px, #241f15 12px 24px); text-align: left; }
+.build-row { display: flex; gap: 4px; }
+.build-dot { font-size: 16px; filter: grayscale(1); opacity: 0.4; }
+.build-dot.done { filter: none; opacity: 1; }
+.build-dot.cur { filter: none; opacity: 1; animation: bob 1.4s infinite; }
+.build-title { font-size: 13px; }
+.build-title small { color: var(--muted); }
+.build-bar { position: relative; display: block; height: 14px; border-radius: 7px; background: #0007; overflow: hidden; margin-top: 3px; }
+.build-bar i { display: block; height: 100%; background: repeating-linear-gradient(135deg, #f2c14e 0 8px, #2a2418 8px 16px); transition: width 0.6s; }
+.build-bar em { position: absolute; inset: 0; text-align: center; font-size: 10px; line-height: 14px; font-style: normal; text-shadow: 0 1px 2px #000; }
+.build-art { width: 100%; border-radius: 12px; display: block; margin-bottom: 8px; }
+.crane-hook { animation: crane 4s ease-in-out infinite; }
+@keyframes crane { 50% { transform: translateX(-60px); } }
+.build-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+.build-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; background: #0004; }
+.build-item b, .build-item small { display: block; }
+.build-item small { color: var(--muted); font-size: 11px; }
+.build-item.lock { opacity: 0.5; }
+.build-item.cur { box-shadow: inset 0 0 0 1px var(--gold); }
+.build-em { font-size: 26px; }
+.build-mats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 6px 0; }
+.build-mats .btn { padding: 6px 2px; }
+.build-top { margin: 8px 0; padding: 8px; border-radius: 10px; background: #0004; font-size: 13px; }
+.build-top div { display: flex; gap: 6px; padding: 2px 0; }
+.build-top div b { margin-left: auto; }
+.build-top .me { color: var(--gold); }

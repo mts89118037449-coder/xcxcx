@@ -96,6 +96,7 @@ export const COSMETICS: Cosmetic[] = [
   { id: 'frame_army', kind: 'frame', name: 'Рамка «Погоны»', value: 'army' },
   { id: 'title_arm', kind: 'title', name: 'Титул «Железная рука»', value: 'Железная рука' },
   { id: 'frame_easter', kind: 'frame', name: 'Рамка «Пасхальная»', value: 'easter' },
+  { id: 'title_builder', kind: 'title', name: 'Титул «Прораб зоны»', value: 'Прораб зоны' },
   { id: 'title_egg', kind: 'title', name: 'Титул «Битый, но целый»', value: 'Битый, но целый' },
 ];
 export const cosmeticById = new Map(COSMETICS.map((c) => [c.id, c]));

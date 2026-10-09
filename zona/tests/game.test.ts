@@ -1796,3 +1796,34 @@ test('праздники: календарь, Пасха, задания, гре
     g.clock.now = saved;
   }
 });
+
+import { BUILDINGS, BUILD, addBuildPts, buildBonus } from '../shared/build.ts';
+
+test('стройка зоны: взносы деньгами и материалом, авторитет, титул, бонус построенного', () => {
+  const p = g.newPlayer(1, 'Прораб', null, T0);
+  p.money = 200_000;
+  p.mats = { wood: 3 };
+  assert.throws(() => g.buildGive(p, 'money', '', 777, T0), /не принимают/);
+  const r = g.buildGive(p, 'money', '', 10_000, T0);
+  assert.equal(r.pts, 10_000);
+  assert.equal(r.authority, 10_000 / BUILD.authorityPer);
+  assert.throws(() => g.buildGive(p, 'mat', 'wood', 5, T0), /Не хватает/);
+  assert.equal(g.buildGive(p, 'mat', 'wood', 3, T0).pts, 3 * BUILD.matPts);
+  assert.equal(p.mats.wood, 0);
+  for (let i = 0; i < 1; i++) g.buildGive(p, 'money', '', 100_000, T0);
+  assert.ok(p.cosmetics.includes('title_builder'));
+  // общий счёт: перелив достраивает следующее здание
+  const st = { idx: 0, pts: 0, done: [] as string[] };
+  const fin = addBuildPts(st, BUILDINGS[0].goal + BUILDINGS[1].goal + 5);
+  assert.deepEqual(fin, ['canteen', 'medbay']);
+  assert.equal(st.pts, 5);
+  // бонус «Медчасти» работает на здоровье
+  const hp0 = g.stats(p, T0).maxHp;
+  g.zoneBuilt.done = st.done;
+  try {
+    assert.ok(g.stats(p, T0).maxHp > hp0);
+    assert.equal(buildBonus(st.done, 'money'), 5);
+  } finally {
+    g.zoneBuilt.done = [];
+  }
+});

@@ -99,6 +99,7 @@ export const api = {
   word: () => post<{ solved: number; top: { id: number; name: string; tries: number; at: number }[] }>('/word'),
   league: () =>
     post<{ top: { id: number; name: string; level: number; pts: number; title: string | null }[]; prev: { id: number; name: string; level: number; pts: number; title: string | null }[]; myRank: number | null; endsAt: number }>('/league'),
+  build: () => post<{ state: { idx: number; pts: number; done: string[] }; top: { id: number; name: string; pts: number }[] }>('/build'),
   holiday: () => post<{ arm: { id: number; name: string; power: number }[] }>('/holiday'),
   adminHoliday: (body: { start?: string; days?: number; stop?: boolean } = {}) =>
     post<{ cur: { id: string; startsAt: number; endsAt: number } | null; list: { id: string; name: string; emoji: string }[] }>('/admin/holiday', body),

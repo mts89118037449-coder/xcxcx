@@ -1,3 +1,4 @@
+import { BUILDINGS, addBuildPts, type BuildState } from '../shared/build.ts';
 import { HOLIDAYS, holidayById, type HolidayRun } from '../shared/holidays.ts';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { EVENT_TIMING, MEDIC, eventById } from '../shared/events.ts';
@@ -192,11 +193,14 @@ export function createApp(opts: AppOptions) {
   }
   // --- События зоны: запущенное админом лежит в kv, остальное — по расписанию выходных
   let liveCache: { at: number; manual: LiveRun | null; skip: number } = { at: 0, manual: null, skip: 0 };
+  let buildState: BuildState = { idx: 0, pts: 0, done: [] };
   const liveNow = (t: number): LiveRun | null => {
     if (Date.now() - liveCache.at > 5000) {
       liveCache = { at: Date.now(), manual: db.kvGet<LiveRun | null>('live:manual', null), skip: db.kvGet<number>('live:skip', 0) };
       // праздник, включённый админом, — тоже отсюда
       g.holidayForce.run = db.kvGet<HolidayRun | null>('hol:force', null);
+      buildState = db.kvGet<BuildState>('build', { idx: 0, pts: 0, done: [] });
+      g.zoneBuilt.done = buildState.done;
     }
     let cur = currentLive(t, liveCache.manual);
     // выходные по расписанию админ может отменить
@@ -398,6 +402,8 @@ export function createApp(opts: AppOptions) {
       tut: p.tut >= 0 ? { step: p.tut, n: p.tutN } : null,
       colony: p.colony,
       pet: p.pet,
+      built: p.built,
+      zoneBuild: { idx: buildState.idx, pts: buildState.pts, done: buildState.done },
       holiday: (() => {
         const h = g.ensureHol(p, t);
         if (!h) return null;
@@ -1077,6 +1083,23 @@ export function createApp(opts: AppOptions) {
       }
       return r;
     },
+    buildGive: (p, b, t) => {
+      const r = g.buildGive(p, b.kind === 'mat' ? 'mat' : 'money', str(b.ref), num(b.qty), t);
+      const st = db.kvGet<BuildState>('build', { idx: 0, pts: 0, done: [] });
+      if (st.idx >= BUILDINGS.length) throw new g.GameError('Всё уже построено');
+      const finished = addBuildPts(st, r.pts);
+      db.kvSet('build', st);
+      buildState = st;
+      g.zoneBuilt.done = st.done;
+      const top = db.kvGet<Record<string, { name: string; pts: number }>>('build:top', {});
+      top[p.id] = { name: p.name, pts: p.built };
+      db.kvSet('build:top', top);
+      for (const id of finished) {
+        const bl = BUILDINGS.find((x) => x.id === id)!;
+        g.log(p, t, `${bl.emoji} Твой взнос достроил «${bl.name}»!`);
+      }
+      return { ...r, finished };
+    },
     holDaily: (p, _b, t) => g.holDaily(p, t),
     holClaim: (p, b, t) => g.holClaim(p, num(b.index), t),
     holBuy: (p, b, t) => g.holBuy(p, str(b.id), t),
@@ -1335,6 +1358,16 @@ export function createApp(opts: AppOptions) {
       endsAt: g.weekEndsAt(t),
       now: t,
     });
+  });
+
+  // Стройка зоны: состояние и лучшие прорабы
+  api.post('/build', (_req, res) => {
+    liveNow(now());
+    const top = Object.entries(db.kvGet<Record<string, { name: string; pts: number }>>('build:top', {}))
+      .map(([id, v]) => ({ id: Number(id), ...v }))
+      .sort((a, b) => b.pts - a.pts)
+      .slice(0, 10);
+    res.json({ state: buildState, top });
   });
 
   // Праздник: таблица армрестлинга на 23 февраля

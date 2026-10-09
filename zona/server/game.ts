@@ -72,6 +72,7 @@ import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
+import { BUILD, buildBonus, type BuildBonus } from '../shared/build.ts';
 import { EGG, holidayAt, holidayById, type HolKind, type HolidayRun } from '../shared/holidays.ts';
 import { PASS, SEASON_PTS, cosmeticById, passReward, seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
 import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
@@ -250,6 +251,8 @@ export interface Player {
   /** питомец в хате */
   pet: { kind: PetKind; name: string; level: number; xp: number; fedAt: number; trainAt: number } | null;
   /** праздник: прогресс заданий, валюта, покупки; сбрасывается с новым праздником */
+  /** сколько очков вложил в стройку зоны */
+  built: number;
   hol: { id: string; key: number; prog: number[]; claimed: boolean[]; tokens: number; day: number; bought: Record<string, number>; tree: boolean; armBest: number; eggAt: number };
   /** слово дня: попытки сегодня и серия дней подряд */
   word: { day: number; guesses: string[]; done: boolean; won: boolean };
@@ -404,6 +407,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     colony: 'general',
     word: { day: 0, guesses: [], done: false, won: false },
     pet: null,
+    built: 0,
     hol: { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 },
     wordStreak: { n: 0, last: 0, best: 0 },
     duo: null,
@@ -492,6 +496,7 @@ export function migrate(p: Player): Player {
   p.colony ??= 'general';
   p.word ??= { day: 0, guesses: [], done: false, won: false };
   p.pet ??= null;
+  p.built ??= 0;
   p.hol ??= { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 };
   p.wordStreak ??= { n: 0, last: 0, best: 0 };
   p.tradesDay ??= { day: '', n: 0 };
@@ -616,12 +621,12 @@ export function stats(p: Player, now: number) {
   const b = bonuses(p);
   const vip = isVip(p, now);
   return {
-    atk: Math.round((5 + p.str * 3 + b.atk) * (1 + (mastBonus(p, 'atk') + hutBonus(p, 'atk')) / 100)),
-    def: Math.round((p.agi * 2 + b.def) * (1 + hutBonus(p, 'def') / 100)),
-    maxHp: Math.round((80 + p.end * 12 + b.hp) * (1 + petPower(p, 'cat', now) * 0.02)),
+    atk: Math.round((5 + p.str * 3 + b.atk) * (1 + (mastBonus(p, 'atk') + hutBonus(p, 'atk') + zoneB('atk')) / 100)),
+    def: Math.round((p.agi * 2 + b.def) * (1 + (hutBonus(p, 'def') + zoneB('def')) / 100)),
+    maxHp: Math.round((80 + p.end * 12 + b.hp) * (1 + petPower(p, 'cat', now) * 0.02 + zoneB('hp') / 100)),
     crit: Math.min(40, 2 + Math.floor(p.agi * 0.3) + b.crit + mastBonus(p, 'crit') + (p.blessUntil > now ? CHURCH.blessCrit : 0)),
-    maxEnergy: BALANCE.baseEnergy + b.energy + mastBonus(p, 'energy') + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel + hutBonus(p, 'energy'),
-    moneyBonus: b.money + hutBonus(p, 'money') + hodkaBonus(p) + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel + (p.blessUntil > now ? CHURCH.blessMoney : 0),
+    maxEnergy: BALANCE.baseEnergy + b.energy + mastBonus(p, 'energy') + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel + hutBonus(p, 'energy') + zoneB('energy'),
+    moneyBonus: b.money + hutBonus(p, 'money') + hodkaBonus(p) + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel + (p.blessUntil > now ? CHURCH.blessMoney : 0) + zoneB('money'),
   };
 }
 
@@ -720,7 +725,7 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
     item = rollConsumable(rng);
     giveItem(p, item);
   }
-  const xp = Math.round(job.xp * (1 + (mastBonus(p, 'jobXp') + petPower(p, 'pigeon', now)) / 100));
+  const xp = Math.round(job.xp * (1 + (mastBonus(p, 'jobXp') + petPower(p, 'pigeon', now) + zoneB('jobXp')) / 100));
   const levelUps = addXp(p, xp, now);
   track(p, 'job');
   gainRep(p, 'work', 1);
@@ -3826,4 +3831,39 @@ export function holEgg(p: Player, now: number, rng: Rng) {
   p.hol.tokens += won ? 1 : -1;
   holTrack(p, 'egg', now);
   return { won };
+}
+
+// --- Стройка зоны --------------------------------------------------------------------------------
+
+/** Что уже построено всей зоной (ставит app из kv). */
+export const zoneBuilt: { done: string[] } = { done: [] };
+const zoneB = (k: BuildBonus) => buildBonus(zoneBuilt.done, k);
+
+/** Взнос в стройку: деньги или материалы. Возвращает очки; общий счёт ведёт app. */
+export function buildGive(p: Player, kind: 'money' | 'mat', ref: string, qty: number, now: number) {
+  const n = Math.floor(Number(qty) || 0);
+  if (n <= 0) throw new GameError('Сколько даёшь?');
+  let pts: number;
+  if (kind === 'money') {
+    if (!BUILD.money.includes(n)) throw new GameError('Такой взнос не принимают');
+    spend(p, n, 'money');
+    pts = n;
+  } else {
+    const m = matById.get(ref as MatId);
+    if (!m) throw new GameError('Такого материала нет');
+    if ((p.mats[m.id] ?? 0) < n) throw new GameError(`Не хватает: ${m.name}`);
+    p.mats[m.id] = (p.mats[m.id] ?? 0) - n;
+    pts = n * BUILD.matPts;
+  }
+  const before = p.built;
+  p.built += pts;
+  const auth = Math.floor(p.built / BUILD.authorityPer) - Math.floor(before / BUILD.authorityPer);
+  p.authority += auth;
+  let title = false;
+  if (p.built >= BUILD.titleAt && !p.cosmetics.includes('title_builder')) {
+    p.cosmetics.push('title_builder');
+    title = true;
+  }
+  log(p, now, `🏗️ Вложился в стройку зоны: ${pts} очков`);
+  return { pts, authority: auth, title };
 }

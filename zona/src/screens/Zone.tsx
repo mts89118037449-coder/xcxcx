@@ -4,6 +4,7 @@ import { named } from '../lazy.ts';
 const TourneyCard = named(() => import('../Tourney.tsx'), 'TourneyCard');
 const WordCard = named(() => import('../Word.tsx'), 'WordCard');
 const HolidayCard = named(() => import('../Holiday.tsx'), 'HolidayCard');
+const BuildCard = named(() => import('../Build.tsx'), 'BuildCard');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
@@ -86,6 +87,9 @@ export function Zone() {
           <HolidayCard />
         </Suspense>
       )}
+      <Suspense fallback={null}>
+        <BuildCard />
+      </Suspense>
       <SegBar
         value={seg}
         onChange={setSeg}
