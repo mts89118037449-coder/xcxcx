@@ -2,6 +2,7 @@ import { Suspense, useState } from 'react';
 import { named } from '../lazy.ts';
 
 const TourneyCard = named(() => import('../Tourney.tsx'), 'TourneyCard');
+const WordCard = named(() => import('../Word.tsx'), 'WordCard');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
@@ -92,6 +93,7 @@ export function Zone() {
       />
       {seg === 'games' && (
         <Suspense fallback={null}>
+          <WordCard />
           <TourneyCard />
         </Suspense>
       )}

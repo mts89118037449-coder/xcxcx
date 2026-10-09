@@ -60,6 +60,7 @@ import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, PUZZLES, SPEED, allTiles, fits
 import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts';
 import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
 import { weatherAt, weatherFor, weatherFx } from '../shared/weather.ts';
+import { WORD, markGuess, normWord, wordOfDay } from '../shared/fenya.ts';
 import { colonyById, colonyFx, type ColonyId } from '../shared/colonies.ts';
 import { TRADE, type TradeKind, type TradeLine } from '../shared/trade.ts';
 import { WALL_MAX, albumById, albumProgress, type AlbumId } from '../shared/album.ts';
@@ -244,6 +245,9 @@ export interface Player {
   wall: string[];
   albums: string[];
   /** побег вдвоём: идущий забег и приглашение от кента */
+  /** слово дня: попытки сегодня и серия дней подряд */
+  word: { day: number; guesses: string[]; done: boolean; won: boolean };
+  wordStreak: { n: number; last: number; best: number };
   /** колония этой ходки */
   colony: ColonyId;
   duo: string | null;
@@ -392,6 +396,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     wall: [],
     albums: [],
     colony: 'general',
+    word: { day: 0, guesses: [], done: false, won: false },
+    wordStreak: { n: 0, last: 0, best: 0 },
     duo: null,
     duoInvite: null,
     tradesDay: { day: '', n: 0 },
@@ -476,6 +482,8 @@ export function migrate(p: Player): Player {
   p.albums ??= [];
   p.duo ??= null;
   p.colony ??= 'general';
+  p.word ??= { day: 0, guesses: [], done: false, won: false };
+  p.wordStreak ??= { n: 0, last: 0, best: 0 };
   p.tradesDay ??= { day: '', n: 0 };
   p.duelsDay ??= { day: '', n: 0 };
   p.tourneyClaimed ??= 0;
@@ -3585,4 +3593,44 @@ export function tourneyClaim(p: Player, week: number, rank: number | null, now: 
   p.gold += gold;
   log(p, now, `🎲 Турнир за столами: ${rank + 1} место, +${gold} 🪙`);
   return { gold, rank: rank + 1 };
+}
+
+// --- Слово дня по фене ------------------------------------------------------------------------
+
+/** Номер дня по Москве — общий для всех. */
+export const dayIndex = (now: number) => Math.floor((now + 3 * 60 * MIN) / (24 * 60 * MIN));
+
+export function ensureWord(p: Player, now: number) {
+  const d = dayIndex(now);
+  if (p.word.day !== d) p.word = { day: d, guesses: [], done: false, won: false };
+}
+
+export function wordGuess(p: Player, raw: string, now: number) {
+  ensureWord(p, now);
+  if (p.word.done) throw new GameError('На сегодня всё — новое слово завтра');
+  const ans = wordOfDay(p.word.day);
+  const g = normWord(raw);
+  if (g.length !== ans.word.length) throw new GameError(`Нужно слово из ${ans.word.length} букв`);
+  p.word.guesses.push(g);
+  const marks = markGuess(g, ans.word);
+  const won = g === normWord(ans.word);
+  let reward: { money: number; butts: number; gold: number } | null = null;
+  if (won || p.word.guesses.length >= WORD.tries) {
+    p.word.done = true;
+    p.word.won = won;
+    if (won) {
+      const d = p.word.day;
+      p.wordStreak.n = p.wordStreak.last === d - 1 ? p.wordStreak.n + 1 : 1;
+      p.wordStreak.last = d;
+      p.wordStreak.best = Math.max(p.wordStreak.best, p.wordStreak.n);
+      const left = WORD.tries - p.word.guesses.length;
+      const gold = WORD.streakGold.find(([n]) => n === p.wordStreak.n)?.[1] ?? 0;
+      reward = { money: Math.round(ration(p) * (2 + left)), butts: 3 + left, gold };
+      p.money += reward.money;
+      p.butts += reward.butts;
+      p.gold += gold;
+      track(p, 'minigame');
+    } else p.wordStreak.n = 0;
+  }
+  return { marks, won, done: p.word.done, reward, answer: p.word.done ? ans.word : null, meaning: p.word.done ? ans.meaning : null, tries: p.word.guesses.length };
 }

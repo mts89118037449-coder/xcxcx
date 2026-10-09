@@ -2505,3 +2505,27 @@ body.has-tut main { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
 .colony small { display: block; font-size: 12px; color: var(--muted); }
 .colony small.pro { color: #9be08f; }
 .colony small.con { color: #e89a8a; }
+
+/* --- Слово дня --- */
+.word-grid { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 4px; max-width: calc(var(--n) * 46px); margin: 10px auto; }
+.word-cell { aspect-ratio: 1; display: grid; place-items: center; font-size: 20px; font-weight: 800; border: 2px solid var(--line); border-radius: 6px; background: #0003; }
+.word-cell.typed { border-color: #8a7a5a; animation: word-pop 0.1s ease-out; }
+.word-cell.g, .word-cell.y, .word-cell.x { animation: word-flip 0.45s ease-out backwards; border-color: transparent; color: #fff; }
+.word-cell.g { background: #4a8a3a; }
+.word-cell.y { background: #b8902a; }
+.word-cell.x { background: #3a3630; }
+@keyframes word-pop { 50% { transform: scale(1.1); } }
+@keyframes word-flip { 0% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
+.word-keys { display: flex; flex-direction: column; gap: 4px; }
+.word-keys div { display: flex; justify-content: center; gap: 3px; }
+.word-keys button { flex: 1; max-width: 30px; padding: 9px 0; border-radius: 5px; border: 0; background: #5a5446; color: #fff; font-weight: 700; font-size: 13px; }
+.word-keys button.wide { max-width: 44px; flex: 1.5; }
+.word-keys button.go { background: var(--gold); color: #1a1408; }
+.word-keys button.g { background: #4a8a3a; }
+.word-keys button.y { background: #b8902a; }
+.word-keys button.x { background: #26231e; color: #777; }
+.word-done { display: flex; flex-direction: column; gap: 6px; text-align: center; }
+.word-done .win { color: #9be08f; }
+.word-done .lose { color: #e89a8a; }
+/* пока открыто окно — кнопка случая под ним, чтобы не закрывать кнопки */
+body:has(.modal) .event-btn { z-index: 20; }

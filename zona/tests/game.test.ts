@@ -1677,3 +1677,30 @@ test('колонии: выбор на УДО, свои места и боссы,
   assert.equal(admin, 20);
   assert.equal(COLONIES.length, 4);
 });
+
+import { markGuess, wordOfDay, FENYA } from '../shared/fenya.ts';
+
+test('слово дня: одинаковое для всех, подсветка с повторами, серия и награда, шесть попыток', () => {
+  assert.deepEqual(markGuess('КОКОС', 'КОСЯК'), ['g', 'g', 'y', 'x', 'y']);
+  assert.ok(FENYA.length >= 40);
+  const p = g.newPlayer(1, 'Филолог', null, T0);
+  const d = g.dayIndex(T0);
+  const ans = wordOfDay(d).word;
+  assert.throws(() => g.wordGuess(p, 'АБ', T0), /букв/);
+  const wrong = 'Ъ'.repeat(ans.length);
+  g.wordGuess(p, wrong, T0);
+  const r = g.wordGuess(p, ans.toLowerCase(), T0);
+  assert.ok(r.won && r.done && r.reward!.money > 0);
+  assert.equal(p.wordStreak.n, 1);
+  assert.throws(() => g.wordGuess(p, ans, T0), /завтра/);
+  // завтра — новое слово, серия растёт
+  const t2 = T0 + 24 * 3600_000;
+  g.wordGuess(p, wordOfDay(d + 1).word, t2);
+  assert.equal(p.wordStreak.n, 2);
+  // шесть промахов — серия сгорает
+  const t3 = t2 + 24 * 3600_000;
+  const w3 = 'Ъ'.repeat(wordOfDay(d + 2).word.length);
+  for (let i = 0; i < 6; i++) g.wordGuess(p, w3, t3);
+  assert.ok(p.word.done && !p.word.won);
+  assert.equal(p.wordStreak.n, 0);
+});

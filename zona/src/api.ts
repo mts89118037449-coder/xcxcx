@@ -96,6 +96,7 @@ export const api = {
   clanBoss: () => post<{ boss: NonNullable<ClanView['boss']> | null }>('/clanBoss'),
   trades: () => post<{ trades: TradeView[]; ttlMs: number }>('/trades'),
   duels: <T,>() => post<T>('/duels'),
+  word: () => post<{ solved: number; top: { id: number; name: string; tries: number; at: number }[] }>('/word'),
   league: () =>
     post<{ top: { id: number; name: string; level: number; pts: number; title: string | null }[]; prev: { id: number; name: string; level: number; pts: number; title: string | null }[]; myRank: number | null; endsAt: number }>('/league'),
   adminStats: <T,>() => post<T>('/admin/stats'),

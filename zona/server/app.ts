@@ -15,6 +15,7 @@ import { ARM, BREW, CARDS, DARTS, DICE, RACE } from '../shared/minigames.ts';
 import { DUO } from '../shared/events.ts';
 import { TRADE } from '../shared/trade.ts';
 import { TOURNEY } from '../shared/minigames2.ts';
+import { markGuess, wordOfDay } from '../shared/fenya.ts';
 import { NOTIFY, termDays } from '../shared/term.ts';
 import { BALANCE, CHURCH, cellView, comfortOf, CLAN, offerOfDay, PULLUPS, WORLD_BOSS, packById, rankTitle, xpToNext, type Slot, type Stat } from '../shared/content.ts';
 import type { ClanView, PlayerView, VisitView, WorldBossView } from '../shared/types.ts';
@@ -391,6 +392,20 @@ export function createApp(opts: AppOptions) {
       intro: p.intro,
       tut: p.tut >= 0 ? { step: p.tut, n: p.tutN } : null,
       colony: p.colony,
+      word: (() => {
+        g.ensureWord(p, t);
+        const ans = wordOfDay(p.word.day);
+        return {
+          len: ans.word.length,
+          guesses: p.word.guesses.map((x) => ({ g: x, marks: markGuess(x, ans.word) })),
+          done: p.word.done,
+          won: p.word.won,
+          answer: p.word.done ? ans.word : null,
+          meaning: p.word.done ? ans.meaning : null,
+          streak: p.wordStreak.n,
+          best: p.wordStreak.best,
+        };
+      })(),
       trophies: p.trophies,
       duo: (() => {
         const run = duoGet(p.duo);
@@ -1030,6 +1045,16 @@ export function createApp(opts: AppOptions) {
       const rank = tourneyRank(prev).findIndex((r) => r.id === p.id);
       return g.tourneyClaim(p, prev, rank < 0 ? null : rank, t);
     },
+    wordGuess: (p, b, t) => {
+      const r = g.wordGuess(p, str(b.guess), t);
+      if (r.won) {
+        // кто разгадал сегодня — общая таблица дня
+        const key = `word:${p.word.day}`;
+        const list = db.kvGet<{ id: number; name: string; tries: number; at: number }[]>(key, []);
+        if (!list.some((x) => x.id === p.id) && list.length < 200) db.kvSet(key, [...list, { id: p.id, name: p.name, tries: r.tries, at: t }]);
+      }
+      return r;
+    },
     albumClaim: (p, b, t) => g.albumClaim(p, str(b.id), t),
     wall: (p, b) => g.wallToggle(p, str(b.id)),
     leagueClaim: (p, _b, t) => {
@@ -1280,6 +1305,13 @@ export function createApp(opts: AppOptions) {
       endsAt: g.weekEndsAt(t),
       now: t,
     });
+  });
+
+  // Слово дня: кто сегодня разгадал
+  api.post('/word', (_req, res) => {
+    const day = g.dayIndex(now());
+    const list = db.kvGet<{ id: number; name: string; tries: number; at: number }[]>(`word:${day}`, []);
+    res.json({ solved: list.length, top: [...list].sort((a, b) => a.tries - b.tries || a.at - b.at).slice(0, 10) });
   });
 
   // Обмены: входящие и свои; протухшие — назад отправителю
