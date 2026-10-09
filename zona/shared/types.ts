@@ -79,6 +79,7 @@ export interface PlayerView {
   word: { len: number; guesses: { g: string; marks: ('g' | 'y' | 'x')[] }[]; done: boolean; won: boolean; answer: string | null; meaning: string | null; streak: number; best: number };
   pet: { kind: 'cat' | 'rat' | 'pigeon'; name: string; level: number; xp: number; fedAt: number; trainAt: number } | null;
   built: number;
+  appeal: { args: string[]; done: boolean; won: boolean; delta: number };
   zoneBuild: { idx: number; pts: number; done: string[] };
   holiday: { id: 'newyear' | 'feb23' | 'easter'; endsAt: number; tokens: number; prog: number[]; claimed: boolean[]; bought: Record<string, number>; tree: boolean; armBest: number; eggAt: number; dailyReady: boolean } | null;
   colony: 'general' | 'north' | 'krytka' | 'red';

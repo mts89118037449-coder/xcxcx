@@ -403,6 +403,7 @@ export function createApp(opts: AppOptions) {
       colony: p.colony,
       pet: p.pet,
       built: p.built,
+      appeal: p.appeal.hodka === p.hodka ? { args: p.appeal.args, done: p.appeal.done, won: p.appeal.won, delta: p.appeal.delta } : { args: [], done: false, won: false, delta: 0 },
       zoneBuild: { idx: buildState.idx, pts: buildState.pts, done: buildState.done },
       holiday: (() => {
         const h = g.ensureHol(p, t);
@@ -1083,6 +1084,8 @@ export function createApp(opts: AppOptions) {
       }
       return r;
     },
+    courtArg: (p, b, t) => g.courtArg(p, str(b.id), t),
+    courtHearing: (p, _b, t) => g.courtHearing(p, t, rng),
     buildGive: (p, b, t) => {
       const r = g.buildGive(p, b.kind === 'mat' ? 'mat' : 'money', str(b.ref), num(b.qty), t);
       const st = db.kvGet<BuildState>('build', { idx: 0, pts: 0, done: [] });

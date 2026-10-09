@@ -72,6 +72,7 @@ import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
+import { COURT, courtArgById, courtChance, type ArgId } from '../shared/court.ts';
 import { BUILD, buildBonus, type BuildBonus } from '../shared/build.ts';
 import { EGG, holidayAt, holidayById, type HolKind, type HolidayRun } from '../shared/holidays.ts';
 import { PASS, SEASON_PTS, cosmeticById, passReward, seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
@@ -253,6 +254,8 @@ export interface Player {
   /** праздник: прогресс заданий, валюта, покупки; сбрасывается с новым праздником */
   /** сколько очков вложил в стройку зоны */
   built: number;
+  /** апелляция: одна за ходку */
+  appeal: { hodka: number; args: string[]; done: boolean; won: boolean; delta: number };
   hol: { id: string; key: number; prog: number[]; claimed: boolean[]; tokens: number; day: number; bought: Record<string, number>; tree: boolean; armBest: number; eggAt: number };
   /** слово дня: попытки сегодня и серия дней подряд */
   word: { day: number; guesses: string[]; done: boolean; won: boolean };
@@ -408,6 +411,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     word: { day: 0, guesses: [], done: false, won: false },
     pet: null,
     built: 0,
+    appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
     hol: { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 },
     wordStreak: { n: 0, last: 0, best: 0 },
     duo: null,
@@ -497,6 +501,7 @@ export function migrate(p: Player): Player {
   p.word ??= { day: 0, guesses: [], done: false, won: false };
   p.pet ??= null;
   p.built ??= 0;
+  p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
   p.hol ??= { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 };
   p.wordStreak ??= { n: 0, last: 0, best: 0 };
   p.tradesDay ??= { day: '', n: 0 };
@@ -3866,4 +3871,64 @@ export function buildGive(p: Player, kind: 'money' | 'mat', ref: string, qty: nu
   }
   log(p, now, `🏗️ Вложился в стройку зоны: ${pts} очков`);
   return { pts, authority: auth, title };
+}
+
+// --- Суд и апелляция -----------------------------------------------------------------------------
+
+function ensureAppeal(p: Player) {
+  if (p.appeal.hodka !== p.hodka) p.appeal = { hodka: p.hodka, args: [], done: false, won: false, delta: 0 };
+  return p.appeal;
+}
+
+/** Собрать довод для апелляции. */
+export function courtArg(p: Player, id: string, now: number) {
+  if (p.level < COURT.minLevel) throw new GameError(`С ${COURT.minLevel} уровня`);
+  const a = ensureAppeal(p);
+  if (a.done) throw new GameError('Апелляция в эту ходку уже была');
+  const arg = courtArgById.get(id as ArgId);
+  if (!arg) throw new GameError('Такого довода нет');
+  if (a.args.includes(arg.id)) throw new GameError('Этот довод уже собран');
+  switch (arg.id) {
+    case 'lawyer':
+      spend(p, COURT.lawyerPerLevel * p.level, 'money');
+      break;
+    case 'work':
+    case 'admin':
+      if (repRank(p.rep[arg.id]) < COURT.repRank) throw new GameError(`Нужно звание ${COURT.repRank}+`);
+      break;
+    case 'witness':
+      if (p.authority < COURT.witnessAuthorityPerLevel * p.level) throw new GameError('Мало авторитета — никто не пойдёт');
+      if (p.butts < COURT.witnessButts) throw new GameError(`Свидетелям нужно ${COURT.witnessButts} 🚬`);
+      p.butts -= COURT.witnessButts;
+      break;
+    case 'church':
+      if (p.blessUntil <= now) throw new GameError('Сначала благословение в церкви');
+      break;
+    case 'medic':
+      spend(p, COURT.medicGold, 'gold');
+      break;
+  }
+  a.args.push(arg.id);
+  return { chance: courtChance(a.args) };
+}
+
+/** Заседание: шанс от доводов; удача — скостят часть срока, провал — добавят. */
+export function courtHearing(p: Player, now: number, rng: Rng) {
+  if (p.level < COURT.minLevel) throw new GameError(`С ${COURT.minLevel} уровня`);
+  const a = ensureAppeal(p);
+  if (a.done) throw new GameError('Апелляция в эту ходку уже была');
+  if (p.term < COURT.minTerm) throw new GameError('Срок и так почти вышел');
+  const chance = courtChance(a.args);
+  a.done = true;
+  a.won = rng() * 100 < chance;
+  if (a.won) {
+    const pct = COURT.cut[0] + rng() * (COURT.cut[1] - COURT.cut[0]);
+    a.delta = -Math.round((p.term * pct) / 100);
+    log(p, now, `⚖️ Апелляция удовлетворена: −${-a.delta} дн. срока`);
+  } else {
+    a.delta = Math.round((termDays(p.hodka) * COURT.add) / 100);
+    log(p, now, `⚖️ В апелляции отказали и добавили ${a.delta} дн.`);
+  }
+  p.term = Math.max(0, p.term + a.delta);
+  return { won: a.won, delta: a.delta, chance };
 }

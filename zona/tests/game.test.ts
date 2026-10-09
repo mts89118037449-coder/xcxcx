@@ -1827,3 +1827,29 @@ test('стройка зоны: взносы деньгами и материал
     g.zoneBuilt.done = [];
   }
 });
+
+import { COURT, courtChance } from '../shared/court.ts';
+
+test('апелляция: доводы поднимают шанс, одна за ходку, удача скашивает срок, провал добавляет', () => {
+  const p = g.newPlayer(1, 'Сутяга', null, T0);
+  assert.throws(() => g.courtArg(p, 'lawyer', T0), /уровня/);
+  p.level = 10;
+  p.money = 100_000;
+  p.gold = 50;
+  g.courtArg(p, 'lawyer', T0);
+  assert.equal(p.money, 100_000 - COURT.lawyerPerLevel * 10);
+  assert.throws(() => g.courtArg(p, 'lawyer', T0), /уже собран/);
+  assert.throws(() => g.courtArg(p, 'work', T0), /звание/);
+  assert.throws(() => g.courtArg(p, 'church', T0), /благословение/);
+  g.courtArg(p, 'medic', T0);
+  assert.equal(courtChance(p.appeal.args), 50);
+  const term = p.term;
+  const r = g.courtHearing(p, T0, () => 0);
+  assert.ok(r.won && r.delta < 0 && p.term < term);
+  assert.throws(() => g.courtHearing(p, T0, () => 0), /уже была/);
+  // новая ходка — новая апелляция; без доводов и с невезением — добавят
+  p.hodka = 2;
+  const t2 = p.term;
+  const r2 = g.courtHearing(p, T0, () => 0.99);
+  assert.ok(!r2.won && r2.delta > 0 && p.term > t2);
+});

@@ -2618,3 +2618,28 @@ body:has(.modal) .event-btn { z-index: 20; }
 .build-top div { display: flex; gap: 6px; padding: 2px 0; }
 .build-top div b { margin-left: auto; }
 .build-top .me { color: var(--gold); }
+
+/* суд */
+.court-card { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; margin: 8px 0; border-radius: 12px; border: 1px solid #6a4a2a; background: linear-gradient(90deg, #3a2a1e, #22201a); text-align: left; }
+.court-card b { display: block; }
+.court-card small { color: var(--muted); font-size: 12px; }
+.court-card.won { border-color: #6ab04c; }
+.court-card.lost { border-color: #a0442a; }
+.court-ico { font-size: 28px; }
+.court-art { width: 100%; border-radius: 12px; display: block; margin-bottom: 8px; }
+.gavel.bang { animation: gavel 0.42s ease-in 3; transform-box: fill-box; transform-origin: 0 0; }
+@keyframes gavel { 0% { transform: translate(150px, 66px) rotate(0); } 50% { transform: translate(150px, 66px) rotate(-35deg); } 100% { transform: translate(150px, 66px) rotate(0); } }
+.court-meter { position: relative; height: 18px; border-radius: 9px; background: #0007; overflow: hidden; margin: 6px 0; }
+.court-meter i { display: block; height: 100%; background: linear-gradient(90deg, #a0442a, #e0b040, #6ab04c); transition: width 0.4s; }
+.court-meter em { position: absolute; inset: 0; text-align: center; font-size: 12px; line-height: 18px; font-style: normal; font-weight: bold; text-shadow: 0 1px 2px #000; }
+.court-args { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 8px 0; }
+.court-arg { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 8px; border-radius: 10px; border: 1px solid #5a4a3a; background: #241e16; text-align: left; position: relative; }
+.court-arg b { font-size: 13px; line-height: 1.15; }
+.court-arg small { color: var(--muted); font-size: 11px; line-height: 1.2; }
+.court-arg i { position: absolute; top: 6px; right: 8px; font-style: normal; color: var(--gold); font-size: 12px; }
+.court-arg.have { border-color: #6ab04c; background: #1e2a18; }
+.court-em { font-size: 22px; }
+.court-verdict { text-align: center; font-size: 17px; font-weight: bold; padding: 10px; border-radius: 12px; margin-bottom: 8px; }
+.court-verdict small { display: block; font-weight: normal; font-size: 12px; color: var(--muted); }
+.court-verdict.won { background: #1e2a18; color: #9ae07a; }
+.court-verdict.lost { background: #2a1814; color: #e07a6a; }
