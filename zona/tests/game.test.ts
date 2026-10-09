@@ -1990,3 +1990,17 @@ test('бараки: набег только с кланом, лимит, хоз�
     g.barracks.owners = {};
   }
 });
+
+import { pickSnitch, snitchClue, snitchMajority } from '../shared/snitch.ts';
+
+test('кто стукач: выбор стукача, улики, большинство голосов', () => {
+  assert.equal(pickSnitch([5, 3, 9, 1], 0), 1);
+  assert.equal(pickSnitch([5, 3, 9, 1], 0.99), 9);
+  const ms = [{ level: 3 }, { level: 10 }, { level: 20 }, { level: 7 }];
+  assert.match(snitchClue(0, { name: 'Вася', level: 20 }, ms), /старших/);
+  assert.match(snitchClue(1, { name: 'вася', level: 20 }, ms), /«В»/);
+  assert.match(snitchClue(2, { name: 'Вася', level: 7 }, ms), /нечётный/);
+  assert.match(snitchClue(3, { name: 'Вася', level: 7 }, ms), /4/);
+  assert.equal(snitchMajority({ 1: 5, 2: 5 }, 4), null);
+  assert.equal(snitchMajority({ 1: 5, 2: 5, 3: 5 }, 4), 5);
+});

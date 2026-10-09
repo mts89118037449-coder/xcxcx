@@ -1,3 +1,4 @@
+import { SNITCH, pickSnitch, snitchClue, snitchMajority, type SnitchState } from '../shared/snitch.ts';
 import { BARRACKS, barrackOwners } from '../shared/barracks.ts';
 import { BUILDINGS, addBuildPts, type BuildState } from '../shared/build.ts';
 import { HOLIDAYS, holidayById, type HolidayRun } from '../shared/holidays.ts';
@@ -689,6 +690,64 @@ export function createApp(opts: AppOptions) {
       db.savePlayer(target);
       notifyPlayer(target.id, `📦 ${p.name} прислал тебе грев: ${r.label} ×${r.qty}`);
       return r;
+    },
+    snitchLeak: (p, _b, t) => {
+      const st = p.clanId ? snitchGet(p.clanId, t) : null;
+      if (!st || st.snitch !== p.id) throw new g.GameError('Ты не при делах');
+      if (st.resolved) throw new g.GameError('Игра на этой неделе окончена');
+      const day = g.dayIndex(t);
+      if (st.leaks.filter((l) => g.dayIndex(l.at) === day).length >= SNITCH.leaksPerDay) throw new g.GameError('Кум ждёт завтра');
+      const c = db.getClan(p.clanId!)!;
+      const amount = Math.min(c.treasury, Math.max(SNITCH.leakMin, Math.min(SNITCH.leakMax, Math.round(c.treasury * SNITCH.leakShare))));
+      if (amount <= 0) throw new g.GameError('В общаке пусто — сливать нечего');
+      db.saveClan({ ...c, treasury: c.treasury - amount });
+      p.money += amount;
+      const members = db.clanMembers(p.clanId!);
+      st.leaks.push({ at: t, amount, clue: snitchClue(st.leaks.length, p, members) });
+      db.kvSet(snitchKey(p.clanId!, g.weekIndex(t)), st);
+      return { amount };
+    },
+    snitchVote: (p, b, t) => {
+      const st = p.clanId ? snitchGet(p.clanId, t) : null;
+      if (!st) throw new g.GameError(`Игра идёт в кланах от ${SNITCH.minMembers} человек`);
+      if (!st.members.includes(p.id)) throw new g.GameError('Ты вступил после начала недели');
+      if (st.resolved) throw new g.GameError('Игра на этой неделе окончена');
+      if (st.votes[p.id] !== undefined) throw new g.GameError('Ты уже указал');
+      const target = num(b.id);
+      if (!st.members.includes(target) || target === p.id) throw new g.GameError('На него нельзя');
+      st.votes[p.id] = target;
+      const who = snitchMajority(st.votes, st.members.length);
+      let result: { who: number; caught: boolean } | null = null;
+      if (who !== null) {
+        const caught = who === st.snitch;
+        st.resolved = { who, caught, at: t };
+        result = { who, caught };
+        const c = db.getClan(p.clanId!)!;
+        const touch = (id: number, f: (x: g.Player) => void) => {
+          if (id === p.id) return f(p);
+          const x = db.getPlayer(id);
+          if (x) {
+            f(x);
+            db.savePlayer(x);
+          }
+        };
+        if (caught) {
+          // общак вернут, угадавшим — золото, стукачу — позор
+          db.saveClan({ ...c, treasury: c.treasury + st.leaks.reduce((s, l) => s + l.amount, 0) });
+          for (const [voter, v] of Object.entries(st.votes)) if (v === st.snitch) touch(Number(voter), (x) => (x.gold += SNITCH.voterGold));
+          touch(st.snitch, (x) => {
+            x.authority = Math.round(x.authority * (1 - SNITCH.caughtAuthority));
+            g.log(x, t, '🐀 Клан раскрыл тебя как стукача');
+          });
+        } else {
+          touch(st.snitch, (x) => {
+            x.gold += SNITCH.snitchWinGold;
+            g.log(x, t, `🐀 Клан обвинил невиновного — тебе ${SNITCH.snitchWinGold} 🪙 от кума`);
+          });
+        }
+      }
+      db.kvSet(snitchKey(p.clanId!, g.weekIndex(t)), st);
+      return { result };
     },
     barrackRaid: (p, b, t) => {
       const r = g.barrackRaid(p, str(b.id), t, rng);
@@ -1444,6 +1503,43 @@ export function createApp(opts: AppOptions) {
       endsAt: g.weekEndsAt(t),
       now: t,
     });
+  });
+
+  // «Кто стукач?»: тайный стукач недели в клане
+  const snitchKey = (clanId: number, week: number) => `snitch:${clanId}:${week}`;
+  const snitchGet = (clanId: number, t: number): SnitchState | null => {
+    const week = g.weekIndex(t);
+    const key = snitchKey(clanId, week);
+    let st = db.kvGet<SnitchState | null>(key, null);
+    if (!st) {
+      const members = db.clanMembers(clanId).map((m) => m.id);
+      if (members.length < SNITCH.minMembers) return null;
+      st = { snitch: pickSnitch(members, g.seeded(`snitch:${clanId}:${week}`)()), members, votes: {}, leaks: [], resolved: null };
+      db.kvSet(key, st);
+    }
+    return st;
+  };
+  const snitchView = (p: g.Player, t: number) => {
+    const st = p.clanId ? snitchGet(p.clanId, t) : null;
+    if (!st || !p.clanId) return { active: false, need: SNITCH.minMembers };
+    const members = db.clanMembers(p.clanId).filter((m) => st.members.includes(m.id));
+    const tally: Record<number, number> = {};
+    for (const v of Object.values(st.votes)) tally[v] = (tally[v] ?? 0) + 1;
+    return {
+      active: true,
+      need: SNITCH.minMembers,
+      me: st.members.includes(p.id) ? (st.snitch === p.id ? 'snitch' : 'member') : 'late',
+      members: members.map((m) => ({ id: m.id, name: m.name, level: m.level, face: m.face, votes: tally[m.id] ?? 0 })),
+      myVote: st.votes[p.id] ?? null,
+      leaks: st.leaks.map((l) => ({ at: l.at, amount: l.amount, clue: l.clue })),
+      resolved: st.resolved && { ...st.resolved, name: members.find((m) => m.id === st.resolved!.who)?.name ?? '?', snitchName: st.resolved.caught ? null : members.find((m) => m.id === st.snitch)?.name ?? '?' },
+      endsAt: g.weekEndsAt(t),
+    };
+  };
+  api.post('/snitch', (req: AuthedRequest, res) => {
+    const p = db.getPlayer(req.tgUser!.id);
+    if (!p) return res.status(404).json({ error: 'Нет игрока' });
+    res.json(snitchView(p, now()));
   });
 
   // Бараки: кто держит на этой неделе и кто сейчас лидирует в борьбе за следующую

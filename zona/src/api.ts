@@ -100,6 +100,20 @@ export const api = {
   league: () =>
     post<{ top: { id: number; name: string; level: number; pts: number; title: string | null }[]; prev: { id: number; name: string; level: number; pts: number; title: string | null }[]; myRank: number | null; endsAt: number }>('/league'),
   build: () => post<{ state: { idx: number; pts: number; done: string[] }; top: { id: number; name: string; pts: number }[] }>('/build'),
+  snitch: () =>
+    post<
+      | { active: false; need: number; me?: undefined; members?: undefined; myVote?: undefined; leaks?: undefined; resolved?: undefined; endsAt?: undefined }
+      | {
+          active: true;
+          need: number;
+          me: 'snitch' | 'member' | 'late';
+          members: { id: number; name: string; level: number; face: number | null; votes: number }[];
+          myVote: number | null;
+          leaks: { at: number; amount: number; clue: string }[];
+          resolved: { who: number; caught: boolean; at: number; name: string; snitchName: string | null } | null;
+          endsAt: number;
+        }
+    >('/snitch'),
   barracks: () =>
     post<{ list: { id: string; owner: { id: number; tag: string; name: string } | null; top: { id: number; tag: string; name: string; pts: number }[]; mine: number }[]; endsAt: number }>('/barracks'),
   inkers: () => post<{ list: { id: number; name: string; skill: number; stars: number; votes: number; jobs: number; queue: number }[] }>('/inkers'),
