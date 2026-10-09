@@ -78,6 +78,7 @@ export interface PlayerView {
   tut: { step: number; n: number } | null;
   word: { len: number; guesses: { g: string; marks: ('g' | 'y' | 'x')[] }[]; done: boolean; won: boolean; answer: string | null; meaning: string | null; streak: number; best: number };
   pet: { kind: 'cat' | 'rat' | 'pigeon'; name: string; level: number; xp: number; fedAt: number; trainAt: number } | null;
+  holiday: { id: 'newyear' | 'feb23' | 'easter'; endsAt: number; tokens: number; prog: number[]; claimed: boolean[]; bought: Record<string, number>; tree: boolean; armBest: number; eggAt: number; dailyReady: boolean } | null;
   colony: 'general' | 'north' | 'krytka' | 'red';
   trophies: string[];
   duo: { status: 'invite' | 'run' | 'over'; partner: string; partnerId: number; stage: number; myMove: boolean; theirMove: boolean; log: string[]; inviteUntil: number } | null;

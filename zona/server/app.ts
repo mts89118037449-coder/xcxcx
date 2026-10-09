@@ -1,3 +1,4 @@
+import { HOLIDAYS, holidayById, type HolidayRun } from '../shared/holidays.ts';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { EVENT_TIMING, MEDIC, eventById } from '../shared/events.ts';
 import { OBSHAK } from '../shared/factions.ts';
@@ -192,7 +193,11 @@ export function createApp(opts: AppOptions) {
   // --- События зоны: запущенное админом лежит в kv, остальное — по расписанию выходных
   let liveCache: { at: number; manual: LiveRun | null; skip: number } = { at: 0, manual: null, skip: 0 };
   const liveNow = (t: number): LiveRun | null => {
-    if (Date.now() - liveCache.at > 5000) liveCache = { at: Date.now(), manual: db.kvGet<LiveRun | null>('live:manual', null), skip: db.kvGet<number>('live:skip', 0) };
+    if (Date.now() - liveCache.at > 5000) {
+      liveCache = { at: Date.now(), manual: db.kvGet<LiveRun | null>('live:manual', null), skip: db.kvGet<number>('live:skip', 0) };
+      // праздник, включённый админом, — тоже отсюда
+      g.holidayForce.run = db.kvGet<HolidayRun | null>('hol:force', null);
+    }
     let cur = currentLive(t, liveCache.manual);
     // выходные по расписанию админ может отменить
     if (cur?.by === 'auto' && cur.startsAt === liveCache.skip) cur = null;
@@ -393,6 +398,11 @@ export function createApp(opts: AppOptions) {
       tut: p.tut >= 0 ? { step: p.tut, n: p.tutN } : null,
       colony: p.colony,
       pet: p.pet,
+      holiday: (() => {
+        const h = g.ensureHol(p, t);
+        if (!h) return null;
+        return { id: h.run.id, endsAt: h.run.endsAt, tokens: p.hol.tokens, prog: p.hol.prog, claimed: p.hol.claimed, bought: p.hol.bought, tree: p.hol.tree, armBest: p.hol.armBest, eggAt: p.hol.eggAt, dailyReady: p.hol.day !== g.dayIndex(t) };
+      })(),
       word: (() => {
         g.ensureWord(p, t);
         const ans = wordOfDay(p.word.day);
@@ -607,7 +617,18 @@ export function createApp(opts: AppOptions) {
     race: (p, b, t) => g.roachRace(p, str(b.pick), num(b.bet), t, rng),
     brew: (p, b, t) => g.brew(p, num(b.quality), t),
     dice: (p, b, t) => g.dice(p, num(b.bet), t, rng),
-    arm: (p, b, t) => g.armWrestle(p, str(b.rival), num(b.taps), t, rng),
+    arm: (p, b, t) => {
+      const r = g.armWrestle(p, str(b.rival), num(b.taps), t, rng);
+      // 23 февраля: лучшая сила на руках — в общую таблицу праздника
+      const h = g.curHoliday(t);
+      if (h?.id === 'feb23') {
+        const key = `hol:arm:${h.key}`;
+        const list = db.kvGet<{ id: number; name: string; power: number }[]>(key, []).filter((x) => x.id !== p.id);
+        list.push({ id: p.id, name: p.name, power: p.hol.armBest });
+        db.kvSet(key, list.sort((a, b) => b.power - a.power).slice(0, 50));
+      }
+      return r;
+    },
     darts: (p, b, t) => g.darts(p, b.accs, t),
     nardyStart: (p, b, t) => g.nardyStart(p, num(b.bet), t, rng),
     nardyMove: (p, b) => g.nardyMove(p, str(b.pick) as 'a' | 'b' | 'sum', rng),
@@ -1056,6 +1077,11 @@ export function createApp(opts: AppOptions) {
       }
       return r;
     },
+    holDaily: (p, _b, t) => g.holDaily(p, t),
+    holClaim: (p, b, t) => g.holClaim(p, num(b.index), t),
+    holBuy: (p, b, t) => g.holBuy(p, str(b.id), t),
+    holTree: (p, _b, t) => g.holTree(p, t),
+    holEgg: (p, _b, t) => g.holEgg(p, t, rng),
     petBuy: (p, b, t) => g.petBuy(p, str(b.kind), str(b.name), t),
     petFeed: (p, _b, t) => g.petFeed(p, t),
     petTrain: (p, _b, t) => g.petTrain(p, t),
@@ -1309,6 +1335,28 @@ export function createApp(opts: AppOptions) {
       endsAt: g.weekEndsAt(t),
       now: t,
     });
+  });
+
+  // Праздник: таблица армрестлинга на 23 февраля
+  api.post('/holiday', (_req, res) => {
+    liveNow(now());
+    const h = g.curHoliday(now());
+    res.json({ arm: h?.id === 'feb23' ? db.kvGet<{ id: number; name: string; power: number }[]>(`hol:arm:${h.key}`, []).slice(0, 10) : [] });
+  });
+
+  // Админ: включить праздник вне календаря (для проверки и акций) или выключить
+  api.post('/admin/holiday', (req: AuthedRequest, res) => {
+    if (!opts.adminIds.includes(req.tgUser!.id)) return res.status(403).json({ error: 'Только для админа' });
+    const t = now();
+    const b = req.body ?? {};
+    if (b.stop) db.kvSet('hol:force', null);
+    else if (holidayById.has(b.start)) {
+      const days = Math.max(1, Math.min(14, Number(b.days) || 3));
+      db.kvSet('hol:force', { id: b.start, key: Math.floor(t / 86_400_000), startsAt: t, endsAt: t + days * 86_400_000 } satisfies HolidayRun);
+    }
+    liveCache.at = 0;
+    liveNow(t);
+    res.json({ cur: g.curHoliday(t), list: HOLIDAYS.map((h) => ({ id: h.id, name: h.name, emoji: h.emoji })) });
   });
 
   // Слово дня: кто сегодня разгадал

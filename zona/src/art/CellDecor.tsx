@@ -933,3 +933,52 @@ export function PlayerPet({ kind }: { kind: string }) {
     </g>
   );
 }
+
+/** Праздник в хате: ёлка с огоньками, звезда с флажками на 23 февраля, корзинка крашенок на Пасху. */
+export function HolidayDeco({ kind }: { kind: string }) {
+  if (kind === 'tree') {
+    const lights: [number, number, string][] = [[0, 14, '#f2c14e'], [-8, 28, '#e04a3a'], [7, 32, '#4ab0e0'], [-12, 46, '#f2c14e'], [10, 48, '#e04a3a'], [-2, 40, '#7ae04a'], [-16, 62, '#4ab0e0'], [14, 62, '#f2c14e'], [0, 58, '#e04a3a']];
+    return (
+      <g transform="translate(140 188)">
+        <rect x={-3} y={70} width={6} height={8} fill="#5a3a1a" />
+        <path d="M-12,78 H12 L9,84 H-9 Z" fill="#8a2a1a" />
+        <path d="M0,4 L-12,26 H-6 L-18,46 H-10 L-24,72 H24 L10,46 H18 L6,26 H12 Z" fill="#1f6a34" stroke="#0e3a1a" strokeWidth={1} />
+        <path d="M-6,26 H6 M-10,46 H10" stroke="#2f8a4a" strokeWidth={1.2} />
+        <path d="M-10,22 Q2,30 9,24 M-15,42 Q0,52 15,42 M-20,64 Q0,74 20,64" stroke="#c9c9d9" strokeWidth={0.8} fill="none" opacity={0.8} />
+        {lights.map(([x, y, c], i) => (
+          <circle key={i} className="tree-light" cx={x} cy={y} r={2} fill={c} />
+        ))}
+        <path d="M0,-4 L2,1 L7,1 L3,4 L5,9 L0,6 L-5,9 L-3,4 L-7,1 L-2,1 Z" fill="#f2c14e" stroke="#a07a1a" strokeWidth={0.5} />
+        <circle cx={-20} cy={80} r={4} fill="#f08a1a" />
+        <circle cx={-14} cy={82} r={3.4} fill="#f59a2a" />
+        <path d="M-20,76 l1,-2" stroke="#3a7a2a" strokeWidth={1} />
+      </g>
+    );
+  }
+  if (kind === 'feb23')
+    return (
+      <g transform="translate(118 46)">
+        <path d="M0,0 Q40,10 80,0" stroke="#3a3a3a" strokeWidth={0.6} fill="none" />
+        {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+          <path key={i} d={`M${6 + i * 11},${2 + Math.sin(i / 2) * 2} l4,9 l4,-9 Z`} fill={i % 2 ? '#c0302c' : '#4a6a2a'} />
+        ))}
+        <g transform="translate(40 26)">
+          <circle r={11} fill="#c0302c" stroke="#8a1a1a" />
+          <path d="M0,-8 L2.3,-2.5 L8,-2.5 L3.5,1.2 L5,7 L0,3.6 L-5,7 L-3.5,1.2 L-8,-2.5 L-2.3,-2.5 Z" fill="#f2c14e" />
+        </g>
+      </g>
+    );
+  if (kind === 'easter')
+    return (
+      <g transform="translate(138 248)">
+        <path d="M-16,0 Q0,-24 16,0" stroke="#8a5a2a" strokeWidth={2} fill="none" />
+        <ellipse cx={-7} cy={0} rx={4.6} ry={6} fill="#c0302c" />
+        <ellipse cx={1} cy={-2} rx={4.6} ry={6} fill="#4a8ac0" />
+        <ellipse cx={8} cy={0} rx={4.6} ry={6} fill="#e0b040" />
+        <path d="M-1,-3 h4 M-1,-1 h4" stroke="#fff" strokeWidth={0.6} />
+        <path d="M-17,2 H17 L13,14 H-13 Z" fill="#a8763a" stroke="#6a4a1a" strokeWidth={0.8} />
+        <path d="M-15,6 H15 M-14,10 H14" stroke="#7a5a2a" strokeWidth={0.7} />
+      </g>
+    );
+  return null;
+}

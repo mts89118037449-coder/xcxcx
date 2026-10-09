@@ -1742,3 +1742,57 @@ test('питомцы: покупка, кормёжка с откатом, кот
   assert.equal(q.pet!.name, 'Голубь');
   assert.equal(g.petParcels(q, T0), 1);
 });
+
+import { HOLIDAYS as HOLS, holidayAt, orthodoxEaster } from '../shared/holidays.ts';
+
+test('праздники: календарь, Пасха, задания, грев, магазин, ёлка, яйца', () => {
+  // православная Пасха: 2024 — 5 мая, 2025 — 20 апреля, 2026 — 12 апреля (по Москве)
+  for (const [y, m, d] of [[2024, 5, 5], [2025, 4, 20], [2026, 4, 12]]) assert.equal(orthodoxEaster(y), Date.UTC(y, m - 1, d) - 3 * 3600_000);
+  assert.equal(holidayAt(Date.UTC(2026, 0, 3))?.id, 'newyear');
+  assert.equal(holidayAt(Date.UTC(2025, 11, 31))?.key, 2026);
+  assert.equal(holidayAt(Date.UTC(2026, 1, 23))?.id, 'feb23');
+  assert.equal(holidayAt(Date.UTC(2026, 3, 12))?.id, 'easter');
+  assert.equal(holidayAt(Date.UTC(2026, 6, 1)), null);
+  assert.equal(HOLS.length, 3);
+
+  const ny = Date.UTC(2026, 0, 3, 12);
+  const p = g.newPlayer(1, 'Снегурочка', null, ny);
+  const saved = g.clock.now;
+  g.clock.now = () => ny;
+  try {
+    assert.throws(() => g.holEgg(p, ny, () => 0), /Пасху/);
+    g.holDaily(p, ny);
+    assert.equal(p.hol.tokens, 3);
+    assert.throws(() => g.holDaily(p, ny), /уже/);
+    g.holTree(p, ny);
+    g.holClaim(p, 0, ny); // «нарядить ёлку» засчиталась
+    assert.equal(p.hol.tokens, 8);
+    for (let i = 0; i < 10; i++) g.track(p, 'job');
+    g.holClaim(p, 1, ny);
+    assert.equal(p.hol.tokens, 14);
+    assert.throws(() => g.holClaim(p, 2, ny), /не выполнено/);
+    // под ёлкой грев больше
+    g.holDaily(p, ny + 24 * 3600_000);
+    assert.equal(p.hol.tokens, 19);
+    p.hol.tokens = 30;
+    g.holBuy(p, 'ny_frame', ny);
+    assert.ok(p.cosmetics.includes('frame_ny'));
+    assert.throws(() => g.holBuy(p, 'ny_frame', ny), /Больше|Уже/);
+    // праздник кончился — состояние сбрасывается со следующим
+    const eas = Date.UTC(2026, 3, 12, 12);
+    g.clock.now = () => eas;
+    g.ensureHol(p, eas);
+    assert.equal(p.hol.id, 'easter');
+    assert.equal(p.hol.tokens, 0);
+    assert.throws(() => g.holEgg(p, eas, () => 0), /крашенки/);
+    p.hol.tokens = 2;
+    assert.ok(g.holEgg(p, eas, () => 0).won);
+    assert.equal(p.hol.tokens, 3);
+    assert.throws(() => g.holEgg(p, eas + 60_000, () => 0), /сохнет/);
+    assert.ok(!g.holEgg(p, eas + 30 * 60_000, () => 0.99).won);
+    assert.equal(p.hol.tokens, 2);
+    assert.throws(() => g.holDaily(p, Date.UTC(2026, 6, 1)), /не праздник/);
+  } finally {
+    g.clock.now = saved;
+  }
+});

@@ -62,6 +62,7 @@ export function Home() {
           interior={p.interior}
           wall={p.wall}
           pet={p.pet?.kind}
+          deco={p.holiday ? (p.holiday.id === 'newyear' ? (p.holiday.tree ? 'tree' : null) : p.holiday.id) : null}
           anim={anim}
           animKey={animKey}
           onClick={() => play('act-cheer')}

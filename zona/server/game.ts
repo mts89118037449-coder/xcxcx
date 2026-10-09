@@ -72,6 +72,7 @@ import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
+import { EGG, holidayAt, holidayById, type HolKind, type HolidayRun } from '../shared/holidays.ts';
 import { PASS, SEASON_PTS, cosmeticById, passReward, seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
 import { CRAFT, MATS, PLACE_MATS, matById, recipeById, type MatId } from '../shared/craft.ts';
 import { DEBT, FACTIONS, OBSHAK, REP_RULES, factionById, repRank, type FactionId } from '../shared/factions.ts';
@@ -248,6 +249,8 @@ export interface Player {
   /** побег вдвоём: идущий забег и приглашение от кента */
   /** питомец в хате */
   pet: { kind: PetKind; name: string; level: number; xp: number; fedAt: number; trainAt: number } | null;
+  /** праздник: прогресс заданий, валюта, покупки; сбрасывается с новым праздником */
+  hol: { id: string; key: number; prog: number[]; claimed: boolean[]; tokens: number; day: number; bought: Record<string, number>; tree: boolean; armBest: number; eggAt: number };
   /** слово дня: попытки сегодня и серия дней подряд */
   word: { day: number; guesses: string[]; done: boolean; won: boolean };
   wordStreak: { n: number; last: number; best: number };
@@ -401,6 +404,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     colony: 'general',
     word: { day: 0, guesses: [], done: false, won: false },
     pet: null,
+    hol: { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 },
     wordStreak: { n: 0, last: 0, best: 0 },
     duo: null,
     duoInvite: null,
@@ -488,6 +492,7 @@ export function migrate(p: Player): Player {
   p.colony ??= 'general';
   p.word ??= { day: 0, guesses: [], done: false, won: false };
   p.pet ??= null;
+  p.hol ??= { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 };
   p.wordStreak ??= { n: 0, last: 0, best: 0 };
   p.tradesDay ??= { day: '', n: 0 };
   p.duelsDay ??= { day: '', n: 0 };
@@ -1761,6 +1766,7 @@ export function track(p: Player, kind: TrackKind, amount = 1) {
     p.weekly.progress += amount;
   }
   for (const t of p.daily.tasks) if (t.kind === kind && !t.claimed) t.progress = Math.min(t.target, t.progress + amount);
+  holTrack(p, kind as HolKind, clock.now(), amount);
 }
 
 export function claimTask(p: Player, index: number, now: number) {
@@ -2804,7 +2810,9 @@ export function armWrestle(p: Player, rivalId: string, taps: number, now: number
     p.butts += rival.butts;
     p.authority += rival.authority;
     out.levelUps = addXp(p, rival.xp, now);
+    holTrack(p, 'arm', now);
   }
+  if (curHoliday(now)?.id === 'feb23') p.hol.armBest = Math.max(p.hol.armBest, out.power);
   return out;
 }
 
@@ -3719,4 +3727,103 @@ export function petTrain(p: Player, now: number) {
   spendEnergy(p, PET.trainEnergy, now);
   pet.trainAt = now;
   return { up: petXp(p, PET.trainXp, now), level: pet.level };
+}
+
+// --- Праздники -----------------------------------------------------------------------------------
+
+/** Праздник, включённый админом поверх календаря (ставит app из kv). */
+export const holidayForce: { run: HolidayRun | null } = { run: null };
+export const curHoliday = (now: number) => holidayAt(now, holidayForce.run);
+
+/** Текущий праздник и состояние игрока в нём (сброс, если праздник сменился). */
+export function ensureHol(p: Player, now: number) {
+  const run = curHoliday(now);
+  if (!run) return null;
+  const def = holidayById.get(run.id)!;
+  if (p.hol.id !== run.id || p.hol.key !== run.key)
+    p.hol = { id: run.id, key: run.key, prog: def.tasks.map(() => 0), claimed: def.tasks.map(() => false), tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 };
+  return { run, def };
+}
+
+function holTrack(p: Player, kind: HolKind, now: number, amount = 1) {
+  const h = ensureHol(p, now);
+  if (!h) return;
+  h.def.tasks.forEach((t, i) => {
+    if (t.kind === kind && !p.hol.claimed[i]) p.hol.prog[i] = Math.min(t.n, (p.hol.prog[i] ?? 0) + amount);
+  });
+}
+
+function needHol(p: Player, now: number) {
+  const h = ensureHol(p, now);
+  if (!h) throw new GameError('Сейчас не праздник');
+  return h;
+}
+
+/** Праздничный грев раз в сутки; под наряженной ёлкой — больше. */
+export function holDaily(p: Player, now: number) {
+  const { def } = needHol(p, now);
+  const d = dayIndex(now);
+  if (p.hol.day === d) throw new GameError('Сегодня уже получал');
+  p.hol.day = d;
+  const n = def.daily + (p.hol.tree ? 2 : 0);
+  p.hol.tokens += n;
+  return { tokens: n };
+}
+
+export function holClaim(p: Player, index: number, now: number) {
+  const { def } = needHol(p, now);
+  const t = def.tasks[index];
+  if (!t) throw new GameError('Нет такого задания');
+  if (p.hol.claimed[index]) throw new GameError('Уже получено');
+  if ((p.hol.prog[index] ?? 0) < t.n) throw new GameError('Задание не выполнено');
+  p.hol.claimed[index] = true;
+  p.hol.tokens += t.tokens;
+  return { tokens: t.tokens };
+}
+
+export function holBuy(p: Player, itemId: string, now: number) {
+  const { def } = needHol(p, now);
+  const it = def.shop.find((x) => x.id === itemId);
+  if (!it) throw new GameError('Такого нет');
+  const had = p.hol.bought[it.id] ?? 0;
+  if (had >= (it.max ?? 1)) throw new GameError('Больше не дают');
+  if (it.give.cosmetic && p.cosmetics.includes(it.give.cosmetic)) throw new GameError('Уже есть');
+  if (p.hol.tokens < it.cost) throw new GameError(`Не хватает: ${def.token.name}`);
+  p.hol.tokens -= it.cost;
+  p.hol.bought[it.id] = had + 1;
+  const g = it.give;
+  if (g.cosmetic) p.cosmetics.push(g.cosmetic);
+  if (g.gold) p.gold += g.gold;
+  if (g.chifir) p.chifir += g.chifir;
+  if (g.butts) p.butts += g.butts;
+  let heal = 0;
+  if (g.heal) {
+    const max = stats(p, now).maxHp;
+    heal = Math.min(max - p.hp, Math.round((max * g.heal) / 100));
+    p.hp += heal;
+  }
+  return { heal };
+}
+
+/** Новый год: нарядить ёлку в хате. */
+export function holTree(p: Player, now: number) {
+  const { run } = needHol(p, now);
+  if (run.id !== 'newyear') throw new GameError('Ёлку ставят на Новый год');
+  if (p.hol.tree) throw new GameError('Ёлка уже стоит');
+  p.hol.tree = true;
+  holTrack(p, 'tree', now);
+  log(p, now, '🎄 В хате нарядили ёлку');
+}
+
+/** Пасха: битки яйцами с сокамерником. Сила яйца — немного от удачи и от силы руки. */
+export function holEgg(p: Player, now: number, rng: Rng) {
+  const { run } = needHol(p, now);
+  if (run.id !== 'easter') throw new GameError('Яйцами бьются на Пасху');
+  if (now - p.hol.eggAt < EGG.cooldownMin * MIN) throw new GameError('Новое яйцо ещё сохнет');
+  if (p.hol.tokens < 1) throw new GameError('Нет ни одной крашенки');
+  p.hol.eggAt = now;
+  const won = rng() < EGG.winBase + Math.min(0.1, p.str / 1000);
+  p.hol.tokens += won ? 1 : -1;
+  holTrack(p, 'egg', now);
+  return { won };
 }

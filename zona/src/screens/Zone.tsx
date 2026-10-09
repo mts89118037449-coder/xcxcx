@@ -3,6 +3,7 @@ import { named } from '../lazy.ts';
 
 const TourneyCard = named(() => import('../Tourney.tsx'), 'TourneyCard');
 const WordCard = named(() => import('../Word.tsx'), 'WordCard');
+const HolidayCard = named(() => import('../Holiday.tsx'), 'HolidayCard');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
@@ -80,6 +81,11 @@ export function Zone() {
         {wx.effect && <div className="wx-note">{wx.emoji} {wx.effect}</div>}
       </div>
       {p.nextButtAt && !field.length && <div className="muted small center">🚬 через {timeLeft(p.nextButtAt - now)}</div>}
+      {p.holiday && (
+        <Suspense fallback={null}>
+          <HolidayCard />
+        </Suspense>
+      )}
       <SegBar
         value={seg}
         onChange={setSeg}

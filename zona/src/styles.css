@@ -2553,3 +2553,40 @@ body:has(.modal) .event-btn { z-index: 20; }
 @keyframes pet-rat { 0%, 100% { transform: translate(30px, 290px) scale(1.4); } 45% { transform: translate(130px, 290px) scale(1.4); } 50% { transform: translate(130px, 290px) scale(-1.4, 1.4); } 95% { transform: translate(30px, 290px) scale(-1.4, 1.4); } }
 .pet-pigeon { animation: pet-pigeon 6s infinite ease-in-out; }
 @keyframes pet-pigeon { 0%, 100% { transform: translate(244px, 112px) scale(1.5); } 45% { transform: translate(258px, 112px) scale(1.5); } 50% { transform: translate(258px, 112px) scale(-1.5, 1.5); } 95% { transform: translate(244px, 112px) scale(-1.5, 1.5); } }
+
+/* праздники */
+.hol-card { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; margin: 8px 0; border-radius: 14px; border: 1px solid #8a6a3a; text-align: left; color: #fff; }
+.hol-card b { display: block; font-size: 16px; }
+.hol-card small { color: #ffffffbb; font-size: 12px; }
+.hol-card.ready { box-shadow: 0 0 12px #f2c14e88; border-color: var(--gold); }
+.hol-card.ready i { animation: bob 1.2s infinite; font-style: normal; }
+.hol-ico { font-size: 32px; }
+.hol-newyear { background: linear-gradient(110deg, #0e3a2a, #1f5a3a 50%, #7a1a1a); }
+.hol-feb23 { background: linear-gradient(110deg, #2a3a1e, #4a5a2a 60%, #7a1a1a); }
+.hol-easter { background: linear-gradient(110deg, #4a3a6a, #7a5a8a 50%, #c08a3a); }
+.hol-modal { max-height: 88vh; overflow: auto; }
+.hol-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.hol-head b { display: block; font-size: 20px; }
+.hol-head small { color: #ffffffbb; }
+.hol-head > div { flex: 1; }
+.hol-big { font-size: 44px; line-height: 1; }
+.hol-tokens { font-size: 22px; font-weight: bold; background: #0006; padding: 4px 10px; border-radius: 12px; }
+.hol-fun { margin: 10px 0; padding: 10px; border-radius: 12px; background: #0005; display: flex; flex-direction: column; gap: 6px; }
+.hol-fun small { color: #ffffffbb; font-size: 12px; }
+.hol-arm div { display: flex; gap: 6px; padding: 2px 0; }
+.hol-arm div b { margin-left: auto; }
+.hol-arm .me { color: var(--gold); }
+.hol-tasks { display: flex; flex-direction: column; gap: 6px; }
+.hol-task { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; background: #0004; font-size: 13px; }
+.hol-task .pet-bar { display: block; }
+.hol-task.done { box-shadow: inset 0 0 0 1px var(--gold); }
+.hol-task.claimed { opacity: 0.55; }
+.hol-shop { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0; }
+.hol-shop .pet-offer { background: #0005; }
+.frame-ny { border-radius: 14px; box-shadow: 0 0 0 3px #1f7a3a, 0 0 0 5px #c0302c; animation: ny-lights 1.4s steps(2) infinite; }
+@keyframes ny-lights { 50% { box-shadow: 0 0 0 3px #c0302c, 0 0 0 5px #f2c14e, 0 0 10px #f2c14e; } }
+.frame-army { border-radius: 14px; box-shadow: 0 0 0 3px #4a5a2a, 0 0 0 5px #c9a040; }
+.frame-easter { border-radius: 14px; box-shadow: 0 0 0 3px #e8a0c8, 0 0 0 5px #a0c8e8, 0 0 10px #f2d0e8; }
+.tree-light { animation: tree-blink 1.6s infinite steps(2); }
+.tree-light:nth-child(2n) { animation-delay: 0.8s; }
+@keyframes tree-blink { 50% { opacity: 0.25; } }

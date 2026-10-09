@@ -241,6 +241,42 @@ export function AdminLive() {
           <small className="muted">{l.desc}</small>
         </button>
       ))}
+      <AdminHoliday />
+    </div>
+  );
+}
+
+/** Праздник вне календаря: включить на 3 дня или выключить. */
+function AdminHoliday() {
+  const { refresh, toast } = useGame();
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.adminHoliday>> | null>(null);
+  const load = (body: Parameters<typeof api.adminHoliday>[0] = {}) =>
+    api
+      .adminHoliday(body)
+      .then((d) => {
+        setData(d);
+        if (body.start || body.stop) refresh();
+      })
+      .catch((e) => toast(e instanceof Error ? e.message : 'Не загрузилось', 'err'));
+  useEffect(() => {
+    load();
+  }, []);
+  if (!data) return null;
+  const cur = data.cur && data.list.find((h) => h.id === data.cur!.id);
+  return (
+    <div className="sus-row">
+      <b>🎉 Праздник: {cur ? `${cur.emoji} ${cur.name} до ${when(data.cur!.endsAt)}` : 'нет'}</b>
+      <div className="admin-row">
+        {data.list.map((h) => (
+          <button key={h.id} className="btn btn-s btn-dark" onClick={() => confirm(`Включить «${h.name}» на 3 дня?`) && load({ start: h.id, days: 3 })}>
+            {h.emoji} {h.name}
+          </button>
+        ))}
+        <button className="btn btn-s btn-red" onClick={() => load({ stop: true })}>
+          ⏹
+        </button>
+      </div>
+      <small className="muted">По календарю праздники включаются сами: Новый год 25.12–8.01, 23 февраля 20–26.02, Пасха ±3 дня.</small>
     </div>
   );
 }

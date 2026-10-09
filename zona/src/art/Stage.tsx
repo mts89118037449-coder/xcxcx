@@ -29,6 +29,8 @@ interface Props {
   wall?: string[];
   /** свой питомец в хате */
   pet?: string | null;
+  /** праздничное украшение хаты */
+  deco?: string | null;
   anim: string;
   animKey: number;
   onClick?: () => void;
@@ -38,7 +40,7 @@ interface Props {
 
 const RIG_DRIVEN = new Set(['act-work', 'lunge-r', 'act-cheer', 'act-dress']);
 
-export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, pet, anim, animKey, onClick, onTalk }: Props) {
+export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, pet, deco, anim, animKey, onClick, onTalk }: Props) {
   // Короткая «рабочая» поза после действия, потом снова обычная.
   const [busyPose, setBusyPose] = useState<RigAnim | null>(null);
   const [face, setFace] = useState<'sweat' | 'smile' | null>(null);
@@ -84,7 +86,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, p
       )}
     </>
   );
-  if (loc === 'cell') return <CellScene furniture={furniture} interior={interior} wall={wall} pet={pet} onClick={onClick}>{crowd}{fig}</CellScene>;
+  if (loc === 'cell') return <CellScene furniture={furniture} interior={interior} wall={wall} pet={pet} deco={deco} onClick={onClick}>{crowd}{fig}</CellScene>;
   if (loc === 'work') return <WorkScene>{crowd}{fig}</WorkScene>;
   return <YardScene>{crowd}{fig}</YardScene>;
 }
