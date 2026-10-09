@@ -1964,3 +1964,29 @@ test('кольщик: машинка, заказ со скидкой, очере
   assert.equal(c.money, money + 400);
   assert.equal(m.ink!.queue.length, 0);
 });
+
+import { BARRACK, barrackBonus, barrackOwners } from '../shared/barracks.ts';
+
+test('бараки: набег только с кланом, лимит, хозяин недели по влиянию, бонус людям хозяина', () => {
+  const p = g.newPlayer(1, 'Бригадир', null, T0);
+  p.level = 10;
+  p.energy = 500;
+  assert.throws(() => g.barrackRaid(p, 'b1', T0, () => 0), /клан/);
+  p.clanId = 7;
+  assert.throws(() => g.barrackRaid(p, 'b9', T0, () => 0), /Нет такого/);
+  const r = g.barrackRaid(p, 'b1', T0, () => 0.5);
+  assert.ok(r.pts >= 5);
+  for (let i = 1; i < BARRACK.perDay; i++) g.barrackRaid(p, 'b1', T0, () => 0);
+  assert.throws(() => g.barrackRaid(p, 'b1', T0, () => 0));
+  const owners = barrackOwners({ b1: { 7: 50, 9: 40 }, b3: { 9: 10 }, b4: {} });
+  assert.deepEqual(owners, { b1: 7, b3: 9 });
+  assert.equal(barrackBonus(owners, 7, 'money'), 5);
+  assert.equal(barrackBonus(owners, null, 'money'), 0);
+  const e0 = g.stats(p, T0).maxEnergy;
+  g.barracks.owners = { b3: 7 };
+  try {
+    assert.equal(g.stats(p, T0).maxEnergy, e0 + 10);
+  } finally {
+    g.barracks.owners = {};
+  }
+});

@@ -72,6 +72,7 @@ import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
+import { BARRACK, barrackBonus, barrackById, raidPts, type BarrackBonus } from '../shared/barracks.ts';
 import { INK, inkQuality } from '../shared/ink.ts';
 import { MALYAVA, malyavaById } from '../shared/malyava.ts';
 import { PENPAL, PENPAL_GIRLS, PEN_ENDINGS, PEN_LETTERS, penEnding, type PenEnding } from '../shared/penpal.ts';
@@ -645,12 +646,12 @@ export function stats(p: Player, now: number) {
   const b = bonuses(p);
   const vip = isVip(p, now);
   return {
-    atk: Math.round((5 + p.str * 3 + b.atk) * (1 + (mastBonus(p, 'atk') + hutBonus(p, 'atk') + zoneB('atk')) / 100)),
-    def: Math.round((p.agi * 2 + b.def) * (1 + (hutBonus(p, 'def') + zoneB('def')) / 100)),
-    maxHp: Math.round((80 + p.end * 12 + b.hp) * (1 + petPower(p, 'cat', now) * 0.02 + zoneB('hp') / 100)),
+    atk: Math.round((5 + p.str * 3 + b.atk) * (1 + (mastBonus(p, 'atk') + hutBonus(p, 'atk') + zoneB('atk') + barB(p, 'atk')) / 100)),
+    def: Math.round((p.agi * 2 + b.def) * (1 + (hutBonus(p, 'def') + zoneB('def') + barB(p, 'def')) / 100)),
+    maxHp: Math.round((80 + p.end * 12 + b.hp) * (1 + petPower(p, 'cat', now) * 0.02 + (zoneB('hp') + barB(p, 'hp')) / 100)),
     crit: Math.min(40, 2 + Math.floor(p.agi * 0.3) + b.crit + mastBonus(p, 'crit') + (p.blessUntil > now ? CHURCH.blessCrit : 0)),
-    maxEnergy: BALANCE.baseEnergy + b.energy + mastBonus(p, 'energy') + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel + hutBonus(p, 'energy') + zoneB('energy'),
-    moneyBonus: b.money + hutBonus(p, 'money') + hodkaBonus(p) + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel + (p.blessUntil > now ? CHURCH.blessMoney : 0) + zoneB('money'),
+    maxEnergy: BALANCE.baseEnergy + b.energy + mastBonus(p, 'energy') + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel + hutBonus(p, 'energy') + zoneB('energy') + barB(p, 'energy'),
+    moneyBonus: b.money + hutBonus(p, 'money') + hodkaBonus(p) + (vip ? BALANCE.vipMoneyBonus : 0) + p.clanLevel * CLAN.moneyPerLevel + (p.blessUntil > now ? CHURCH.blessMoney : 0) + zoneB('money') + barB(p, 'money'),
   };
 }
 
@@ -749,7 +750,7 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
     item = rollConsumable(rng);
     giveItem(p, item);
   }
-  const xp = Math.round(job.xp * (1 + (mastBonus(p, 'jobXp') + petPower(p, 'pigeon', now) + zoneB('jobXp')) / 100));
+  const xp = Math.round(job.xp * (1 + (mastBonus(p, 'jobXp') + petPower(p, 'pigeon', now) + zoneB('jobXp') + barB(p, 'jobXp')) / 100));
   const levelUps = addXp(p, xp, now);
   track(p, 'job');
   gainRep(p, 'work', 1);
@@ -4107,4 +4108,23 @@ export function inkCancel(p: Player, artist: Player | null, now: number) {
   if (artist?.ink) artist.ink.queue = artist.ink.queue.filter((x) => x.id !== o.id);
   p.money += q?.paid ?? Math.round((tattooById.get(o.tattoo)?.price ?? 0) * INK.discount);
   p.inkOrder = null;
+}
+
+// --- Бараки --------------------------------------------------------------------------------------
+
+/** Кто держит бараки на этой неделе (ставит app из kv по итогам прошлой). */
+export const barracks: { owners: Record<string, number> } = { owners: {} };
+const barB = (p: Player, k: BarrackBonus) => barrackBonus(barracks.owners, p.clanId, k);
+
+/** Набег на барак: энергия, лимит в день; влияние идёт клану (считает app). */
+export function barrackRaid(p: Player, barrackId: string, now: number, rng: Rng) {
+  if (!p.clanId) throw new GameError('Бараки делят кланы — вступи в клан');
+  if (p.level < BARRACK.minLevel) throw new GameError(`С ${BARRACK.minLevel} уровня`);
+  const b = barrackById.get(barrackId);
+  if (!b) throw new GameError('Нет такого барака');
+  playLimit(p, 'raid', BARRACK.perDay, now);
+  spendEnergy(p, BARRACK.energy, now);
+  const pts = raidPts(p.str, rng());
+  warPoints(p, now, 1);
+  return { pts };
 }

@@ -1,3 +1,4 @@
+import { BARRACKS, barrackOwners } from '../shared/barracks.ts';
 import { BUILDINGS, addBuildPts, type BuildState } from '../shared/build.ts';
 import { HOLIDAYS, holidayById, type HolidayRun } from '../shared/holidays.ts';
 import express, { type Request, type Response, type NextFunction } from 'express';
@@ -201,6 +202,8 @@ export function createApp(opts: AppOptions) {
       g.holidayForce.run = db.kvGet<HolidayRun | null>('hol:force', null);
       buildState = db.kvGet<BuildState>('build', { idx: 0, pts: 0, done: [] });
       g.zoneBuilt.done = buildState.done;
+      // бараки держит тот, кто победил на прошлой неделе
+      g.barracks.owners = barrackOwners(db.kvGet<Record<string, Record<string, number>>>(`barracks:${g.weekIndex(t) - 1}`, {}));
     }
     let cur = currentLive(t, liveCache.manual);
     // выходные по расписанию админ может отменить
@@ -685,6 +688,15 @@ export function createApp(opts: AppOptions) {
       const r = g.sendParcel(p, target, str(b.kind) as 'item' | 'mat', str(b.ref), Math.floor(num(b.qty)), t);
       db.savePlayer(target);
       notifyPlayer(target.id, `📦 ${p.name} прислал тебе грев: ${r.label} ×${r.qty}`);
+      return r;
+    },
+    barrackRaid: (p, b, t) => {
+      const r = g.barrackRaid(p, str(b.id), t, rng);
+      const key = `barracks:${g.weekIndex(t)}`;
+      const table = db.kvGet<Record<string, Record<string, number>>>(key, {});
+      const row = (table[str(b.id)] ??= {});
+      row[p.clanId!] = (row[p.clanId!] ?? 0) + r.pts;
+      db.kvSet(key, table);
       return r;
     },
     inkBecome: (p) => {
@@ -1432,6 +1444,32 @@ export function createApp(opts: AppOptions) {
       endsAt: g.weekEndsAt(t),
       now: t,
     });
+  });
+
+  // Бараки: кто держит на этой неделе и кто сейчас лидирует в борьбе за следующую
+  api.post('/barracks', (req: AuthedRequest, res) => {
+    const t = now();
+    liveNow(t);
+    const me = db.getPlayer(req.tgUser!.id);
+    const week = g.weekIndex(t);
+    const table = db.kvGet<Record<string, Record<string, number>>>(`barracks:${week}`, {});
+    const tags = new Map<number, { tag: string; name: string }>();
+    const clan = (id: number) => {
+      if (!tags.has(id)) {
+        const c = db.getClan(id);
+        tags.set(id, { tag: c?.tag ?? '?', name: c?.name ?? 'распущен' });
+      }
+      return { id, ...tags.get(id)! };
+    };
+    const list = BARRACKS.map((b) => {
+      const owner = g.barracks.owners[b.id];
+      const top = Object.entries(table[b.id] ?? {})
+        .map(([id, pts]) => ({ ...clan(Number(id)), pts }))
+        .sort((x, y) => y.pts - x.pts)
+        .slice(0, 3);
+      return { id: b.id, owner: owner ? clan(owner) : null, top, mine: me?.clanId ? (table[b.id]?.[me.clanId] ?? 0) : 0 };
+    });
+    res.json({ list, endsAt: g.weekEndsAt(t) });
   });
 
   // Кольщики зоны: кто бьёт и как

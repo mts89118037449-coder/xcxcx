@@ -4,6 +4,7 @@ import type { ClanView } from '../shared/types.ts';
 import { api } from './api.ts';
 import { Face, NpcBanner } from './art/sprites.tsx';
 import { Card, fmt, timeLeft, useGame } from './game.tsx';
+import { BarracksMap } from './Barracks.tsx';
 import { CLAN_BOSS, CLAN_WAR, HUT, HUT_RULES } from '../shared/clans.ts';
 
 type ClanRow = Awaited<ReturnType<typeof api.clans>>['clans'][number];
@@ -21,6 +22,7 @@ export function Clans() {
     <>
       <NpcBanner who="blatnoy" name="Бригадир" text="Одному на зоне не выжить. Держись своих — и свои за тебя впишутся" />
       {p.clan ? <ClanCard id={p.clan.id} mine /> : <CreateClan />}
+      <BarracksMap />
       <h3 className="section">Кланы зоны</h3>
       <Card>
         {!list && <div className="muted center">Загрузка…</div>}

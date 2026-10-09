@@ -100,6 +100,8 @@ export const api = {
   league: () =>
     post<{ top: { id: number; name: string; level: number; pts: number; title: string | null }[]; prev: { id: number; name: string; level: number; pts: number; title: string | null }[]; myRank: number | null; endsAt: number }>('/league'),
   build: () => post<{ state: { idx: number; pts: number; done: string[] }; top: { id: number; name: string; pts: number }[] }>('/build'),
+  barracks: () =>
+    post<{ list: { id: string; owner: { id: number; tag: string; name: string } | null; top: { id: number; tag: string; name: string; pts: number }[]; mine: number }[]; endsAt: number }>('/barracks'),
   inkers: () => post<{ list: { id: number; name: string; skill: number; stars: number; votes: number; jobs: number; queue: number }[] }>('/inkers'),
   kum: () => post<{ feed: { from: string; to: string; msg: string; at: number }[] }>('/kum'),
   holiday: () => post<{ arm: { id: number; name: string; power: number }[] }>('/holiday'),
