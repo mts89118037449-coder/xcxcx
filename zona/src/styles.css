@@ -2683,3 +2683,32 @@ body:has(.modal) .event-btn { z-index: 20; }
 .mal-note.new { box-shadow: 0 0 0 2px var(--gold), 0 2px 6px #0006; }
 .mal-note.kum { background: #e8c8b8; position: relative; }
 .mal-note.kum::after { content: 'ПЕРЕХВАЧЕНО'; position: absolute; right: 8px; top: 6px; color: #b02a2a; border: 2px solid #b02a2a; font-size: 9px; font-weight: bold; padding: 1px 4px; transform: rotate(10deg); opacity: 0.8; }
+
+/* кольщик */
+.ink-card { border-color: #4a5a7a; background: linear-gradient(90deg, #1e2434, #22201a); }
+.ink-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.ink-row { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 10px; background: #0004; border: 1px solid #3a3a4a; text-align: left; color: inherit; }
+.ink-row b, .ink-row small { display: block; }
+.ink-row small { color: var(--muted); font-size: 11px; }
+.ink-rate { color: var(--gold); white-space: nowrap; }
+.ink-order { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; margin: 12px 0; }
+.ink-big { font-size: 56px; }
+.ink-stars { display: flex; gap: 4px; }
+.ink-stars button { font-size: 28px; background: none; border: 0; padding: 2px; }
+.ink-stars button:hover ~ button { filter: grayscale(1); }
+.ink-pick { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.ink-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-height: 46vh; overflow: auto; }
+.ink-me { padding: 8px; border-radius: 10px; background: #0004; }
+.ink-game { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 12px 0; user-select: none; touch-action: manipulation; cursor: pointer; }
+.ink-skin { position: relative; width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #e8c0a0, #c08a68); display: grid; place-items: center; box-shadow: inset 0 -8px 16px #0003; }
+.ink-stencil, .ink-fill { position: absolute; font-size: 72px; }
+.ink-stencil { filter: grayscale(1) brightness(0.3); opacity: 0.25; }
+.ink-fill { filter: grayscale(1) sepia(1) hue-rotate(180deg) saturate(2) brightness(0.55); transition: clip-path 0.3s; }
+.ink-track { position: relative; width: 100%; height: 34px; border-radius: 17px; background: #0007; }
+.ink-zone { position: absolute; left: 40%; width: 20%; top: 0; bottom: 0; background: #6ab04c66; border-left: 2px solid #6ab04c; border-right: 2px solid #6ab04c; }
+.ink-needle { position: absolute; top: 2px; font-size: 24px; transform: translateX(-50%) rotate(-135deg); }
+.ink-dots { display: flex; gap: 8px; }
+.ink-dots span { width: 14px; height: 14px; border-radius: 50%; background: #333; }
+.ink-dots .good { background: #6ab04c; }
+.ink-dots .ok { background: #e0b040; }
+.ink-dots .bad { background: #e04a3a; }

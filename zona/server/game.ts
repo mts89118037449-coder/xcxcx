@@ -72,6 +72,7 @@ import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
+import { INK, inkQuality } from '../shared/ink.ts';
 import { MALYAVA, malyavaById } from '../shared/malyava.ts';
 import { PENPAL, PENPAL_GIRLS, PEN_ENDINGS, PEN_LETTERS, penEnding, type PenEnding } from '../shared/penpal.ts';
 import { COURT, courtArgById, courtChance, type ArgId } from '../shared/court.ts';
@@ -256,6 +257,10 @@ export interface Player {
   /** праздник: прогресс заданий, валюта, покупки; сбрасывается с новым праздником */
   /** сколько очков вложил в стройку зоны */
   built: number;
+  /** кольщик: своя машинка, опыт, очередь заказов */
+  ink: { skill: number; jobs: number; stars: number; votes: number; queue: { id: number; client: number; clientName: string; tattoo: string; paid: number; at: number }[] } | null;
+  /** свой заказ у кольщика */
+  inkOrder: { artist: number; artistName: string; tattoo: string; at: number; id: number; done: boolean; quality: number; rated: boolean } | null;
   /** входящие малявы */
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
@@ -419,6 +424,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     built: 0,
     penpal: null,
     inbox: [],
+    ink: null,
+    inkOrder: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
     hol: { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 },
     wordStreak: { n: 0, last: 0, best: 0 },
@@ -511,6 +518,8 @@ export function migrate(p: Player): Player {
   p.built ??= 0;
   p.penpal ??= null;
   p.inbox ??= [];
+  p.ink ??= null;
+  p.inkOrder ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
   p.hol ??= { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 };
   p.wordStreak ??= { n: 0, last: 0, best: 0 };
@@ -4021,4 +4030,81 @@ export function malyavaSend(p: Player, to: Player, msgId: string, butts: number,
 
 export function malyavaRead(p: Player) {
   for (const m of p.inbox) m.read = true;
+}
+
+// --- Кольщик -------------------------------------------------------------------------------------
+
+export function inkBecome(p: Player) {
+  if (p.level < INK.minLevel) throw new GameError(`С ${INK.minLevel} уровня`);
+  if (p.ink) throw new GameError('Машинка уже есть');
+  spend(p, INK.machinePrice, 'money');
+  p.ink = { skill: 0, jobs: 0, stars: 0, votes: 0, queue: [] };
+}
+
+/** Заказать наколку у мастера: деньги вперёд, заказ в очередь мастера. */
+export function inkOrder(p: Player, artist: Player, tattooId: string, now: number) {
+  if (!artist.ink) throw new GameError('Он не кольщик');
+  if (artist.id === p.id) throw new GameError('Сам себе не набьёшь — попроси другого');
+  if (p.inkOrder && !p.inkOrder.done) throw new GameError('Уже ждёшь одну наколку');
+  const t = tattooById.get(tattooId);
+  if (!t || t.currency !== 'money') throw new GameError('Такую мастер не бьёт');
+  if (p.tattoos.includes(t.id)) throw new GameError('Уже набита');
+  if (p.level < t.minLevel) throw new GameError(`Доступно с ${t.minLevel} уровня`);
+  if (p.authority < t.minAuthority) throw new GameError(`Нужно ${t.minAuthority} авторитета`);
+  if (artist.ink.queue.length >= INK.queue) throw new GameError('У мастера очередь');
+  const paid = Math.round(t.price * INK.discount);
+  spend(p, paid, 'money');
+  const id = now;
+  artist.ink.queue.push({ id, client: p.id, clientName: p.name, tattoo: t.id, paid, at: now });
+  p.inkOrder = { artist: artist.id, artistName: artist.name, tattoo: t.id, at: now, id, done: false, quality: 0, rated: false };
+  return { paid };
+}
+
+/** Мастер бьёт наколку из очереди: acc — точность иглы в мини-игре (0..1). */
+export function inkDo(artist: Player, client: Player | null, orderId: number, acc: number, now: number) {
+  const ink = artist.ink;
+  if (!ink) throw new GameError('Машинки нет');
+  const i = ink.queue.findIndex((o) => o.id === orderId);
+  if (i < 0) throw new GameError('Нет такого заказа');
+  const o = ink.queue[i];
+  ink.queue.splice(i, 1);
+  const quality = inkQuality(ink.skill, Number(acc) || 0);
+  const t = tattooById.get(o.tattoo)!;
+  artist.money += o.paid;
+  ink.jobs++;
+  ink.skill = Math.min(100, ink.skill + INK.skillPerJob + (acc >= INK.skillBonusAcc ? 1 : 0));
+  const crooked = quality < INK.crooked;
+  if (client && client.inkOrder?.id === o.id) {
+    if (!client.tattoos.includes(t.id)) client.tattoos.push(t.id);
+    client.inkOrder = { ...client.inkOrder, done: true, quality };
+    if (crooked) client.authority = Math.max(0, client.authority - INK.crookedAuthority);
+    log(client, now, `${t.emoji} ${artist.name} набил «${t.name}»${crooked ? ' — криво, братва ржёт' : `, качество ${quality}%`}`);
+  }
+  log(artist, now, `🖋️ Набил «${t.name}» для ${o.clientName}: ${quality}%`);
+  return { quality, crooked, paid: o.paid, skill: ink.skill };
+}
+
+/** Клиент оценивает мастера. */
+export function inkRate(p: Player, artist: Player | null, stars: number) {
+  const o = p.inkOrder;
+  if (!o || !o.done) throw new GameError('Нечего оценивать');
+  if (o.rated) throw new GameError('Уже оценил');
+  const n = Math.max(1, Math.min(5, Math.round(Number(stars) || 0)));
+  o.rated = true;
+  if (artist?.ink) {
+    artist.ink.stars += n;
+    artist.ink.votes++;
+  }
+  return { stars: n };
+}
+
+/** Мастер не успел за сутки — клиент забирает деньги. */
+export function inkCancel(p: Player, artist: Player | null, now: number) {
+  const o = p.inkOrder;
+  if (!o || o.done) throw new GameError('Нечего отменять');
+  if (now - o.at < INK.cancelH * 60 * MIN) throw new GameError(`Отменить можно через ${INK.cancelH} ч`);
+  const q = artist?.ink?.queue.find((x) => x.id === o.id);
+  if (artist?.ink) artist.ink.queue = artist.ink.queue.filter((x) => x.id !== o.id);
+  p.money += q?.paid ?? Math.round((tattooById.get(o.tattoo)?.price ?? 0) * INK.discount);
+  p.inkOrder = null;
 }

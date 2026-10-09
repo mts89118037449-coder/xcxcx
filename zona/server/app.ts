@@ -208,6 +208,14 @@ export function createApp(opts: AppOptions) {
     g.live.cur = cur;
     return cur;
   };
+  // список кольщиков держим в kv, чтобы не перебирать всех игроков
+  type InkerRow = { name: string; skill: number; stars: number; votes: number; jobs: number; queue: number };
+  const inkerSave = (a: g.Player) => {
+    if (!a.ink) return;
+    const all = db.kvGet<Record<string, InkerRow>>('inkers', {});
+    all[a.id] = { name: a.name, skill: a.ink.skill, stars: a.ink.stars, votes: a.ink.votes, jobs: a.ink.jobs, queue: a.ink.queue.length };
+    db.kvSet('inkers', all);
+  };
   const liveNotice = (t: number): g.NoticeCtx['live'] => {
     const cur = liveNow(t);
     const def = cur && liveById.get(cur.id);
@@ -404,6 +412,8 @@ export function createApp(opts: AppOptions) {
       pet: p.pet,
       built: p.built,
       inbox: p.inbox,
+      ink: p.ink,
+      inkOrder: p.inkOrder,
       // аферистка или нет — тайна до конца
       penpal: p.penpal && { name: p.penpal.name, step: p.penpal.step, love: p.penpal.love, nextAt: p.penpal.nextAt, ending: p.penpal.ending, picks: p.penpal.picks, canRestart: !!p.penpal.ending && p.penpal.hodka !== p.hodka },
       appeal: p.appeal.hodka === p.hodka ? { args: p.appeal.args, done: p.appeal.done, won: p.appeal.won, delta: p.appeal.delta } : { args: [], done: false, won: false, delta: 0 },
@@ -676,6 +686,47 @@ export function createApp(opts: AppOptions) {
       db.savePlayer(target);
       notifyPlayer(target.id, `📦 ${p.name} прислал тебе грев: ${r.label} ×${r.qty}`);
       return r;
+    },
+    inkBecome: (p) => {
+      g.inkBecome(p);
+      inkerSave(p);
+    },
+    inkOrder: (p, b, t) => {
+      const artist = db.getPlayer(num(b.artist));
+      if (!artist) throw new g.GameError('Нет такого мастера');
+      const r = g.inkOrder(p, artist, str(b.tattoo), t);
+      db.savePlayer(artist);
+      inkerSave(artist);
+      notifyPlayer(artist.id, `🖋️ ${p.name} записался к тебе на наколку`);
+      return r;
+    },
+    inkDo: (p, b, t) => {
+      const order = p.ink?.queue.find((o) => o.id === num(b.order));
+      const client = order ? db.getPlayer(order.client) : null;
+      const r = g.inkDo(p, client, num(b.order), num(b.acc), t);
+      if (client) {
+        db.savePlayer(client);
+        notifyPlayer(client.id, `🖋️ ${p.name} набил тебе наколку${r.crooked ? ' (криво…)' : ''}`);
+      }
+      inkerSave(p);
+      return r;
+    },
+    inkRate: (p, b) => {
+      const artist = p.inkOrder ? db.getPlayer(p.inkOrder.artist) : null;
+      const r = g.inkRate(p, artist, num(b.stars));
+      if (artist) {
+        db.savePlayer(artist);
+        inkerSave(artist);
+      }
+      return r;
+    },
+    inkCancel: (p, _b, t) => {
+      const artist = p.inkOrder ? db.getPlayer(p.inkOrder.artist) : null;
+      g.inkCancel(p, artist, t);
+      if (artist) {
+        db.savePlayer(artist);
+        inkerSave(artist);
+      }
     },
     malyava: (p, b, t) => {
       const target = db.getPlayer(num(b.id));
@@ -1381,6 +1432,16 @@ export function createApp(opts: AppOptions) {
       endsAt: g.weekEndsAt(t),
       now: t,
     });
+  });
+
+  // Кольщики зоны: кто бьёт и как
+  api.post('/inkers', (_req, res) => {
+    const all = db.kvGet<Record<string, InkerRow>>('inkers', {});
+    const list = Object.entries(all)
+      .map(([id, v]) => ({ id: Number(id), ...v }))
+      .sort((a, b) => (b.votes ? b.stars / b.votes : 0) - (a.votes ? a.stars / a.votes : 0) || b.skill - a.skill)
+      .slice(0, 30);
+    res.json({ list });
   });
 
   // Кум читает: перехваченные малявы

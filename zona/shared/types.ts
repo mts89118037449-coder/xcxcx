@@ -79,6 +79,8 @@ export interface PlayerView {
   word: { len: number; guesses: { g: string; marks: ('g' | 'y' | 'x')[] }[]; done: boolean; won: boolean; answer: string | null; meaning: string | null; streak: number; best: number };
   pet: { kind: 'cat' | 'rat' | 'pigeon'; name: string; level: number; xp: number; fedAt: number; trainAt: number } | null;
   built: number;
+  ink: { skill: number; jobs: number; stars: number; votes: number; queue: { id: number; client: number; clientName: string; tattoo: string; paid: number; at: number }[] } | null;
+  inkOrder: { artist: number; artistName: string; tattoo: string; at: number; id: number; done: boolean; quality: number; rated: boolean } | null;
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   penpal: { name: string; step: number; love: number; nextAt: number; ending: 'wedding' | 'wait' | 'gone' | 'scam' | 'caught' | null; picks: number[]; canRestart: boolean } | null;
   appeal: { args: string[]; done: boolean; won: boolean; delta: number };

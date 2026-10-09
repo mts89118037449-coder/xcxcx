@@ -10,6 +10,7 @@ import { PetCard } from './Pet.tsx';
 import { CourtCard } from './Court.tsx';
 import { PenpalCard } from './Penpal.tsx';
 import { MailCard } from './Malyava.tsx';
+import { InkCard } from './Ink.tsx';
 
 /** Профиль: срок, характеристики, лечение, статус, настройки и жалоба. */
 export function ProfilePanel({ onMast }: { onMast(): void }) {
@@ -29,6 +30,7 @@ export function ProfilePanel({ onMast }: { onMast(): void }) {
           <TermCard onMast={onMast} />
           <CourtCard />
           <MailCard />
+          <InkCard />
           <PenpalCard />
           <PetCard />
           <div className="stat-row">

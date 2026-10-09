@@ -1926,3 +1926,41 @@ test('малявы: доходят с бычками, перехват доба�
   for (let i = 3; i < MALYAVA.perDay; i++) g.malyavaSend(a, b, 'hi', 0, false, T0, () => 0.99);
   assert.throws(() => g.malyavaSend(a, b, 'hi', 0, false, T0, () => 0.99));
 });
+
+import { INK, inkQuality } from '../shared/ink.ts';
+
+test('кольщик: машинка, заказ со скидкой, очередь, качество от опыта и руки, кривая — позор, звёзды, отмена', () => {
+  const H = 3600_000;
+  const m = g.newPlayer(1, 'Мастер', null, T0);
+  const c = g.newPlayer(2, 'Клиент', null, T0);
+  m.level = 10;
+  m.money = 10_000;
+  c.level = 10;
+  c.money = 50_000;
+  c.authority = 500;
+  assert.throws(() => g.inkOrder(c, m, 't_cat', T0), /не кольщик/);
+  g.inkBecome(m);
+  assert.equal(m.money, 10_000 - INK.machinePrice);
+  assert.throws(() => g.inkOrder(c, m, 't_tiger', T0), /не бьёт/); // за золото — только в ларьке
+  const r = g.inkOrder(c, m, 't_spider', T0);
+  assert.equal(r.paid, 2000);
+  assert.throws(() => g.inkOrder(c, m, 't_cat', T0), /ждёшь/);
+  // новичок, рука дрогнула — криво
+  const auth = c.authority;
+  const d = g.inkDo(m, c, m.ink!.queue[0].id, 0.1, T0);
+  assert.ok(d.crooked);
+  assert.ok(c.tattoos.includes('t_spider'));
+  assert.equal(c.authority, auth - INK.crookedAuthority);
+  assert.equal(m.money, 10_000 - INK.machinePrice + 2000);
+  g.inkRate(c, m, 2);
+  assert.throws(() => g.inkRate(c, m, 5), /Нечего|Уже/);
+  assert.deepEqual([m.ink!.stars, m.ink!.votes], [2, 1]);
+  assert.ok(inkQuality(100, 1) === 100 && inkQuality(0, 0) === 0);
+  // отмена через сутки — деньги назад
+  g.inkOrder(c, m, 't_cat', T0);
+  assert.throws(() => g.inkCancel(c, m, T0 + H), /через/);
+  const money = c.money;
+  g.inkCancel(c, m, T0 + INK.cancelH * H);
+  assert.equal(c.money, money + 400);
+  assert.equal(m.ink!.queue.length, 0);
+});
