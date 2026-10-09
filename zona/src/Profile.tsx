@@ -8,6 +8,7 @@ import { AlbumModal } from './Album.tsx';
 import { ALBUMS, albumProgress } from '../shared/album.ts';
 import { PetCard } from './Pet.tsx';
 import { CourtCard } from './Court.tsx';
+import { PenpalCard } from './Penpal.tsx';
 
 /** Профиль: срок, характеристики, лечение, статус, настройки и жалоба. */
 export function ProfilePanel({ onMast }: { onMast(): void }) {
@@ -26,6 +27,7 @@ export function ProfilePanel({ onMast }: { onMast(): void }) {
           <div className="rank-line">🎖️ {p.rank} · ур. {p.level}</div>
           <TermCard onMast={onMast} />
           <CourtCard />
+          <PenpalCard />
           <PetCard />
           <div className="stat-row">
             <div><span>⚔️</span>{p.stats.atk}<small>атака</small></div>

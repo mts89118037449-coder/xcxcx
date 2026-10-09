@@ -2643,3 +2643,27 @@ body:has(.modal) .event-btn { z-index: 20; }
 .court-verdict small { display: block; font-weight: normal; font-size: 12px; color: var(--muted); }
 .court-verdict.won { background: #1e2a18; color: #9ae07a; }
 .court-verdict.lost { background: #2a1814; color: #e07a6a; }
+
+/* заочница */
+.pen-card { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; margin: 8px 0; border-radius: 12px; border: 1px solid #7a4a5a; background: linear-gradient(90deg, #3a2028, #22201a); text-align: left; }
+.pen-card b { display: block; }
+.pen-card small { color: var(--muted); font-size: 12px; }
+.pen-card.ready { border-color: #f08aa0; box-shadow: 0 0 10px #f08aa055; }
+.pen-card.ready .pen-ico { animation: bob 1.2s infinite; }
+.pen-ico { font-size: 28px; }
+.pen-hearts { display: flex; justify-content: center; gap: 4px; font-size: 20px; color: #5a3a40; margin-bottom: 6px; }
+.pen-hearts .on { color: #f04a6a; text-shadow: 0 0 6px #f04a6a88; }
+.pen-paper { position: relative; padding: 14px 14px 10px; border-radius: 6px; color: #2a2a4a; background: #f4ecd8 repeating-linear-gradient(transparent 0 21px, #b8c8e0 21px 22px); font-family: 'Comic Sans MS', 'Segoe Print', cursive; font-size: 15px; line-height: 22px; transform: rotate(-0.6deg); box-shadow: 0 4px 12px #0008; margin-bottom: 10px; }
+.pen-paper p { margin: 0 0 6px; }
+.pen-paper i { display: block; text-align: right; }
+.pen-stamp { position: absolute; top: -8px; right: 10px; padding: 3px 7px; border: 2px dashed #a0303a; color: #a0303a; font-size: 11px; font-family: sans-serif; font-weight: bold; transform: rotate(8deg); background: #f4ecd8; }
+.pen-choices { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.pen-choices .btn { text-align: left; font-size: 14px; white-space: normal; height: auto; line-height: 1.25; padding: 9px 12px; }
+.pen-start, .pen-wait, .pen-ending { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 10px; }
+.pen-env.big { font-size: 60px; }
+.pen-fly { font-size: 44px; animation: pen-fly 2.6s ease-in-out infinite; }
+@keyframes pen-fly { 0% { transform: translate(-60px, 10px) rotate(-12deg); } 50% { transform: translate(0, -10px) rotate(4deg); } 100% { transform: translate(60px, 10px) rotate(-12deg); } }
+.pen-ending b { font-size: 20px; }
+.pen-wedding b, .pen-wait b { color: #f08aa0; }
+.pen-scam b { color: #e07a6a; }
+.pen-caught b { color: #9ae07a; }

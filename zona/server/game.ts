@@ -72,6 +72,7 @@ import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
+import { PENPAL, PENPAL_GIRLS, PEN_ENDINGS, PEN_LETTERS, penEnding, type PenEnding } from '../shared/penpal.ts';
 import { COURT, courtArgById, courtChance, type ArgId } from '../shared/court.ts';
 import { BUILD, buildBonus, type BuildBonus } from '../shared/build.ts';
 import { EGG, holidayAt, holidayById, type HolKind, type HolidayRun } from '../shared/holidays.ts';
@@ -254,6 +255,8 @@ export interface Player {
   /** праздник: прогресс заданий, валюта, покупки; сбрасывается с новым праздником */
   /** сколько очков вложил в стройку зоны */
   built: number;
+  /** заочница: переписка с концовками, одна за ходку */
+  penpal: { hodka: number; name: string; scam: boolean; step: number; love: number; suspect: number; paid: number; nextAt: number; ending: PenEnding | null; picks: number[] } | null;
   /** апелляция: одна за ходку */
   appeal: { hodka: number; args: string[]; done: boolean; won: boolean; delta: number };
   hol: { id: string; key: number; prog: number[]; claimed: boolean[]; tokens: number; day: number; bought: Record<string, number>; tree: boolean; armBest: number; eggAt: number };
@@ -411,6 +414,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     word: { day: 0, guesses: [], done: false, won: false },
     pet: null,
     built: 0,
+    penpal: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
     hol: { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 },
     wordStreak: { n: 0, last: 0, best: 0 },
@@ -501,6 +505,7 @@ export function migrate(p: Player): Player {
   p.word ??= { day: 0, guesses: [], done: false, won: false };
   p.pet ??= null;
   p.built ??= 0;
+  p.penpal ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
   p.hol ??= { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 };
   p.wordStreak ??= { n: 0, last: 0, best: 0 };
@@ -3931,4 +3936,53 @@ export function courtHearing(p: Player, now: number, rng: Rng) {
   }
   p.term = Math.max(0, p.term + a.delta);
   return { won: a.won, delta: a.delta, chance };
+}
+
+// --- Заочница ------------------------------------------------------------------------------------
+
+export function penStart(p: Player, now: number, rng: Rng) {
+  if (p.level < PENPAL.minLevel) throw new GameError(`С ${PENPAL.minLevel} уровня`);
+  if (p.penpal && (!p.penpal.ending || p.penpal.hodka === p.hodka)) throw new GameError(p.penpal.ending ? 'Новая заочница — в следующую ходку' : 'Переписка уже идёт');
+  const name = PENPAL_GIRLS[Math.floor(rng() * PENPAL_GIRLS.length)];
+  p.penpal = { hodka: p.hodka, name, scam: rng() < 0.35, step: 0, love: 0, suspect: 0, paid: 0, nextAt: now, ending: null, picks: [] };
+  return { name };
+}
+
+/** Ответить на письмо: посылка из конверта, выбор ответа, следующее письмо через несколько часов. */
+export function penReply(p: Player, choice: number, now: number, rng: Rng) {
+  const s = p.penpal;
+  if (!s || s.ending) throw new GameError('Писем нет');
+  if (now < s.nextAt) throw new GameError('Письмо ещё в пути');
+  const letter = PEN_LETTERS[s.step];
+  const c = letter.choices[choice];
+  if (!c) throw new GameError('Нет такого ответа');
+  if (c.pay) spend(p, PENPAL.moneyAsk, 'money');
+  // посылка: у честной — всегда, у аферистки — только первая, для доверия
+  const got: { butts?: number; heal?: number; item?: string; money?: number } = {};
+  const pc = letter.parcel;
+  if (pc && (!s.scam || s.step === 1)) {
+    if (pc.butts) p.butts += got.butts = pc.butts;
+    if (pc.money) p.money += got.money = pc.money;
+    if (pc.item) giveItem(p, (got.item = rollConsumable(rng)));
+    if (pc.heal) {
+      const max = stats(p, now).maxHp;
+      got.heal = Math.min(max - p.hp, Math.round((max * pc.heal) / 100));
+      p.hp += got.heal;
+    }
+  }
+  s.love += c.love;
+  s.suspect += c.suspect ?? 0;
+  if (c.pay) s.paid++;
+  s.picks.push(choice);
+  s.step++;
+  s.nextAt = now + PENPAL.gapH * 60 * MIN;
+  let ending: PenEnding | null = null;
+  if (s.step >= PEN_LETTERS.length) {
+    ending = s.ending = penEnding(s);
+    const e = PEN_ENDINGS[ending];
+    p.gold += e.gold;
+    if (e.cosmetic && !p.cosmetics.includes(e.cosmetic)) p.cosmetics.push(e.cosmetic);
+    log(p, now, `${e.emoji} Заочница: ${e.title}`);
+  }
+  return { got, ending };
 }

@@ -1853,3 +1853,47 @@ test('апелляция: доводы поднимают шанс, одна з�
   const r2 = g.courtHearing(p, T0, () => 0.99);
   assert.ok(!r2.won && r2.delta > 0 && p.term > t2);
 });
+
+import { PEN_LETTERS, PENPAL, penEnding } from '../shared/penpal.ts';
+
+test('заочница: письма по таймеру, посылки, деньги аферистке пропадают, концовки', () => {
+  const H = 3600_000;
+  assert.equal(penEnding({ scam: true, love: 20, suspect: 0, paid: 1 }), 'scam');
+  assert.equal(penEnding({ scam: true, love: 0, suspect: 3, paid: 0 }), 'caught');
+  assert.equal(penEnding({ scam: false, love: 15, suspect: 0, paid: 0 }), 'wedding');
+  assert.equal(penEnding({ scam: false, love: 7, suspect: 0, paid: 0 }), 'wait');
+  const p = g.newPlayer(1, 'Романтик', null, T0);
+  p.level = 5;
+  p.money = 50_000;
+  g.penStart(p, T0, () => 0.9); // честная
+  assert.throws(() => g.penStart(p, T0, () => 0.9), /уже идёт/);
+  let t = T0;
+  g.penReply(p, 0, t, () => 0);
+  assert.throws(() => g.penReply(p, 0, t, () => 0), /в пути/);
+  const butts = p.butts;
+  t += PENPAL.gapH * H;
+  g.penReply(p, 0, t, () => 0);
+  assert.equal(p.butts, butts + 15);
+  // дальше всё время лучшие ответы: деньги на лекарства и билет уходят
+  let last: { ending: string | null } = { ending: null };
+  while (p.penpal!.step < PEN_LETTERS.length) {
+    t += PENPAL.gapH * H;
+    last = g.penReply(p, 0, t, () => 0);
+  }
+  assert.equal(last.ending, 'wedding');
+  assert.ok(p.cosmetics.includes('title_married'));
+  assert.equal(p.penpal!.paid, 2);
+  assert.throws(() => g.penStart(p, t, () => 0), /следующую ходку/);
+  // аферистка: посылка только первая, деньги ушли — пропала
+  const q = g.newPlayer(2, 'Доверчивый', null, T0);
+  q.level = 5;
+  q.money = 50_000;
+  g.penStart(q, T0, () => 0); // аферистка
+  t = T0;
+  for (let i = 0; i < PEN_LETTERS.length; i++) {
+    last = g.penReply(q, 0, t, () => 0);
+    t += PENPAL.gapH * H;
+  }
+  assert.equal(last.ending, 'scam');
+  assert.equal(q.money, 50_000 - 2 * PENPAL.moneyAsk);
+});

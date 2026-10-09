@@ -403,6 +403,8 @@ export function createApp(opts: AppOptions) {
       colony: p.colony,
       pet: p.pet,
       built: p.built,
+      // аферистка или нет — тайна до конца
+      penpal: p.penpal && { name: p.penpal.name, step: p.penpal.step, love: p.penpal.love, nextAt: p.penpal.nextAt, ending: p.penpal.ending, picks: p.penpal.picks, canRestart: !!p.penpal.ending && p.penpal.hodka !== p.hodka },
       appeal: p.appeal.hodka === p.hodka ? { args: p.appeal.args, done: p.appeal.done, won: p.appeal.won, delta: p.appeal.delta } : { args: [], done: false, won: false, delta: 0 },
       zoneBuild: { idx: buildState.idx, pts: buildState.pts, done: buildState.done },
       holiday: (() => {
@@ -1084,6 +1086,8 @@ export function createApp(opts: AppOptions) {
       }
       return r;
     },
+    penStart: (p, _b, t) => g.penStart(p, t, rng),
+    penReply: (p, b, t) => g.penReply(p, num(b.choice), t, rng),
     courtArg: (p, b, t) => g.courtArg(p, str(b.id), t),
     courtHearing: (p, _b, t) => g.courtHearing(p, t, rng),
     buildGive: (p, b, t) => {
