@@ -1897,3 +1897,32 @@ test('заочница: письма по таймеру, посылки, ден
   assert.equal(last.ending, 'scam');
   assert.equal(q.money, 50_000 - 2 * PENPAL.moneyAsk);
 });
+
+import { MALYAVA } from '../shared/malyava.ts';
+
+test('малявы: доходят с бычками, перехват добавляет срок, через шныря — наверняка, лимит в день', () => {
+  const a = g.newPlayer(1, 'Писарь', null, T0);
+  const b = g.newPlayer(2, 'Адресат', null, T0);
+  a.level = 5;
+  a.butts = 100;
+  a.gold = 10;
+  assert.throws(() => g.malyavaSend(a, a, 'hi', 0, false, T0, () => 0.99), /Себе/);
+  assert.throws(() => g.malyavaSend(a, b, 'hi', 7, false, T0, () => 0.99), /Столько/);
+  const r = g.malyavaSend(a, b, 'hi', 10, false, T0, () => 0.99);
+  assert.ok(!r.caught);
+  assert.equal(b.inbox.length, 1);
+  assert.equal(b.butts, 10);
+  assert.equal(a.butts, 90);
+  const term = a.term;
+  const c = g.malyavaSend(a, b, 'escape', 50, false, T0, () => 0);
+  assert.ok(c.caught);
+  assert.equal(a.term, term + MALYAVA.termPenaltyRisky);
+  assert.equal(b.inbox.length, 1);
+  assert.equal(a.butts, 40);
+  assert.ok(!g.malyavaSend(a, b, 'escape', 0, true, T0, () => 0).caught);
+  assert.equal(a.gold, 10 - MALYAVA.safeGold);
+  g.malyavaRead(b);
+  assert.ok(b.inbox.every((m) => m.read));
+  for (let i = 3; i < MALYAVA.perDay; i++) g.malyavaSend(a, b, 'hi', 0, false, T0, () => 0.99);
+  assert.throws(() => g.malyavaSend(a, b, 'hi', 0, false, T0, () => 0.99));
+});

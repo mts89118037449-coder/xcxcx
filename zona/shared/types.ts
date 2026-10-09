@@ -79,6 +79,7 @@ export interface PlayerView {
   word: { len: number; guesses: { g: string; marks: ('g' | 'y' | 'x')[] }[]; done: boolean; won: boolean; answer: string | null; meaning: string | null; streak: number; best: number };
   pet: { kind: 'cat' | 'rat' | 'pigeon'; name: string; level: number; xp: number; fedAt: number; trainAt: number } | null;
   built: number;
+  inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   penpal: { name: string; step: number; love: number; nextAt: number; ending: 'wedding' | 'wait' | 'gone' | 'scam' | 'caught' | null; picks: number[]; canRestart: boolean } | null;
   appeal: { args: string[]; done: boolean; won: boolean; delta: number };
   zoneBuild: { idx: number; pts: number; done: string[] };

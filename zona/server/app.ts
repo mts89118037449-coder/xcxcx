@@ -403,6 +403,7 @@ export function createApp(opts: AppOptions) {
       colony: p.colony,
       pet: p.pet,
       built: p.built,
+      inbox: p.inbox,
       // аферистка или нет — тайна до конца
       penpal: p.penpal && { name: p.penpal.name, step: p.penpal.step, love: p.penpal.love, nextAt: p.penpal.nextAt, ending: p.penpal.ending, picks: p.penpal.picks, canRestart: !!p.penpal.ending && p.penpal.hodka !== p.hodka },
       appeal: p.appeal.hodka === p.hodka ? { args: p.appeal.args, done: p.appeal.done, won: p.appeal.won, delta: p.appeal.delta } : { args: [], done: false, won: false, delta: 0 },
@@ -676,6 +677,21 @@ export function createApp(opts: AppOptions) {
       notifyPlayer(target.id, `📦 ${p.name} прислал тебе грев: ${r.label} ×${r.qty}`);
       return r;
     },
+    malyava: (p, b, t) => {
+      const target = db.getPlayer(num(b.id));
+      if (!target) throw new g.GameError('Нет такого игрока');
+      const r = g.malyavaSend(p, target, str(b.msg), num(b.butts), !!b.safe, t, rng);
+      if (r.caught) {
+        // кум читает вслух: лента перехваченного на всю зону
+        const feed = db.kvGet<{ from: string; to: string; msg: string; at: number }[]>('kum:feed', []);
+        db.kvSet('kum:feed', [{ from: p.name, to: target.name, msg: str(b.msg), at: t }, ...feed].slice(0, 20));
+      } else {
+        db.savePlayer(target);
+        notifyPlayer(target.id, `✉️ ${p.name} прислал маляву`);
+      }
+      return r;
+    },
+    malyavaRead: (p) => g.malyavaRead(p),
     snoop: (p, b, t) => {
       const target = db.getPlayer(num(b.id));
       if (!target) throw new g.GameError('Нет такого игрока');
@@ -1365,6 +1381,11 @@ export function createApp(opts: AppOptions) {
       endsAt: g.weekEndsAt(t),
       now: t,
     });
+  });
+
+  // Кум читает: перехваченные малявы
+  api.post('/kum', (_req, res) => {
+    res.json({ feed: db.kvGet<{ from: string; to: string; msg: string; at: number }[]>('kum:feed', []) });
   });
 
   // Стройка зоны: состояние и лучшие прорабы

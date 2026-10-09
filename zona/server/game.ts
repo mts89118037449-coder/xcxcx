@@ -72,6 +72,7 @@ import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
+import { MALYAVA, malyavaById } from '../shared/malyava.ts';
 import { PENPAL, PENPAL_GIRLS, PEN_ENDINGS, PEN_LETTERS, penEnding, type PenEnding } from '../shared/penpal.ts';
 import { COURT, courtArgById, courtChance, type ArgId } from '../shared/court.ts';
 import { BUILD, buildBonus, type BuildBonus } from '../shared/build.ts';
@@ -255,6 +256,8 @@ export interface Player {
   /** праздник: прогресс заданий, валюта, покупки; сбрасывается с новым праздником */
   /** сколько очков вложил в стройку зоны */
   built: number;
+  /** входящие малявы */
+  inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
   penpal: { hodka: number; name: string; scam: boolean; step: number; love: number; suspect: number; paid: number; nextAt: number; ending: PenEnding | null; picks: number[] } | null;
   /** апелляция: одна за ходку */
@@ -415,6 +418,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     pet: null,
     built: 0,
     penpal: null,
+    inbox: [],
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
     hol: { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 },
     wordStreak: { n: 0, last: 0, best: 0 },
@@ -506,6 +510,7 @@ export function migrate(p: Player): Player {
   p.pet ??= null;
   p.built ??= 0;
   p.penpal ??= null;
+  p.inbox ??= [];
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
   p.hol ??= { id: '', key: 0, prog: [], claimed: [], tokens: 0, day: -1, bought: {}, tree: false, armBest: 0, eggAt: 0 };
   p.wordStreak ??= { n: 0, last: 0, best: 0 };
@@ -3985,4 +3990,35 @@ export function penReply(p: Player, choice: number, now: number, rng: Rng) {
     log(p, now, `${e.emoji} Заочница: ${e.title}`);
   }
   return { got, ending };
+}
+
+// --- Малявы --------------------------------------------------------------------------------------
+
+/** Отправить маляву. Перехват: бычки пропадают, отправителю добавляют срок. */
+export function malyavaSend(p: Player, to: Player, msgId: string, butts: number, safe: boolean, now: number, rng: Rng) {
+  if (p.level < MALYAVA.minLevel) throw new GameError(`С ${MALYAVA.minLevel} уровня`);
+  if (to.id === p.id) throw new GameError('Себе не пишут');
+  const m = malyavaById.get(msgId);
+  if (!m) throw new GameError('Что писать-то?');
+  const b = Math.floor(Number(butts) || 0);
+  if (!MALYAVA.butts.includes(b)) throw new GameError('Столько не вложишь');
+  if (p.butts < b) throw new GameError('Не хватает бычков');
+  playLimit(p, 'malyava', MALYAVA.perDay, now);
+  if (safe) spend(p, MALYAVA.safeGold, 'gold');
+  p.butts -= b;
+  const caught = !safe && rng() * 100 < (m.risky ? MALYAVA.interceptRisky : MALYAVA.intercept);
+  if (caught) {
+    const days = m.risky ? MALYAVA.termPenaltyRisky : MALYAVA.termPenalty;
+    p.term += days;
+    log(p, now, `👮 Маляву для ${to.name} перехватили. Кум читал вслух, тебе +${days} дн.`);
+    return { caught: true, days };
+  }
+  to.inbox.unshift({ id: now + Math.floor(rng() * 1000), from: p.id, fromName: p.name, msg: m.id, butts: b, at: now, read: false });
+  to.inbox.length = Math.min(to.inbox.length, MALYAVA.inbox);
+  to.butts += b;
+  return { caught: false, days: 0 };
+}
+
+export function malyavaRead(p: Player) {
+  for (const m of p.inbox) m.read = true;
 }

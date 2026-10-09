@@ -1,3 +1,5 @@
+import { MALYAVA } from '../shared/malyava.ts';
+import { MalyavaComposer } from './Malyava.tsx';
 import { useCallback, useEffect, useState } from 'react';
 import { VISIT } from '../shared/events.ts';
 import type { VisitView } from '../shared/types.ts';
@@ -52,6 +54,7 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
     setV((x) => (x ? { ...x, giftedToday: true, authority: x.authority + 2 } : x));
   };
   const [parcelOpen, setParcelOpen] = useState(false);
+  const [malOpen, setMalOpen] = useState(false);
   const [tradeOpen, setTradeOpen] = useState(false);
   const sendParcel = async (kind: 'item' | 'mat', ref: string) => {
     const r = await act<{ label: string; qty: number; left: number }>('parcel', { id: v!.id, kind, ref, qty: 1 });
@@ -136,8 +139,12 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
                 <button className="btn btn-dark" disabled={busy || p.level < TRADE.minLevel || v.level < TRADE.minLevel} onClick={() => setTradeOpen(true)}>
                   🔄 Обмен
                 </button>
+                <button className="btn btn-dark" disabled={busy || p.level < MALYAVA.minLevel} onClick={() => setMalOpen(!malOpen)}>
+                  ✉️ Малява
+                </button>
               </div>
             )}
+            {malOpen && !self && <MalyavaComposer to={{ id: v.id, name: v.name }} onClose={() => setMalOpen(false)} />}
             {tradeOpen && !self && <TradeComposer to={{ id: v.id, name: v.name }} onClose={() => setTradeOpen(false)} />}
             {parcelOpen && !self && (
               <div className="parcel-pick">

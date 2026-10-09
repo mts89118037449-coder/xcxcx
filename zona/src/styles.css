@@ -2667,3 +2667,19 @@ body:has(.modal) .event-btn { z-index: 20; }
 .pen-wedding b, .pen-wait b { color: #f08aa0; }
 .pen-scam b { color: #e07a6a; }
 .pen-caught b { color: #9ae07a; }
+
+/* малявы */
+.mal-box { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding: 10px; border-radius: 12px; background: #0005; }
+.mal-list { display: flex; flex-direction: column; gap: 4px; max-height: 210px; overflow: auto; }
+.mal-opt { text-align: left; padding: 6px 9px; border-radius: 8px; border: 1px solid #4a4030; background: #2a241a; font-size: 13px; color: inherit; }
+.mal-opt.on { border-color: var(--gold); background: #3a3020; }
+.mal-opt.risky { color: #f0a08a; }
+.mal-badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: #e04a3a; color: #fff; font-size: 12px; text-align: center; }
+.mal-feed { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; max-height: 60vh; overflow: auto; }
+.mal-note { padding: 8px 10px; border-radius: 4px; background: #e8dcc0; color: #2a2a3a; transform: rotate(-0.5deg); box-shadow: 0 2px 6px #0006; }
+.mal-note:nth-child(2n) { transform: rotate(0.6deg); }
+.mal-note p { margin: 0 0 3px; font-family: 'Comic Sans MS', 'Segoe Print', cursive; font-size: 14px; }
+.mal-note small { color: #5a5040; font-size: 11px; }
+.mal-note.new { box-shadow: 0 0 0 2px var(--gold), 0 2px 6px #0006; }
+.mal-note.kum { background: #e8c8b8; position: relative; }
+.mal-note.kum::after { content: 'ПЕРЕХВАЧЕНО'; position: absolute; right: 8px; top: 6px; color: #b02a2a; border: 2px solid #b02a2a; font-size: 9px; font-weight: bold; padding: 1px 4px; transform: rotate(10deg); opacity: 0.8; }
