@@ -276,6 +276,9 @@ function AdminHoliday() {
           ⏹
         </button>
       </div>
+      <button className="btn btn-s btn-dark" onClick={() => api.adminQuiz().then(() => toast('🎬 Викторина через минуту'))}>
+        🎬 Викторина через минуту
+      </button>
       <small className="muted">По календарю праздники включаются сами: Новый год 25.12–8.01, 23 февраля 20–26.02, Пасха ±3 дня.</small>
     </div>
   );

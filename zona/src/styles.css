@@ -2932,3 +2932,26 @@ body:has(.modal) .event-btn { z-index: 20; }
 .foot-table div { display: flex; gap: 8px; align-items: center; }
 .foot-table small { color: var(--muted); font-size: 11px; }
 .foot-table .me { color: var(--gold); }
+
+/* вечер в клубе */
+.quiz-stage { position: relative; display: flex; flex-direction: column; align-items: center; padding: 18px 10px 10px; margin-bottom: 8px; border-radius: 14px; background: radial-gradient(ellipse at 50% 0%, #6a1a3a, #1a0e1e 70%); overflow: hidden; }
+.quiz-stage b { font-size: 20px; text-shadow: 0 0 10px #f04a8a; }
+.quiz-stage small { color: #ffffffaa; font-size: 12px; }
+.quiz-lights { position: absolute; top: 4px; left: 0; right: 0; display: flex; justify-content: space-around; }
+.quiz-lights span { width: 8px; height: 8px; border-radius: 50%; background: #f2c14e; animation: quiz-bulb 1.2s ease-in-out infinite; }
+@keyframes quiz-bulb { 50% { opacity: 0.2; } }
+.quiz-wait { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; margin: 10px 0; }
+.quiz-wait small { color: var(--muted); }
+.quiz-count { font-size: 40px; font-weight: 900; color: var(--gold); font-variant-numeric: tabular-nums; }
+.quiz-q p { font-size: 17px; font-weight: bold; margin: 8px 0; }
+.quiz-num { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.quiz-num b { font-size: 20px; color: #fff; min-width: 24px; text-align: right; }
+.quiz-timer { flex: 1; height: 8px; border-radius: 4px; background: #0006; overflow: hidden; }
+.quiz-timer i { display: block; height: 100%; background: linear-gradient(90deg, #e04a3a, #f2c14e, #6ab04c); transition: width 0.2s linear; }
+.quiz-opts { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.quiz-opt { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 12px; border: 1px solid #4a3a4a; background: #241a24; color: inherit; text-align: left; font-size: 14px; }
+.quiz-opt span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #0006; font-weight: bold; flex: none; }
+.quiz-opt.picked { border-color: var(--gold); background: #3a3020; }
+.quiz-opt.right { border-color: #6ab04c; background: #1e3a18; animation: pop-in 0.3s; }
+.quiz-opt.wrong { border-color: #e04a3a; background: #3a1814; }
+.quiz-opt:disabled { opacity: 1; }

@@ -9,6 +9,7 @@ const ContraCard = named(() => import('../Contra.tsx'), 'ContraCard');
 const RiotCard = named(() => import('../Riot.tsx'), 'RiotCard');
 const SmotrCard = named(() => import('../Elect.tsx'), 'SmotrCard');
 const FootballCard = named(() => import('../Football.tsx'), 'FootballCard');
+const QuizCard = named(() => import('../Quiz.tsx'), 'QuizCard');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
@@ -116,6 +117,7 @@ export function Zone() {
       />
       {seg === 'games' && (
         <Suspense fallback={null}>
+          <QuizCard />
           <WordCard />
           <FootballCard />
           <TourneyCard />

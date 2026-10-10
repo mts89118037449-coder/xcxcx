@@ -118,6 +118,20 @@ export const api = {
     post<{ list: { id: string; owner: { id: number; tag: string; name: string } | null; top: { id: number; tag: string; name: string; pts: number }[]; mine: number }[]; endsAt: number }>('/barracks'),
   inkers: () => post<{ list: { id: number; name: string; skill: number; stars: number; votes: number; jobs: number; queue: number }[] }>('/inkers'),
   kum: () => post<{ feed: { from: string; to: string; msg: string; at: number }[] }>('/kum'),
+  quiz: () =>
+    post<{
+      now: number;
+      startsAt: number;
+      totalMs: number;
+      phase: { q: number; answering: boolean; msLeft: number; over: boolean; before: boolean };
+      question: { text: string; options: string[]; answer: number | null } | null;
+      myAnswer: number | null;
+      me: { name: string; pts: number; right: number } | null;
+      top: { id: number; name: string; pts: number; right: number }[];
+      players: number;
+      claim: { gold: number; butts: number; rank: number } | null;
+    }>('/quiz'),
+  adminQuiz: () => post<{ startsAt: number }>('/admin/quiz'),
   football: () =>
     post<{
       match: { me: { id: number; tag: string; goals: number }; opp: { id: number; tag: string; goals: number } | null } | null;

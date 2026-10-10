@@ -2128,3 +2128,25 @@ test('футбол: удар мимо при слабом и пересилен�
   g.footShoot(p, kicks, T0, () => 0);
   assert.throws(() => g.footShoot(p, kicks, T0, () => 0));
 });
+
+import { QUIZ, quizPhase, quizPoints, quizQuestions, quizSlot } from '../shared/quiz.ts';
+
+test('викторина: одни вопросы на всех, расписание 13:00/20:00 МСК, фазы, очки за скорость', () => {
+  const a = quizQuestions('100:20');
+  assert.deepEqual(a, quizQuestions('100:20'));
+  assert.equal(a.length, QUIZ.questions);
+  assert.ok(a.every((q) => q.options.length === 4 && q.answer >= 0 && q.answer < 4 && new Set(q.options).size === 4));
+  // 12:00 МСК → ближайший выпуск в 13:00 того же дня
+  const noon = Date.UTC(2026, 9, 10, 9);
+  const s = quizSlot(noon);
+  assert.equal(s.startsAt, Date.UTC(2026, 9, 10, 10));
+  assert.ok(quizPhase(s.startsAt, noon).before);
+  const mid = quizPhase(s.startsAt, s.startsAt + 25_000);
+  assert.equal(mid.q, 1);
+  assert.ok(mid.answering);
+  assert.ok(quizPhase(s.startsAt, s.startsAt + 21_000 * 10).over || quizPhase(s.startsAt, s.startsAt + 200_000).over);
+  assert.equal(quizPoints(0), 100);
+  assert.equal(quizPoints(QUIZ.qSec * 1000), 50);
+  // принудительный выпуск админа важнее расписания
+  assert.equal(quizSlot(noon, noon + 60_000).startsAt, noon + 60_000);
+});

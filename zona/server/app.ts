@@ -1,3 +1,4 @@
+import { QUIZ, quizPhase, quizPoints, quizQuestions, quizSlot, quizTotalMs } from '../shared/quiz.ts';
 import { FOOT, dayPairs, footTable } from '../shared/football.ts';
 import { DECREES, ELECT, voteWeight, type ElectRow, type SmotrState } from '../shared/elect.ts';
 import { RIOT, riotAdvance, riotIdle, waveHp, type RiotState } from '../shared/riot.ts';
@@ -707,6 +708,38 @@ export function createApp(opts: AppOptions) {
       db.savePlayer(target);
       notifyPlayer(target.id, `📦 ${p.name} прислал тебе грев: ${r.label} ×${r.qty}`);
       return r;
+    },
+    quizAnswer: (p, b, t) => {
+      const slot = quizCur(t);
+      const ph = quizPhase(slot.startsAt, t + 800); // запас на сеть: ответ в последнюю секунду засчитываем
+      const phNow = quizPhase(slot.startsAt, t);
+      const q = num(b.q);
+      if (q !== phNow.q || !(phNow.answering || ph.q === q)) throw new g.GameError('Время на этот вопрос вышло');
+      const key = `quiz:${slot.key}`;
+      const run = db.kvGet<QuizRun>(key, { players: {}, answers: {}, claimed: [] });
+      if (run.answers[`${p.id}:${q}`] !== undefined) throw new g.GameError('Ответ уже принят');
+      const choice = num(b.choice);
+      run.answers[`${p.id}:${q}`] = choice;
+      const right = quizQuestions(slot.key)[q].answer === choice;
+      const used = QUIZ.qSec * 1000 - (phNow.answering ? phNow.msLeft : 0);
+      const pts = right ? quizPoints(used) : 0;
+      const row = (run.players[p.id] ??= { name: p.name, pts: 0, right: 0 });
+      row.pts += pts;
+      if (right) row.right++;
+      db.kvSet(key, run);
+      return { right, pts };
+    },
+    quizClaim: (p, _b, t) => {
+      const v = quizView(p, t);
+      if (!v.claim) throw new g.GameError('Награды нет');
+      const key = `quiz:${quizCur(t).key}`;
+      const run = db.kvGet<QuizRun>(key, { players: {}, answers: {}, claimed: [] });
+      run.claimed.push(p.id);
+      db.kvSet(key, run);
+      p.gold += v.claim.gold;
+      p.butts += v.claim.butts;
+      g.track(p, 'minigame');
+      return v.claim;
     },
     footShoot: (p, b, t) => {
       const r = g.footShoot(p, b.kicks, t, rng);
@@ -1672,6 +1705,44 @@ export function createApp(opts: AppOptions) {
       endsAt: g.weekEndsAt(t),
       now: t,
     });
+  });
+
+  // Вечер в клубе: живая викторина по расписанию
+  type QuizRun = { players: Record<string, { name: string; pts: number; right: number }>; answers: Record<string, number>; claimed: number[] };
+  const quizCur = (t: number) => quizSlot(t, db.kvGet<number | null>('quiz:force', null));
+  const quizView = (p: g.Player, t: number) => {
+    const slot = quizCur(t);
+    const run = db.kvGet<QuizRun>(`quiz:${slot.key}`, { players: {}, answers: {}, claimed: [] });
+    const ph = quizPhase(slot.startsAt, t);
+    const qs = quizQuestions(slot.key);
+    const cur = ph.q >= 0 && ph.q < QUIZ.questions ? qs[ph.q] : null;
+    const top = Object.entries(run.players)
+      .map(([id, r]) => ({ id: Number(id), ...r }))
+      .sort((a, b) => b.pts - a.pts)
+      .slice(0, 10);
+    const rank = top.findIndex((r) => r.id === p.id);
+    return {
+      now: t,
+      startsAt: slot.startsAt,
+      totalMs: quizTotalMs(),
+      phase: ph,
+      question: cur && { text: cur.text, options: cur.options, answer: ph.answering ? null : cur.answer },
+      myAnswer: ph.q >= 0 ? (run.answers[`${p.id}:${ph.q}`] ?? null) : null,
+      me: run.players[p.id] ?? null,
+      top,
+      players: Object.keys(run.players).length,
+      claim: ph.over && run.players[p.id] && !run.claimed.includes(p.id) ? { gold: rank >= 0 && rank < QUIZ.rewards.length ? QUIZ.rewards[rank] : 0, butts: QUIZ.butts, rank } : null,
+    };
+  };
+  api.post('/quiz', (req: AuthedRequest, res) => {
+    const p = db.getPlayer(req.tgUser!.id);
+    if (!p) return res.status(404).json({ error: 'Нет игрока' });
+    res.json(quizView(p, now()));
+  });
+  api.post('/admin/quiz', (req: AuthedRequest, res) => {
+    if (!opts.adminIds.includes(req.tgUser!.id)) return res.status(403).json({ error: 'Только для админа' });
+    db.kvSet('quiz:force', now() + 60_000);
+    res.json({ startsAt: now() + 60_000 });
   });
 
   // Футбол: голы кланов по дням недели
