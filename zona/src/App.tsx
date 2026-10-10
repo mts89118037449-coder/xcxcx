@@ -111,6 +111,16 @@ export function App() {
   const hasBattle = !!player?.battle;
   // «Назад» Telegram: мини-игры и места закрываются, со вкладки — домой
   useEffect(initBack, []);
+  // соседние вкладки подгружаем заранее, когда игра уже открылась — переход без ожидания
+  useEffect(() => {
+    const t = setTimeout(() => {
+      import('./screens/Zone.tsx');
+      import('./screens/Work.tsx');
+      import('./screens/Fight.tsx');
+      import('./screens/Me.tsx');
+    }, 2500);
+    return () => clearTimeout(t);
+  }, []);
   useBack(() => setMini(null), !!mini);
   useBack(() => setDialog(null), !!dialog);
   useBack(() => setPullOpen(false), pullOpen);
@@ -285,7 +295,7 @@ export function App() {
         </div>
       </header>
 
-      <main>
+      <main key={`${tab}:${place ?? ''}`} className="screen-in">
         {!place && <LiveBanner />}
         {!place && <GuideBar />}
         <Suspense fallback={null}>

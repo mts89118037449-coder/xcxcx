@@ -435,3 +435,9 @@ test('стенгазета: выпуск недели собирается, хр
   const r2 = await post('/api/paper', auth);
   assert.match(r2.json.chron[0].text, /подкопом/);
 });
+
+test('журнал ошибок: «Script error.» без файла не пишется', async () => {
+  const res = await fetch(`${base}/log`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ msg: 'Script error.', stack: ':0:0' }) });
+  assert.equal(res.status, 204);
+  assert.ok(!db.errors().some((e) => e.msg === 'Script error.'));
+});

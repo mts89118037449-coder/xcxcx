@@ -3039,3 +3039,10 @@ body:has(.modal) .event-btn { z-index: 20; }
 .first-hint { display: flex; align-items: center; gap: 10px; margin: 8px 0; padding: 9px 10px; border-radius: 14px; background: linear-gradient(90deg, #2e3a5a, #1e2434); border: 1px solid #5a7ab0; font-size: 13px; line-height: 1.3; animation: pop-in 0.3s ease-out; }
 .first-hint-ico { font-size: 26px; }
 .first-hint-x { flex: none; width: 32px; height: 32px; border-radius: 50%; border: 0; background: #5a7ab0; color: #fff; font-weight: 900; }
+
+/* плавный вход экрана при смене вкладки */
+.screen-in { animation: screen-in 0.22s ease-out; }
+@keyframes screen-in { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) {
+  .screen-in, .modal-body, .now-chip, .first-hint { animation: none !important; }
+}

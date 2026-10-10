@@ -31,6 +31,9 @@ export function initErrorLog() {
   window.addEventListener('error', (e) => {
     // ошибки загрузки картинок и скриптов сторонних расширений не интересны
     if (!e.message) return;
+    // «Script error.» без файла и строки — чужой скрипт (Telegram, расширение): браузер прячет подробности,
+    // починить по ней нечего — не засоряем журнал админа
+    if (/^Script error\.?$/i.test(e.message) && !e.filename && !e.lineno) return;
     logError(e.message, e.error instanceof Error ? (e.error.stack ?? '') : `${e.filename}:${e.lineno}:${e.colno}`);
   });
   window.addEventListener('unhandledrejection', (e) => {

@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect } from 'react';
 import { UNLOCKS, unlockById, type Unlock } from '../shared/unlocks.ts';
 import { play } from './sound.ts';
@@ -44,8 +45,9 @@ export function UnlockModal({ list, onClose }: { list: Unlock[]; onClose(): void
     }
   };
   return (
-    <div className="modal">
-      <div className="modal-body unlock-body">
+    <div className="modal" onClick={() => done()}>
+      <div className="modal-body unlock-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={() => done()} />
         <h2 className="center">🔓 Открыто новое</h2>
         <div className="unlock-list">
           {list.map((u) => (

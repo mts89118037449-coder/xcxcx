@@ -2286,6 +2286,8 @@ export function createApp(opts: AppOptions) {
     const msg = str(req.body?.msg).slice(0, ERRLOG.maxMsg);
     if (!msg) return res.sendStatus(400);
     const stack = str(req.body?.stack).slice(0, ERRLOG.maxStack);
+    // «Script error.» из чужого скрипта без файла и строки — диагностировать нечего, в журнал не пишем
+    if (/^Script error\.?$/i.test(msg) && /^(:0:0)?$/.test(stack.trim())) return res.sendStatus(204);
     const header = req.get('authorization') ?? '';
     const user = header.startsWith('tma ') ? validateInitData(header.slice(4), opts.botToken)?.user : null;
     // одна и та же ошибка — одна строка: склеиваем по тексту и началу стека без номеров колонок
