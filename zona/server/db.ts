@@ -170,6 +170,13 @@ export function openDb(file: string) {
     );
     CREATE INDEX IF NOT EXISTS reports_pid ON reports(pid, at);
     -- ошибки в браузере игроков: одинаковые склеиваются в одну строку со счётчиком
+    CREATE TABLE IF NOT EXISTS shares (
+      id TEXT PRIMARY KEY,
+      pid INTEGER NOT NULL,
+      png BLOB NOT NULL,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS shares_at ON shares(at);
     CREATE TABLE IF NOT EXISTS client_errors (
       hash TEXT PRIMARY KEY,
       msg TEXT NOT NULL,
@@ -355,6 +362,18 @@ export function openDb(file: string) {
       // храним только хвост: старое чистим
       if (id % 50 === 0) q.chatTrim.run(channel, id - 500);
       return id;
+    },
+    shareAdd(id: string, pid: number, png: Uint8Array, at: number) {
+      db.prepare('INSERT OR REPLACE INTO shares (id, pid, png, at) VALUES (?, ?, ?, ?)').run(id, pid, png, at);
+      // картинки живут неделю
+      db.prepare('DELETE FROM shares WHERE at < ?').run(at - 7 * 86_400_000);
+    },
+    shareGet(id: string): Uint8Array | null {
+      const r = db.prepare('SELECT png FROM shares WHERE id = ?').get(id) as { png: Uint8Array } | undefined;
+      return r?.png ?? null;
+    },
+    sharesToday(pid: number, since: number): number {
+      return (db.prepare('SELECT COUNT(*) AS n FROM shares WHERE pid = ? AND at >= ?').get(pid, since) as { n: number }).n;
     },
     referrals(id: number) {
       return q.refs.all(id) as { id: number; name: string; level: number }[];

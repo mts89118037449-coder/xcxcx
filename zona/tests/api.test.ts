@@ -326,3 +326,19 @@ test('обмен: отданное в залоге, принятие меняе�
   const list = await post('/api/trades', a);
   assert.ok(list.json.trades.length >= 2);
 });
+
+test('карточка «поделиться»: принимает только JPEG, отдаёт картинку по ссылке', async () => {
+  const auth = initData(9301, 'Фотограф');
+  await post('/api/me', auth);
+  const bad = await fetch(`${base}/api/share`, { method: 'POST', headers: { 'content-type': 'image/jpeg', authorization: `tma ${auth}` }, body: new Uint8Array(200) });
+  assert.equal(bad.status, 400);
+  const jpg = new Uint8Array(300);
+  jpg.set([0xff, 0xd8, 0xff, 0xe0]);
+  const ok = await fetch(`${base}/api/share?caption=hi`, { method: 'POST', headers: { 'content-type': 'image/jpeg', authorization: `tma ${auth}` }, body: jpg });
+  assert.equal(ok.status, 200);
+  const r = (await ok.json()) as { url: string; ref: string };
+  const img = await fetch(`${base}${new URL(r.url).pathname}`);
+  assert.equal(img.headers.get('content-type'), 'image/jpeg');
+  assert.equal((await img.arrayBuffer()).byteLength, 300);
+  assert.match(r.ref, /ref_9301|\//);
+});

@@ -1783,6 +1783,45 @@ export function createApp(opts: AppOptions) {
     res.json({ world: w, online: onlineNow(t) });
   });
 
+  // Поделиться карточкой: телефон рисует PNG, сервер хранит неделю и готовит сообщение для shareMessage.
+  api.post('/share', express.raw({ type: 'image/jpeg', limit: '600kb' }), async (req: AuthedRequest, res) => {
+    const t = now();
+    const pid = req.tgUser!.id;
+    const png = req.body as Buffer;
+    // только JPEG: подпись FF D8 FF
+    if (!Buffer.isBuffer(png) || png.length < 100 || png[0] !== 0xff || png[1] !== 0xd8 || png[2] !== 0xff) return res.status(400).json({ error: 'Картинка не та' });
+    if (db.sharesToday(pid, t - 86_400_000) >= 30) return res.status(429).json({ error: 'Хватит на сегодня' });
+    const id = crypto.randomBytes(9).toString('base64url');
+    db.shareAdd(id, pid, png, t);
+    const base = opts.webAppUrl || `${req.protocol}://${req.get('host')}/`;
+    const url = new URL(`/share/${id}.jpg`, base).toString();
+    const ref = opts.botUsername ? `https://t.me/${opts.botUsername}?start=ref_${pid}` : base;
+    const caption = String(req.query.caption ?? '').slice(0, 200);
+    let prepared: string | null = null;
+    if (bot) {
+      try {
+        const r = await bot.call<{ id: string }>('savePreparedInlineMessage', {
+          user_id: pid,
+          result: {
+            type: 'photo',
+            id,
+            photo_url: url,
+            thumbnail_url: url,
+            caption: `${caption}\n\n🔗 Заезжай: ${ref}`.trim(),
+            reply_markup: { inline_keyboard: [[{ text: '🎮 Заехать на зону', url: ref }]] },
+          },
+          allow_user_chats: true,
+          allow_group_chats: true,
+          allow_channel_chats: true,
+        });
+        prepared = r.id;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    res.json({ url, ref, prepared });
+  });
+
   // Ссылка на оплату в Telegram Stars. Зачисление — только по webhook successful_payment.
   api.post('/invoice', async (req: AuthedRequest, res) => {
     if (!bot) return res.status(503).json({ error: 'Оплата не настроена' });
@@ -1806,6 +1845,12 @@ export function createApp(opts: AppOptions) {
   });
 
   app.use('/api', api);
+
+  app.get('/share/:id.jpg', (req, res) => {
+    const png = db.shareGet(String(req.params.id));
+    if (!png) return res.sendStatus(404);
+    res.set('content-type', 'image/jpeg').set('cache-control', 'public, max-age=604800').send(Buffer.from(png));
+  });
 
   // --- Ошибки из браузера --------------------------------------------------------
   // Без обязательной авторизации: ошибка могла случиться до входа. Ограничение — по адресу.

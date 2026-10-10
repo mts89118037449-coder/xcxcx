@@ -11,6 +11,7 @@ import { CourtCard } from './Court.tsx';
 import { PenpalCard } from './Penpal.tsx';
 import { MailCard } from './Malyava.tsx';
 import { InkCard } from './Ink.tsx';
+import { ShareButton } from './Share.tsx';
 
 /** Профиль: срок, характеристики, лечение, статус, настройки и жалоба. */
 export function ProfilePanel({ onMast }: { onMast(): void }) {
@@ -41,6 +42,10 @@ export function ProfilePanel({ onMast }: { onMast(): void }) {
             <div><span>🏆</span>#{p.place}<small>место</small></div>
             <div><span>🥊</span>{p.wins}/{p.losses}<small>драки</small></div>
           </div>
+          <ShareButton
+            card={{ emoji: '🎖️', title: `${p.rank} · ур. ${p.level}`, sub: `⚔️ ${p.stats.atk} · 🛡️ ${p.stats.def} · 🎖️ ${fmt(p.authority)} · #${p.place} на зоне`, tone: 'blue' }}
+            caption={`Я ${p.rank.toLowerCase()} на зоне, ${p.place}-й по авторитету. Заезжай — посмотрим, кто кого`}
+          />
           <div className="row gap">
             <button className="btn btn-wide btn-dark" disabled={busy || p.hp >= p.stats.maxHp} onClick={() => act('heal')}>
               💉 Подлечиться · {GOLD_PRICES.heal} 🪙

@@ -8,6 +8,7 @@ import { itemLabel } from './Perks.tsx';
 import { lookOf, useGame } from './game.tsx';
 import { tg } from './api.ts';
 import { leagueTier } from '../shared/league.ts';
+import { ShareButton } from './Share.tsx';
 
 interface Final {
   win: boolean;
@@ -117,6 +118,12 @@ export function BattleModal({ onClose }: { onClose(): void }) {
                 {drop && <div>🎁 {drop.emoji} {drop.name}</div>}
                 {final!.used.length > 0 && <div className="muted small">{final!.used.map(itemLabel).join(' ')}</div>}
               </div>
+            )}
+            {final!.win && (
+              <ShareButton
+                card={{ emoji: view.enemy.npc ? '🏆' : '🥊', title: `Уложил: ${view.enemy.name}`, sub: view.enemy.npc ? 'Босс зоны повержен' : 'Наезд удался — авторитет растёт', tone: 'gold' }}
+                caption={`Я уложил «${view.enemy.name}» на зоне. Слабо повторить?`}
+              />
             )}
             <button className="btn btn-wide" onClick={onClose}>
               Ясно

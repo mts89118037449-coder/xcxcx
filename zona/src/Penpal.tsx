@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PENPAL, PEN_ENDINGS, PEN_LETTERS } from '../shared/penpal.ts';
 import { consumableById } from '../shared/perks.ts';
 import { fmt, timeLeft, useGame } from './game.tsx';
+import { ShareButton } from './Share.tsx';
 
 const fill = (t: string, name: string, me: string) => t.replace(/\{name\}/g, name).replace(/\{me\}/g, me);
 
@@ -70,6 +71,7 @@ function PenpalModal({ onClose }: { onClose(): void }) {
             {e.cosmetic && '· новый титул'}
           </small>
         )}
+        <ShareButton card={{ emoji: e.emoji, title: e.title, sub: `Переписка с заочницей: ${s.name}`, tone: s.ending === 'wedding' || s.ending === 'wait' ? 'pink' : 'red' }} caption={`${e.emoji} ${e.title} — вот чем кончилась моя переписка с заочницей на зоне`} />
         <small className="muted">Новая заочница — в следующую ходку</small>
       </div>
     );
