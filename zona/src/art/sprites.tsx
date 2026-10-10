@@ -106,15 +106,14 @@ export function NpcPortrait({ who, className, tight }: { who: string; className?
 
 /** Табурет под сидящим героем. */
 function Stool() {
+  // низкий табурет под мультяшные короткие ноги
   return (
     <g>
       <ellipse cx={58} cy={209} rx={22} ry={3.5} fill="#000" opacity={0.35} />
-      <path d="M 42,166 L 38,209 M 74,166 L 78,209 M 47,166 L 49,204 M 69,166 L 67,204" stroke="#1b130d" strokeWidth={5} strokeLinecap="round" />
-      <path d="M 42,166 L 38,209 M 74,166 L 78,209 M 47,166 L 49,204 M 69,166 L 67,204" stroke="#6a4a2e" strokeWidth={3} strokeLinecap="round" />
-      <path d="M 40,187 L 76,187" stroke="#1b130d" strokeWidth={3.4} />
-      <path d="M 40,187 L 76,187" stroke="#5a3c24" strokeWidth={1.8} />
-      <rect x={34} y={160} width={48} height={8} rx={2} fill="#7a5634" stroke="#1b130d" strokeWidth={1.6} />
-      <rect x={36} y={161} width={44} height={2} fill="#9a7650" />
+      <path d="M 40,200 L 37,209 M 76,200 L 79,209" stroke="#1b130d" strokeWidth={5} strokeLinecap="round" />
+      <path d="M 40,200 L 37,209 M 76,200 L 79,209" stroke="#6a4a2e" strokeWidth={3} strokeLinecap="round" />
+      <rect x={32} y={194} width={52} height={8} rx={2} fill="#7a5634" stroke="#1b130d" strokeWidth={1.6} />
+      <rect x={34} y={195} width={48} height={2} fill="#9a7650" />
     </g>
   );
 }

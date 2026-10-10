@@ -67,7 +67,7 @@ const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
 export type RigAnim =
   | 'idle' | 'walk' | 'run' | 'sit' | 'floor' | 'guard' | 'punch' | 'hit' | 'ko' | 'cheer' | 'work' | 'crossed' | 'pullup'
-  | 'smoke' | 'drink' | 'eat' | 'think' | 'stretch' | 'wave' | 'flex' | 'squat' | 'pushup' | 'sleep' | 'dance' | 'taunt' | 'kick' | 'dodge' | 'cold' | 'crouch';
+  | 'smoke' | 'drink' | 'eat' | 'think' | 'stretch' | 'wave' | 'flex' | 'squat' | 'pushup' | 'sleep' | 'dance' | 'taunt' | 'kick' | 'dodge' | 'cold' | 'crouch' | 'talk' | 'scratch' | 'yawn';
 
 /** Что персонаж держит в руках в этой анимации. */
 export const ANIM_PROP: Partial<Record<RigAnim, 'cig' | 'mug' | 'bowl' | 'zzz' | 'hammer'>> = { smoke: 'cig', drink: 'mug', eat: 'bowl', sleep: 'zzz', work: 'hammer' };
@@ -260,6 +260,7 @@ export function poseAt(anim: RigAnim, t: number): Pose {
       return { ...P0, y: -30 * b, nS: -178, nE: -10 + 70 * b, fS: -176, fE: -8 + 70 * b, fist: 1, nH: 4, nK: 20, fH: 8, fK: 26, brow: 1 };
     }
   }
+  return P0;
 }
 
 // --- Общие часы: одна анимация кадров на все риги на экране ---------------------------
