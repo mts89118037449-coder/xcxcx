@@ -2099,3 +2099,32 @@ test('контрабанда: цены плавают, но одинаковы �
   assert.ok(!g.shmonDue(p, n));
   assert.throws(() => g.shmonHide(p, {}, n, () => 0), /тихо/);
 });
+
+import { FOOT, dayPairs, footTable, resolveKick } from '../shared/football.ts';
+
+test('футбол: удар мимо при слабом и пересиленном, сейв при угаданном углу, «девятка», пары дня и таблица', () => {
+  assert.equal(resolveKick({ zone: 0, acc: 0.05 }, () => 0.9).why, 'weak');
+  assert.equal(resolveKick({ zone: 0, acc: 0.99 }, () => 0.9).why, 'over');
+  // вратарь прыгнул в ту же зону (0): rnd 0 → зона 0
+  assert.equal(resolveKick({ zone: 3, acc: 0.3 }, () => 3 / 6 + 0.01).why, 'save');
+  const seq = [0, 0.1];
+  let i = 0;
+  assert.ok(resolveKick({ zone: 0, acc: 0.5 }, () => seq[i++]).goal, 'в девятку — вратарь не достал');
+  assert.ok(resolveKick({ zone: 5, acc: 0.5 }, () => 0).goal);
+  const pairs = dayPairs(100, [1, 2, 3]);
+  assert.equal(pairs.length, 2);
+  assert.equal(pairs.flat().filter((x) => x === null).length, 1);
+  const t = footTable({ 100: { 1: 5, 2: 3 }, 101: { 1: 2, 2: 2 } });
+  const one = t.find((r) => r.id === 1)!;
+  assert.equal(one.pts, 4);
+  assert.equal(one.gf, 7);
+  const p = g.newPlayer(1, 'Форвард', null, T0);
+  p.level = 10;
+  assert.throws(() => g.footShoot(p, [], T0, () => 0), /клан/);
+  p.clanId = 3;
+  assert.throws(() => g.footShoot(p, [{ zone: 0, acc: 0.5 }], T0, () => 0), /ударов/);
+  const kicks = Array.from({ length: FOOT.kicks }, () => ({ zone: 5, acc: 0.5 }));
+  assert.equal(g.footShoot(p, kicks, T0, () => 0).goals, 5);
+  g.footShoot(p, kicks, T0, () => 0);
+  assert.throws(() => g.footShoot(p, kicks, T0, () => 0));
+});

@@ -75,6 +75,7 @@ import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
 import { BARRACK, barrackBonus, barrackById, raidPts, type BarrackBonus } from '../shared/barracks.ts';
 import { INK, inkQuality } from '../shared/ink.ts';
 import { RIOT } from '../shared/riot.ts';
+import { FOOT, resolveKick } from '../shared/football.ts';
 import { CONTRA, HIDE_SPOTS, goodById, goodPrice, shmonTonight, type GoodId } from '../shared/contra.ts';
 import { TUNNEL } from '../shared/tunnel.ts';
 import { FAMILY, FAMILY_ROUNDS, familyOutcome, type Visitor } from '../shared/family.ts';
@@ -270,6 +271,8 @@ export interface Player {
   inkOrder: { artist: number; artistName: string; tattoo: string; at: number; id: number; done: boolean; quality: number; rated: boolean } | null;
   /** контрабанда: что держишь, почём брал; день последнего шмона */
   contra: { have: Partial<Record<GoodId, number>>; spent: number; earned: number; shmonDay: number };
+  /** футбол: какую неделю уже забрал награду */
+  footClaimed: number;
   /** когда последний раз бил ОМОН на бунте */
   riotAt: number;
   /** подкоп: один за ходку */
@@ -441,6 +444,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     penpal: null,
     inbox: [],
     riotAt: 0,
+    footClaimed: -1,
     contra: { have: {}, spent: 0, earned: 0, shmonDay: -1 },
     tunnel: { hodka: 0, depth: 0, digAt: 0, masked: 0, found: 0, done: false },
     family: { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 },
@@ -540,6 +544,7 @@ export function migrate(p: Player): Player {
   p.refEarn ??= { total: 0, by: {} };
   p.inbox ??= [];
   p.riotAt ??= 0;
+  p.footClaimed ??= -1;
   p.contra ??= { have: {}, spent: 0, earned: 0, shmonDay: -1 };
   p.tunnel ??= { hodka: 0, depth: 0, digAt: 0, masked: 0, found: 0, done: false };
   p.family ??= { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 };
@@ -4353,3 +4358,19 @@ export function riotHit(p: Player, lastAt: number, now: number, rng: Rng) {
 
 /** Налог смотрящего (%) и сколько набежало за запрос — app переносит в стройку. */
 export const zoneTax = { rate: 0, pending: 0 };
+
+// --- Футбол во дворе -----------------------------------------------------------------------------
+
+/** Серия пенальти: пять ударов, вратарь прыгает наугад. Голы клану считает app. */
+export function footShoot(p: Player, kicks: unknown, now: number, rng: Rng) {
+  if (!p.clanId) throw new GameError('Футбол — клан на клан. Вступи в клан');
+  if (p.level < FOOT.minLevel) throw new GameError(`С ${FOOT.minLevel} уровня`);
+  const list = Array.isArray(kicks) ? kicks.slice(0, FOOT.kicks) : [];
+  if (list.length !== FOOT.kicks) throw new GameError(`Нужно ${FOOT.kicks} ударов`);
+  playLimit(p, 'foot', FOOT.perDay, now);
+  const res = list.map((k) => resolveKick(k as { zone: number; acc: number }, rng));
+  const goals = res.filter((r) => r.goal).length;
+  track(p, 'minigame');
+  if (goals >= 4) p.authority += 2;
+  return { res, goals };
+}

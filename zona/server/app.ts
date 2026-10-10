@@ -1,3 +1,4 @@
+import { FOOT, dayPairs, footTable } from '../shared/football.ts';
 import { DECREES, ELECT, voteWeight, type ElectRow, type SmotrState } from '../shared/elect.ts';
 import { RIOT, riotAdvance, riotIdle, waveHp, type RiotState } from '../shared/riot.ts';
 import { SNITCH, pickSnitch, snitchClue, snitchMajority, type SnitchState } from '../shared/snitch.ts';
@@ -706,6 +707,25 @@ export function createApp(opts: AppOptions) {
       db.savePlayer(target);
       notifyPlayer(target.id, `📦 ${p.name} прислал тебе грев: ${r.label} ×${r.qty}`);
       return r;
+    },
+    footShoot: (p, b, t) => {
+      const r = g.footShoot(p, b.kicks, t, rng);
+      const w = g.weekIndex(t);
+      const fw = footGet(w);
+      const day = g.dayIndex(t);
+      const today = (fw.goals[day] ??= {});
+      today[p.clanId!] = (today[p.clanId!] ?? 0) + r.goals;
+      fw.scorers[p.id] = { name: p.name, goals: (fw.scorers[p.id]?.goals ?? 0) + r.goals };
+      db.kvSet(`foot:${w}`, fw);
+      return { ...r, view: footView(p, t) };
+    },
+    footClaim: (p, _b, t) => {
+      const v = footView(p, t);
+      if (!v.claim) throw new g.GameError('Награды нет');
+      p.footClaimed = g.weekIndex(t) - 1;
+      p.gold += v.claim.gold;
+      g.log(p, t, `⚽ Кубок двора: клан на ${v.claim.rank + 1}-м месте — +${v.claim.gold} 🪙`);
+      return v.claim;
     },
     electNominate: (p, _b, t) => {
       if (p.level < ELECT.nominateLevel) throw new g.GameError(`Выдвигаться можно с ${ELECT.nominateLevel} уровня`);
@@ -1652,6 +1672,34 @@ export function createApp(opts: AppOptions) {
       endsAt: g.weekEndsAt(t),
       now: t,
     });
+  });
+
+  // Футбол: голы кланов по дням недели
+  type FootWeek = { goals: Record<string, Record<string, number>>; scorers: Record<string, { name: string; goals: number }> };
+  const footGet = (w: number) => db.kvGet<FootWeek>(`foot:${w}`, { goals: {}, scorers: {} });
+  const footView = (p: g.Player, t: number) => {
+    const w = g.weekIndex(t);
+    const fw = footGet(w);
+    const day = g.dayIndex(t);
+    const today = fw.goals[day] ?? {};
+    const tag = (id: number) => db.getClan(id)?.tag ?? '?';
+    const pair = p.clanId ? dayPairs(day, [...new Set([...Object.keys(today).map(Number), p.clanId])]).find(([a, b]) => a === p.clanId || b === p.clanId) : null;
+    const opp = pair ? (pair[0] === p.clanId ? pair[1] : pair[0]) : null;
+    const table = footTable(fw.goals).map((r) => ({ ...r, tag: tag(r.id) }));
+    const prev = footTable(footGet(w - 1).goals);
+    const prevRank = p.clanId ? prev.findIndex((r) => r.id === p.clanId) : -1;
+    return {
+      match: p.clanId ? { me: { id: p.clanId, tag: tag(p.clanId), goals: today[p.clanId] ?? 0 }, opp: opp ? { id: opp, tag: tag(opp), goals: today[opp] ?? 0 } : null } : null,
+      table: table.slice(0, 10),
+      scorers: Object.values(fw.scorers).sort((a, b) => b.goals - a.goals).slice(0, 5),
+      claim: prevRank >= 0 && prevRank < FOOT.rewards.length && p.footClaimed !== w - 1 ? { rank: prevRank, gold: FOOT.rewards[prevRank] } : null,
+      endsAt: g.weekEndsAt(t),
+    };
+  };
+  api.post('/football', (req: AuthedRequest, res) => {
+    const p = db.getPlayer(req.tgUser!.id);
+    if (!p) return res.status(404).json({ error: 'Нет игрока' });
+    res.json(footView(p, now()));
   });
 
   // Смотрящий: итоги выборов прошлой недели решают, кто держит эту

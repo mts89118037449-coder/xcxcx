@@ -2907,3 +2907,28 @@ body:has(.modal) .event-btn { z-index: 20; }
 .elect-bar { display: block; height: 6px; border-radius: 3px; background: #0006; overflow: hidden; margin: 3px 0; }
 .elect-bar i { display: block; height: 100%; background: linear-gradient(90deg, #8a6a2a, #f2c14e); }
 .smotr-taxes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+
+/* футбол */
+.foot-score { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 8px; margin-bottom: 8px; border-radius: 12px; background: #0a1a0a; border: 1px solid #3a6a3a; text-align: center; }
+.foot-score b { font-size: 28px; font-variant-numeric: tabular-nums; }
+.foot-score span { font-weight: bold; }
+.foot-score small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.foot-goal { width: 100%; display: block; border-radius: 12px; touch-action: manipulation; }
+.foot-zone { fill: #ffffff00; stroke: #ffffff40; stroke-dasharray: 3 3; }
+.foot-zone.on { fill: #f2c14e44; stroke: var(--gold); stroke-dasharray: none; }
+.foot-keeper { transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.1); transform-box: view-box; transform-origin: 150px 92px; }
+.foot-ball { transform-box: view-box; transform-origin: 150px 156px; }
+.foot-ball.fly { transition: transform 0.5s ease-out; }
+.foot-verdict { font-size: 16px; font-weight: 900; animation: pop-in 0.3s ease-out; }
+.foot-verdict.goal { fill: #f2c14e; }
+.foot-verdict.miss { fill: #e07a6a; }
+.foot-power { position: relative; height: 18px; border-radius: 9px; background: #5a2a20; margin: 8px 0 2px; overflow: hidden; }
+.foot-power .ok { position: absolute; top: 0; bottom: 0; background: #3a6a3a; }
+.foot-power .sweet { position: absolute; top: 0; bottom: 0; background: #f2c14e88; }
+.foot-power i { position: absolute; top: -2px; bottom: -2px; width: 4px; margin-left: -2px; background: #fff; z-index: 1; box-shadow: 0 0 6px #fff; }
+.foot-dots { display: flex; justify-content: center; gap: 8px; font-size: 20px; margin: 6px 0; }
+.foot-dots .m { color: #e07a6a; }
+.foot-table { display: flex; flex-direction: column; gap: 3px; margin: 8px 0; padding: 8px; border-radius: 10px; background: #0004; font-size: 13px; }
+.foot-table div { display: flex; gap: 8px; align-items: center; }
+.foot-table small { color: var(--muted); font-size: 11px; }
+.foot-table .me { color: var(--gold); }
