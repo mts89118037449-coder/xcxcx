@@ -247,6 +247,42 @@ export function play(s: Sfx) {
   }
 }
 
+/**
+ * Мультяшное «бормотание» под реплику: короткие слоги на высоте голоса персонажа.
+ * Голос зависит от имени — у каждого свой, но всегда одинаковый.
+ */
+export function babble(text: string, voice: string) {
+  if (!prefs.sfx) return;
+  const c = ensure();
+  if (!c || !sfxBus) return;
+  if (c.state === 'suspended') c.resume();
+  let h = 0;
+  for (const ch of voice) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const base = 110 + (h % 170);
+  const kind: OscillatorType = h % 3 === 0 ? 'square' : h % 3 === 1 ? 'sawtooth' : 'triangle';
+  const n = Math.max(3, Math.min(12, Math.round(text.length / 6)));
+  const t0 = c.currentTime + 0.02;
+  for (let i = 0; i < n; i++) {
+    const at = t0 + i * 0.085 + Math.random() * 0.015;
+    const f = base * (0.85 + Math.random() * 0.4) * (i === n - 1 && text.trim().endsWith('?') ? 1.3 : 1);
+    const o = c.createOscillator();
+    const flt = c.createBiquadFilter();
+    const g = c.createGain();
+    o.type = kind;
+    o.frequency.setValueAtTime(f, at);
+    o.frequency.exponentialRampToValueAtTime(f * (0.8 + Math.random() * 0.4), at + 0.07);
+    flt.type = 'bandpass';
+    flt.frequency.value = 700 + Math.random() * 900;
+    flt.Q.value = 2;
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(0.09, at + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.07);
+    o.connect(flt).connect(g).connect(sfxBus);
+    o.start(at);
+    o.stop(at + 0.08);
+  }
+}
+
 // --- музыка: отдельный файл, грузится после первого касания -------------------------------
 
 export type Theme = 'yard' | 'night' | 'fight' | 'bath' | 'canteen' | 'library' | 'club' | 'visits' | 'factory' | 'shizo';

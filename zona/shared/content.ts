@@ -381,6 +381,19 @@ const BOSS_LIST: Boss[] = [
     reward: { money: [24000, 34000], xp: 3000, authority: 1200, gold: [3, 6] },
     drops: [{ itemId: 'drop_prosecutor_suit', chance: 0.05 }],
   },
+  // --- камео: узнаваемые типажи из телевизора ---
+  {
+    id: 'b_gluhar', name: 'Следователь Глухарь', emoji: '🕵️', description: 'Двадцать сезонов раскрывает одно и то же дело. Колет на допросе — в обоих смыслах.',
+    minLevel: 13, hp: 3300, atk: 92, def: 42, energy: 48, cooldownMin: 180, perks: ['stun_4', 'armor_4'], trait: '🕵️ колет на допросе',
+    reward: { money: [3200, 4800], xp: 450, authority: 95, gold: [1, 2] },
+    drops: [],
+  },
+  {
+    id: 'b_streamer', name: 'Блогер-сиделец Стримыч', emoji: '📱', description: 'Ведёт стрим из хаты с запрещённого телефона. Уворачивается, пока капают донаты.',
+    minLevel: 17, hp: 4800, atk: 128, def: 58, energy: 60, cooldownMin: 270, perks: ['dodge_4', 'double_5'], trait: '📱 уворачивается под донаты',
+    reward: { money: [5500, 8200], xp: 720, authority: 180, gold: [1, 3] },
+    drops: [],
+  },
 ];
 
 /** Боссы по порядку уровней. */

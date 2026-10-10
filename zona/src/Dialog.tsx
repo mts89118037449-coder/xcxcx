@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { DialogSpec } from './game.tsx';
 import { NpcPortrait } from './art/sprites.tsx';
+import { babble } from './sound.ts';
 
 /** Разговор с персонажем: портрет, реплика печатается, ниже — ответы. */
 export function DialogBox({ d, onClose }: { d: DialogSpec; onClose(): void }) {
   const [shown, setShown] = useState(0);
   useEffect(() => {
     setShown(0);
+    babble(d.text, d.name);
     const id = setInterval(() => setShown((n) => (n >= d.text.length ? n : n + 2)), 18);
     return () => clearInterval(id);
   }, [d.text]);

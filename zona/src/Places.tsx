@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PLACE_INTRO } from '../shared/cutscenes.ts';
+import { babble } from './sound.ts';
 import { needFail } from '../shared/events.ts';
 import { PLACES, placeById, type PlaceId } from '../shared/places.ts';
 import { mastById } from '../shared/term.ts';
@@ -51,6 +52,9 @@ export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
     }
   };
   const heroAnim = line ? (line.who === 1 ? 'talk' : 'nod') : undefined;
+  useEffect(() => {
+    if (line) babble(line.text, line.who === 1 ? p.name : pl.host);
+  }, [line]);
   const hostAnim = step !== null ? (!arrived ? 'walk' : line?.who === 0 ? 'talk' : 'idle') : undefined;
 
   const run = async (actId: string) => {

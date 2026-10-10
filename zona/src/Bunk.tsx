@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { babble } from './sound.ts';
 import { BUNK_WHO, bunkOfDay, type BunkReward } from '../shared/bunk.ts';
 import { ModalHead } from './Nav.tsx';
 import { Place } from './art/Scenes.tsx';
@@ -30,6 +31,9 @@ export function BunkModal({ onClose }: { onClose(): void }) {
   const heroAnim: RigAnim = said !== null && !res ? 'talk' : res ? 'idle' : 'idle';
   const bubble = res ? res.reply : said !== null ? talk.options[said].text : talk.line;
   const mine = said !== null && !res;
+  useEffect(() => {
+    babble(bubble, mine ? p.name : who.name);
+  }, [bubble]);
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>

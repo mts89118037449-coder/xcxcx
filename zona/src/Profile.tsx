@@ -13,6 +13,7 @@ import { MailCard } from './Malyava.tsx';
 import { InkCard } from './Ink.tsx';
 import { ShareButton } from './Share.tsx';
 import { FamilyCard } from './Family.tsx';
+import { FeatsCard } from './Feats.tsx';
 import { TunnelCard } from './Tunnel.tsx';
 
 /** Профиль: срок, характеристики, лечение, статус, настройки и жалоба. */
@@ -53,6 +54,7 @@ export function ProfilePanel({ onMast }: { onMast(): void }) {
               <small>{ALBUMS.map((a) => `${a.emoji}${prog[a.id].have.length}/${prog[a.id].total.length}`).join(' ')}</small>
             </button>
             <MailCard />
+            <FeatsCard />
             <FamilyCard />
             <PenpalCard />
             <InkCard />

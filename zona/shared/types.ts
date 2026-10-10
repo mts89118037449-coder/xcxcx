@@ -88,6 +88,8 @@ export interface PlayerView {
   family: { who: 'mom' | 'wife'; rounds: number[]; picks: number[]; mood: number; done: boolean; buffUntil: number; buffPct: number; nextAt: number };
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   intros: string[];
+  feats: Record<string, number>;
+  featsClaimed: string[];
   bunk: { done: boolean; pick: number; day: number };
   reno: { stage: number; until: number; rush: number };
   penpal: { name: string; step: number; love: number; nextAt: number; ending: 'wedding' | 'wait' | 'gone' | 'scam' | 'caught' | null; picks: number[]; canRestart: boolean } | null;

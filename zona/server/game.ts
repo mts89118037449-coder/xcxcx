@@ -82,6 +82,7 @@ import { FAMILY, FAMILY_ROUNDS, familyOutcome, type Visitor } from '../shared/fa
 import { INTRO_REWARD, PLACE_INTRO } from '../shared/cutscenes.ts';
 import { bunkOfDay } from '../shared/bunk.ts';
 import { RENO, renoCost } from '../shared/reno.ts';
+import { featById, featProgress } from '../shared/feats.ts';
 import { MALYAVA, malyavaById } from '../shared/malyava.ts';
 import { PENPAL, PENPAL_GIRLS, PEN_ENDINGS, PEN_LETTERS, penEnding, type PenEnding } from '../shared/penpal.ts';
 import { COURT, courtArgById, courtChance, type ArgId } from '../shared/court.ts';
@@ -288,6 +289,9 @@ export interface Player {
   bunk: { day: number; pick: number };
   /** ремонт хаты: сколько этапов готово и когда закончится текущий (0 — не идёт) */
   reno: { stage: number; until: number };
+  /** счётчики для абсурдных ачивок и какие уже забраны */
+  feats: Record<string, number>;
+  featsClaimed: string[];
   /** входящие малявы */
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
@@ -460,6 +464,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     intros: [],
     bunk: { day: -1, pick: -1 },
     reno: { stage: 0, until: 0 },
+    feats: {},
+    featsClaimed: [],
     ink: null,
     inkOrder: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
@@ -563,6 +569,8 @@ export function migrate(p: Player): Player {
   p.intros ??= [];
   p.bunk ??= { day: -1, pick: -1 };
   p.reno ??= { stage: 0, until: 0 };
+  p.feats ??= {};
+  p.featsClaimed ??= [];
   p.ink ??= null;
   p.inkOrder ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
@@ -1433,6 +1441,7 @@ export function heal(p: Player, now: number) {
   spend(p, GOLD_PRICES.heal, 'gold');
   p.hp = max;
   p.hpAt = now;
+  bump(p, 'heal');
 }
 
 export function resetBoss(p: Player, bossId: string, now: number) {
@@ -1830,7 +1839,13 @@ export function ensureSeason(p: Player, now: number) {
   if (p.season.id !== id) p.season = { id, pts: 0, free: [], paid: [], pass: false };
 }
 
+/** Счётчик для ачивок. */
+export function bump(p: Player, key: string, n = 1) {
+  p.feats[key] = (p.feats[key] ?? 0) + n;
+}
+
 export function track(p: Player, kind: TrackKind, amount = 1) {
+  bump(p, kind, amount);
   const sp = SEASON_PTS[kind];
   if (sp) {
     const t = clock.now();
@@ -2128,6 +2143,7 @@ export function playShells(p: Player, bet: number, pick: number, now: number, rn
   const win = ball === pick;
   const payout = win ? Math.floor(bet * SHELLS.payout) : 0;
   p.money += payout - bet;
+  if (!win) bump(p, 'shells_lost');
   return { ball, win, payout };
 }
 
@@ -2535,6 +2551,7 @@ export function placeDo(p: Player, placeId: string, actId: string, now: number, 
   p.gold -= cost.gold ?? 0;
   p.placeCd[key] = now + a.cdMin * MIN;
   track(p, 'place');
+  bump(p, `place:${key}`);
   const o = pickWeighted(a.outcomes, rng);
   const got = applyEffects(p, { ...o, rep: { ...PLACE_REP[key], ...o.rep } }, now, rng);
   const mats = PLACE_MATS[key] ? giveMats(p, PLACE_MATS[key]) : {};
@@ -4257,6 +4274,7 @@ export function bunkTalk(p: Player, choice: number, now: number) {
   const o = talk.options[choice];
   if (!o) throw new GameError('Нет такого ответа');
   p.bunk = { day, pick: choice };
+  bump(p, 'bunk');
   const r = o.reward;
   const s = stats(p, now);
   if (r.butts) p.butts += r.butts;
@@ -4296,6 +4314,16 @@ export function renoFinish(p: Player, now: number) {
   p.reno = { stage: p.reno.stage + 1, until: 0 };
   log(p, now, `${st.emoji} Ремонт: ${st.name} — готово`);
   return { stage: st.id };
+}
+
+export function claimFeat(p: Player, id: string) {
+  const f = featById.get(id);
+  if (!f) throw new GameError('Нет такой ачивки');
+  if (p.featsClaimed.includes(id)) throw new GameError('Уже забрал');
+  if (featProgress(f, p) < f.goal) throw new GameError('Ещё не заслужил');
+  p.featsClaimed.push(id);
+  p.gold += f.gold;
+  return { gold: f.gold };
 }
 
 // --- Подкоп --------------------------------------------------------------------------------------

@@ -446,6 +446,8 @@ export function createApp(opts: AppOptions) {
       ink: p.ink,
       inkOrder: p.inkOrder,
       intros: p.intros,
+      feats: p.feats,
+      featsClaimed: p.featsClaimed,
       bunk: { done: p.bunk.day === g.dayIndex(t), pick: p.bunk.day === g.dayIndex(t) ? p.bunk.pick : -1, day: g.dayIndex(t) },
       reno: { stage: p.reno.stage, until: p.reno.until, rush: p.reno.until > t ? g.renoRushCost(p, t) : 0 },
       // аферистка или нет — тайна до конца
@@ -1020,6 +1022,7 @@ export function createApp(opts: AppOptions) {
     renoStart: (p, _b, t) => g.renoStart(p, t),
     renoRush: (p, _b, t) => g.renoRush(p, t),
     renoFinish: (p, _b, t) => g.renoFinish(p, t),
+    claimFeat: (p, b) => g.claimFeat(p, str(b.id)),
     malyava: (p, b, t) => {
       const target = db.getPlayer(num(b.id));
       if (!target) throw new g.GameError('Нет такого игрока');

@@ -1,7 +1,8 @@
 import { eventById, needFail } from '../shared/events.ts';
 import { tattooById } from '../shared/content.ts';
 import { mastById } from '../shared/term.ts';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { babble } from './sound.ts';
 import { CellScene, Place, YardScene } from './art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from './art/sprites.tsx';
 import { fmt, lookOf, useGame } from './game.tsx';
@@ -31,6 +32,10 @@ export function EventStage({ id, onClose }: { id: string; onClose(): void }) {
   const npc = useNpc(ev?.who ?? '');
   const [res, setRes] = useState<Got | null>(null);
   const [anim, setAnim] = useState('');
+  const said = res ? res.text : ev?.text;
+  useEffect(() => {
+    if (ev && said) babble(said, ev.name);
+  }, [said]);
   if (!ev) return null;
   const ration = 30 + p.level * 15;
   const score = (r: Got) => r.money + r.butts * 20 + r.gold * 50 + r.xp + r.authority * 10 + r.energy + r.hp / 5 + (r.item ? 50 : 0);

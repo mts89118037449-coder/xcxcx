@@ -31,6 +31,8 @@ export const BOSS_MOVES: Record<string, BossMove> = {
   b_major: { fx: 'swing', name: 'Режим есть режим', intro: 'Свисток, дубинка, протокол' , stance: 'taunt', ko: 'ko' },
   b_thief: { fx: 'cards', name: 'Воровской расклад', intro: 'Перстни блестят: «Ну давай, первоход»' , stance: 'bob', ko: 'koSpin' },
   b_typhoon: { fx: 'shield', name: 'Щитом в лицо', intro: 'Щит, шлем, дубинка — спецназ пошёл' , stance: 'heavy', ko: 'koFwd' },
+  b_gluhar: { fx: 'papers', name: 'Чистосердечное', intro: '«Ну что, Глухарёв, будем колоться?» — снимает куртку', stance: 'heavy', ko: 'koFwd' },
+  b_streamer: { fx: 'cards', name: 'Донат в лицо', intro: '«Всем привет, мы в эфире! Сейчас разнесу новичка, ставьте лайки»', stance: 'bob', ko: 'koSpin' },
   b_prosecutor: { fx: 'papers', name: 'Протест прокурора', intro: 'Открывает дело и надевает очки' , stance: 'taunt', ko: 'ko' },
   b_lumber: { fx: 'swing', name: 'Топором с плеча', intro: '«Норму не сделал — сам ляжешь под пилу»' , stance: 'heavy', ko: 'koFwd' },
   b_frost: { fx: 'swing', name: 'Ледяной разнос', intro: 'Иней на погонах, пар изо рта' , stance: 'heavy', ko: 'koFwd' },

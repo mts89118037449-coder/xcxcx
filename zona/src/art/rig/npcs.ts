@@ -64,6 +64,8 @@ export const NPC_RIGS: Record<string, NpcRig> = {
   'sheet/boss/b_medic': { look: L({ body: 'npc_whitecoat', feet: 'feet_lacquer', weapon: 'drop_scalpel' }, f(0, 4, 1, 1), { skin: 1, str: 35 }), anim: 'guard' },
   'sheet/boss/b_smotr': { look: L({ body: 'drop_smotr_coat', legs: 'legs_black', feet: 'feet_lacquer', head: 'cap_bandana', charm: 'charm_cross', weapon: 'wpn_golden' }, f(7, 5, 2, 1), { build: 2, str: 50, tattoos: ['t_stars', 't_church', 't_rings'] }), anim: 'guard' },
   'sheet/boss/b_major': { look: L({ body: 'npc_guard', feet: 'feet_kirza', head: 'drop_major_cap', weapon: 'drop_baton' }, f(2, 3, 2, 1), { build: 2, str: 55 }), anim: 'guard' },
+  'sheet/boss/b_gluhar': { look: L({ body: 'body_leather', legs: 'legs_jeans', feet: 'feet_lacquer', charm: 'charm_watch' }, f(2, 1, 0, 1), { build: 1, str: 45 }), anim: 'guard' },
+  'sheet/boss/b_streamer': { look: L({ body: 'body_hoodie', legs: 'legs_varenki', feet: 'feet_sneakers', head: 'cap_baseball', charm: 'charm_fiksa' }, f(4, 1, 1, 1), { build: 0, str: 40 }), anim: 'guard' },
   'sheet/boss/b_prosecutor': { look: L({ body: 'drop_prosecutor_suit', feet: 'feet_lacquer', charm: 'charm_watch' }, f(3, 0, 1, 1), { build: 1, str: 55, skin: 1 }), anim: 'guard' },
   'sheet/boss/b_kum': { look: L({ body: 'npc_suit', feet: 'feet_lacquer', charm: 'charm_watch', weapon: 'wpn_razor' }, f(3, 3, 1, 1), { build: 1, str: 40 }), anim: 'guard' },
   'sheet/boss/b_general': { look: L({ body: 'drop_greatcoat', feet: 'feet_kirza', head: 'drop_cap_general', weapon: 'drop_baton' }, f(7, 3, 2, 1), { build: 2, str: 50 }), anim: 'guard' },

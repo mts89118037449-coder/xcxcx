@@ -5,6 +5,7 @@ import { chapterOf } from '../shared/story.ts';
 import { PENPAL } from '../shared/penpal.ts';
 import { TUNNEL } from '../shared/tunnel.ts';
 import { FAMILY } from '../shared/family.ts';
+import { FEATS, featProgress } from '../shared/feats.ts';
 
 const H = 3600_000;
 
@@ -15,6 +16,7 @@ export function todo(p: PlayerView, now: number) {
   const word = !p.word.done;
   const mail = p.inbox.some((m) => !m.read);
   const family = p.level >= FAMILY.minLevel && !p.family.done;
+  const feat = FEATS.some((f) => !p.featsClaimed.includes(f.id) && featProgress(f, p) >= f.goal);
   const penpal = p.level >= PENPAL.minLevel && !!p.penpal && !p.penpal.ending && now >= p.penpal.nextAt;
   const ink = (p.ink?.queue.length ?? 0) > 0 || (!!p.inkOrder?.done && !p.inkOrder.rated);
   const tunnel = p.level >= TUNNEL.minLevel && !p.tunnel.done && (p.tunnel.depth >= TUNNEL.goal || now - p.tunnel.digAt >= TUNNEL.cooldownH * H);
@@ -26,7 +28,7 @@ export function todo(p: PlayerView, now: number) {
     work: { games: word, daily, quests: quest, gym: p.statPoints > 0 },
     zone: { now: shmon || holiday, market: shmon },
     fight: { riot },
-    me: { me: mail || family || penpal || ink || tunnel },
+    me: { me: mail || family || penpal || ink || tunnel || feat },
   };
   return {
     sections,

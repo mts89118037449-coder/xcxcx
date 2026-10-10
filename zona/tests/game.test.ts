@@ -2191,3 +2191,16 @@ test('знакомство с местом, разговор у шконки и 
   assert.ok(g.stats(p, now).maxHp > hp0, 'этап даёт бонус');
   assert.throws(() => g.renoStart(p, now), /уровня|денег/);
 });
+
+test('абсурдные ачивки: счётчики растут, награда один раз', () => {
+  const now = 1_800_000_000_000;
+  const p = g.newPlayer(902, 'Ачивер', null, now);
+  assert.throws(() => g.claimFeat(p, 'f_butts'), /заслужил/);
+  g.track(p, 'butts', 300);
+  const gold = p.gold;
+  assert.equal(g.claimFeat(p, 'f_butts').gold, 4);
+  assert.equal(p.gold, gold + 4);
+  assert.throws(() => g.claimFeat(p, 'f_butts'), /Уже/);
+  p.losses = 20;
+  g.claimFeat(p, 'f_floor');
+});
