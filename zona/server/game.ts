@@ -74,6 +74,7 @@ import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
 import { BARRACK, barrackBonus, barrackById, raidPts, type BarrackBonus } from '../shared/barracks.ts';
 import { INK, inkQuality } from '../shared/ink.ts';
+import { CONTRA, HIDE_SPOTS, goodById, goodPrice, shmonTonight, type GoodId } from '../shared/contra.ts';
 import { TUNNEL } from '../shared/tunnel.ts';
 import { FAMILY, FAMILY_ROUNDS, familyOutcome, type Visitor } from '../shared/family.ts';
 import { MALYAVA, malyavaById } from '../shared/malyava.ts';
@@ -266,6 +267,8 @@ export interface Player {
   ink: { skill: number; jobs: number; stars: number; votes: number; queue: { id: number; client: number; clientName: string; tattoo: string; paid: number; at: number }[] } | null;
   /** свой заказ у кольщика */
   inkOrder: { artist: number; artistName: string; tattoo: string; at: number; id: number; done: boolean; quality: number; rated: boolean } | null;
+  /** контрабанда: что держишь, почём брал; день последнего шмона */
+  contra: { have: Partial<Record<GoodId, number>>; spent: number; earned: number; shmonDay: number };
   /** подкоп: один за ходку */
   tunnel: { hodka: number; depth: number; digAt: number; masked: number; found: number; done: boolean };
   /** свиданка с роднёй: раз в неделю */
@@ -434,6 +437,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     built: 0,
     penpal: null,
     inbox: [],
+    contra: { have: {}, spent: 0, earned: 0, shmonDay: -1 },
     tunnel: { hodka: 0, depth: 0, digAt: 0, masked: 0, found: 0, done: false },
     family: { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 },
     ink: null,
@@ -531,6 +535,7 @@ export function migrate(p: Player): Player {
   p.penpal ??= null;
   p.refEarn ??= { total: 0, by: {} };
   p.inbox ??= [];
+  p.contra ??= { have: {}, spent: 0, earned: 0, shmonDay: -1 };
   p.tunnel ??= { hodka: 0, depth: 0, digAt: 0, masked: 0, found: 0, done: false };
   p.family ??= { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 };
   p.ink ??= null;
@@ -4257,4 +4262,66 @@ export function tunnelEscape(p: Player, now: number) {
   if (!p.cosmetics.includes('title_mole')) p.cosmetics.push('title_mole');
   log(p, now, `⛏️ Ушёл подкопом! −${cut} дн. срока`);
   return { cut };
+}
+
+// --- Контрабанда и ночной шмон -------------------------------------------------------------------
+
+const contraCount = (p: Player) => Object.values(p.contra.have).reduce((a, b) => a + (b ?? 0), 0);
+
+/** Сегодня пора на шмон: держишь товар, шмона сегодня не было, и выпало. */
+export function shmonDue(p: Player, now: number) {
+  const d = dayIndex(now);
+  return contraCount(p) > 0 && p.contra.shmonDay !== d && shmonTonight(p.id, d);
+}
+
+export function contraTrade(p: Player, good: string, qty: number, buy: boolean, now: number) {
+  if (p.level < CONTRA.minLevel) throw new GameError(`С ${CONTRA.minLevel} уровня`);
+  const g = goodById.get(good as GoodId);
+  if (!g) throw new GameError('Такого не возят');
+  const n = Math.floor(Number(qty) || 0);
+  if (n < 1 || n > CONTRA.cap) throw new GameError('Сколько?');
+  if (shmonDue(p, now)) throw new GameError('Шмон на подходе — сначала спрячь товар');
+  const price = goodPrice(g, dayIndex(now));
+  if (buy) {
+    if (contraCount(p) + n > CONTRA.cap) throw new GameError(`Больше ${CONTRA.cap} не спрятать`);
+    const cost = Math.round(price * CONTRA.buyMul) * n;
+    spend(p, cost, 'money');
+    p.contra.have[g.id] = (p.contra.have[g.id] ?? 0) + n;
+    p.contra.spent += cost;
+    return { money: -cost };
+  }
+  if ((p.contra.have[g.id] ?? 0) < n) throw new GameError('Столько нет');
+  const got = Math.round(price * CONTRA.sellMul) * n;
+  p.contra.have[g.id] = (p.contra.have[g.id] ?? 0) - n;
+  p.money += got;
+  p.contra.earned += got;
+  return { money: got };
+}
+
+/** Ночной шмон: игрок разложил товар по тайникам; вертухай проверяет каждый тайник со своим шансом. */
+export function shmonHide(p: Player, hide: Record<string, string>, now: number, rng: Rng) {
+  if (!shmonDue(p, now)) throw new GameError('Сегодня тихо');
+  p.contra.shmonDay = dayIndex(now);
+  const used = new Set<string>();
+  const lost: Partial<Record<GoodId, number>> = {};
+  const checked: string[] = [];
+  const spotFound: Record<string, boolean> = {};
+  for (const s of HIDE_SPOTS) {
+    spotFound[s.id] = rng() < s.find;
+    if (spotFound[s.id]) checked.push(s.id);
+  }
+  for (const [gid, n] of Object.entries(p.contra.have) as [GoodId, number][]) {
+    if (!n) continue;
+    const spot = HIDE_SPOTS.find((s) => s.id === hide?.[gid]);
+    // не спрятал или в один тайник два товара — найдут
+    const caught = !spot || used.has(spot.id) || spotFound[spot.id];
+    if (spot) used.add(spot.id);
+    if (caught) {
+      lost[gid] = n;
+      p.contra.have[gid] = 0;
+    }
+  }
+  const any = Object.keys(lost).length > 0;
+  log(p, now, any ? '🔦 Ночной шмон: часть товара изъяли' : '🔦 Ночной шмон: ничего не нашли');
+  return { lost, checked };
 }

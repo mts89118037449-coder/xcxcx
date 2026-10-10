@@ -416,6 +416,7 @@ export function createApp(opts: AppOptions) {
       pet: p.pet,
       built: p.built,
       inbox: p.inbox,
+      contra: { have: p.contra.have, spent: p.contra.spent, earned: p.contra.earned, shmon: g.shmonDue(p, t), day: g.dayIndex(t) },
       tunnel: (() => {
         const tn = g.ensureTunnel(p);
         return { depth: tn.depth, digAt: tn.digAt, masked: tn.masked, found: tn.found, done: tn.done };
@@ -807,6 +808,8 @@ export function createApp(opts: AppOptions) {
         inkerSave(artist);
       }
     },
+    contraTrade: (p, b, t) => g.contraTrade(p, str(b.good), num(b.qty), !!b.buy, t),
+    shmonHide: (p, b, t) => g.shmonHide(p, (b.hide && typeof b.hide === 'object' ? b.hide : {}) as Record<string, string>, t, rng),
     tunnelDig: (p, b, t) => g.tunnelDig(p, num(b.acc), t, rng),
     tunnelMask: (p) => g.tunnelMask(p),
     tunnelEscape: (p, _b, t) => g.tunnelEscape(p, t),

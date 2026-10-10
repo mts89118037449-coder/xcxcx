@@ -2067,3 +2067,35 @@ test('подкоп: откат, метры от руки, шмон засыпа�
   p.hodka = 2;
   assert.equal(g.ensureTunnel(p).depth, 0);
 });
+
+import { CONTRA, GOODS, goodPrice, shmonTonight } from '../shared/contra.ts';
+
+test('контрабанда: цены плавают, но одинаковы для всех; кабур дороже рынка; лимит нычки; ночной шмон по тайникам', () => {
+  const tea = GOODS[0];
+  const prices = Array.from({ length: 30 }, (_, d) => goodPrice(tea, 20000 + d));
+  assert.ok(new Set(prices).size > 10 && prices.every((x) => x > 0));
+  assert.equal(goodPrice(tea, 20005), prices[5]);
+  const p = g.newPlayer(1, 'Барыга', null, T0);
+  p.level = 10;
+  p.money = 1_000_000;
+  // день без шмона для этого игрока
+  let t = T0;
+  while (shmonTonight(p.id, g.dayIndex(t))) t += 86_400_000;
+  const r = g.contraTrade(p, 'tea', 5, true, t);
+  assert.equal(r.money, -Math.round(goodPrice(tea, g.dayIndex(t)) * CONTRA.buyMul) * 5);
+  assert.throws(() => g.contraTrade(p, 'phone', 16, true, t), /спрятать/);
+  const s = g.contraTrade(p, 'tea', 2, false, t);
+  assert.ok(s.money > 0 && s.money < -r.money);
+  // ночь со шмоном: торговать нельзя, пока не спрятал
+  let n = t;
+  while (!shmonTonight(p.id, g.dayIndex(n))) n += 86_400_000;
+  assert.ok(g.shmonDue(p, n));
+  assert.throws(() => g.contraTrade(p, 'tea', 1, false, n), /спрячь/);
+  g.contraTrade(p, 'sugar', 1, true, t);
+  // чай не спрятан — найдут наверняка; сахар в вентиляции, вертухай невнимателен
+  const res = g.shmonHide(p, { sugar: 'vent' }, n, () => 0.99);
+  assert.deepEqual(res.lost, { tea: 3 });
+  assert.equal(p.contra.have.sugar, 1);
+  assert.ok(!g.shmonDue(p, n));
+  assert.throws(() => g.shmonHide(p, {}, n, () => 0), /тихо/);
+});

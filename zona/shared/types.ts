@@ -81,6 +81,7 @@ export interface PlayerView {
   built: number;
   ink: { skill: number; jobs: number; stars: number; votes: number; queue: { id: number; client: number; clientName: string; tattoo: string; paid: number; at: number }[] } | null;
   inkOrder: { artist: number; artistName: string; tattoo: string; at: number; id: number; done: boolean; quality: number; rated: boolean } | null;
+  contra: { have: Partial<Record<'tea' | 'cigs' | 'sugar' | 'phone', number>>; spent: number; earned: number; shmon: boolean; day: number };
   tunnel: { depth: number; digAt: number; masked: number; found: number; done: boolean };
   family: { who: 'mom' | 'wife'; rounds: number[]; picks: number[]; mood: number; done: boolean; buffUntil: number; buffPct: number; nextAt: number };
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];

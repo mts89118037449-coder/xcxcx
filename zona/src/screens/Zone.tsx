@@ -5,6 +5,7 @@ const TourneyCard = named(() => import('../Tourney.tsx'), 'TourneyCard');
 const WordCard = named(() => import('../Word.tsx'), 'WordCard');
 const HolidayCard = named(() => import('../Holiday.tsx'), 'HolidayCard');
 const BuildCard = named(() => import('../Build.tsx'), 'BuildCard');
+const ContraCard = named(() => import('../Contra.tsx'), 'ContraCard');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
@@ -87,6 +88,11 @@ export function Zone() {
           <HolidayCard />
         </Suspense>
       )}
+      {p.contra.shmon && (
+        <button className="shmon-alarm" onClick={() => setSeg('market')}>
+          🔦 Ночью шмон! Спрячь контрабанду — Рынок
+        </button>
+      )}
       <Suspense fallback={null}>
         <BuildCard />
       </Suspense>
@@ -119,6 +125,11 @@ export function Zone() {
         ) : (
           <LockedCard id="people" />
         ))}
+      {seg === 'market' && (
+        <Suspense fallback={null}>
+          <ContraCard />
+        </Suspense>
+      )}
       {seg === 'market' && (isOpen('market', p.level) ? <Market /> : <LockedCard id="market" />)}
       {seg === 'week' && <WeeklyCard />}
     </>
