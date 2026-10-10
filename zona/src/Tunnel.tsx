@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { TUNNEL } from '../shared/tunnel.ts';
 import { MATS } from '../shared/craft.ts';
@@ -46,6 +47,7 @@ function TunnelModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h3 className="center">⛏️ Подкоп</h3>
         <TunnelArt depth={t.depth} digging={digging} done={t.done} />
         {digging ? (

@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { FOOT, ZONES, type KickResult } from '../shared/football.ts';
 import { api, startRun } from './api.ts';
@@ -83,6 +84,7 @@ function FootModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         {v?.match && (
           <div className="foot-score">
             <span>[{v.match.me.tag}]</span>

@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useState } from 'react';
 import { PET, PETS, petByKind } from '../shared/pets.ts';
 import { fmt, timeLeft, useGame } from './game.tsx';
@@ -76,6 +77,7 @@ function PetShop({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h3 className="center">🐾 Живность в хату</h3>
         <input className="input" placeholder="Кличка (необязательно)" maxLength={16} value={name} onChange={(e) => setName(e.target.value)} />
         <div className="pet-shop">

@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useState } from 'react';
 import { WORD } from '../shared/fenya.ts';
 import { api } from './api.ts';
@@ -55,6 +56,7 @@ function WordModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body word" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h2>🔤 Слово дня</h2>
         <div className="muted small center">
           Тюремное слово из {w.len} букв. Зелёная — на месте, жёлтая — есть, но не тут. Серия: {w.streak} · рекорд {w.best}

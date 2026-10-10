@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useState } from 'react';
 import { PENPAL, PEN_ENDINGS, PEN_LETTERS } from '../shared/penpal.ts';
 import { consumableById } from '../shared/perks.ts';
@@ -107,6 +108,7 @@ function PenpalModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h3 className="center">💌 {s && !s.canRestart ? s.name : 'Заочница'}</h3>
         {s && !s.canRestart && !s.ending && (
           <div className="pen-hearts">

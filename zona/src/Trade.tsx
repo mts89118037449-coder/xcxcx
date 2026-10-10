@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useState } from 'react';
 import { TRADE, type TradeKind, type TradeLine } from '../shared/trade.ts';
 import { CONSUMABLES, consumableById } from '../shared/perks.ts';
@@ -79,6 +80,7 @@ export function TradeComposer({ to, onClose }: { to: { id: number; name: string 
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body trade" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h2>🔄 Обмен с {to.name}</h2>
         <p className="muted small">
           Отданное лежит в залоге, пока {to.name} не ответит (сутки). Отказ — вернётся. Деньги и золото не меняются. До {TRADE.maxLines} вещей с каждой стороны, {TRADE.perDay} обменов в день.

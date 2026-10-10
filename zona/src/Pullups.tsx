@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { PULLUPS } from '../shared/content.ts';
 import { PoseG } from './art/sprites.tsx';
@@ -44,6 +45,7 @@ export function Pullups({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h2>💪 Турник</h2>
         <div className="pull-stage">
           <svg width={220} height={230} viewBox="0 -10 120 230">

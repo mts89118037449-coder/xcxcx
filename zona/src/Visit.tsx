@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { MALYAVA } from '../shared/malyava.ts';
 import { MalyavaComposer } from './Malyava.tsx';
 import { useCallback, useEffect, useState } from 'react';
@@ -87,6 +88,7 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         {err && <div className="center muted">{err}</div>}
         {!v && !err && <div className="center muted">{walk ? 'Идём по бараку…' : 'Стучим в хату…'}</div>}
         {v && (

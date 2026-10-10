@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { GameTiles } from './Leisure.tsx';
 import { BALANCE, GOLD_PRICES } from '../shared/content.ts';
 import { fmt, timeLeft, useGame } from './game.tsx';
@@ -18,6 +19,7 @@ export function EnergySheet({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h2>⚡ Энергия {p.energy}/{max}</h2>
         <div className="grid3" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: 12 }}>
           <div className="stat"><small>+1 через</small><b>{full ? '—' : timeLeft(toNext)}</b></div>

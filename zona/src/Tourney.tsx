@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useState } from 'react';
 import { NARDY, TOURNEY, nardyLand, nardyStep, type NardyPick } from '../shared/minigames2.ts';
 import { api } from './api.ts';
@@ -80,6 +81,7 @@ function TourneyModal({ data, reload, onClose }: { data: Data; reload(): void; o
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body tourney" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h2>🎲 Турнир в нарды</h2>
         {data.claimable && (
           <button className="btn btn-wide btn-gold" disabled={busy} onClick={claim}>

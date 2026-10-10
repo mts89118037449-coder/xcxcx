@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { TATTOOS, tattooById } from '../shared/content.ts';
 import { INK, inkRank } from '../shared/ink.ts';
@@ -43,6 +44,7 @@ function InkModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <div className="row gap-s">
           <button className={`btn grow ${tab === 'order' ? '' : 'btn-dark'}`} onClick={() => setTab('order')}>
             🙋 Набить

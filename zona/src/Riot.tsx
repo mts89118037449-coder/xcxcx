@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useState } from 'react';
 import { RIOT } from '../shared/riot.ts';
 import { api } from './api.ts';
@@ -106,6 +107,7 @@ function RiotFight({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h3 className="center">
           🔥 Бунт · волна {Math.min(r.wave + 1, 3)}/3
         </h3>

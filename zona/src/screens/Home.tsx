@@ -14,7 +14,6 @@ import { chapterOf } from '../../shared/story.ts';
 const CharacterEditor = named(() => import('../Editor.tsx'), 'CharacterEditor');
 const InteriorPicker = named(() => import('../Interior.tsx'), 'InteriorPicker');
 const CellShop = named(() => import('../Cell.tsx'), 'CellShop');
-const ProfilePanel = named(() => import('../Profile.tsx'), 'ProfilePanel');
 const DailyWeek = named(() => import('../Term.tsx'), 'DailyWeek');
 const MastPicker = named(() => import('../Term.tsx'), 'MastPicker');
 
@@ -23,7 +22,7 @@ export function Home() {
   const talk = useTalk();
   const [bare, setBare] = useState(false);
   const [anim, animKey, play] = useAnim();
-  const [seg, setSeg] = useSeg('home', p.faceChosen ? 'story' : 'look', ['story', 'look', 'cell', 'me'] as const);
+  const [seg, setSeg] = useSeg('home', p.faceChosen ? 'story' : 'look', ['story', 'look', 'cell'] as const);
   const panel = p.faceChosen ? seg : 'look';
   const [preview, setPreview] = useState<string | null>(null);
   const tryOn = preview ? furnitureById.get(preview) : null;
@@ -99,7 +98,6 @@ export function Home() {
           { id: 'story', icon: '📖', label: 'Сюжет', badge: p.story.progress >= (chapterOf(p.story.ch, p.mast)?.steps[p.story.step]?.n ?? Infinity) },
           { id: 'look', icon: '✏️', label: 'Облик', badge: !p.faceChosen },
           { id: 'cell', icon: '🛠️', label: 'Обустроить' },
-          { id: 'me', icon: '📊', label: 'Профиль' },
         ]}
       />
 
@@ -125,11 +123,6 @@ export function Home() {
         <Suspense fallback={null}>
           <InteriorPicker />
           <CellShop onChange={() => play('act-cheer')} onPreview={showPreview} />
-        </Suspense>
-      )}
-      {panel === 'me' && (
-        <Suspense fallback={null}>
-          <ProfilePanel onMast={() => setMastOpen(true)} />
         </Suspense>
       )}
       <Suspense fallback={null}>

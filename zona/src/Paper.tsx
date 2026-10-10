@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useState } from 'react';
 import { BARRACKS } from '../shared/barracks.ts';
 import { DECREES } from '../shared/elect.ts';
@@ -41,6 +42,7 @@ function PaperModal({ v, onClose }: { v: Paper; onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body paper" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <div className="paper-top">
           <span>№ {v.issue}</span>
           <h2>ЗА РЕШЁТКОЙ</h2>

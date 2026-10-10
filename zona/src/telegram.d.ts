@@ -11,6 +11,7 @@ interface TelegramWebApp {
   /** Bot API 7.8: в истории */
   shareToStory?(mediaUrl: string, params?: { text?: string; widget_link?: { url: string; name?: string } }): void;
   isVersionAtLeast?(v: string): boolean;
+  BackButton?: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
   HapticFeedback?: {
     impactOccurred(style: 'light' | 'medium' | 'heavy'): void;
     notificationOccurred(type: 'error' | 'success' | 'warning'): void;

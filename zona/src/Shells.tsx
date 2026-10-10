@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useState } from 'react';
 import { SHELLS } from '../shared/content.ts';
 import { NpcPortrait } from './art/sprites.tsx';
@@ -49,6 +50,7 @@ export function ShellGame({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body shells" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <div className="shells-top">
           <NpcPortrait who="sheet/rival/3" className="shells-lyoha" />
           <div>

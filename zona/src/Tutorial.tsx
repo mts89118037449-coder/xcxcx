@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { TUTORIAL, TUT_GIFT } from '../shared/tutorial.ts';
 import { consumableById } from '../shared/perks.ts';
@@ -106,6 +107,7 @@ export function TutorialCoach({ tab }: { tab: Tab }) {
       {gift && (
         <div className="modal" onClick={() => setGift(false)}>
           <div className="modal-body tut-gift" onClick={(e) => e.stopPropagation()}>
+            <ModalHead onClose={() => setGift(false)} />
             <div className="tut-gift-box">🎁</div>
             <h2>Освоился!</h2>
             <p className="muted">Теперь ты знаешь, как тут всё устроено. Держи грев на первое время:</p>

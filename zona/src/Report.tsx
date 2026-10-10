@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useState } from 'react';
 import { REPORT, type ReportTopic } from '../shared/support.ts';
 import { ApiError, api } from './api.ts';
@@ -27,6 +28,7 @@ export function ReportModal({ onClose, where, preset }: { onClose(): void; where
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body report" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h2>🆘 Сообщить о проблеме</h2>
         {state === 'sent' ? (
           <>

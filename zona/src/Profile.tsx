@@ -23,21 +23,8 @@ export function ProfilePanel({ onMast }: { onMast(): void }) {
   const ready = ALBUMS.some((a) => !p.albums.includes(a.id) && prog[a.id].have.length >= prog[a.id].total.length);
   return (
         <>
-          <button className={`album-btn ${ready ? 'ready' : ''}`} onClick={() => setAlbum(true)}>
-            <span>📒</span>
-            <b>Альбом</b>
-            <small>{ALBUMS.map((a) => `${a.emoji} ${prog[a.id].have.length}/${prog[a.id].total.length}`).join('  ')}</small>
-          </button>
-          {album && <AlbumModal onClose={() => setAlbum(false)} />}
           <div className="rank-line">🎖️ {p.rank} · ур. {p.level}</div>
           <TermCard onMast={onMast} />
-          <CourtCard />
-          <TunnelCard />
-          <FamilyCard />
-          <MailCard />
-          <InkCard />
-          <PenpalCard />
-          <PetCard />
           <div className="stat-row">
             <div><span>⚔️</span>{p.stats.atk}<small>атака</small></div>
             <div><span>🛡️</span>{p.stats.def}<small>защита</small></div>
@@ -58,6 +45,22 @@ export function ProfilePanel({ onMast }: { onMast(): void }) {
               ☕ Энергия · {GOLD_PRICES.energyRefill} 🪙
             </button>
           </div>
+          <h3 className="section">🗂️ Мои дела</h3>
+          <div className="tile-grid">
+            <button className={`album-btn ${ready ? 'ready' : ''}`} onClick={() => setAlbum(true)}>
+              <span>📒</span>
+              <b>Альбом</b>
+              <small>{ALBUMS.map((a) => `${a.emoji}${prog[a.id].have.length}/${prog[a.id].total.length}`).join(' ')}</small>
+            </button>
+            <MailCard />
+            <FamilyCard />
+            <PenpalCard />
+            <InkCard />
+            <TunnelCard />
+            <CourtCard />
+          </div>
+          {album && <AlbumModal onClose={() => setAlbum(false)} />}
+          <PetCard />
           {!p.vipUntil && (
             <button className="vip-strip" onClick={() => go('shop')}>
               👑 Блатной статус: ⚡×2 · ₽+20% · 🪙10/день <b>Хочу</b>

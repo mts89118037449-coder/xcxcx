@@ -19,8 +19,9 @@ import { LiveBanner } from './Live.tsx';
 import { setSceneColony } from './art/Weather.tsx';
 import { named } from './lazy.ts';
 import { Home } from './screens/Home.tsx';
+import { initBack, setBackFallback, useBack } from './Nav.tsx';
 
-// Пять разделов внизу; «Братва» живёт внутри «Боя», «Ларёк» — кнопкой ⭐ в шапке.
+// Пять разделов внизу: Хата, Зона, Дела (работа и игры), Бой (и братва), Я (профиль и шмот). «Ларёк» — ⭐ в шапке.
 // Окна, которые открываются не сразу, — отдельными кусками: первый запуск в Telegram быстрее.
 const VisitModal = named(() => import('./Visit.tsx'), 'VisitModal');
 const ShellGame = named(() => import('./Shells.tsx'), 'ShellGame');
@@ -36,7 +37,7 @@ const BattleModal = named(() => import('./Battle.tsx'), 'BattleModal');
 const Zone = named(() => import('./screens/Zone.tsx'), 'Zone');
 const Work = named(() => import('./screens/Work.tsx'), 'Work');
 const Fight = named(() => import('./screens/Fight.tsx'), 'Fight');
-const Gear = named(() => import('./screens/Gear.tsx'), 'Gear');
+const Me = named(() => import('./screens/Me.tsx'), 'Me');
 const Top = named(() => import('./screens/Top.tsx'), 'Top');
 const Shop = named(() => import('./screens/Shop.tsx'), 'Shop');
 const AdminPanel = named(() => import('./Admin.tsx'), 'AdminPanel');
@@ -80,9 +81,9 @@ const PLACE_MUSIC: Partial<Record<string, Theme>> = {
 const TABS: { id: Tab; icon: string; label: string; also?: Tab[] }[] = [
   { id: 'home', icon: '🏚️', label: 'Хата' },
   { id: 'zone', icon: '🗺️', label: 'Зона' },
-  { id: 'work', icon: '⚒️', label: 'Работа' },
+  { id: 'work', icon: '⚒️', label: 'Дела' },
   { id: 'fight', icon: '🥊', label: 'Бой', also: ['top'] },
-  { id: 'gear', icon: '🎒', label: 'Шмот' },
+  { id: 'gear', icon: '👤', label: 'Я' },
 ];
 
 export function App() {
@@ -105,6 +106,16 @@ export function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [mini, setMini] = useState<Mini | null>(null);
   const hasBattle = !!player?.battle;
+  // «Назад» Telegram: мини-игры и места закрываются, со вкладки — домой
+  useEffect(initBack, []);
+  useBack(() => setMini(null), !!mini);
+  useBack(() => setDialog(null), !!dialog);
+  useBack(() => setPullOpen(false), pullOpen);
+  useBack(() => setShellsOpen(false), shellsOpen);
+  useBack(() => setEventId(null), !!eventId);
+  useEffect(() => {
+    setBackFallback(place ? () => (setPlace(null), setTab('zone')) : tab !== 'home' ? () => setTab('home') : null);
+  }, [place, tab]);
   // обучение грузим, только если оно было в этой игре (и держим до конца — там подарок)
   const [tutOn, setTutOn] = useState(false);
   useEffect(() => {
@@ -279,7 +290,7 @@ export function App() {
         {!place && tab === 'zone' && <Zone />}
         {!place && tab === 'work' && <Work />}
         {!place && tab === 'fight' && <Fight />}
-        {!place && tab === 'gear' && <Gear />}
+        {!place && tab === 'gear' && <Me />}
         {!place && tab === 'top' && <Top />}
         {!place && tab === 'shop' && <Shop />}
         </Suspense>

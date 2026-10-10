@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useCallback, useState } from 'react';
 import { tg } from './api.ts';
 import { play } from './sound.ts';
@@ -15,6 +16,7 @@ export function FightModal({ fight, me, onClose }: { fight: FightLog; me: Fighte
   return (
     <div className="modal" onClick={() => done && onClose()}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={() => done && onClose()} />
         <FightArena me={me} enemy={fight.enemy} replay={fight.replay} onDone={finish} />
         <div className="muted center">{fight.title}</div>
         {done && (

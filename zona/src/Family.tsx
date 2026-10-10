@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useState } from 'react';
 import { FAMILY, FAMILY_ROUNDS, FAMILY_WHO, type FamOutcome } from '../shared/family.ts';
 import { consumableById } from '../shared/perks.ts';
@@ -43,6 +44,7 @@ function FamilyModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <VisitRoom who={f.who} mood={f.mood} line={end ? null : round ? (step === 0 && !said ? `${who.hello} ${round.line}` : round.line) : null} said={said} done={f.done} />
         {round && !end && (
           <div className="pen-choices">

@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { ARM, BREW, CARDS, DARTS, DICE, RACE, ROACHES } from '../shared/minigames.ts';
 import { RigHead } from './art/rig/Rig.tsx';
@@ -15,6 +16,7 @@ export function Table({ who, title, left, children, onClose }: { who: string; ti
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body mini" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <div className="mini-head">
           {npc && <NpcPortrait who={who} className="mini-pic" />}
           <div>

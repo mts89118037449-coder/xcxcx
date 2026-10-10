@@ -13,27 +13,27 @@ export interface Unlock {
 
 export const UNLOCKS: Unlock[] = [
   // 2
-  { id: 'dice', name: 'Кости', emoji: '🎲', level: 2, desc: 'Кто больше выбросит — тот забирает ставку', go: { tab: 'zone', seg: ['zone', 'games'] } },
-  { id: 'speed', name: 'Чифир на скорость', emoji: '⚡', level: 2, desc: 'Успей снять кружку — бычки за реакцию', go: { tab: 'zone', seg: ['zone', 'games'] } },
+  { id: 'dice', name: 'Кости', emoji: '🎲', level: 2, desc: 'Кто больше выбросит — тот забирает ставку', go: { tab: 'work', seg: ['work', 'games'] } },
+  { id: 'speed', name: 'Чифир на скорость', emoji: '⚡', level: 2, desc: 'Успей снять кружку — бычки за реакцию', go: { tab: 'work', seg: ['work', 'games'] } },
   // 3
-  { id: 'arm', name: 'Армрестлинг', emoji: '💪', level: 3, desc: 'Кто чаще жмёт — тот и сильнее', go: { tab: 'zone', seg: ['zone', 'games'] } },
-  { id: 'darts', name: 'Мишень', emoji: '🎯', level: 3, desc: 'Заточка в цель — очки в бычки', go: { tab: 'zone', seg: ['zone', 'games'] } },
-  { id: 'conveyor', name: 'Конвейер', emoji: '📦', level: 3, desc: 'Снимай брак с ленты — деньги и уважение работяг', go: { tab: 'zone', seg: ['zone', 'games'] } },
+  { id: 'arm', name: 'Армрестлинг', emoji: '💪', level: 3, desc: 'Кто чаще жмёт — тот и сильнее', go: { tab: 'work', seg: ['work', 'games'] } },
+  { id: 'darts', name: 'Мишень', emoji: '🎯', level: 3, desc: 'Заточка в цель — очки в бычки', go: { tab: 'work', seg: ['work', 'games'] } },
+  { id: 'conveyor', name: 'Конвейер', emoji: '📦', level: 3, desc: 'Снимай брак с ленты — деньги и уважение работяг', go: { tab: 'work', seg: ['work', 'games'] } },
   { id: 'ring', name: 'Ринг', emoji: '🏟️', level: 3, desc: 'Живые бои и ставки зрителей', go: { tab: 'fight', seg: ['fight', 'ring'] } },
   { id: 'chat', name: 'Чат барака', emoji: '💬', level: 3, desc: 'Перекинься словом с братвой', go: { tab: 'top' } },
   // 4
   { id: 'market', name: 'Барахолка', emoji: '🛒', level: 4, desc: 'Торгуй с зэками: расходники, материалы, шмот', go: { tab: 'zone', seg: ['zone', 'market'] } },
-  { id: 'craft', name: 'Ремесло', emoji: '🔧', level: 4, desc: 'Из материалов — бинты, заточки и талисманы', go: { tab: 'gear' } },
-  { id: 'nardy', name: 'Нарды', emoji: '🎲', level: 4, desc: 'Гонка с цыганом до 24-й клетки', go: { tab: 'zone', seg: ['zone', 'games'] } },
-  { id: 'domino', name: 'Домино', emoji: '🁫', level: 4, desc: 'Выкладывай кости раньше старика', go: { tab: 'zone', seg: ['zone', 'games'] } },
-  { id: 'shizo', name: 'Выжить в ШИЗО', emoji: '🧱', level: 4, desc: 'Пять суток в бетоне — и почёт у братвы', go: { tab: 'zone', seg: ['zone', 'games'] } },
+  { id: 'craft', name: 'Ремесло', emoji: '🔧', level: 4, desc: 'Из материалов — бинты, заточки и талисманы', go: { tab: 'gear', seg: ['me', 'gear'] } },
+  { id: 'nardy', name: 'Нарды', emoji: '🎲', level: 4, desc: 'Гонка с цыганом до 24-й клетки', go: { tab: 'work', seg: ['work', 'games'] } },
+  { id: 'domino', name: 'Домино', emoji: '🁫', level: 4, desc: 'Выкладывай кости раньше старика', go: { tab: 'work', seg: ['work', 'games'] } },
+  { id: 'shizo', name: 'Выжить в ШИЗО', emoji: '🧱', level: 4, desc: 'Пять суток в бетоне — и почёт у братвы', go: { tab: 'work', seg: ['work', 'games'] } },
   // 5
   { id: 'people', name: 'Люди зоны', emoji: '👥', level: 5, desc: 'Общак, долги и репутация у братвы, работяг и администрации', go: { tab: 'zone', seg: ['zone', 'people'] } },
-  { id: 'chess', name: 'Шахматный этюд', emoji: '♟️', level: 5, desc: 'Найди мат в один ход', go: { tab: 'zone', seg: ['zone', 'games'] } },
+  { id: 'chess', name: 'Шахматный этюд', emoji: '♟️', level: 5, desc: 'Найди мат в один ход', go: { tab: 'work', seg: ['work', 'games'] } },
   { id: 'clans', name: 'Кланы', emoji: '🏴', level: 5, desc: 'Свой клан: хата, босс дня и война кланов', go: { tab: 'top' } },
   // 6
-  { id: 'beads', name: 'Чётки', emoji: '📿', level: 6, desc: 'Перебирай в такт — силы и опыт', go: { tab: 'zone', seg: ['zone', 'games'] } },
-  { id: 'fish', name: 'Рыбалка из окна', emoji: '🎣', level: 6, desc: '«Конём» лови грев из соседнего окна', go: { tab: 'zone', seg: ['zone', 'games'] } },
+  { id: 'beads', name: 'Чётки', emoji: '📿', level: 6, desc: 'Перебирай в такт — силы и опыт', go: { tab: 'work', seg: ['work', 'games'] } },
+  { id: 'fish', name: 'Рыбалка из окна', emoji: '🎣', level: 6, desc: '«Конём» лови грев из соседнего окна', go: { tab: 'work', seg: ['work', 'games'] } },
 ];
 
 export const unlockById = new Map(UNLOCKS.map((u) => [u.id, u]));

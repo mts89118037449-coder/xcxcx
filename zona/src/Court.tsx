@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useState } from 'react';
 import { COURT, COURT_ARGS, courtChance } from '../shared/court.ts';
 import { useGame } from './game.tsx';
@@ -44,6 +45,7 @@ function CourtModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <Courtroom bang={bang} verdict={a.done ? (a.won ? 'won' : 'lost') : null} />
         {a.done ? (
           <div className={`court-verdict ${a.won ? 'won' : 'lost'}`}>

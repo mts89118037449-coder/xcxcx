@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useState } from 'react';
 import { COLONIES, colonyById } from '../shared/colonies.ts';
 import { DAILY_WEEK, MASTS, MAST_RULES, NOTICE_KINDS, TERM, mastById, type Mast } from '../shared/term.ts';
@@ -19,6 +20,7 @@ export function MastPicker({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body mast-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h2 className="center">Выбери масть</h2>
         <div className="muted small center">На зоне у каждого своё место. От масти зависят бонусы, реплики и отношение к тебе.</div>
         <div className="mast-grid">
@@ -90,6 +92,7 @@ export function TermCard({ onMast }: { onMast(): void }) {
       {pick && (
         <div className="modal" onClick={() => setPick(false)}>
           <div className="modal-body colonies" onClick={(e) => e.stopPropagation()}>
+            <ModalHead onClose={() => setPick(false)} />
             <h2>🚌 Куда этапируют?</h2>
             <p className="muted small">Новая ходка — можно заехать на другую зону: свои правила, боссы и место. Выбор — до следующего УДО.</p>
             {COLONIES.map((c) => (
@@ -131,6 +134,7 @@ export function DailyWeek({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h2 className="center">📦 Грев с воли</h2>
         <div className="muted small center">Заходи каждый день — на седьмой придёт большой грев. Пропустишь день — серия начнётся заново.</div>
         <div className="week">

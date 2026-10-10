@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useState } from 'react';
 import { ALBUMS, WALL_MAX, albumProgress, type AlbumId } from '../shared/album.ts';
 import { bossById, tattooById } from '../shared/content.ts';
@@ -33,6 +34,7 @@ export function AlbumModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body album" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h2>📒 Альбом</h2>
         <div className="album-tabs">
           {ALBUMS.map((x) => (

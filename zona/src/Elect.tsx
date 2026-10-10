@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useState } from 'react';
 import { DECREES, ELECT } from '../shared/elect.ts';
 import { api } from './api.ts';
@@ -52,6 +53,7 @@ function ElectModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <div className="smotr-throne">
           <span className="smotr-crown big">👑</span>
           {s ? (

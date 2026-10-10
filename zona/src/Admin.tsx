@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useState } from 'react';
 import { EVENTS } from '../shared/events.ts';
 import { useGame } from './game.tsx';
@@ -16,6 +17,7 @@ export function AdminPanel({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body admin" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h2>⚙️ Админ</h2>
         <div className="admin-panes">
           {(

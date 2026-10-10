@@ -11,7 +11,7 @@ const WHERE: Partial<Record<TrackKind, { tab?: Tab; seg?: [string, string]; plac
   butts: { tab: 'zone', hint: 'Зона → собирай бычки на земле' },
   furnish: { tab: 'home', seg: ['home', 'cell'], hint: 'Хата → Обустроить' },
   quest: { tab: 'work', seg: ['work', 'quests'], hint: 'Работа → Поручения' },
-  minigame: { tab: 'zone', seg: ['zone', 'games'], hint: 'Зона → Игры' },
+  minigame: { tab: 'work', seg: ['work', 'games'], hint: 'Дела → Игры' },
   visit: { tab: 'zone', seg: ['zone', 'places'], hint: 'Зона → Места → По хатам' },
   yard: { tab: 'fight', hint: 'Бой → прогуляйся по двору' },
   church: { place: 'church', hint: 'Зона → Церковь' },

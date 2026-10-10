@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { QUIZ } from '../shared/quiz.ts';
 import { api } from './api.ts';
@@ -75,6 +76,7 @@ function QuizModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <div className="quiz-stage">
           <div className="quiz-lights">
             {Array.from({ length: 9 }, (_, i) => (

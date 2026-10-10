@@ -1,15 +1,11 @@
 import { Suspense, useState } from 'react';
 import { named } from '../lazy.ts';
 
-const TourneyCard = named(() => import('../Tourney.tsx'), 'TourneyCard');
-const WordCard = named(() => import('../Word.tsx'), 'WordCard');
 const HolidayCard = named(() => import('../Holiday.tsx'), 'HolidayCard');
 const BuildCard = named(() => import('../Build.tsx'), 'BuildCard');
 const ContraCard = named(() => import('../Contra.tsx'), 'ContraCard');
 const RiotCard = named(() => import('../Riot.tsx'), 'RiotCard');
 const SmotrCard = named(() => import('../Elect.tsx'), 'SmotrCard');
-const FootballCard = named(() => import('../Football.tsx'), 'FootballCard');
-const QuizCard = named(() => import('../Quiz.tsx'), 'QuizCard');
 const PaperCard = named(() => import('../Paper.tsx'), 'PaperCard');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
@@ -17,7 +13,7 @@ import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
 import { lookOf, timeLeft, useGame } from '../game.tsx';
 import { useTalk } from '../Talk.tsx';
 import { WeeklyCard } from '../Weekly.tsx';
-import { GameTiles, PlaceTiles } from '../Leisure.tsx';
+import { PlaceTiles } from '../Leisure.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { play } from '../sound.ts';
 import { WeatherTag, useWeather } from '../art/Weather.tsx';
@@ -35,7 +31,7 @@ export function Zone() {
   const [taken, setTaken] = useState<number[]>([]);
   const [pops, setPops] = useState<{ id: number; x: number; y: number; n: number }[]>([]);
   const field = p.field.filter((b) => !taken.includes(b.id));
-  const [seg, setSeg] = useSeg('zone', 'games', ['games', 'places', 'people', 'market', 'week'] as const);
+  const [seg, setSeg] = useSeg('zone', 'places', ['places', 'people', 'market', 'week'] as const);
 
   const pickUp = async (b: (typeof p.field)[number]) => {
     setTaken((t) => [...t, b.id]);
@@ -110,22 +106,12 @@ export function Zone() {
         value={seg}
         onChange={setSeg}
         items={[
-          { id: 'games', icon: '🎲', label: 'Игры' },
           { id: 'places', icon: '📍', label: 'Места' },
           { id: 'people', icon: '👥', label: 'Люди' },
           { id: 'market', icon: '🛒', label: 'Рынок' },
           { id: 'week', icon: '📅', label: 'Неделя' },
         ]}
       />
-      {seg === 'games' && (
-        <Suspense fallback={null}>
-          <QuizCard />
-          <WordCard />
-          <FootballCard />
-          <TourneyCard />
-        </Suspense>
-      )}
-      {seg === 'games' && <GameTiles />}
       {seg === 'places' && <PlaceTiles />}
       {seg === 'people' &&
         (isOpen('people', p.level) ? (

@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useState } from 'react';
 import { BUILD, BUILDINGS } from '../shared/build.ts';
 import { MATS } from '../shared/craft.ts';
@@ -61,6 +62,7 @@ function BuildModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <h3 className="center">🏗️ Стройка зоны</h3>
         {cur && <BuildArt emoji={cur.emoji} frac={frac} />}
         <div className="build-list">

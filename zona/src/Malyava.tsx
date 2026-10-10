@@ -1,3 +1,4 @@
+import { ModalHead } from './Nav.tsx';
 import { useEffect, useState } from 'react';
 import { MALYAVA, MALYAVY, malyavaById } from '../shared/malyava.ts';
 import { api } from './api.ts';
@@ -83,6 +84,7 @@ function MailModal({ onClose }: { onClose(): void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} />
         <div className="row gap-s">
           <button className={`btn grow ${tab === 'in' ? '' : 'btn-dark'}`} onClick={() => setTab('in')}>
             📨 Мне
