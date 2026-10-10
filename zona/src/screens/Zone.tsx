@@ -21,6 +21,7 @@ import { DebtCard, FactionCards, ObshakCard } from '../Factions.tsx';
 import { Market } from '../Market.tsx';
 import { LockedCard } from '../Unlocks.tsx';
 import { isOpen } from '../../shared/unlocks.ts';
+import { NowChip } from '../Chip.tsx';
 
 /** Вся зона: здания ведут на экраны, по земле валяются бычки, барыга меняет их. */
 export function Zone() {
@@ -31,7 +32,7 @@ export function Zone() {
   const [taken, setTaken] = useState<number[]>([]);
   const [pops, setPops] = useState<{ id: number; x: number; y: number; n: number }[]>([]);
   const field = p.field.filter((b) => !taken.includes(b.id));
-  const [seg, setSeg] = useSeg('zone', 'places', ['places', 'people', 'market', 'week'] as const);
+  const [seg, setSeg] = useSeg('zone', 'people', ['people', 'market', 'week'] as const);
 
   const pickUp = async (b: (typeof p.field)[number]) => {
     setTaken((t) => [...t, b.id]);
@@ -84,35 +85,30 @@ export function Zone() {
         {wx.effect && <div className="wx-note">{wx.emoji} {wx.effect}</div>}
       </div>
       {p.nextButtAt && !field.length && <div className="muted small center">🚬 через {timeLeft(p.nextButtAt - now)}</div>}
-      {p.holiday && (
-        <Suspense fallback={null}>
-          <HolidayCard />
-        </Suspense>
-      )}
+      {/* куда пойти — все места в одну ленту прямо под картой */}
+      <div className="place-strip" data-tut="places">
+        <PlaceTiles />
+      </div>
+      {/* сейчас важно: одна лента значков вместо стопки баннеров */}
       <Suspense fallback={null}>
-        <PaperCard />
-        <SmotrCard />
+        <div className="now-strip" data-tut="now">
+          {p.contra.shmon && <NowChip icon="🔦" label="Шмон!" sub="спрячь товар" hot onClick={() => setSeg('market')} />}
+          {p.holiday && <HolidayCard chip />}
+          <SmotrCard chip />
+          <BuildCard chip />
+          <PaperCard chip />
+        </div>
         <RiotCard />
-      </Suspense>
-      {p.contra.shmon && (
-        <button className="shmon-alarm" onClick={() => setSeg('market')}>
-          🔦 Ночью шмон! Спрячь контрабанду — Рынок
-        </button>
-      )}
-      <Suspense fallback={null}>
-        <BuildCard />
       </Suspense>
       <SegBar
         value={seg}
         onChange={setSeg}
         items={[
-          { id: 'places', icon: '📍', label: 'Места' },
           { id: 'people', icon: '👥', label: 'Люди' },
           { id: 'market', icon: '🛒', label: 'Рынок' },
           { id: 'week', icon: '📅', label: 'Неделя' },
         ]}
       />
-      {seg === 'places' && <PlaceTiles />}
       {seg === 'people' &&
         (isOpen('people', p.level) ? (
           <>

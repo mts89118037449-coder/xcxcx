@@ -983,10 +983,11 @@ export function ButtG({ x, y, pack, onPick }: { x: number; y: number; pack: bool
 }
 
 export function ZoneScene({ children, onPlace }: { children?: ReactNode; onPlace(place: 'barrack' | 'kiosk' | 'work' | 'medic' | 'yard' | 'church' | 'walk' | 'escape'): void }) {
+  // подписи зданий — крупные кнопки: карта и есть меню
   const tag = (x: number, y: number, label: string, place: Parameters<typeof onPlace>[0], w = 54) => (
     <g className="zone-tag" onClick={() => onPlace(place)} style={{ cursor: 'pointer' }}>
-      <rect x={x - w / 2} y={y - 9} width={w} height={13} rx={6.5} fill="#000" opacity={0.65} />
-      <text x={x} y={y} fontSize={7.5} textAnchor="middle" fill="#f2e6c8" fontWeight={700}>
+      <rect x={x - (w * 1.3) / 2} y={y - 12} width={w * 1.3} height={18} rx={9} fill="#141008" opacity={0.85} stroke="#f2c14e" strokeWidth={0.8} />
+      <text x={x} y={y + 1} fontSize={9.6} textAnchor="middle" fill="#fff4d8" fontWeight={800}>
         {label}
       </text>
     </g>

@@ -5,17 +5,25 @@ import { DECREES } from '../shared/elect.ts';
 import { malyavaById } from '../shared/malyava.ts';
 import { api } from './api.ts';
 import { fmt } from './game.tsx';
+import { NowChip } from './Chip.tsx';
 
 type Paper = Awaited<ReturnType<typeof api.paper>>;
 
 /** Стенгазета: свёрнутая — заголовок выпуска, развёрнутая — газетная полоса. */
-export function PaperCard() {
+export function PaperCard({ chip }: { chip?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const [v, setV] = useState<Paper | null>(null);
   useEffect(() => {
     api.paper().then(setV).catch(() => null);
   }, []);
   const head = v?.chron[0];
+  if (chip)
+    return (
+      <>
+        <NowChip icon="📰" label="Газета" sub={`№ ${v?.issue ?? '…'}`} onClick={() => setOpen(true)} />
+        {open && v && <PaperModal v={v} onClose={() => setOpen(false)} />}
+      </>
+    );
   return (
     <>
       <button className="paper-card" onClick={() => setOpen(true)}>

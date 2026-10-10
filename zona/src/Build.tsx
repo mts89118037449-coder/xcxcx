@@ -4,13 +4,21 @@ import { BUILD, BUILDINGS } from '../shared/build.ts';
 import { MATS } from '../shared/craft.ts';
 import { api } from './api.ts';
 import { fmt, useGame } from './game.tsx';
+import { NowChip } from './Chip.tsx';
 
 /** Стройка зоны: полоска текущего здания на экране «Зона». */
-export function BuildCard() {
+export function BuildCard({ chip }: { chip?: boolean } = {}) {
   const { p } = useGame();
   const [open, setOpen] = useState(false);
   const z = p.zoneBuild;
   const cur = BUILDINGS[z.idx];
+  if (chip)
+    return (
+      <>
+        <NowChip icon={cur?.emoji ?? '🏁'} label="Стройка" sub={cur ? `${Math.floor((z.pts / cur.goal) * 100)}%` : 'готово'} onClick={() => setOpen(true)} />
+        {open && <BuildModal onClose={() => setOpen(false)} />}
+      </>
+    );
   return (
     <>
       <button className="build-card" onClick={() => setOpen(true)}>

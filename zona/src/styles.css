@@ -3011,3 +3011,16 @@ body:has(.modal) .event-btn { z-index: 20; }
 .tile-grid > .album-btn { flex-direction: column !important; align-items: center !important; justify-content: flex-start !important; text-align: center; }
 .tile-grid > .album-btn small { position: static !important; }
 .row.gap > .btn-wide { flex: 1 1 0; min-width: 0; padding-left: 6px; padding-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+.place-strip .leisure { display: flex; overflow-x: auto; gap: 8px; padding: 4px 2px 8px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.place-strip .leisure-tile { flex: 0 0 82px; scroll-snap-align: start; min-height: 82px; font-size: 11.5px; }
+.place-strip .leisure-tile span { font-size: 28px; }
+.tile-grid > .album-btn { flex-wrap: nowrap; margin-bottom: 0; width: auto; }
+
+/* сейчас важно */
+.now-strip { display: flex; gap: 8px; overflow-x: auto; padding: 6px 2px 8px; -webkit-overflow-scrolling: touch; }
+.now-chip { position: relative; flex: 0 0 78px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px 6px; border-radius: 16px; border: 1px solid #ffffff1a; background: #ffffff0d; color: inherit; text-align: center; }
+.now-chip.hot { border-color: #e04a3a; background: #3a141088; }
+.now-chip.hot::after { content: ''; position: absolute; top: 6px; right: 8px; width: 10px; height: 10px; border-radius: 50%; background: #e04a3a; }
+.now-ico { font-size: 28px; line-height: 32px; height: 32px; display: grid; place-items: center; }
+.now-chip b { font-size: 11.5px; line-height: 1.1; }
+.now-chip small { font-size: 10px; color: var(--muted); max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

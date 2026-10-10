@@ -4,15 +4,23 @@ import { DECREES, ELECT } from '../shared/elect.ts';
 import { api } from './api.ts';
 import { Face } from './art/sprites.tsx';
 import { fmt, timeLeft, useGame } from './game.tsx';
+import { NowChip } from './Chip.tsx';
 
 type View = Awaited<ReturnType<typeof api.elect>>;
 
 /** Смотрящий за зоной: баннер с указом и налогом; тап — выборы. */
-export function SmotrCard() {
+export function SmotrCard({ chip }: { chip?: boolean } = {}) {
   const { p } = useGame();
   const [open, setOpen] = useState(false);
   const s = p.smotr;
   const decree = s?.decree ? DECREES.find((d) => d.id === s.decree)?.text : null;
+  if (chip)
+    return (
+      <>
+        <NowChip icon={s ? <Face face={s.face} size={30} /> : '👑'} label={s ? 'Смотрящий' : 'Выборы'} sub={s ? s.name : 'смотрящего нет'} hot={s?.id === p.id} onClick={() => setOpen(true)} />
+        {open && <ElectModal onClose={() => setOpen(false)} />}
+      </>
+    );
   return (
     <>
       <button className={`smotr-card ${s?.id === p.id ? 'me' : ''}`} onClick={() => setOpen(true)}>

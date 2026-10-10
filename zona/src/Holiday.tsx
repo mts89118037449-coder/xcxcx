@@ -2,15 +2,23 @@ import { useEffect, useState } from 'react';
 import { EGG, holidayById } from '../shared/holidays.ts';
 import { api } from './api.ts';
 import { timeLeft, useGame } from './game.tsx';
+import { NowChip } from './Chip.tsx';
 
 /** Баннер праздника: виден, только пока он идёт. */
-export function HolidayCard() {
+export function HolidayCard({ chip }: { chip?: boolean } = {}) {
   const { p, now } = useGame();
   const [open, setOpen] = useState(false);
   const h = p.holiday;
   if (!h) return null;
   const def = holidayById.get(h.id)!;
   const ready = h.dailyReady || def.tasks.some((t, i) => !h.claimed[i] && (h.prog[i] ?? 0) >= t.n);
+  if (chip)
+    return (
+      <>
+        <NowChip icon={def.emoji} label={def.name} sub={`${def.token.emoji} ${h.tokens}`} hot={ready} onClick={() => setOpen(true)} />
+        {open && <HolidayModal onClose={() => setOpen(false)} />}
+      </>
+    );
   return (
     <>
       <button className={`hol-card hol-${h.id} ${ready ? 'ready' : ''}`} onClick={() => setOpen(true)}>
