@@ -768,7 +768,10 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   // рандом смены: иногда премия от бригадира, иногда находка на промке
   const bonus = rng() < 0.1;
   const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney') + repBonus(p, 'jobMoney') + famBuff(p, now)) / 100) * (riotPenalty.until > now ? RIOT.penaltyJob : 1) * (bonus ? 2 : 1) * (liveFx(now).money ?? 1) * (colonyFx(p.colony).jobMoney ?? 1));
-  p.money += money;
+  // налог смотрящего со смены — в стройку зоны
+  const tax = zoneTax.rate > 0 ? Math.floor((money * zoneTax.rate) / 100) : 0;
+  zoneTax.pending += tax;
+  p.money += money - tax;
   let item: string | null = null;
   if (rng() < 0.05) {
     item = rollConsumable(rng);
@@ -780,7 +783,7 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   gainRep(p, 'work', 1);
   const mats = rng() < CRAFT.jobChance ? giveMats(p, { [rollMat(rng)]: 1 }) : {};
   const found = liveFind(p, now, rng) ?? petFind(p, now, rng);
-  return { money, xp, levelUps, bonus, item, mats, found };
+  return { money: money - tax, tax, xp, levelUps, bonus, item, mats, found };
 }
 
 export function allocate(p: Player, stat: Stat) {
@@ -4345,3 +4348,8 @@ export function riotHit(p: Player, lastAt: number, now: number, rng: Rng) {
   const dmg = Math.round(stats(p, now).atk * (0.8 + rng() * 0.4) * (crit ? 2 : 1));
   return { dmg, crit };
 }
+
+// --- Смотрящий -----------------------------------------------------------------------------------
+
+/** Налог смотрящего (%) и сколько набежало за запрос — app переносит в стройку. */
+export const zoneTax = { rate: 0, pending: 0 };

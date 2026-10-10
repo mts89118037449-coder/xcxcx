@@ -385,3 +385,36 @@ test('бунт: агитация, голосование сутки, три во
   assert.equal((await post('/api/action/riotClaim', a(9402))).status, 400);
   assert.equal((await post('/api/action/riotClaim', a(9403))).status, 400, 'не бил — не получает');
 });
+
+test('выборы смотрящего: выдвижение, голос по авторитету, победитель прошлой недели ставит налог — деньги со смен идут в стройку', async () => {
+  const { weekIndex } = await import('../server/game.ts');
+  const w = weekIndex(Date.now());
+  const boss = initData(9501, 'Кандидат');
+  const fan = initData(9502, 'Избиратель');
+  for (const id of [9501, 9502]) {
+    await post('/api/me', id === 9501 ? boss : fan);
+    const pl = db.getPlayer(id)!;
+    Object.assign(pl, { level: 15, authority: 900, money: 100_000, intro: -1, tut: -1, energy: 200 });
+    db.savePlayer(pl);
+  }
+  assert.equal((await post('/api/action/electNominate', boss)).status, 200);
+  const v = await post('/api/action/electVote', fan, { id: 9501 });
+  assert.equal(v.status, 200);
+  assert.equal(v.json.result.candidates[0].votes, 10); // корень из 900 / 3
+  assert.equal((await post('/api/action/electVote', fan, { id: 9501 })).status, 400);
+  // итоги «прошлой недели»: переносим таблицу на неделю назад и сбрасываем текущего
+  db.kvSet(`elect:${w - 1}`, db.kvGet(`elect:${w}`, {}));
+  db.kvSet('smotr', null);
+  const e = await post('/api/elect', fan);
+  // кэш смотрящего живёт 5 секунд — дождаться не нужно: при пустом kv берётся свежий
+  assert.equal(e.json.smotr?.id, 9501, JSON.stringify(e.json.smotr));
+  assert.equal((await post('/api/action/smotrTax', fan, { tax: 5 })).status, 400, 'налог ставит только смотрящий');
+  assert.equal((await post('/api/action/smotrTax', boss, { tax: 5 })).status, 200);
+  const pts0 = db.kvGet<any>('build', { pts: 0 }).pts;
+  const job = await post('/api/action/job', fan, { jobId: 'j_floor' });
+  assert.equal(job.status, 200);
+  assert.ok(job.json.result.tax > 0);
+  assert.ok(db.kvGet<any>('build', { pts: 0 }).pts > pts0, 'налог ушёл в стройку');
+  assert.equal((await post('/api/action/smotrPardon', boss, { id: 9502 })).status, 200);
+  assert.equal((await post('/api/action/smotrPardon', boss, { id: 9502 })).status, 400);
+});

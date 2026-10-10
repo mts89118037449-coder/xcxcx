@@ -96,6 +96,7 @@ export const COSMETICS: Cosmetic[] = [
   { id: 'frame_army', kind: 'frame', name: 'Рамка «Погоны»', value: 'army' },
   { id: 'title_arm', kind: 'title', name: 'Титул «Железная рука»', value: 'Железная рука' },
   { id: 'frame_easter', kind: 'frame', name: 'Рамка «Пасхальная»', value: 'easter' },
+  { id: 'title_smotr', kind: 'title', name: 'Титул «Смотрящий»', value: 'Смотрящий' },
   { id: 'title_rebel', kind: 'title', name: 'Титул «Бунтарь»', value: 'Бунтарь' },
   { id: 'title_mole', kind: 'title', name: 'Титул «Крот»', value: 'Крот' },
   { id: 'title_married', kind: 'title', name: 'Титул «Женатик»', value: 'Женатик' },

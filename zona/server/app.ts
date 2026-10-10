@@ -1,3 +1,4 @@
+import { DECREES, ELECT, voteWeight, type ElectRow, type SmotrState } from '../shared/elect.ts';
 import { RIOT, riotAdvance, riotIdle, waveHp, type RiotState } from '../shared/riot.ts';
 import { SNITCH, pickSnitch, snitchClue, snitchMajority, type SnitchState } from '../shared/snitch.ts';
 import { BARRACKS, barrackOwners } from '../shared/barracks.ts';
@@ -418,6 +419,10 @@ export function createApp(opts: AppOptions) {
       built: p.built,
       inbox: p.inbox,
       riot: riotView(p, riotGet(t)),
+      smotr: (() => {
+        const s = smotrGet(t);
+        return s && { id: s.id, name: s.name, face: s.face, tax: s.tax, decree: s.decree };
+      })(),
       contra: { have: p.contra.have, spent: p.contra.spent, earned: p.contra.earned, shmon: g.shmonDue(p, t), day: g.dayIndex(t) },
       tunnel: (() => {
         const tn = g.ensureTunnel(p);
@@ -701,6 +706,74 @@ export function createApp(opts: AppOptions) {
       db.savePlayer(target);
       notifyPlayer(target.id, `📦 ${p.name} прислал тебе грев: ${r.label} ×${r.qty}`);
       return r;
+    },
+    electNominate: (p, _b, t) => {
+      if (p.level < ELECT.nominateLevel) throw new g.GameError(`Выдвигаться можно с ${ELECT.nominateLevel} уровня`);
+      if (p.authority < ELECT.nominateAuthority) throw new g.GameError(`Нужно ${ELECT.nominateAuthority} авторитета`);
+      const key = `elect:${g.weekIndex(t)}`;
+      const rows = db.kvGet<Record<string, ElectRow>>(key, {});
+      if (rows[p.id]) throw new g.GameError('Ты уже в списке');
+      if (p.money < ELECT.nominateFee) throw new g.GameError(`Взнос ${ELECT.nominateFee} ₽`);
+      p.money -= ELECT.nominateFee;
+      rows[p.id] = { name: p.name, face: p.face ?? null, votes: 0, voters: 0 };
+      db.kvSet(key, rows);
+      return electView(p, t);
+    },
+    electVote: (p, b, t) => {
+      if (p.level < ELECT.voteLevel) throw new g.GameError(`Голосуют с ${ELECT.voteLevel} уровня`);
+      const w = g.weekIndex(t);
+      const rows = db.kvGet<Record<string, ElectRow>>(`elect:${w}`, {});
+      const voted = db.kvGet<Record<string, number>>(`electv:${w}`, {});
+      if (voted[p.id] !== undefined) throw new g.GameError('Ты уже проголосовал');
+      const c = rows[num(b.id)];
+      if (!c) throw new g.GameError('Нет такого кандидата');
+      c.votes += voteWeight(p.authority);
+      c.voters++;
+      voted[p.id] = num(b.id);
+      db.kvSet(`elect:${w}`, rows);
+      db.kvSet(`electv:${w}`, voted);
+      return electView(p, t);
+    },
+    smotrTax: (p, b, t) => {
+      const s = smotrGet(t);
+      if (!s || s.id !== p.id) throw new g.GameError('Ты не смотрящий');
+      s.tax = Math.max(0, Math.min(ELECT.maxTax, Math.round(num(b.tax))));
+      smotrSave(s);
+      return electView(p, t);
+    },
+    smotrDecree: (p, b, t) => {
+      const s = smotrGet(t);
+      if (!s || s.id !== p.id) throw new g.GameError('Ты не смотрящий');
+      if (s.decreeDay === g.dayIndex(t)) throw new g.GameError('Указ — раз в день');
+      if (!DECREES.some((d) => d.id === str(b.id))) throw new g.GameError('Нет такого указа');
+      s.decree = str(b.id);
+      s.decreeDay = g.dayIndex(t);
+      smotrSave(s);
+      return electView(p, t);
+    },
+    smotrPardon: (p, b, t) => {
+      const s = smotrGet(t);
+      if (!s || s.id !== p.id) throw new g.GameError('Ты не смотрящий');
+      if (s.pardoned !== null) throw new g.GameError('Помиловать можно одного за неделю');
+      const target = db.getPlayer(num(b.id));
+      if (!target || target.id === p.id) throw new g.GameError('Нельзя');
+      target.term = Math.max(0, target.term - ELECT.pardonDays);
+      g.log(target, t, `👑 Смотрящий ${p.name} похлопотал за тебя: −${ELECT.pardonDays} дн. срока`);
+      db.savePlayer(target);
+      notifyPlayer(target.id, `👑 Смотрящий ${p.name} похлопотал за тебя: −${ELECT.pardonDays} дн. срока`);
+      s.pardoned = target.id;
+      smotrSave(s);
+      return electView(p, t);
+    },
+    smotrSalary: (p, _b, t) => {
+      const s = smotrGet(t);
+      if (!s || s.id !== p.id) throw new g.GameError('Ты не смотрящий');
+      if (s.salary <= 0) throw new g.GameError('Пока не набежало');
+      p.money += s.salary;
+      const got = s.salary;
+      s.salary = 0;
+      smotrSave(s);
+      return { money: got };
     },
     riotCall: (p, _b, t) => {
       const s = riotGet(t);
@@ -1397,7 +1470,10 @@ export function createApp(opts: AppOptions) {
         const week = g.weekIndex(t);
         const war0 = p.war.week === week ? p.war.pts : 0;
         g.requireUnlock(p, req.params.type);
+        g.zoneTax.rate = smotrGet(t)?.tax ?? 0;
+        g.zoneTax.pending = 0;
         const result = handler(p, req.body ?? {}, t);
+        if (g.zoneTax.pending > 0) taxFlush(g.zoneTax.pending);
         g.tutAdvance(p, req.params.type, t);
         // очки войны кланов — в недельную таблицу клана
         const war1 = p.war.week === week ? p.war.pts : 0;
@@ -1576,6 +1652,74 @@ export function createApp(opts: AppOptions) {
       endsAt: g.weekEndsAt(t),
       now: t,
     });
+  });
+
+  // Смотрящий: итоги выборов прошлой недели решают, кто держит эту
+  let smotrCache: { at: number; s: SmotrState | null } = { at: 0, s: null };
+  const smotrGet = (t: number): SmotrState | null => {
+    const w = g.weekIndex(t);
+    if (smotrCache.s && Date.now() - smotrCache.at < 5000 && smotrCache.s.week === w) return smotrCache.s;
+    let s = db.kvGet<SmotrState | null>('smotr', null);
+    if (!s || s.week !== w) {
+      const rows = Object.entries(db.kvGet<Record<string, ElectRow>>(`elect:${w - 1}`, {}))
+        .filter(([, r]) => r.voters > 0)
+        .sort((a, b) => b[1].votes - a[1].votes);
+      const win = rows[0];
+      s = win ? { id: Number(win[0]), name: win[1].name, face: win[1].face, week: w, tax: 0, decree: null, decreeDay: -1, pardoned: null, collected: 0, salary: 0 } : null;
+      db.kvSet('smotr', s ?? { id: 0, name: '', face: null, week: w, tax: 0, decree: null, decreeDay: -1, pardoned: null, collected: 0, salary: 0 });
+      if (s) {
+        const winner = db.getPlayer(s.id);
+        if (winner) {
+          winner.gold += ELECT.gold;
+          if (!winner.cosmetics.includes('title_smotr')) winner.cosmetics.push('title_smotr');
+          g.log(winner, t, `👑 Зона выбрала тебя смотрящим на неделю: +${ELECT.gold} 🪙`);
+          db.savePlayer(winner);
+          notifyPlayer(winner.id, '👑 Зона выбрала тебя смотрящим! Поставь налог и огласи указ.');
+        }
+      }
+    }
+    if (s && !s.id) s = null;
+    smotrCache = { at: Date.now(), s };
+    return s;
+  };
+  const smotrSave = (s: SmotrState) => {
+    db.kvSet('smotr', s);
+    smotrCache = { at: Date.now(), s };
+  };
+  /** Налог со смен: в стройку зоны, десятая доля — смотрящему. */
+  const taxFlush = (amount: number) => {
+    const s = smotrGet(now());
+    if (!s) return;
+    const st = db.kvGet<BuildState>('build', { idx: 0, pts: 0, done: [] });
+    if (st.idx < BUILDINGS.length) {
+      addBuildPts(st, amount);
+      db.kvSet('build', st);
+      buildState = st;
+      g.zoneBuilt.done = st.done;
+    }
+    s.collected += amount;
+    s.salary += Math.floor(amount * ELECT.salaryShare);
+    smotrSave(s);
+  };
+  const electView = (p: g.Player, t: number) => {
+    const w = g.weekIndex(t);
+    const rows = db.kvGet<Record<string, ElectRow>>(`elect:${w}`, {});
+    const voted = db.kvGet<Record<string, number>>(`electv:${w}`, {});
+    const s = smotrGet(t);
+    return {
+      smotr: s && { id: s.id, name: s.name, face: s.face, tax: s.tax, decree: s.decree, pardoned: s.pardoned !== null, collected: s.collected, salary: s.id === p.id ? s.salary : 0, decreeToday: s.decreeDay === g.dayIndex(t) },
+      candidates: Object.entries(rows)
+        .map(([id, r]) => ({ id: Number(id), ...r }))
+        .sort((a, b) => b.votes - a.votes),
+      myVote: voted[p.id] ?? null,
+      myWeight: voteWeight(p.authority),
+      endsAt: g.weekEndsAt(t),
+    };
+  };
+  api.post('/elect', (req: AuthedRequest, res) => {
+    const p = db.getPlayer(req.tgUser!.id);
+    if (!p) return res.status(404).json({ error: 'Нет игрока' });
+    res.json(electView(p, now()));
   });
 
   // Бунт: одно общее состояние на всю зону

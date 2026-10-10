@@ -7,6 +7,7 @@ const HolidayCard = named(() => import('../Holiday.tsx'), 'HolidayCard');
 const BuildCard = named(() => import('../Build.tsx'), 'BuildCard');
 const ContraCard = named(() => import('../Contra.tsx'), 'ContraCard');
 const RiotCard = named(() => import('../Riot.tsx'), 'RiotCard');
+const SmotrCard = named(() => import('../Elect.tsx'), 'SmotrCard');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
@@ -90,6 +91,7 @@ export function Zone() {
         </Suspense>
       )}
       <Suspense fallback={null}>
+        <SmotrCard />
         <RiotCard />
       </Suspense>
       {p.contra.shmon && (

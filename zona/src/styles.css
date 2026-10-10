@@ -2881,3 +2881,29 @@ body:has(.modal) .event-btn { z-index: 20; }
 .riot-feed div b { margin-left: auto; }
 .riot-feed .me { color: var(--gold); }
 .riot-feed-line { color: var(--muted); font-size: 11px; }
+
+/* смотрящий */
+.smotr-card { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; margin: 6px 0; border-radius: 14px; border: 1px solid #8a6a2a; background: linear-gradient(90deg, #2a1e0a, #1e1c18); text-align: left; color: inherit; }
+.smotr-card.me { border-color: var(--gold); box-shadow: 0 0 10px #f2c14e55; }
+.smotr-card b { display: block; }
+.smotr-card small { color: var(--muted); font-size: 12px; }
+.smotr-crown { font-size: 30px; }
+.smotr-crown.big { font-size: 34px; margin-bottom: -8px; animation: bob 2s infinite; }
+.smotr-tax { font-style: normal; font-size: 12px; color: var(--gold); white-space: nowrap; }
+.smotr-throne { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px; margin-bottom: 8px; border-radius: 14px; background: radial-gradient(circle at 50% 30%, #4a3a14, #1e1a12); text-align: center; }
+.smotr-throne b { font-size: 18px; }
+.smotr-throne small { color: var(--muted); font-size: 12px; }
+.smotr-panel { display: flex; flex-direction: column; gap: 6px; padding: 10px; margin-bottom: 8px; border-radius: 12px; background: #0005; border: 1px solid var(--gold); }
+.smotr-decrees { display: flex; flex-direction: column; gap: 4px; }
+.smotr-decrees button { text-align: left; padding: 6px 9px; border-radius: 8px; border: 1px solid #4a4030; background: #2a241a; color: inherit; font-size: 12px; }
+.smotr-decrees button.on { border-color: var(--gold); background: #3a3020; }
+.elect-head b { display: block; }
+.elect-head small { color: var(--muted); font-size: 12px; }
+.elect-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.elect-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; background: #0004; }
+.elect-row.mine { box-shadow: inset 0 0 0 1px var(--gold); }
+.elect-row b, .elect-row small { display: block; }
+.elect-row small { color: var(--muted); font-size: 11px; }
+.elect-bar { display: block; height: 6px; border-radius: 3px; background: #0006; overflow: hidden; margin: 3px 0; }
+.elect-bar i { display: block; height: 100%; background: linear-gradient(90deg, #8a6a2a, #f2c14e); }
+.smotr-taxes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
