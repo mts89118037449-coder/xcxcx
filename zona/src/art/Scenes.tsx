@@ -7,7 +7,8 @@
 import type { ReactNode } from 'react';
 import { FURNITURE, bossById, interiorById, type Spot } from '../../shared/content.ts';
 import { WeatherGround, WeatherLayer, sceneColony } from './Weather.tsx';
-import { BearSkin, Canopy, Deco, Dog, Drapes, Featherbed, FloorCarpet, Garland, Light, MiniBar, Music, Painting, HolidayDeco, Pet, Photos, PlayerPet, Poster, Samovar, Shelf, SilkCarpet, Sport, Stash, Stool, Stove, WallTv } from './CellDecor.tsx';
+import { LivePet } from './Critters.tsx';
+import { BearSkin, Canopy, Deco, Dog, Drapes, Featherbed, FloorCarpet, Garland, Light, MiniBar, Music, Painting, HolidayDeco, Pet, Photos, Poster, Samovar, Shelf, SilkCarpet, Sport, Stash, Stool, Stove, WallTv } from './CellDecor.tsx';
 
 const W = 360;
 const H = 280;
@@ -528,7 +529,7 @@ function CellLive({ furniture, pet, deco }: { furniture: string[]; pet?: string 
       {f.tech === 'f_tv' && <rect className="tv-screen" x={tech.x + 4} y={tech.y} width={26} height={24} rx={4} opacity={0.75} />}
       {f.pet === 'f_roach' && <Pet kind="f_roach" />}
       {deco && <HolidayDeco kind={deco} />}
-      {pet && <PlayerPet kind={pet} />}
+      {pet && <LivePet kind={pet} />}
     </>
   );
 }
