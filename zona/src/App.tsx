@@ -59,6 +59,7 @@ const FishGame = named(() => import('./Minigames2.tsx'), 'FishGame');
 const ShizoGame = named(() => import('./Minigames2.tsx'), 'ShizoGame');
 
 const EnergySheet = named(() => import('./Energy.tsx'), 'EnergySheet');
+const SearchModal = named(() => import('./Search.tsx'), 'SearchModal');
 const TutorialCoach = named(() => import('./Tutorial.tsx'), 'TutorialCoach');
 /** Места со своим экраном (без тяжёлого списка мест в первом файле; сверяется тестом). */
 export const PLACE_SCREENS = new Set<string>(['bath', 'canteen', 'library', 'club', 'visits', 'factory', 'shizo', 'logging', 'kamera', 'plac']);
@@ -105,6 +106,7 @@ export function App() {
   const [battleOn, setBattleOn] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [mini, setMini] = useState<Mini | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const hasBattle = !!player?.battle;
   // «Назад» Telegram: мини-игры и места закрываются, со вкладки — домой
   useEffect(initBack, []);
@@ -265,6 +267,9 @@ export function App() {
               </span>
             </div>
           </div>
+          <button className="shop-btn search-btn" onClick={() => setSearchOpen(true)} aria-label="Что где" data-tut="search">
+            🔍
+          </button>
           <button className={`shop-btn ${tab === 'shop' ? 'on' : ''}`} onClick={() => go('shop')} aria-label="Ларёк">
             ⭐
           </button>
@@ -340,6 +345,7 @@ export function App() {
       {pullOpen && <Pullups onClose={() => setPullOpen(false)} />}
       {shellsOpen && <ShellGame onClose={() => setShellsOpen(false)} />}
       {energyOpen && <EnergySheet onClose={() => setEnergyOpen(false)} />}
+      {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
       </Suspense>
       {fight && <FightModal fight={fight} me={fight.me ?? { name: p.name, look: lookOf(p) }} onClose={() => setFight(null)} />}
     </GameCtx.Provider>

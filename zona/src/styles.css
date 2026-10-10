@@ -3024,3 +3024,13 @@ body:has(.modal) .event-btn { z-index: 20; }
 .now-ico { font-size: 28px; line-height: 32px; height: 32px; display: grid; place-items: center; }
 .now-chip b { font-size: 11.5px; line-height: 1.1; }
 .now-chip small { font-size: 10px; color: var(--muted); max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* поиск «Что где» */
+.search-btn { margin-right: 6px; }
+.search-input { width: 100%; font-size: 16px; padding: 10px 12px; margin-bottom: 8px; }
+.search-list { display: flex; flex-direction: column; gap: 4px; }
+.search-row { display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; align-items: center; column-gap: 8px; padding: 8px 10px; border-radius: 12px; border: 0; background: #ffffff0a; color: inherit; text-align: left; }
+.search-row span { grid-row: 1 / 3; font-size: 24px; text-align: center; }
+.search-row small { color: var(--muted); font-size: 11.5px; }
+.flash-find { animation: flash-find 0.8s ease-in-out 3; position: relative; z-index: 2; }
+@keyframes flash-find { 50% { box-shadow: 0 0 0 4px #f2c14e, 0 0 24px #f2c14eaa; transform: scale(1.04); } }
