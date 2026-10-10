@@ -22,6 +22,7 @@ import { Market } from '../Market.tsx';
 import { LockedCard } from '../Unlocks.tsx';
 import { isOpen } from '../../shared/unlocks.ts';
 import { NowChip } from '../Chip.tsx';
+import { Hint } from '../Hint.tsx';
 
 /** Вся зона: здания ведут на экраны, по земле валяются бычки, барыга меняет их. */
 export function Zone() {
@@ -85,6 +86,9 @@ export function Zone() {
         {wx.effect && <div className="wx-note">{wx.emoji} {wx.effect}</div>}
       </div>
       {p.nextButtAt && !field.length && <div className="muted small center">🚬 через {timeLeft(p.nextButtAt - now)}</div>}
+      <Hint id="zone" icon="🗺️">
+        <b>Карта — это меню.</b> Тапай по зданиям или выбирай место в ленте ниже. Вверху <b>🔍</b> — поиск «что где».
+      </Hint>
       {/* куда пойти — все места в одну ленту прямо под картой */}
       <div className="place-strip" data-tut="places">
         <PlaceTiles />
@@ -105,7 +109,7 @@ export function Zone() {
         onChange={setSeg}
         items={[
           { id: 'people', icon: '👥', label: 'Люди' },
-          { id: 'market', icon: '🛒', label: 'Рынок' },
+          { id: 'market', icon: '🛒', label: 'Рынок', badge: p.contra.shmon },
           { id: 'week', icon: '📅', label: 'Неделя' },
         ]}
       />

@@ -7,6 +7,8 @@ import { SegBar, useSeg } from '../Seg.tsx';
 import { Suspense } from 'react';
 import { named } from '../lazy.ts';
 import { GameTiles } from '../Leisure.tsx';
+import { todo } from '../todo.ts';
+import { Hint } from '../Hint.tsx';
 
 const TourneyCard = named(() => import('../Tourney.tsx'), 'TourneyCard');
 const WordCard = named(() => import('../Word.tsx'), 'WordCard');
@@ -16,7 +18,8 @@ const QuizCard = named(() => import('../Quiz.tsx'), 'QuizCard');
 const STAT_ICON: Record<Stat, string> = { str: '💪', agi: '🤸', end: '🫀' };
 
 export function Work() {
-  const { p, act, toast, busy } = useGame();
+  const { p, now, act, toast, busy } = useGame();
+  const dots = todo(p, now).sections.work;
   const talk = useTalk();
   const [anim, animKey, play] = useAnim();
   const [seg, setSeg] = useSeg('work', 'jobs', ['jobs', 'games', 'quests', 'daily', 'gym'] as const);
@@ -38,14 +41,17 @@ export function Work() {
         <Stage onTalk={talk} loc="work" look={lookOf(p)} mood={p.hp < p.stats.maxHp * 0.3 ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
         <div className="scene-tag">⚒️ Дела: смены, игры, поручения</div>
       </div>
+      <Hint id="work" icon="⚒️">
+        <b>Дела:</b> смены — за энергию, <b>игры</b> — бесплатно по счётчику, поручения и дела дня — награды. Красная точка — есть что забрать.
+      </Hint>
       <SegBar
         value={seg}
         onChange={setSeg}
         items={[
           { id: 'jobs', icon: '⚒️', label: 'Смены' },
-          { id: 'games', icon: '🎲', label: 'Игры' },
-          { id: 'quests', icon: '📋', label: 'Поручения' },
-          { id: 'daily', icon: '✅', label: 'Дела дня' },
+          { id: 'games', icon: '🎲', label: 'Игры', badge: dots.games },
+          { id: 'quests', icon: '📋', label: 'Поручения', badge: dots.quests },
+          { id: 'daily', icon: '✅', label: 'Дела дня', badge: dots.daily },
           { id: 'gym', icon: '💪', label: 'Качалка', badge: p.statPoints || false },
         ]}
       />

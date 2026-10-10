@@ -5,20 +5,20 @@ import { useGame, type Place, type Tab } from './game.tsx';
 
 /** Куда вести за каждым видом шага сюжета. */
 const WHERE: Partial<Record<TrackKind, { tab?: Tab; seg?: [string, string]; place?: Place; hint: string }>> = {
-  job: { tab: 'work', seg: ['work', 'jobs'], hint: 'Работа → смена' },
+  job: { tab: 'work', seg: ['work', 'jobs'], hint: 'Дела → Смены' },
   boss: { tab: 'fight', seg: ['fight', 'bosses'], hint: 'Бой → Боссы' },
   pvpWin: { tab: 'fight', seg: ['fight', 'pvp'], hint: 'Бой → Наезд' },
   butts: { tab: 'zone', hint: 'Зона → собирай бычки на земле' },
   furnish: { tab: 'home', seg: ['home', 'cell'], hint: 'Хата → Обустроить' },
-  quest: { tab: 'work', seg: ['work', 'quests'], hint: 'Работа → Поручения' },
+  quest: { tab: 'work', seg: ['work', 'quests'], hint: 'Дела → Поручения' },
   minigame: { tab: 'work', seg: ['work', 'games'], hint: 'Дела → Игры' },
-  visit: { tab: 'zone', seg: ['zone', 'places'], hint: 'Зона → Места → По хатам' },
+  visit: { tab: 'zone', hint: 'Зона → «По хатам» под картой' },
   yard: { tab: 'fight', hint: 'Бой → прогуляйся по двору' },
   church: { place: 'church', hint: 'Зона → Церковь' },
   escape: { place: 'escape', hint: 'Зона → Побег' },
   worldHit: { tab: 'fight', seg: ['fight', 'riot'], hint: 'Бой → Бунт' },
-  train: { tab: 'work', seg: ['work', 'gym'], hint: 'Работа → Качалка' },
-  place: { tab: 'zone', seg: ['zone', 'places'], hint: 'Зона → Места' },
+  train: { tab: 'work', seg: ['work', 'gym'], hint: 'Дела → Качалка' },
+  place: { tab: 'zone', hint: 'Зона → места под картой' },
   spend: { tab: 'work', seg: ['work', 'jobs'], hint: 'трать энергию на смены и боссов' },
   event: { tab: 'fight', hint: 'жди «!» внизу или прогуляйся по двору' },
 };

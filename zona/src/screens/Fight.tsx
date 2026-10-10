@@ -1,4 +1,5 @@
 import { itemLines } from '../Perks.tsx';
+import { Hint } from '../Hint.tsx';
 import { useEvent } from '../EventsLite.tsx';
 import { useCallback, useEffect, useState } from 'react';
 import { BALANCE, BOSSES, GOLD_PRICES, WORLD_BOSS, itemById } from '../../shared/content.ts';
@@ -19,7 +20,8 @@ type FightSeg = 'bosses' | 'riot' | 'pvp' | 'ring' | 'crew';
 
 /** Разделы «Боя»: «Братва» — отдельный экран, но переключается отсюда же. */
 export function FightNav({ value, onChange }: { value: FightSeg; onChange(v: FightSeg): void }) {
-  const { go } = useGame();
+  const { go, p } = useGame();
+  const riotHot = (p.riot.phase === 'vote' && p.riot.myVote === null) || p.riot.phase === 'fight' || p.riot.canClaim;
   return (
     <SegBar
       value={value}
@@ -27,7 +29,7 @@ export function FightNav({ value, onChange }: { value: FightSeg; onChange(v: Fig
       items={[
         { id: 'bosses', icon: '👹', label: 'Боссы' },
         { id: 'pvp', icon: '🥊', label: 'Наезд' },
-        { id: 'riot', icon: '🔥', label: 'Бунт' },
+        { id: 'riot', icon: '🔥', label: 'Бунт', badge: riotHot },
         { id: 'ring', icon: '🏟️', label: 'Ринг' },
         { id: 'crew', icon: '🏴', label: 'Братва' },
       ]}
@@ -89,6 +91,9 @@ export function Fight() {
           {now < p.yardReadyAt ? `🚶 ${timeLeft(p.yardReadyAt - now)}` : '🚶 Прогуляться'}
         </button>
       </div>
+      <Hint id="fight" icon="🥊">
+        <b>Бой:</b> боссы — за шмот и золото, наезд — на игроков ради лиги, бунт и ринг — вместе со всеми. Кланы и чат — в «Братве».
+      </Hint>
       <FightNav value={seg} onChange={(v) => v !== 'crew' && setSeg(v)} />
       {seg === 'riot' && world && (
         <Card className="world">

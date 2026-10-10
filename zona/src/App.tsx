@@ -20,6 +20,7 @@ import { setSceneColony } from './art/Weather.tsx';
 import { named } from './lazy.ts';
 import { Home } from './screens/Home.tsx';
 import { initBack, setBackFallback, useBack } from './Nav.tsx';
+import { todo } from './todo.ts';
 
 // Пять разделов внизу: Хата, Зона, Дела (работа и игры), Бой (и братва), Я (профиль и шмот). «Ларёк» — ⭐ в шапке.
 // Окна, которые открываются не сразу, — отдельными кусками: первый запуск в Telegram быстрее.
@@ -237,6 +238,7 @@ export function App() {
     window.scrollTo(0, 0);
   };
   const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true), say: setDialog, openShells: () => setShellsOpen(true), openPlace: (pl) => (pl === 'pullups' ? setPullOpen(true) : (setPlace(pl), window.scrollTo(0, 0))), openEvent: (id) => setEventId(id ?? p.event?.id ?? null), openMini: setMini };
+  const todos = todo(p, now);
   const energyTimer = p.nextEnergyAt ? Math.max(0, p.nextEnergyAt - now) : 0;
 
   return (
@@ -306,8 +308,7 @@ export function App() {
           <button key={t.id} data-tut={`tab-${t.id}`} className={tab === t.id || t.also?.includes(tab) ? 'active' : ''} onClick={() => go(t.id)}>
             <span className="tab-icon">
               {t.icon}
-              {t.id === 'work' && p.statPoints > 0 && <i className="dot" />}
-              {t.id === 'home' && now >= p.dailyReadyAt && <i className="dot" />}
+              {todos.tabs[t.id] && <i className="dot" />}
             </span>
             <span>{t.label}</span>
           </button>

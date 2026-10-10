@@ -8,6 +8,7 @@ import { useTalk } from '../Talk.tsx';
 import { BonusList, Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { chapterOf } from '../../shared/story.ts';
+import { Hint } from '../Hint.tsx';
 
 
 // всё, что не на первом экране, — грузится, когда понадобится
@@ -91,6 +92,9 @@ export function Home() {
         )}
       </div>
 
+      <Hint id="home" icon="🏚️">
+        <b>Твоя хата.</b> Тапни по сокамерникам — поговорят. Ниже — сюжет, облик и обустройство. Внизу пять разделов, вверху 🔍 — поиск.
+      </Hint>
       <SegBar
         value={panel}
         onChange={setSeg}
