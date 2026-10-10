@@ -17,9 +17,10 @@ export function Top() {
   const { p, botUsername, toast, visit } = useGame();
   const [view, setView] = useState<'top' | 'clans' | 'chat'>('top');
   const [rows, setRows] = useState<Row[] | null>(null);
-  const [refs, setRefs] = useState<{ id: number; name: string; level: number }[] | null>(null);
+  const [refs, setRefs] = useState<{ id: number; name: string; level: number; earned: number }[] | null>(null);
+  const [earned, setEarned] = useState(0);
   useEffect(() => {
-    api.refs().then((r) => setRefs(r.refs)).catch(() => setRefs([]));
+    api.refs().then((r) => (setRefs(r.refs), setEarned(r.earned))).catch(() => setRefs([]));
   }, []);
   const [total, setTotal] = useState(0);
 
@@ -89,11 +90,20 @@ export function Top() {
             ))}
             <small className="muted">и {Math.round(REFERRAL.grandShare * 100)}% от этого — тому, кто подтянул тебя</small>
           </div>
+          <div className="ref-donate">
+            <span className="ref-pct">{Math.round(REFERRAL.donateShare * 100)}%</span>
+            <span className="grow">
+              <b>с каждой покупки кента — тебе золотом</b>
+              <small>
+                и {Math.round(REFERRAL.donateGrandShare * 100)}% с покупок кентов твоих кентов · уже получил <b>{fmt(earned)} 🪙</b>
+              </small>
+            </span>
+          </div>
           {refs && refs.length > 0 && (
             <div className="ref-list">
               {refs.map((r) => (
                 <button key={r.id} onClick={() => visit(r.id)}>
-                  {r.name} <small>ур. {r.level}</small>
+                  {r.name} <small>ур. {r.level}{r.earned > 0 && ` · +${fmt(r.earned)} 🪙`}</small>
                 </button>
               ))}
             </div>

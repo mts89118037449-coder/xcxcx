@@ -147,8 +147,14 @@ test('кланы: создать, вступить, общак, уровень, 
 });
 
 test('оплата Stars: счёт, pre-checkout, зачисление ровно один раз', async () => {
-  const auth = initData(40, 'Донатер');
+  // цепочка: 38 подтянул 39, 39 подтянул 40
+  await post('/api/me', initData(38, 'Дед'));
+  await post('/api/me', initData(39, 'Батя', { start_param: 'ref_38' }));
+  const auth = initData(40, 'Донатер', { start_param: 'ref_39' });
   await post('/api/me', auth);
+  const gold39 = db.getPlayer(39)!.gold;
+  const gold38 = db.getPlayer(38)!.gold;
+  const gold40 = db.getPlayer(40)!.gold;
   const inv = await post('/api/invoice', auth, { packId: 'gold_m' });
   assert.equal(inv.json.link, 'https://t.me/$invoice');
   const invoiceCall = calls.find((c) => c.method === 'createInvoiceLink')!;
@@ -178,7 +184,13 @@ test('оплата Stars: счёт, pre-checkout, зачисление ровн�
   await app.handleUpdate(paid);
   await app.handleUpdate(paid); // Telegram может доставить повторно
   const me = await post('/api/me', auth);
-  assert.equal(me.json.player.gold, 20 + 350);
+  assert.equal(me.json.player.gold, gold40 + 350);
+  // 10% от 150 ⭐ по 2 🪙 за звезду — пригласившему, 3% — его пригласившему; повтор платежа не удваивает
+  assert.equal(db.getPlayer(39)!.gold, gold39 + 30);
+  assert.equal(db.getPlayer(38)!.gold, gold38 + 9);
+  const refs = await post('/api/refs', initData(39, 'Батя'));
+  assert.equal(refs.json.earned, 30);
+  assert.equal(refs.json.refs[0].earned, 30);
 });
 
 test('webhook проверяет секрет', async () => {

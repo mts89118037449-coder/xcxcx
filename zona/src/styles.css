@@ -2753,3 +2753,10 @@ body:has(.modal) .event-btn { z-index: 20; }
 .sn-clue { display: flex; flex-direction: column; padding: 6px 8px; border-radius: 6px; background: #e8dcc0; color: #2a2a3a; transform: rotate(-0.4deg); }
 .sn-clue span { font-size: 11px; color: #a03030; }
 .sn-clue b { font-size: 13px; }
+
+/* доля с покупок кентов */
+.ref-donate { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 8px 10px; border-radius: 12px; background: linear-gradient(90deg, #3a2e10, #22201a); border: 1px solid var(--gold); }
+.ref-pct { font-size: 26px; font-weight: 900; color: var(--gold); text-shadow: 0 0 10px #f2c14e66; }
+.ref-donate b { display: block; font-size: 13px; }
+.ref-donate small { color: var(--muted); font-size: 12px; }
+.ref-donate small b { display: inline; color: var(--gold); }

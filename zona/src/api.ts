@@ -129,7 +129,7 @@ export const api = {
     post<{ cur: { id: string; startsAt: number; endsAt: number; by: 'auto' | 'admin' } | null; next: { id: string; startsAt: number; endsAt: number }; list: { id: string; name: string; emoji: string; short: string; desc: string }[] }>('/admin/live', body),
   adminSus: (id?: number, act?: 'clear' | 'ban' | 'unban') => post<{ list: SusRow[]; flagAt: number }>('/admin/sus', { id, act }),
   season: () => post<{ top: { id: number; name: string; face: number | null; frame: string | null; pts: number }[] }>('/season'),
-  refs: () => post<{ refs: { id: number; name: string; level: number }[] }>('/refs'),
+  refs: () => post<{ refs: { id: number; name: string; level: number; earned: number }[]; earned: number }>('/refs'),
   chat: (channel: 'all' | 'clan') => post<{ messages: { id: number; pid: number; name: string; face: number | null; phrase: string; at: number; frame: string | null; title: string | null }[] }>('/chat', { channel }),
   ring: () => post<{ ring: import('./Ring.tsx').RingView; now: number }>('/ring'),
   world: () => post<{ world: WorldBossView; online: number }>('/world'),

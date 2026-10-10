@@ -1457,7 +1457,8 @@ export function createApp(opts: AppOptions) {
   });
 
   api.post('/refs', (req: AuthedRequest, res) => {
-    res.json({ refs: db.referrals(req.tgUser!.id) });
+    const me = db.getPlayer(req.tgUser!.id);
+    res.json({ refs: db.referrals(req.tgUser!.id).map((r) => ({ ...r, earned: me?.refEarn.by[r.id] ?? 0 })), earned: me?.refEarn.total ?? 0 });
   });
 
   api.post('/chat', (req: AuthedRequest, res) => {
@@ -1863,6 +1864,18 @@ export function createApp(opts: AppOptions) {
       g.tick(p, t);
       g.applyPack(p, pack, t);
       db.addPayment(chargeId, p.id, pack.id, pack.stars, t);
+      // доля пригласившему (10%) и тому, кто подтянул его (3%)
+      const ref = p.refBy ? db.getPlayer(p.refBy) : null;
+      if (ref) {
+        const gold = g.refDonate(ref, p, pack.stars, REFERRAL.donateShare, t);
+        db.savePlayer(ref);
+        notifyPlayer(ref.id, `🤝 Твой кент ${p.name} поддержал зону — тебе ${gold} 🪙`);
+        const grand = ref.refBy ? db.getPlayer(ref.refBy) : null;
+        if (grand && grand.id !== p.id) {
+          g.refDonate(grand, p, pack.stars, REFERRAL.donateGrandShare, t);
+          db.savePlayer(grand);
+        }
+      }
       db.savePlayer(p);
       return { pack, duplicate: false };
     });

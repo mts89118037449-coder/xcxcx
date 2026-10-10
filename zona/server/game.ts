@@ -69,7 +69,7 @@ import { liveById, type LiveEffects, type LiveRun } from '../shared/live.ts';
 import { LEAGUE, LEAGUE_TIERS, REVENGE, leaguePoints, leagueTier, powerOf } from '../shared/league.ts';
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTICE_KINDS, NOTIFY, TERM, mastById, termDays, type Mast, type NoticeKind } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
-import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, type HutId } from '../shared/clans.ts';
+import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, refDonateGold, type HutId } from '../shared/clans.ts';
 import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
 import { BARRACK, barrackBonus, barrackById, raidPts, type BarrackBonus } from '../shared/barracks.ts';
@@ -226,6 +226,8 @@ export interface Player {
   shieldUntil: number;
   worldHitAt: number;
   refBy: number | null;
+  /** золото с покупок подтянутых кентов: всего и по каждому */
+  refEarn: { total: number; by: Record<string, number> };
   refCount: number;
   /** за какие уровни этого игрока уже заплатили тому, кто подтянул */
   refPaid: number[];
@@ -401,6 +403,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     shieldUntil: 0,
     worldHitAt: 0,
     refBy: null,
+    refEarn: { total: 0, by: {} },
     refCount: 0,
     refPaid: [],
     parcels: { day: '', n: 0 },
@@ -518,6 +521,7 @@ export function migrate(p: Player): Player {
   p.pet ??= null;
   p.built ??= 0;
   p.penpal ??= null;
+  p.refEarn ??= { total: 0, by: {} };
   p.inbox ??= [];
   p.ink ??= null;
   p.inkOrder ??= null;
@@ -4127,4 +4131,16 @@ export function barrackRaid(p: Player, barrackId: string, now: number, rng: Rng)
   const pts = raidPts(p.str, rng());
   warPoints(p, now, 1);
   return { pts };
+}
+
+// --- Доля с покупок кентов -----------------------------------------------------------------------
+
+/** Кент что-то купил: пригласившему — доля золотом. */
+export function refDonate(ref: Player, from: Player, stars: number, share: number, now: number) {
+  const gold = refDonateGold(stars, share);
+  ref.gold += gold;
+  ref.refEarn.total += gold;
+  ref.refEarn.by[from.id] = (ref.refEarn.by[from.id] ?? 0) + gold;
+  log(ref, now, `🤝 ${from.name} поддержал зону — тебе ${gold} 🪙 (${Math.round(share * 100)}%)`);
+  return gold;
 }

@@ -63,4 +63,12 @@ export const REFERRAL = {
     { level: 20, gold: 80 },
   ],
   grandShare: 0.25,
+  /** доля с покупок кента: 10% от его звёзд — тебе золотом (по курсу базового пакета: 2 🪙 за ⭐) */
+  donateShare: 0.1,
+  /** и столько — тому, кто подтянул тебя */
+  donateGrandShare: 0.03,
+  goldPerStar: 2,
 };
+
+/** Сколько золота дать за покупку кента на столько звёзд. */
+export const refDonateGold = (stars: number, share: number) => Math.max(1, Math.round(stars * REFERRAL.goldPerStar * share));
