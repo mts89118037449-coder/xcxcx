@@ -3162,3 +3162,7 @@ body:has(.modal) .event-btn { z-index: 20; }
 .photo-row button { min-width: 38px; padding: 5px 4px; border-radius: 10px; border: 1px solid var(--line); background: #0005; font-size: 19px; }
 .photo-row button.active { border-color: var(--gold); background: #6b552055; }
 .photo-sep { width: 8px; }
+
+/* L2: куда идёт герой на карте */
+.go-marker path { animation: go-bounce 0.5s ease-in-out infinite alternate; }
+@keyframes go-bounce { from { transform: translateY(0); } to { transform: translateY(-6px); } }

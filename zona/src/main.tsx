@@ -18,6 +18,7 @@ tg?.setBackgroundColor?.('#15130f');
 // отладочная галерея рига грузится отдельно и только по ?rig=1
 const RigGallery = lazy(() => import('./art/rig/Gallery.tsx').then((m) => ({ default: m.RigGallery })));
 const rigDebug = new URLSearchParams(location.search).has('rig');
+if (rigDebug) document.getElementById('boot')?.remove();
 createRoot(document.getElementById('root')!).render(
   rigDebug ? (
     <Suspense fallback={null}>

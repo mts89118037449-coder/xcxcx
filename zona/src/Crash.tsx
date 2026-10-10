@@ -1,3 +1,4 @@
+import { hideBoot } from './boot.ts';
 import { Component, Suspense, type ReactNode } from 'react';
 import { logError } from './errlog.ts';
 import { named } from './lazy.ts';
@@ -11,6 +12,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: 
     return { failed: e instanceof Error ? e.message : String(e) };
   }
   componentDidCatch(e: unknown, info: { componentStack?: string | null }) {
+    hideBoot();
     logError(`экран упал: ${e instanceof Error ? e.message : String(e)}`, (e instanceof Error ? (e.stack ?? '') : '') + '\n' + (info.componentStack ?? ''));
   }
   render() {

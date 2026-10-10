@@ -1,4 +1,4 @@
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { named } from '../lazy.ts';
 
 const HolidayCard = named(() => import('../Holiday.tsx'), 'HolidayCard');
@@ -9,6 +9,7 @@ const SmotrCard = named(() => import('../Elect.tsx'), 'SmotrCard');
 const PaperCard = named(() => import('../Paper.tsx'), 'PaperCard');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
+import { ZoneLife } from '../art/Critters.tsx';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
 import { lookOf, timeLeft, useGame } from '../game.tsx';
 import { useTalk } from '../Talk.tsx';
@@ -24,6 +25,42 @@ import { isOpen } from '../../shared/unlocks.ts';
 import { NowChip } from '../Chip.tsx';
 import { Hint } from '../Hint.tsx';
 
+type ZonePlace = 'barrack' | 'kiosk' | 'work' | 'medic' | 'yard' | 'church' | 'walk' | 'escape';
+/** Куда идёт герой по тапу на здание: к двери, по земле. */
+const DOORS: Record<ZonePlace, [number, number]> = {
+  barrack: [72, 196], walk: [92, 204], kiosk: [163, 192], church: [168, 186], work: [252, 194], medic: [330, 200], yard: [44, 246], escape: [312, 256],
+};
+const HOME: [number, number] = [112, 262];
+/** Чем дальше от зрителя (выше по экрану), тем мельче. */
+const depth = (y: number) => 0.5 + ((y - 186) / 76) * 0.2;
+
+/** Герой идёт к цели: позиция плавно меняется, по приходу — колбэк. */
+function useWalker() {
+  const [pos, setPos] = useState<{ x: number; y: number; dir: 1 | -1; moving: boolean }>({ x: HOME[0], y: HOME[1], dir: 1, moving: false });
+  const raf = useRef(0);
+  const cur = useRef(pos);
+  cur.current = pos;
+  useEffect(() => () => cancelAnimationFrame(raf.current), []);
+  const walk = (to: [number, number], done: () => void) => {
+    cancelAnimationFrame(raf.current);
+    const from = { x: cur.current.x, y: cur.current.y };
+    const dist = Math.hypot(to[0] - from.x, to[1] - from.y);
+    const ms = Math.max(350, Math.min(1400, dist * 7));
+    const dir: 1 | -1 = to[0] < from.x ? -1 : 1;
+    const t0 = performance.now();
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / ms);
+      const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
+      setPos({ x: from.x + (to[0] - from.x) * e, y: from.y + (to[1] - from.y) * e, dir, moving: k < 1 });
+      if (k < 1) raf.current = requestAnimationFrame(step);
+      else done();
+    };
+    raf.current = requestAnimationFrame(step);
+  };
+  const reset = () => setPos({ x: HOME[0], y: HOME[1], dir: 1, moving: false });
+  return { pos, walk, reset };
+}
+
 /** Вся зона: здания ведут на экраны, по земле валяются бычки, барыга меняет их. */
 export function Zone() {
   const { p, now, act, go, openPlace, visit } = useGame();
@@ -34,6 +71,32 @@ export function Zone() {
   const [pops, setPops] = useState<{ id: number; x: number; y: number; n: number }[]>([]);
   const field = p.field.filter((b) => !taken.includes(b.id));
   const [seg, setSeg] = useSeg('zone', 'people', ['people', 'market', 'week'] as const);
+  const hero = useWalker();
+  const [going, setGoing] = useState<ZonePlace | null>(null);
+  const enter = (pl: ZonePlace) => {
+    if (pl === 'barrack') go('home');
+    else if (pl === 'kiosk') go('shop');
+    else if (pl === 'work') go('work');
+    else if (pl === 'yard') go('fight');
+    else if (pl === 'church') openPlace('church');
+    else if (pl === 'walk') visit(0);
+    else if (pl === 'escape') openPlace('escape');
+    else openPlace('medic');
+  };
+  // тап по зданию: герой идёт к двери, потом открывается экран; второй тап — сразу
+  const goTo = (pl: ZonePlace) => {
+    if (going === pl) return enter(pl);
+    setGoing(pl);
+    play('click');
+    hero.walk(DOORS[pl], () => {
+      play('pop');
+      setTimeout(() => {
+        setGoing(null);
+        enter(pl);
+        hero.reset();
+      }, 220);
+    });
+  };
 
   const pickUp = async (b: (typeof p.field)[number]) => {
     setTaken((t) => [...t, b.id]);
@@ -47,19 +110,17 @@ export function Zone() {
     <>
       <div className="scene-wrap">
         <ZoneScene
-          onPlace={(pl) => {
-            if (pl === 'barrack') go('home');
-            else if (pl === 'kiosk') go('shop');
-            else if (pl === 'work') go('work');
-            else if (pl === 'yard') go('fight');
-            else if (pl === 'church') openPlace('church');
-            else if (pl === 'walk') visit(0);
-            else if (pl === 'escape') openPlace('escape');
-            else openPlace('medic');
-          }}
+          onPlace={goTo}
         >
-          <Place x={112} y={262} scale={0.7}>
-            <PoseG name="crossed" look={lookOf(p)} fx={{ bruise: p.hp < p.stats.maxHp * 0.3, breath: wx.temp < 0 }} />
+          <ZoneLife />
+          {going && (
+            <g className="go-marker" transform={`translate(${DOORS[going][0]} ${DOORS[going][1]})`}>
+              <ellipse rx={12} ry={4} fill="none" stroke="#ffd24a" strokeWidth={2} />
+              <path d="M0,-30 L-6,-40 L6,-40 Z" fill="#ffd24a" stroke="#2a1a10" strokeWidth={1} />
+            </g>
+          )}
+          <Place x={hero.pos.x} y={hero.pos.y} scale={depth(hero.pos.y)}>
+            <PoseG name="crossed" anim={hero.pos.moving ? 'run' : going ? 'wave' : undefined} mirror={hero.pos.dir < 0} look={lookOf(p)} fx={{ bruise: p.hp < p.stats.maxHp * 0.3, breath: wx.temp < 0 }} sfx={!!going} />
           </Place>
           {baryga && (
             <g className="npc-click" data-tut="baryga" onClick={() => talk('baryga')}>

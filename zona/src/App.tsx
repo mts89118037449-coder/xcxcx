@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { hideBoot } from './boot.ts';
 import type { PlayerView } from '../shared/types.ts';
 import { api, ApiError, tg } from './api.ts';
 import { Face } from './art/sprites.tsx';
@@ -222,6 +223,7 @@ export function App() {
     [toast, showFx],
   );
 
+  if (player || error) hideBoot();
   if (error && !player) {
     return (
       <div className="splash">
@@ -231,14 +233,8 @@ export function App() {
       </div>
     );
   }
-  if (!player) {
-    return (
-      <div className="splash">
-        <div className="splash-logo">🔒</div>
-        <p>Конвой ведёт в хату…</p>
-      </div>
-    );
-  }
+  // пока грузимся — виден загрузочный экран из index.html
+  if (!player) return null;
 
   const p = player;
   const fresh = freshUnlocks(p.level, [...p.unlocksSeen, ...unlockHidden]);

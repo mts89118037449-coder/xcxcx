@@ -398,7 +398,7 @@ function loop(t: number) {
   subs.forEach((f) => f(t));
   raf = subs.size ? requestAnimationFrame(loop) : 0;
 }
-function useClock(on: boolean) {
+export function useClock(on: boolean) {
   const [t, setT] = useState(() => performance.now());
   useEffect(() => {
     if (!on) return;
