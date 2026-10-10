@@ -6,6 +6,7 @@ const WordCard = named(() => import('../Word.tsx'), 'WordCard');
 const HolidayCard = named(() => import('../Holiday.tsx'), 'HolidayCard');
 const BuildCard = named(() => import('../Build.tsx'), 'BuildCard');
 const ContraCard = named(() => import('../Contra.tsx'), 'ContraCard');
+const RiotCard = named(() => import('../Riot.tsx'), 'RiotCard');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
@@ -88,6 +89,9 @@ export function Zone() {
           <HolidayCard />
         </Suspense>
       )}
+      <Suspense fallback={null}>
+        <RiotCard />
+      </Suspense>
       {p.contra.shmon && (
         <button className="shmon-alarm" onClick={() => setSeg('market')}>
           🔦 Ночью шмон! Спрячь контрабанду — Рынок

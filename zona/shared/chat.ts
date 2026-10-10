@@ -52,5 +52,8 @@ export const PHRASE_GROUPS: { name: string; emoji: string; items: Phrase[] }[] =
   },
 ];
 
-export const phraseById = new Map(PHRASE_GROUPS.flatMap((g) => g.items).map((p) => [p.id, p]));
+/** Системные фразы: пишет сама игра от имени игрока, в списке выбора их нет. */
+export const SYSTEM_PHRASES: Phrase[] = [{ id: 'riot_call', text: '🔥 Братва, хватит терпеть! Поднимаем бунт — голосуйте на экране «Зона»!' }];
+
+export const phraseById = new Map([...PHRASE_GROUPS.flatMap((g) => g.items), ...SYSTEM_PHRASES].map((p) => [p.id, p]));
 export const CHAT = { cooldownSec: 8, perDay: 80, keep: 60 };

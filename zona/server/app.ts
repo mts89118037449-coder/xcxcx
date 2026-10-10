@@ -1,3 +1,4 @@
+import { RIOT, riotAdvance, riotIdle, waveHp, type RiotState } from '../shared/riot.ts';
 import { SNITCH, pickSnitch, snitchClue, snitchMajority, type SnitchState } from '../shared/snitch.ts';
 import { BARRACKS, barrackOwners } from '../shared/barracks.ts';
 import { BUILDINGS, addBuildPts, type BuildState } from '../shared/build.ts';
@@ -416,6 +417,7 @@ export function createApp(opts: AppOptions) {
       pet: p.pet,
       built: p.built,
       inbox: p.inbox,
+      riot: riotView(p, riotGet(t)),
       contra: { have: p.contra.have, spent: p.contra.spent, earned: p.contra.earned, shmon: g.shmonDue(p, t), day: g.dayIndex(t) },
       tunnel: (() => {
         const tn = g.ensureTunnel(p);
@@ -699,6 +701,61 @@ export function createApp(opts: AppOptions) {
       db.savePlayer(target);
       notifyPlayer(target.id, `📦 ${p.name} прислал тебе грев: ${r.label} ×${r.qty}`);
       return r;
+    },
+    riotCall: (p, _b, t) => {
+      const s = riotGet(t);
+      if (p.level < RIOT.minLevel) throw new g.GameError(`Подбивать на бунт можно с ${RIOT.minLevel} уровня`);
+      if (!riotView(p, s).canCall) throw new g.GameError('Зона ещё не отошла от прошлого раза');
+      if (p.butts < RIOT.callButts) throw new g.GameError(`Нужно ${RIOT.callButts} 🚬 на агитацию`);
+      p.butts -= RIOT.callButts;
+      const n: RiotState = { ...riotIdle(), phase: 'vote', by: { id: p.id, name: p.name }, startedAt: t, votes: { [p.id]: true } };
+      db.kvSet('riot', n);
+      db.chatAdd('all', p.id, p.name, p.face ?? null, 'riot_call', t, p.frame, p.title);
+      return riotView(p, n);
+    },
+    riotVote: (p, b, t) => {
+      const s = riotGet(t);
+      if (s.phase !== 'vote') throw new g.GameError('Сейчас не голосуют');
+      if (s.votes[p.id] !== undefined) throw new g.GameError('Ты уже сказал своё');
+      s.votes[p.id] = !!b.yes;
+      db.kvSet('riot', s);
+      return riotView(p, s);
+    },
+    riotHit: (p, _b, t) => {
+      const s = riotGet(t);
+      if (s.phase !== 'fight') throw new g.GameError('Сейчас не бьются');
+      const r = g.riotHit(p, p.riotAt, t, rng);
+      p.riotAt = t;
+      s.hp = Math.max(0, s.hp - r.dmg);
+      s.hits[p.id] = { name: p.name, dmg: (s.hits[p.id]?.dmg ?? 0) + r.dmg };
+      s.feed = [{ name: p.name, dmg: r.dmg, at: t }, ...s.feed].slice(0, 12);
+      let next: string | null = null;
+      if (s.hp <= 0) {
+        s.wave++;
+        if (s.wave >= RIOT.waves.length) {
+          s.phase = 'won';
+          s.endedAt = t;
+          next = 'won';
+        } else {
+          const people = new Set([...Object.keys(s.hits), ...Object.entries(s.votes).filter(([, v]) => v).map(([id]) => id)]).size;
+          s.max = s.hp = waveHp(s.wave, people);
+          s.waveEndsAt = t + RIOT.waveH * 3600_000;
+          next = 'wave';
+        }
+      }
+      db.kvSet('riot', s);
+      return { ...r, next, riot: riotView(p, s) };
+    },
+    riotClaim: (p, _b, t) => {
+      const s = riotGet(t);
+      if (!riotView(p, s).canClaim) throw new g.GameError('Нечего забирать');
+      s.claimed.push(p.id);
+      db.kvSet('riot', s);
+      p.gold += RIOT.reward.gold;
+      p.authority += RIOT.reward.authority;
+      if (!p.cosmetics.includes('title_rebel')) p.cosmetics.push('title_rebel');
+      g.log(p, t, '🔥 Бунт удался! Ты был в первых рядах');
+      return RIOT.reward;
     },
     snitchLeak: (p, _b, t) => {
       const st = p.clanId ? snitchGet(p.clanId, t) : null;
@@ -1519,6 +1576,41 @@ export function createApp(opts: AppOptions) {
       endsAt: g.weekEndsAt(t),
       now: t,
     });
+  });
+
+  // Бунт: одно общее состояние на всю зону
+  const riotGet = (t: number): RiotState => {
+    const s = db.kvGet<RiotState>('riot', riotIdle());
+    if (riotAdvance(s, t)) db.kvSet('riot', s);
+    g.riotPenalty.until = s.phase === 'lost' ? s.endedAt + RIOT.penaltyH * 3600_000 : 0;
+    return s;
+  };
+  const riotView = (p: g.Player, s: RiotState) => ({
+    phase: s.phase,
+    by: s.by?.name ?? null,
+    endsAt: s.phase === 'vote' ? s.startedAt + RIOT.voteH * 3600_000 : s.phase === 'fight' ? s.waveEndsAt : s.phase === 'lost' ? s.endedAt + RIOT.penaltyH * 3600_000 : 0,
+    yes: Object.values(s.votes).filter(Boolean).length,
+    no: Object.values(s.votes).filter((v) => !v).length,
+    myVote: s.votes[p.id] ?? null,
+    wave: s.wave,
+    hp: s.hp,
+    max: s.max,
+    myDmg: s.hits[p.id]?.dmg ?? 0,
+    canClaim: s.phase === 'won' && !!s.hits[p.id] && !s.claimed.includes(p.id),
+    canCall: s.phase !== 'vote' && s.phase !== 'fight' && t0() - s.endedAt >= (s.phase === 'idle' ? 1 : RIOT.cooldownDays) * 86_400_000,
+    hitAt: p.riotAt,
+  });
+  const t0 = () => now();
+  api.post('/riot', (req: AuthedRequest, res) => {
+    const t = now();
+    const p = db.getPlayer(req.tgUser!.id);
+    if (!p) return res.status(404).json({ error: 'Нет игрока' });
+    const s = riotGet(t);
+    const top = Object.entries(s.hits)
+      .map(([id, h]) => ({ id: Number(id), ...h }))
+      .sort((a, b) => b.dmg - a.dmg)
+      .slice(0, 5);
+    res.json({ riot: riotView(p, s), feed: s.feed, top });
   });
 
   // «Кто стукач?»: тайный стукач недели в клане

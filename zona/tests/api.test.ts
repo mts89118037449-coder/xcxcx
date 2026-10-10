@@ -342,3 +342,46 @@ test('карточка «поделиться»: принимает только
   assert.equal((await img.arrayBuffer()).byteLength, 300);
   assert.match(r.ref, /ref_9301|\//);
 });
+
+test('бунт: агитация, голосование сутки, три волны ОМОНа, награда участникам', async () => {
+  const ids = [9401, 9402, 9403, 9404, 9405];
+  for (const id of ids) {
+    await post('/api/me', initData(id, `Бунтарь ${id}`));
+    const pl = db.getPlayer(id)!;
+    pl.level = 12;
+    pl.butts = 100;
+    pl.str = 400;
+    pl.energy = 1000;
+    pl.intro = -1;
+    pl.tut = -1;
+    db.savePlayer(pl);
+  }
+  const a = (id: number) => initData(id, `Бунтарь ${id}`);
+  const call = await post('/api/action/riotCall', a(9401));
+  assert.equal(call.status, 200, JSON.stringify(call.json));
+  for (const id of ids.slice(1)) assert.equal((await post('/api/action/riotVote', a(id), { yes: true })).status, 200);
+  assert.equal((await post('/api/action/riotHit', a(9401))).status, 400, 'пока голосуют — не бьются');
+  // сутки прошли: сдвигаем время голосования назад
+  const st = db.kvGet<any>('riot', null);
+  st.startedAt -= 25 * 3600_000;
+  db.kvSet('riot', st);
+  const r = await post('/api/riot', a(9401));
+  assert.equal(r.json.riot.phase, 'fight');
+  // добиваем волны напрямую по здоровью, чтобы не ждать откатов
+  for (let w = 0; w < 3; w++) {
+    const s = db.kvGet<any>('riot', null);
+    s.hp = 1;
+    db.kvSet('riot', s);
+    const pl = db.getPlayer(9402)!;
+    pl.riotAt = 0;
+    db.savePlayer(pl);
+    const h = await post('/api/action/riotHit', a(9402));
+    assert.equal(h.status, 200, JSON.stringify(h.json));
+  }
+  assert.equal(db.kvGet<any>('riot', null).phase, 'won');
+  const gold = db.getPlayer(9402)!.gold;
+  assert.equal((await post('/api/action/riotClaim', a(9402))).status, 200);
+  assert.equal(db.getPlayer(9402)!.gold, gold + 15);
+  assert.equal((await post('/api/action/riotClaim', a(9402))).status, 400);
+  assert.equal((await post('/api/action/riotClaim', a(9403))).status, 400, 'не бил — не получает');
+});

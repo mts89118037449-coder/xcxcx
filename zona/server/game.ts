@@ -70,10 +70,11 @@ import { LEAGUE, LEAGUE_TIERS, REVENGE, leaguePoints, leagueTier, powerOf } from
 import { DAILY_WEEK, INTRO, MAST_RULES, NOTICE_KINDS, NOTIFY, TERM, mastById, termDays, type Mast, type NoticeKind } from '../shared/term.ts';
 import { PLACE_REP, placeById, type PlaceId } from '../shared/places.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT, PARCEL, REFERRAL, RING, refDonateGold, type HutId } from '../shared/clans.ts';
-import { CHAT, phraseById } from '../shared/chat.ts';
+import { CHAT, phraseById, SYSTEM_PHRASES } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
 import { BARRACK, barrackBonus, barrackById, raidPts, type BarrackBonus } from '../shared/barracks.ts';
 import { INK, inkQuality } from '../shared/ink.ts';
+import { RIOT } from '../shared/riot.ts';
 import { CONTRA, HIDE_SPOTS, goodById, goodPrice, shmonTonight, type GoodId } from '../shared/contra.ts';
 import { TUNNEL } from '../shared/tunnel.ts';
 import { FAMILY, FAMILY_ROUNDS, familyOutcome, type Visitor } from '../shared/family.ts';
@@ -269,6 +270,8 @@ export interface Player {
   inkOrder: { artist: number; artistName: string; tattoo: string; at: number; id: number; done: boolean; quality: number; rated: boolean } | null;
   /** контрабанда: что держишь, почём брал; день последнего шмона */
   contra: { have: Partial<Record<GoodId, number>>; spent: number; earned: number; shmonDay: number };
+  /** когда последний раз бил ОМОН на бунте */
+  riotAt: number;
   /** подкоп: один за ходку */
   tunnel: { hodka: number; depth: number; digAt: number; masked: number; found: number; done: boolean };
   /** свиданка с роднёй: раз в неделю */
@@ -437,6 +440,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     built: 0,
     penpal: null,
     inbox: [],
+    riotAt: 0,
     contra: { have: {}, spent: 0, earned: 0, shmonDay: -1 },
     tunnel: { hodka: 0, depth: 0, digAt: 0, masked: 0, found: 0, done: false },
     family: { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 },
@@ -535,6 +539,7 @@ export function migrate(p: Player): Player {
   p.penpal ??= null;
   p.refEarn ??= { total: 0, by: {} };
   p.inbox ??= [];
+  p.riotAt ??= 0;
   p.contra ??= { have: {}, spent: 0, earned: 0, shmonDay: -1 };
   p.tunnel ??= { hodka: 0, depth: 0, digAt: 0, masked: 0, found: 0, done: false };
   p.family ??= { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 };
@@ -762,7 +767,7 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   spendEnergy(p, job.energy, now);
   // рандом смены: иногда премия от бригадира, иногда находка на промке
   const bonus = rng() < 0.1;
-  const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney') + repBonus(p, 'jobMoney') + famBuff(p, now)) / 100) * (bonus ? 2 : 1) * (liveFx(now).money ?? 1) * (colonyFx(p.colony).jobMoney ?? 1));
+  const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney') + repBonus(p, 'jobMoney') + famBuff(p, now)) / 100) * (riotPenalty.until > now ? RIOT.penaltyJob : 1) * (bonus ? 2 : 1) * (liveFx(now).money ?? 1) * (colonyFx(p.colony).jobMoney ?? 1));
   p.money += money;
   let item: string | null = null;
   if (rng() < 0.05) {
@@ -1535,7 +1540,7 @@ export function seeUnlocks(p: Player, ids: string[]) {
 
 /** Можно ли сказать фразу: только готовые, не чаще раза в несколько секунд и с дневным лимитом. */
 export function chatSay(p: Player, phrase: string, now: number) {
-  if (!phraseById.has(phrase)) throw new GameError('Такой фразы нет');
+  if (!phraseById.has(phrase) || SYSTEM_PHRASES.some((x) => x.id === phrase)) throw new GameError('Такой фразы нет');
   if (p.chat.at + CHAT.cooldownSec * 1000 > now) throw new GameError('Не части');
   const day = dayKey(now);
   if (p.chat.day !== day) p.chat = { at: 0, day, n: 0 };
@@ -4324,4 +4329,19 @@ export function shmonHide(p: Player, hide: Record<string, string>, now: number, 
   const any = Object.keys(lost).length > 0;
   log(p, now, any ? '🔦 Ночной шмон: часть товара изъяли' : '🔦 Ночной шмон: ничего не нашли');
   return { lost, checked };
+}
+
+// --- Бунт ----------------------------------------------------------------------------------------
+
+/** После проигранного бунта гайки закручены до этого времени (ставит app). */
+export const riotPenalty = { until: 0 };
+
+/** Удар по волне ОМОНа: энергия и откат; урон от атаки. */
+export function riotHit(p: Player, lastAt: number, now: number, rng: Rng) {
+  if (now - lastAt < RIOT.hitCdSec * 1000) throw new GameError('Отдышись');
+  requireHp(p, now);
+  spendEnergy(p, RIOT.hitEnergy, now);
+  const crit = rng() < stats(p, now).crit / 100;
+  const dmg = Math.round(stats(p, now).atk * (0.8 + rng() * 0.4) * (crit ? 2 : 1));
+  return { dmg, crit };
 }

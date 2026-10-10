@@ -118,6 +118,7 @@ export const api = {
     post<{ list: { id: string; owner: { id: number; tag: string; name: string } | null; top: { id: number; tag: string; name: string; pts: number }[]; mine: number }[]; endsAt: number }>('/barracks'),
   inkers: () => post<{ list: { id: number; name: string; skill: number; stars: number; votes: number; jobs: number; queue: number }[] }>('/inkers'),
   kum: () => post<{ feed: { from: string; to: string; msg: string; at: number }[] }>('/kum'),
+  riot: () => post<{ riot: import('../shared/types.ts').PlayerView['riot']; feed: { name: string; dmg: number; at: number }[]; top: { id: number; name: string; dmg: number }[] }>('/riot'),
   holiday: () => post<{ arm: { id: number; name: string; power: number }[] }>('/holiday'),
   adminHoliday: (body: { start?: string; days?: number; stop?: boolean } = {}) =>
     post<{ cur: { id: string; startsAt: number; endsAt: number } | null; list: { id: string; name: string; emoji: string }[] }>('/admin/holiday', body),
