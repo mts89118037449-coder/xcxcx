@@ -17,6 +17,8 @@ export interface Fighter {
 }
 
 const STEP_MS = 480;
+const HIT_WORDS = ['БАЦ!', 'ХРЯСЬ!', 'ТЫЩ!', 'БУМ!', 'ШМЯК!'];
+const CRIT_WORDS = ['БАБАХ!', 'КРИТ!', 'ХРЕНАК!', 'БДЫЩ!'];
 
 const RIVAL_TOPS = ITEMS.filter((i) => i.slot === 'body' && !i.bossOnly).map((i) => i.id);
 
@@ -171,7 +173,22 @@ export function FightArena({
                 <path d="M0,-16 L4,-5 L15,-8 L7,1 L14,11 L2,6 L-3,16 L-5,5 L-16,7 L-7,-1 L-13,-12 L-3,-5 Z" fill={last.crit ? '#ffd24a' : '#fff4c8'} stroke="#ff7a2a" strokeWidth={1.4} strokeLinejoin="round" />
                 <circle r={4} fill="#fff" />
               </g>
+              {/* комиксное «БАЦ!» — как в мультике */}
+              <text className={`comic-word ${last.crit ? 'crit' : ''}`} x={last.by === 0 ? 10 : -10} y={-22} textAnchor="middle" transform={`rotate(${last.by === 0 ? 12 : -12})`}>
+                {last.crit ? CRIT_WORDS[i % CRIT_WORDS.length] : HIT_WORDS[i % HIT_WORDS.length]}
+              </text>
             </g>
+          )}
+          {/* линии движения за кулаком */}
+          {last && !done && strike && (
+            <g key={`ml${i}`} className="motion-lines" transform={`translate(${last.by === 0 ? ME_X + 20 : EN_X - 20} 146) scale(${last.by === 0 ? 1 : -1} 1)`}>
+              <path d="M -26,-8 H -6 M -32,0 H -4 M -24,8 H -8" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" />
+            </g>
+          )}
+          {last && !done && last.miss && (
+            <text key={`wz${i}`} className="comic-word miss" x={last.by === 0 ? EN_X : ME_X} y={120} textAnchor="middle">
+              ВЖУХ!
+            </text>
           )}
           {last && !done && (last.dmg > 0 || last.miss) && (
             <text key={`d${i}`} className="dmg-pop" x={popX} y={84} textAnchor="middle" fontSize={last.crit ? 30 : 22} fill={last.miss ? '#9fd3ff' : last.crit ? '#ffcf5a' : '#fff'}>

@@ -429,7 +429,7 @@ export function ToonBody({ look, pose, mirror, shadow = true, bare, prop, fx, ui
   const torso = `M ${HX - w},${SH_Y - 8} C ${HX - w},${SH_Y - 16} ${HX + w},${SH_Y - 16} ${HX + w},${SH_Y - 8} L ${HX + wb},${bottom - 4} C ${HX + wb},${bottom + 1} ${HX - wb},${bottom + 1} ${HX - wb},${bottom - 4} Z`;
   const fist = pose.fist > 0.5;
   // поворот всего тела: стоит — вокруг ступней, лежит — набок вокруг таза
-  const lieT = pose.lie ? `translate(${(pose.lie < 0 ? 64 : -64) * Math.min(1, Math.abs(pose.lie) / 80)} 0) rotate(${pose.lie} 60 196)` : '';
+  const lieT = pose.lie ? `translate(${(pose.lie < 0 ? 44 : -44) * Math.min(1, Math.abs(pose.lie) / 80)} 0) rotate(${pose.lie} 60 196)` : '';
   const flip = mirror ? 'translate(120 0) scale(-1 1)' : '';
   const chestTat = bare ? look.tattoos.find((id) => TATTOO_ART[id]?.place === 'chest' || TATTOO_ART[id]?.place === 'belly') : undefined;
   const armTats = bare || sleeveLen < 1 ? look.tattoos.filter((id) => TATTOO_ART[id]?.place === 'arm' || TATTOO_ART[id]?.place === 'shoulder').slice(0, 2) : [];

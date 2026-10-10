@@ -2978,3 +2978,12 @@ body:has(.modal) .event-btn { z-index: 20; }
 .paper-kum p { font-style: italic; }
 .paper-chron p { display: flex; gap: 6px; }
 .paper .btn { font-family: inherit; margin-top: 8px; }
+
+/* бой в духе мультика: «БАЦ!», линии движения, звёзды над нокаутом */
+.comic-word { font-size: 17px; font-weight: 900; fill: #ffe14a; stroke: #1a0e08; stroke-width: 3.2px; paint-order: stroke; letter-spacing: 0.5px; animation: comic-pop 0.45s cubic-bezier(0.3, 1.8, 0.5, 1) both; transform-box: fill-box; transform-origin: center; }
+.comic-word.crit { font-size: 22px; fill: #ff5a2a; }
+.comic-word.miss { font-size: 16px; fill: #9fd3ff; animation-duration: 0.35s; }
+@keyframes comic-pop { 0% { transform: scale(0.2); opacity: 0; } 60% { opacity: 1; } 100% { transform: scale(1); } }
+.motion-lines { animation: motion-fade 0.3s ease-out forwards; }
+@keyframes motion-fade { from { opacity: 0.9; } to { opacity: 0; transform: translateX(-6px); } }
+.toon-zzz { animation: bob 1.8s ease-in-out infinite; }
