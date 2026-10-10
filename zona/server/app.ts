@@ -1,6 +1,7 @@
 import { weatherAt } from '../shared/weather.ts';
 import { renoComfort } from '../shared/reno.ts';
 import { RAID } from '../shared/raid.ts';
+import { PILLOW } from '../shared/pillow.ts';
 import { STREAM, type LiveStream } from '../shared/stream.ts';
 import { QUIZ, quizPhase, quizPoints, quizQuestions, quizSlot, quizTotalMs } from '../shared/quiz.ts';
 import { FOOT, dayPairs, footTable } from '../shared/football.ts';
@@ -547,6 +548,7 @@ export function createApp(opts: AppOptions) {
         fish: g.playsLeft(p, 'fish', FISH.perDay, t),
         shizo: g.playsLeft(p, 'shizo', SHIZO.perDay, t),
         raid: g.playsLeft(p, 'raid', RAID.perDay, t),
+        pillow: g.playsLeft(p, 'pillow', PILLOW.perDay, t),
         tableMaxBet: NARDY.minBet + p.level * NARDY.betPerLevel,
       },
       tables: p.tables,
@@ -720,6 +722,10 @@ export function createApp(opts: AppOptions) {
       if (streamer) db.savePlayer(streamer);
       db.kvSet('streams', all);
       return r;
+    },
+    pillow: (p, b, t) => {
+      const rival = db.getPlayer(db.randomNeighbour(p.id) ?? 0);
+      return { ...g.pillowFight(p, b.moves, rival?.name ?? 'Лёха', t, rng), look: rival ? { equipped: rival.equipped, tattoos: rival.tattoos, str: rival.str, face: rival.face, build: rival.build, skin: rival.skin } : null };
     },
     raidTop: (p, _b, t) => ({ top: raidTop(db.kvGet(`raid:${g.weekIndex(t)}`, {}), p.id) }),
     dice: (p, b, t) => g.dice(p, num(b.bet), t, rng),

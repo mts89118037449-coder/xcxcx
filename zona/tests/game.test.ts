@@ -2232,3 +2232,15 @@ test('стрим из хаты: раз в день, лайк один раз, б
   assert.throws(() => g.streamLike(a, null, s, now), /Себе/);
   assert.throws(() => g.streamLike(b, a, s, r.until + 1), /закончился/);
 });
+
+test('подушечный бой: три хода, награда за победу, лимит', () => {
+  const now = 1_800_000_000_000;
+  const p = g.newPlayer(906, 'Подушка', null, now);
+  assert.throws(() => g.pillowFight(p, ['head'], 'Лёха', now, () => 0.5), /три/);
+  // соперник всегда «бок» (rng 0.5) — «голова» бьёт бок трижды
+  const r = g.pillowFight(p, ['head', 'head', 'head'], 'Лёха', now, () => 0.5);
+  assert.ok(r.win && r.butts > 0);
+  g.pillowFight(p, ['block', 'block', 'block'], 'Лёха', now, () => 0.5);
+  g.pillowFight(p, ['side', 'side', 'side'], 'Лёха', now, () => 0.5);
+  assert.throws(() => g.pillowFight(p, ['head', 'head', 'head'], 'Лёха', now, () => 0.5), /завтра/);
+});

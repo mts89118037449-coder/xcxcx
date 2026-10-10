@@ -83,6 +83,7 @@ import { INTRO_REWARD, PLACE_INTRO } from '../shared/cutscenes.ts';
 import { bunkOfDay } from '../shared/bunk.ts';
 import { RENO, renoCost } from '../shared/reno.ts';
 import { RAID, raidButts } from '../shared/raid.ts';
+import { PILLOW, pillowRound, type PillowMove } from '../shared/pillow.ts';
 import { STREAM, STREAM_TOPICS, type LiveStream } from '../shared/stream.ts';
 import { featById, featProgress } from '../shared/feats.ts';
 import { MALYAVA, malyavaById } from '../shared/malyava.ts';
@@ -4354,6 +4355,25 @@ export function streamLike(p: Player, streamer: Player | null, s: LiveStream | u
   if (streamer) streamer.butts += STREAM.buttsPerLike;
   const xp = addXp(p, STREAM.likeXp, now);
   return { likes: s.likes, xp };
+}
+
+/** Подушечный бой: игрок присылает три хода, сервер ходит за соперника. */
+export function pillowFight(p: Player, moves: unknown, rival: string, now: number, rng: Rng) {
+  const ok = ['head', 'side', 'block'];
+  if (!Array.isArray(moves) || moves.length !== 3 || !moves.every((m) => ok.includes(String(m)))) throw new GameError('Нужно три хода');
+  playLimit(p, 'pillow', PILLOW.perDay, now);
+  const mine = moves.map(String) as PillowMove[];
+  const his = mine.map(() => ok[Math.floor(rng() * 3)] as PillowMove);
+  const rounds = mine.map((m, i) => pillowRound(m, his[i]));
+  const score = rounds.reduce<number>((a, b) => a + b, 0);
+  const win = score > 0;
+  if (win) {
+    p.butts += PILLOW.winButts;
+    p.authority += PILLOW.winAuthority;
+  }
+  bump(p, win ? 'pillow_win' : 'pillow');
+  track(p, 'minigame');
+  return { rival, his, rounds, win, draw: score === 0, butts: win ? PILLOW.winButts : 0 };
 }
 
 export function claimFeat(p: Player, id: string) {

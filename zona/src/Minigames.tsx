@@ -8,7 +8,7 @@ import { fmt, lookOf, timeLeft, useGame } from './game.tsx';
 import { startRun } from './api.ts';
 import { play } from './sound.ts';
 
-export type Mini = 'cards' | 'race' | 'brew' | 'dice' | 'arm' | 'darts' | 'nardy' | 'domino' | 'chess' | 'speed' | 'conveyor' | 'beads' | 'fish' | 'shizo' | 'raid';
+export type Mini = 'cards' | 'race' | 'brew' | 'dice' | 'arm' | 'darts' | 'nardy' | 'domino' | 'chess' | 'speed' | 'conveyor' | 'beads' | 'fish' | 'shizo' | 'raid' | 'pillow';
 
 /** Окно мини-игры: персонаж сверху, игровой стол, кнопки. */
 export function Table({ who, title, left, children, onClose }: { who: string; title: string; left: string; children: React.ReactNode; onClose(): void }) {

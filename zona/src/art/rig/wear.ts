@@ -40,7 +40,7 @@ export interface FeetWear {
 }
 
 export interface HeadWear {
-  kind: 'beanie' | 'ushanka' | 'cap8' | 'capgold' | 'crown' | 'furazhka' | 'beret' | 'chef' | 'helmet' | 'baseball' | 'mink';
+  kind: 'beanie' | 'ushanka' | 'cap8' | 'capgold' | 'crown' | 'furazhka' | 'beret' | 'chef' | 'helmet' | 'baseball' | 'mink' | 'santa' | 'pumpkin';
   color: string;
   color2?: string;
 }
@@ -120,6 +120,9 @@ export const HATS: Record<string, HeadWear> = {
   hat_beret: { kind: 'beret', color: '#6a1e22' },
   hat_chef: { kind: 'chef', color: '#f2f0ea' },
   hat_helmet: { kind: 'helmet', color: '#2a2e2a' },
+  // сезонные приколы: на массовку их надевает календарь
+  hat_santa: { kind: 'santa', color: '#d8302a', color2: '#f8f8f8' },
+  hat_pumpkin: { kind: 'pumpkin', color: '#f08a1a', color2: '#3a6a2a' },
 };
 
 /** Кожа: основной тон, тень, свет. */

@@ -38,12 +38,26 @@ export function useNpc(name: string): Npc | null {
 }
 
 /** НПС в системе координат персонажа, ступнями на y=210, по центру x=60. */
+/** Сезон приколов: под Новый год массовка в колпаках, на Хэллоуин — в тыквах. ?season=ny|hw — проверить. */
+export function seasonHat(now = new Date()): string | null {
+  const q = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('season') : null;
+  if (q === 'ny') return 'hat_santa';
+  if (q === 'hw') return 'hat_pumpkin';
+  const m = now.getMonth();
+  const d = now.getDate();
+  if ((m === 11 && d >= 15) || (m === 0 && d <= 14)) return 'hat_santa';
+  if ((m === 9 && d >= 25) || (m === 10 && d <= 2)) return 'hat_pumpkin';
+  return null;
+}
+
 export function ImageG({ url, mirror, tone, anim }: { url: string; height?: number; mirror?: boolean; tone?: string; className?: string; anim?: RigAnim }) {
   const n = NPC_RIGS[url.replace(/^rig:/, '')];
   if (!n) return null;
+  const hat = seasonHat();
+  const look = hat ? { ...n.look, equipped: { ...n.look.equipped, head: hat } } : n.look;
   return (
     <g style={tone ? { filter: tone } : undefined}>
-      <Rig look={n.look} anim={anim ?? n.anim} mirror={mirror} />
+      <Rig look={look} anim={anim ?? n.anim} mirror={mirror} />
     </g>
   );
 }

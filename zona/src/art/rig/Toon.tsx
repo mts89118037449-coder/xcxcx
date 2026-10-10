@@ -1050,6 +1050,23 @@ function ToonHat({ h, rx, ry }: { h: HeadWear; rx: number; ry: number }) {
       );
     case 'beret':
       return <path d={`M ${HX - rx - 2},${HY - 16} Q ${HX - rx},${top - 12} ${HX + 10},${top - 6} Q ${HX + rx + 10},${top + 4} ${HX + rx},${HY - 18} Z`} fill={h.color} stroke={INK} strokeWidth={OUT} />;
+    case 'santa':
+      return (
+        <g>
+          <path d={`M ${HX - rx - 2},${HY - 14} Q ${HX - 6},${top - 34} ${HX + rx + 22},${top - 8} L ${HX + rx + 2},${HY - 14} Z`} fill={h.color} stroke={INK} strokeWidth={OUT} />
+          <circle cx={HX + rx + 22} cy={top - 6} r={6} fill={c2} stroke={INK} strokeWidth={1.6} />
+          <rect x={HX - rx - 4} y={HY - 20} width={rx * 2 + 8} height={9} rx={4.5} fill={c2} stroke={INK} strokeWidth={1.6} />
+        </g>
+      );
+    case 'pumpkin':
+      return (
+        <g>
+          <path d={`M ${HX - rx - 4},${HY - 14} Q ${HX - rx - 6},${top - 26} ${HX},${top - 26} Q ${HX + rx + 6},${top - 26} ${HX + rx + 4},${HY - 14} Z`} fill={h.color} stroke={INK} strokeWidth={OUT} />
+          <path d={`M ${HX - 12},${top - 24} Q ${HX - 14},${HY - 22} ${HX - 10},${HY - 15} M ${HX + 12},${top - 24} Q ${HX + 14},${HY - 22} ${HX + 10},${HY - 15}`} stroke={shade(h.color, 0.3)} strokeWidth={1.6} fill="none" />
+          <path d={`M ${HX - 3},${top - 25} q 2,-8 8,-10`} stroke={c2} strokeWidth={3} fill="none" strokeLinecap="round" />
+          <path d={`M ${HX - 16},${HY - 32} l 5,-6 l 5,6 Z M ${HX + 6},${HY - 32} l 5,-6 l 5,6 Z`} fill="#3a1a08" />
+        </g>
+      );
     case 'chef':
       return (
         <g>
