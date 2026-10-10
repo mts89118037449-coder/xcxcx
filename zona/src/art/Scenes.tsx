@@ -849,6 +849,9 @@ function FloorPattern({ id, accent }: { id: string; accent: string }) {
 
 // --- Зона целиком ---------------------------------------------------------------
 
+/** Цвет мультяшного контура. */
+const SP = '#1a1410';
+
 function ZoneBackdrop() {
   const s = sky(new Date().getHours());
   const colony = sceneColony();
@@ -867,26 +870,28 @@ function ZoneBackdrop() {
             <path d="M0,-30 L4,-22 L-4,-22 Z M-8,-10 L8,-10 L5,-7 L-5,-7 Z" fill="#eef4f8" opacity={0.85} />
           </g>
         ))}
-      {/* дальний забор с колючкой и вышками */}
-      <rect y={78} width={W} height={34} fill="#7c7a70" />
-      <Grime x={0} y={78} w={W} h={34} stains={0.8} grime={0.5} />
-      {Array.from({ length: 30 }, (_, i) => (
-        <ellipse key={i} cx={i * 12.5 + 6} cy={73} rx={6} ry={6} fill="none" stroke="#4a4a4a" strokeWidth={0.9} />
+      {/* дальний забор с колючкой и вышками — мультяшно: плоский цвет, толстый контур */}
+      <rect y={80} width={W} height={32} fill="#9a968a" stroke={SP} strokeWidth={2} />
+      {Array.from({ length: 13 }, (_, i) => (
+        <path key={i} d={`M${i * 28 + 4},80 V112`} stroke="#7e7a6e" strokeWidth={2} />
       ))}
-      {[40, 320].map((x) => (
-        <g key={x} transform={`translate(${x} 18)`}>
-          <path d="M4,26 L0,92 M24,26 L28,92 M4,50 L24,72 M24,50 L4,72" stroke="#3b3024" strokeWidth={2} />
-          <rect x={-4} y={12} width={36} height={16} fill="#5b4a36" />
-          <path d="M-8,12 L14,0 L36,12 Z" fill="#3a2f22" />
+      {Array.from({ length: 30 }, (_, i) => (
+        <ellipse key={i} cx={i * 12.5 + 6} cy={74} rx={6} ry={6} fill="none" stroke={SP} strokeWidth={1.2} />
+      ))}
+      {[40, 320].map((x, k) => (
+        <g key={x} transform={`translate(${x} 18) rotate(${k ? 2 : -2} 14 60)`}>
+          <path d="M4,26 L0,92 M24,26 L28,92 M4,50 L24,72 M24,50 L4,72" stroke={SP} strokeWidth={2.4} />
+          <rect x={-4} y={12} width={36} height={16} fill="#8a5a34" stroke={SP} strokeWidth={2} />
+          <rect x={4} y={15} width={20} height={8} fill="#2a2a30" />
+          <path d="M-8,12 L14,-1 L36,12 Z" fill="#5a3a24" stroke={SP} strokeWidth={2} strokeLinejoin="round" />
         </g>
       ))}
-      {/* земля */}
-      <rect y={110} width={W} height={H - 110} fill="#56554d" />
-      <Grime x={0} y={110} w={W} h={H - 110} stains={0.7} grime={0.65} />
-      <path d="M0,176 C80,170 160,182 360,172 L360,280 L0,280 Z" fill="#4a4943" />
-      <rect y={176} width={W} height={104} filter="url(#sc-grime)" opacity={0.5} />
-      <path d="M20,230 L60,236 L70,252 M260,210 L280,222 L300,221" stroke="#2a2a26" strokeWidth={0.9} fill="none" />
-      <ellipse cx={250} cy={255} rx={40} ry={6} fill="#6d7478" opacity={0.4} />
+      {/* земля: плоская, с пятнами */}
+      <rect y={110} width={W} height={H - 110} fill="#8a8574" />
+      <path d="M0,176 C80,170 160,182 360,172 L360,280 L0,280 Z" fill="#7a7564" />
+      <ellipse cx={90} cy={214} rx={26} ry={5} fill="#6e6a5a" />
+      <ellipse cx={250} cy={255} rx={40} ry={6} fill="#6e6a5a" />
+      <path d="M20,230 L60,236 L70,252 M260,210 L280,222 L300,221" stroke={SP} strokeWidth={1.2} fill="none" />
 
       {colony === 'krytka' && (
         <g>
@@ -902,70 +907,78 @@ function ZoneBackdrop() {
           </text>
         </g>
       )}
-      {/* барак */}
-      <g>
-        <rect x={6} y={96} width={124} height={74} fill="#8a7e68" />
-        <Grime x={6} y={96} w={124} h={74} stains={0.8} grime={0.5} />
-        <path d="M0,98 L68,70 L136,98 Z" fill="#4a3f33" />
-        {[18, 44, 70, 96].map((x) => (
-          <g key={x}>
-            <rect x={x} y={112} width={16} height={18} fill="#2a2620" />
-            <path d={`M${x},121 H${x + 16} M${x + 8},112 V130`} stroke="#6a6a6a" strokeWidth={1.2} />
+      {/* барак: кривой, со ставнями, крыша набекрень */}
+      <g strokeLinejoin="round">
+        <path d="M6,98 L130,95 L131,170 L5,170 Z" fill="#c9a77a" stroke={SP} strokeWidth={2.4} />
+        {[110, 124, 138, 152].map((y) => <path key={y} d={`M7,${y} L130,${y - 2}`} stroke="#a8875c" strokeWidth={1.4} />)}
+        <path d="M-2,100 L70,66 L140,97 Z" fill="#6a4a36" stroke={SP} strokeWidth={2.4} />
+        <path d="M18,86 L30,80" stroke={SP} strokeWidth={1.2} />
+        <rect x={96} y={68} width={8} height={16} fill="#8a6a54" stroke={SP} strokeWidth={2} />
+        {[18, 44, 84, 104].map((x, i) => (
+          <g key={x} transform={`rotate(${[-3, 2, -1, 4][i]} ${x + 8} 121)`}>
+            <rect x={x} y={112} width={16} height={18} fill="#ffe28a" stroke={SP} strokeWidth={2} />
+            <path d={`M${x},121 H${x + 16} M${x + 5},112 V130 M${x + 11},112 V130`} stroke={SP} strokeWidth={1.4} />
           </g>
         ))}
-        <rect x={56} y={140} width={22} height={30} fill="#3a2a1c" />
-        <rect x={40} y={100} width={56} height={9} fill="#e6e0cc" />
-        <text x={68} y={107} fontSize={6.5} textAnchor="middle" fill="#2a1a10" fontWeight={800}>
+        <path d="M56,140 L78,140 L78,170 L56,170 Z" fill="#7a4a2a" stroke={SP} strokeWidth={2.2} />
+        <circle cx={73} cy={156} r={1.8} fill="#ffd24a" stroke={SP} strokeWidth={0.8} />
+        <rect x={40} y={100} width={56} height={10} rx={1} fill="#fff" stroke={SP} strokeWidth={1.6} transform="rotate(-2 68 105)" />
+        <text x={68} y={107.5} fontSize={6.5} textAnchor="middle" fill={SP} fontWeight={900} transform="rotate(-2 68 105)">
           БАРАК №3
         </text>
       </g>
 
-      {/* церквушка */}
-      <g>
-        <rect x={146} y={62} width={34} height={52} fill="#6b5236" />
-        <path d="M146,70 H180 M146,80 H180 M146,90 H180 M146,100 H180 M146,110 H180" stroke="#3a2a1a" />
-        <path d="M142,64 L163,50 L184,64 Z" fill="#4a3a28" />
-        <rect x={158} y={34} width={10} height={18} fill="#6b5236" />
-        <ellipse cx={163} cy={33} rx={8} ry={9} fill="#d9a53a" />
-        <path d="M163,16 V26 M159,20 H167" stroke="#d9a53a" strokeWidth={1.6} />
-        <rect x={158} y={96} width={10} height={18} fill="#2a1d12" />
+      {/* церквушка: золотая луковка, кривой крест */}
+      <g strokeLinejoin="round">
+        <path d="M146,62 L180,62 L181,114 L145,114 Z" fill="#a8763e" stroke={SP} strokeWidth={2.2} />
+        <path d="M142,64 L163,49 L184,64 Z" fill="#5a3a24" stroke={SP} strokeWidth={2.2} />
+        <rect x={158} y={34} width={10} height={18} fill="#e8d8b0" stroke={SP} strokeWidth={2} />
+        <path d="M155,36 Q155,22 163,18 Q171,22 171,36 Z" fill="#ffc83a" stroke={SP} strokeWidth={2} />
+        <path d="M163,6 V18 M158,10 H168 M159,15 L167,13" stroke={SP} strokeWidth={2} transform="rotate(8 163 12)" />
+        <path d="M157,96 Q163,88 169,96 L169,114 L157,114 Z" fill="#4a2a18" stroke={SP} strokeWidth={2} />
+        <circle cx={163} cy={76} r={5} fill="#9cd0f0" stroke={SP} strokeWidth={1.6} />
       </g>
-      {/* ларёк */}
-      <g>
-        <rect x={138} y={124} width={50} height={46} fill="#5d6e7a" />
-        <path d="M134,124 L192,124 L186,114 L140,114 Z" fill="#9c2a26" />
-        {[0, 1, 2, 3, 4, 5].map((i) => <path key={i} d={`M${142 + i * 8},114 L${140 + i * 8},124`} stroke="#e8e0cc" strokeWidth={2} />)}
-        <rect x={146} y={132} width={34} height={20} fill="#e8c86a" opacity={0.85} />
-        <rect x={146} y={132} width={34} height={20} fill="url(#sc-glass)" />
-        <text x={163} y={165} fontSize={6} textAnchor="middle" fill="#e8e0cc" fontWeight={800}>
+      {/* ларёк: полосатый козырёк, витрина с банками */}
+      <g strokeLinejoin="round">
+        <path d="M138,124 L188,124 L189,170 L137,170 Z" fill="#5a8ab0" stroke={SP} strokeWidth={2.2} />
+        <path d="M133,125 L193,125 L186,113 L140,113 Z" fill="#fff" stroke={SP} strokeWidth={2.2} />
+        {[0, 1, 2, 3, 4].map((i) => <path key={i} d={`M${141 + i * 10},113 L${136 + i * 11},125 L${142 + i * 11},125 L${146 + i * 10},113 Z`} fill="#e04a3a" />)}
+        <path d="M133,125 L193,125 L186,113 L140,113 Z" fill="none" stroke={SP} strokeWidth={2.2} />
+        <rect x={146} y={131} width={34} height={20} fill="#ffe28a" stroke={SP} strokeWidth={2} />
+        {[150, 158, 166, 174].map((x, i) => <rect key={x} x={x} y={141} width={5} height={8} rx={1} fill={['#e04a3a', '#4ab06a', '#3a6ac0', '#e0a92a'][i]} stroke={SP} strokeWidth={0.8} />)}
+        <rect x={147} y={157} width={32} height={9} fill="#fff" stroke={SP} strokeWidth={1.4} />
+        <text x={163} y={164} fontSize={6.4} textAnchor="middle" fill="#e04a3a" fontWeight={900}>
           ЛАРЁК
         </text>
       </g>
 
-      {/* промзона */}
-      <g>
-        <rect x={200} y={84} width={100} height={86} fill="#6e6a60" />
-        <Grime x={200} y={84} w={100} h={86} stains={0.9} grime={0.55} />
-        <path d="M200,84 L225,70 L250,84 L275,70 L300,84 Z" fill="#4a4a44" />
-        <rect x={284} y={30} width={10} height={56} fill="#7a4032" />
-        <rect x={282} y={28} width={14} height={5} fill="#5a2a20" />
-        {[212, 240, 268].map((x) => <rect key={x} x={x} y={100} width={20} height={14} fill="#e8c86a" opacity={0.55} />)}
-        <rect x={232} y={132} width={36} height={38} fill="#3c3c38" />
-        <path d="M232,140 H268 M232,148 H268 M232,156 H268 M232,164 H268" stroke="#2a2a26" />
-        <rect x={214} y={118} width={72} height={9} fill="#7a211d" />
-        <text x={250} y={125} fontSize={6} textAnchor="middle" fill="#ecdcbc" fontWeight={800}>
+      {/* промзона: пилообразная крыша, труба дымит, ворота */}
+      <g strokeLinejoin="round">
+        <path d="M200,84 L300,84 L301,170 L199,170 Z" fill="#b0aa98" stroke={SP} strokeWidth={2.4} />
+        <path d="M199,84 L224,68 L224,84 L250,68 L250,84 L276,68 L276,84 L301,68 L301,84 Z" fill="#7a7a72" stroke={SP} strokeWidth={2.2} />
+        <path d="M283,30 L295,30 L296,86 L282,86 Z" fill="#c0503a" stroke={SP} strokeWidth={2.2} />
+        <path d="M280,28 L298,28 L298,34 L280,34 Z" fill="#8a3020" stroke={SP} strokeWidth={2} />
+        {[212, 240, 268].map((x, i) => (
+          <g key={x} transform={`rotate(${[-2, 1, 3][i]} ${x + 10} 107)`}>
+            <rect x={x} y={100} width={20} height={14} fill="#ffe28a" stroke={SP} strokeWidth={2} />
+            <path d={`M${x + 10},100 V114`} stroke={SP} strokeWidth={1.4} />
+          </g>
+        ))}
+        <rect x={214} y={117} width={72} height={10} fill="#e04a3a" stroke={SP} strokeWidth={1.8} />
+        <text x={250} y={125} fontSize={6.4} textAnchor="middle" fill="#fff" fontWeight={900}>
           ПРОМЗОНА
         </text>
+        <path d="M232,132 L268,132 L268,170 L232,170 Z" fill="#5a5a52" stroke={SP} strokeWidth={2.2} />
+        {[140, 148, 156, 164].map((y) => <path key={y} d={`M232,${y} H268`} stroke={SP} strokeWidth={1.2} />)}
       </g>
 
-      {/* санчасть */}
-      <g>
-        <rect x={306} y={122} width={50} height={48} fill="#c9c4b4" />
-        <Grime x={306} y={122} w={50} h={48} stains={0.6} grime={0.4} />
-        <path d="M302,124 L331,108 L360,124 Z" fill="#6a6258" />
-        <rect x={325} y={130} width={12} height={4} fill="#b8342e" />
-        <rect x={329} y={126} width={4} height={12} fill="#b8342e" />
-        <rect x={322} y={148} width={16} height={22} fill="#4a4034" />
+      {/* санчасть: белая, с огромным крестом */}
+      <g strokeLinejoin="round">
+        <path d="M306,122 L356,122 L357,170 L305,170 Z" fill="#f2f0e8" stroke={SP} strokeWidth={2.2} />
+        <path d="M301,124 L331,107 L361,124 Z" fill="#7a7a8a" stroke={SP} strokeWidth={2.2} />
+        <path d="M325,128 h6 v5 h5 v6 h-5 v5 h-6 v-5 h-5 v-6 h5 Z" fill="#e04a3a" stroke={SP} strokeWidth={1.4} />
+        <path d="M322,150 L338,150 L338,170 L322,170 Z" fill="#6a8aa0" stroke={SP} strokeWidth={2} />
+        <rect x={343} y={140} width={10} height={10} fill="#9cd0f0" stroke={SP} strokeWidth={1.6} />
       </g>
       {colony === 'red' && (
         <g>
