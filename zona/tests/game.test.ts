@@ -2150,3 +2150,44 @@ test('викторина: одни вопросы на всех, расписа�
   // принудительный выпуск админа важнее расписания
   assert.equal(quizSlot(noon, noon + 60_000).startsAt, noon + 60_000);
 });
+
+test('серия: после трёх точных ударов — добивание с полуторным уроном', () => {
+  const st = newBattle(dummy({ hp: 5000, maxHp: 5000 }), dummy({ hp: 50000, maxHp: 50000, atk: 1 }));
+  const fixed = (v: number): g.Rng => () => v;
+  const mine = () => st.rounds.filter((r) => r.by === 0 && !r.note?.startsWith('↩'));
+  for (let k = 0; k < 3; k++) battleAct(st, { type: 'hit' }, fixed(0.5));
+  assert.deepEqual(mine().map((r) => r.combo ?? 0), [0, 2, 3]);
+  battleAct(st, { type: 'hit' }, fixed(0.5));
+  const fin = mine()[3];
+  assert.ok(fin.fin, 'четвёртый удар — добивание');
+  assert.ok(fin.dmg > mine()[0].dmg * 1.4);
+  battleAct(st, { type: 'hit' }, fixed(0.5));
+  assert.ok(!mine()[4].fin && !mine()[4].combo, 'после добивания серия заново');
+});
+
+test('знакомство с местом, разговор у шконки и ремонт хаты', async () => {
+  const { RENO, renoCost } = await import('../shared/reno.ts');
+  const now = 1_800_000_000_000;
+  const p = g.newPlayer(901, 'Ремонтник', null, now);
+  const r1 = g.placeIntro(p, 'canteen', now);
+  assert.ok(!r1.already && r1.butts > 0);
+  assert.ok(g.placeIntro(p, 'canteen', now).already, 'награда за знакомство — один раз');
+  assert.throws(() => g.placeIntro(p, 'nowhere', now));
+
+  const b = g.bunkTalk(p, 0, now);
+  assert.ok(b.reply.length > 0);
+  assert.throws(() => g.bunkTalk(p, 1, now + 1000), /завтра/);
+  g.bunkTalk(p, 2, now + 24 * 3600_000);
+
+  p.level = 2;
+  p.money = renoCost(RENO[0], 2);
+  const hp0 = g.stats(p, now).maxHp;
+  g.renoStart(p, now);
+  assert.equal(p.money, 0);
+  assert.throws(() => g.renoStart(p, now), /уже идёт/);
+  assert.throws(() => g.renoFinish(p, now + 1000), /работает/);
+  g.renoFinish(p, now + RENO[0].hours * 3600_000);
+  assert.equal(p.reno.stage, 1);
+  assert.ok(g.stats(p, now).maxHp > hp0, 'этап даёт бонус');
+  assert.throws(() => g.renoStart(p, now), /уровня|денег/);
+});

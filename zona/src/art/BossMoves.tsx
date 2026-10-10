@@ -1,4 +1,5 @@
 // Фирменные приёмы боссов: что летит, кто бежит и как называется удар. Только картинка — урон считает сервер.
+import type { RigAnim } from './rig/Rig.tsx';
 
 export type MoveFx = 'stool' | 'papers' | 'syringe' | 'cards' | 'dog' | 'swing' | 'stab' | 'shield';
 
@@ -8,31 +9,35 @@ export interface BossMove {
   name: string;
   /** реплика на выходе */
   intro: string;
+  /** своя стойка между ударами */
+  stance?: RigAnim;
+  /** как падает в нокаут */
+  ko?: RigAnim;
 }
 
 export const BOSS_MOVES: Record<string, BossMove> = {
-  b_rat: { fx: 'stab', name: 'Ложкой в бок', intro: 'Крутит заточенную ложку и скалится' },
-  b_pickpocket: { fx: 'stab', name: 'Ловкость рук', intro: '«Чё такой напряжённый? Карманы проверь»' },
-  b_guard: { fx: 'swing', name: 'Дубинал', intro: 'Постукивает дубинкой по ладони' },
-  b_zavhoz: { fx: 'swing', name: 'Трубой по спине', intro: 'Выходит со склада с куском трубы' },
-  b_chief: { fx: 'swing', name: 'Кувалдой по хребту', intro: '«Строиться!» — и сразу бьёт' },
-  b_dog: { fx: 'dog', name: 'Джульбарс, фас!', intro: 'Овчарка рвётся с поводка' },
-  b_snitch: { fx: 'stab', name: 'Удар в спину', intro: 'Заходит сбоку, глаза бегают' },
-  b_medic: { fx: 'syringe', name: 'Укол успокоительного', intro: 'Пощёлкивает шприцем: «Сейчас будет не больно»' },
-  b_warden: { fx: 'stool', name: 'Табуреткой', intro: 'Берёт табуретку: «Ну, кто тут смелый?»' },
-  b_kum: { fx: 'papers', name: 'Папкой с делом', intro: '«Я про тебя всё знаю» — и раскрывает папку' },
-  b_smotr: { fx: 'cards', name: 'Колода в лицо', intro: 'Тасует колоду: «Сыграем?»' },
-  b_general: { fx: 'swing', name: 'Генеральский разнос', intro: 'Свита расступается — генерал в гневе' },
-  b_major: { fx: 'swing', name: 'Режим есть режим', intro: 'Свисток, дубинка, протокол' },
-  b_thief: { fx: 'cards', name: 'Воровской расклад', intro: 'Перстни блестят: «Ну давай, первоход»' },
-  b_typhoon: { fx: 'shield', name: 'Щитом в лицо', intro: 'Щит, шлем, дубинка — спецназ пошёл' },
-  b_prosecutor: { fx: 'papers', name: 'Протест прокурора', intro: 'Открывает дело и надевает очки' },
-  b_lumber: { fx: 'swing', name: 'Топором с плеча', intro: '«Норму не сделал — сам ляжешь под пилу»' },
-  b_frost: { fx: 'swing', name: 'Ледяной разнос', intro: 'Иней на погонах, пар изо рта' },
-  b_pakhan: { fx: 'cards', name: 'Камерный расклад', intro: 'Пахан откладывает карты: «Ну, поговорим»' },
-  b_korpus: { fx: 'shield', name: 'Дверью по лицу', intro: 'Звенит ключами, открывает кормушку' },
-  b_sdp: { fx: 'papers', name: 'Рапорт начальству', intro: 'Достаёт блокнот: «Запишем нарушение»' },
-  b_podpolkovnik: { fx: 'swing', name: 'Режим превыше всего', intro: 'Свисток, строй, «смирно»' },
+  b_rat: { fx: 'stab', name: 'Ложкой в бок', intro: 'Крутит заточенную ложку и скалится' , stance: 'bob', ko: 'koSpin' },
+  b_pickpocket: { fx: 'stab', name: 'Ловкость рук', intro: '«Чё такой напряжённый? Карманы проверь»' , stance: 'bob', ko: 'koSpin' },
+  b_guard: { fx: 'swing', name: 'Дубинал', intro: 'Постукивает дубинкой по ладони' , stance: 'heavy', ko: 'koFwd' },
+  b_zavhoz: { fx: 'swing', name: 'Трубой по спине', intro: 'Выходит со склада с куском трубы' , stance: 'heavy', ko: 'koFwd' },
+  b_chief: { fx: 'swing', name: 'Кувалдой по хребту', intro: '«Строиться!» — и сразу бьёт' , stance: 'heavy', ko: 'koFwd' },
+  b_dog: { fx: 'dog', name: 'Джульбарс, фас!', intro: 'Овчарка рвётся с поводка' , stance: 'guard', ko: 'koSpin' },
+  b_snitch: { fx: 'stab', name: 'Удар в спину', intro: 'Заходит сбоку, глаза бегают' , stance: 'bob', ko: 'koSpin' },
+  b_medic: { fx: 'syringe', name: 'Укол успокоительного', intro: 'Пощёлкивает шприцем: «Сейчас будет не больно»' , stance: 'taunt', ko: 'ko' },
+  b_warden: { fx: 'stool', name: 'Табуреткой', intro: 'Берёт табуретку: «Ну, кто тут смелый?»' , stance: 'bob', ko: 'koSpin' },
+  b_kum: { fx: 'papers', name: 'Папкой с делом', intro: '«Я про тебя всё знаю» — и раскрывает папку' , stance: 'taunt', ko: 'ko' },
+  b_smotr: { fx: 'cards', name: 'Колода в лицо', intro: 'Тасует колоду: «Сыграем?»' , stance: 'taunt', ko: 'ko' },
+  b_general: { fx: 'swing', name: 'Генеральский разнос', intro: 'Свита расступается — генерал в гневе' , stance: 'heavy', ko: 'koFwd' },
+  b_major: { fx: 'swing', name: 'Режим есть режим', intro: 'Свисток, дубинка, протокол' , stance: 'taunt', ko: 'ko' },
+  b_thief: { fx: 'cards', name: 'Воровской расклад', intro: 'Перстни блестят: «Ну давай, первоход»' , stance: 'bob', ko: 'koSpin' },
+  b_typhoon: { fx: 'shield', name: 'Щитом в лицо', intro: 'Щит, шлем, дубинка — спецназ пошёл' , stance: 'heavy', ko: 'koFwd' },
+  b_prosecutor: { fx: 'papers', name: 'Протест прокурора', intro: 'Открывает дело и надевает очки' , stance: 'taunt', ko: 'ko' },
+  b_lumber: { fx: 'swing', name: 'Топором с плеча', intro: '«Норму не сделал — сам ляжешь под пилу»' , stance: 'heavy', ko: 'koFwd' },
+  b_frost: { fx: 'swing', name: 'Ледяной разнос', intro: 'Иней на погонах, пар изо рта' , stance: 'heavy', ko: 'koFwd' },
+  b_pakhan: { fx: 'cards', name: 'Камерный расклад', intro: 'Пахан откладывает карты: «Ну, поговорим»' , stance: 'taunt', ko: 'ko' },
+  b_korpus: { fx: 'shield', name: 'Дверью по лицу', intro: 'Звенит ключами, открывает кормушку' , stance: 'heavy', ko: 'koFwd' },
+  b_sdp: { fx: 'papers', name: 'Рапорт начальству', intro: 'Достаёт блокнот: «Запишем нарушение»' , stance: 'taunt', ko: 'ko' },
+  b_podpolkovnik: { fx: 'swing', name: 'Режим превыше всего', intro: 'Свисток, строй, «смирно»' , stance: 'taunt', ko: 'ko' },
 };
 
 /** То, что летит в цель: рисуется в начале координат, полёт задаёт CSS. */

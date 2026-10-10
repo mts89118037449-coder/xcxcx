@@ -90,6 +90,20 @@ function wrap(x: CanvasRenderingContext2D, text: string, cx: number, y: number, 
   lines.slice(0, 2).forEach((l, i) => x.fillText(l, cx, y + i * lh - ((Math.min(lines.length, 2) - 1) * lh) / 2));
 }
 
+/** Залить картинку и открыть выбор чата в Telegram (или историю, или ссылку вне Telegram). */
+export async function sendShare(jpeg: Blob, caption: string, toast: (t: string) => void) {
+  const res = await fetch(`/api/share?caption=${encodeURIComponent(caption)}`, { method: 'POST', headers: { 'content-type': 'image/jpeg', authorization: authHeaderValue() }, body: jpeg });
+  const r = (await res.json()) as { url: string; ref: string; prepared: string | null; error?: string };
+  if (!res.ok) throw new Error(r.error ?? 'Не вышло');
+  if (r.prepared && tg?.shareMessage) tg.shareMessage(r.prepared, (sent) => sent && toast('📸 Отправлено!'));
+  else if (tg?.shareToStory) tg.shareToStory(r.url, { text: caption, widget_link: { url: r.ref, name: 'Играть' } });
+  else {
+    const link = `https://t.me/share/url?url=${encodeURIComponent(r.ref)}&text=${encodeURIComponent(caption)}`;
+    if (tg) tg.openTelegramLink(link);
+    else window.open(r.url, '_blank');
+  }
+}
+
 /** Кнопка «Поделиться»: картинка + ссылка-приглашение. В Telegram — выбор чата, иначе — история или ссылка. */
 export function ShareButton({ card, caption, className = 'btn btn-wide btn-dark' }: { card: ShareCard; caption: string; className?: string }) {
   const { p, toast } = useGame();
@@ -97,17 +111,7 @@ export function ShareButton({ card, caption, className = 'btn btn-wide btn-dark'
   const share = async () => {
     setBusy(true);
     try {
-      const png = await draw(card, p.name, p.level);
-      const res = await fetch(`/api/share?caption=${encodeURIComponent(caption)}`, { method: 'POST', headers: { 'content-type': 'image/jpeg', authorization: authHeaderValue() }, body: png });
-      const r = (await res.json()) as { url: string; ref: string; prepared: string | null; error?: string };
-      if (!res.ok) throw new Error(r.error ?? 'Не вышло');
-      if (r.prepared && tg?.shareMessage) tg.shareMessage(r.prepared, (sent) => sent && toast('📸 Отправлено!'));
-      else if (tg?.shareToStory) tg.shareToStory(r.url, { text: caption, widget_link: { url: r.ref, name: 'Играть' } });
-      else {
-        const link = `https://t.me/share/url?url=${encodeURIComponent(r.ref)}&text=${encodeURIComponent(caption)}`;
-        if (tg) tg.openTelegramLink(link);
-        else window.open(r.url, '_blank');
-      }
+      await sendShare(await draw(card, p.name, p.level), caption, toast);
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Не вышло', 'err');
     } finally {

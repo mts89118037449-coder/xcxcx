@@ -2,7 +2,7 @@ import { GOLD_PRICES, JOBS, STAT_NAMES, trainCost, type Stat } from '../../share
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
 import { Dailies, Quests } from '../Tasks.tsx';
-import { Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
+import { Price, fmt, lookOf, useAnim, useGame, heroMood } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { Suspense } from 'react';
 import { named } from '../lazy.ts';
@@ -38,7 +38,7 @@ export function Work() {
   return (
     <>
       <div className="scene-wrap">
-        <Stage onTalk={talk} loc="work" look={lookOf(p)} mood={p.hp < p.stats.maxHp * 0.3 ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
+        <Stage onTalk={talk} loc="work" look={lookOf(p)} mood={heroMood(p)} anim={anim} animKey={animKey} />
         <div className="scene-tag">⚒️ Дела: смены, игры, поручения</div>
       </div>
       <Hint id="work" icon="⚒️">

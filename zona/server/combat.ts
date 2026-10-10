@@ -26,6 +26,10 @@ export interface Round {
   heal?: number; // лечение того, кто действует
   miss?: boolean;
   note?: string; // перк или расходник — всплывает над бойцом
+  /** серия точных ударов подряд (2+) */
+  combo?: number;
+  /** добивание после серии — особая анимация */
+  fin?: boolean;
 }
 
 export interface FightResult {
@@ -67,6 +71,8 @@ interface SideState {
   counterAdd: number;
   doubleNext: boolean;
   lootBonus: number;
+  /** точных ударов подряд; на 3 следующий обычный удар — добивание */
+  combo?: number;
 }
 
 /** Состояние боя — чистый JSON: хранится у игрока между ходами. */
@@ -109,7 +115,7 @@ function sideOf(i: 0 | 1, f: Fighter): SideState {
     perks: uniq(f.perks).filter((id) => perkById.has(id)),
     items: uniq(f.items).filter((id) => consumableById.has(id)),
     used: [], ready: {}, turn: 0, stunned: false, bleed: null, weak: null, blocks: [],
-    dmgMul: 1, atkMul: 1, critAdd: 0, critMul: 1, counterAdd: 0, doubleNext: false, lootBonus: 0,
+    dmgMul: 1, atkMul: 1, critAdd: 0, critMul: 1, counterAdd: 0, doubleNext: false, lootBonus: 0, combo: 0,
   };
 }
 
@@ -178,13 +184,16 @@ class Turn {
     this.push({ by: s.i, dmg: 0, crit: false, heal: s.hp, note });
   }
 
-  strike(me: SideState, foe: SideState, mult: number, forcedCrit: boolean, note: string | undefined, isCounter = false): boolean {
+  strike(me: SideState, foe: SideState, mult: number, forcedCrit: boolean, note: string | undefined, isCounter = false, fin = false): boolean {
     const rng = this.rng;
     const dodge = passive(foe, 'dodge') + (has(foe, 'legend_thief') ? 10 : 0);
     if (rng() * 100 < dodge) {
+      if (!isCounter) me.combo = 0;
       this.push({ by: me.i, dmg: 0, crit: false, miss: true, note: note ? `${note} · 💨` : '💨 Уклон' });
       return false;
     }
+    if (!isCounter) me.combo = fin ? 0 : (me.combo ?? 0) + 1;
+    const combo = !isCounter && !fin && (me.combo ?? 0) >= 2 ? me.combo : undefined;
     const crit = forcedCrit || rng() * 100 < me.crit + me.critAdd;
     const base = me.atk * me.atkMul * (1 - (me.weak?.pct ?? 0) / 100) * (0.85 + rng() * 0.3) - foe.def * 0.4;
     let m = mult * me.dmgMul;
@@ -199,9 +208,11 @@ class Turn {
       if (--blk.n <= 0) foe.blocks.shift();
     }
     foe.hp -= dmg;
+    // пропустил крит — серия сбита
+    if (crit && dmg > 0) foe.combo = 0;
     const leech = passive(me, 'leech');
     const h = leech && dmg ? this.heal(me, (dmg * leech) / 100) : 0;
-    this.push({ by: me.i, dmg, crit, ...(h ? { heal: h } : {}), ...(note ? { note } : {}) });
+    this.push({ by: me.i, dmg, crit, ...(h ? { heal: h } : {}), ...(note ? { note } : {}), ...(combo ? { combo } : {}), ...(fin ? { fin } : {}) });
     this.st.lines.push(`${me.name}${isCounter ? ' в ответ' : ''} бьёт на ${dmg}${crit ? ' 💥' : ''}${note ? ` (${note})` : ''}`);
     this.survive(foe);
     if (foe.hp > 0 && !isCounter) {
@@ -322,8 +333,11 @@ class Turn {
         if (perk!.kind === 'armor') foe.weak = { pct: perk!.value, turns: 4 };
         return;
       }
-      default:
-        this.strike(me, foe, 1, false, undefined);
+      default: {
+        // три точных удара подряд — четвёртый обычный становится добиванием
+        const fin = (me.combo ?? 0) >= 3;
+        this.strike(me, foe, fin ? 1.6 : 1, false, fin ? '💥 Добивание' : undefined, false, fin);
+      }
     }
   }
 }

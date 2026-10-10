@@ -1,4 +1,5 @@
 import { weatherAt } from '../shared/weather.ts';
+import { renoComfort } from '../shared/reno.ts';
 import { QUIZ, quizPhase, quizPoints, quizQuestions, quizSlot, quizTotalMs } from '../shared/quiz.ts';
 import { FOOT, dayPairs, footTable } from '../shared/football.ts';
 import { DECREES, ELECT, voteWeight, type ElectRow, type SmotrState } from '../shared/elect.ts';
@@ -385,7 +386,7 @@ export function createApp(opts: AppOptions) {
       refCount: p.refCount,
       cell: cellView(p.furniture, p.cellShow),
       cellShow: p.cellShow,
-      comfort: comfortOf(p.furniture),
+      comfort: comfortOf(p.furniture) + renoComfort(p.reno.stage),
       event: p.event && p.event.until > t ? { ...p.event, who: eventById.get(p.event.id)?.who, name: eventById.get(p.event.id)?.name } : null,
       placeCd: p.placeCd,
       rep: p.rep,
@@ -444,6 +445,9 @@ export function createApp(opts: AppOptions) {
       })(),
       ink: p.ink,
       inkOrder: p.inkOrder,
+      intros: p.intros,
+      bunk: { done: p.bunk.day === g.dayIndex(t), pick: p.bunk.day === g.dayIndex(t) ? p.bunk.pick : -1, day: g.dayIndex(t) },
+      reno: { stage: p.reno.stage, until: p.reno.until, rush: p.reno.until > t ? g.renoRushCost(p, t) : 0 },
       // аферистка или нет — тайна до конца
       penpal: p.penpal && { name: p.penpal.name, step: p.penpal.step, love: p.penpal.love, nextAt: p.penpal.nextAt, ending: p.penpal.ending, picks: p.penpal.picks, canRestart: !!p.penpal.ending && p.penpal.hodka !== p.hodka },
       appeal: p.appeal.hodka === p.hodka ? { args: p.appeal.args, done: p.appeal.done, won: p.appeal.won, delta: p.appeal.delta } : { args: [], done: false, won: false, delta: 0 },
@@ -1011,6 +1015,11 @@ export function createApp(opts: AppOptions) {
       return r;
     },
     familyTalk: (p, b, t) => g.familyTalk(p, num(b.choice), t, rng),
+    placeIntro: (p, b, t) => g.placeIntro(p, String(b.place ?? ''), t),
+    bunkTalk: (p, b, t) => g.bunkTalk(p, Math.floor(num(b.choice)), t),
+    renoStart: (p, _b, t) => g.renoStart(p, t),
+    renoRush: (p, _b, t) => g.renoRush(p, t),
+    renoFinish: (p, _b, t) => g.renoFinish(p, t),
     malyava: (p, b, t) => {
       const target = db.getPlayer(num(b.id));
       if (!target) throw new g.GameError('Нет такого игрока');
@@ -2116,7 +2125,7 @@ export function createApp(opts: AppOptions) {
       build: v.build,
       skin: v.skin,
       furniture: cellView(v.furniture, v.cellShow),
-      comfort: comfortOf(v.furniture),
+      comfort: comfortOf(v.furniture) + renoComfort(v.reno?.stage ?? 0),
       equipped: v.equipped,
       str: v.str,
       interior: v.interior,

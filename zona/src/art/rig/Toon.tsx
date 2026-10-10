@@ -9,6 +9,7 @@ import type { Look } from '../../../shared/types.ts';
 import { TATTOO_ART, TattooGlyph } from './tattoos.tsx';
 import { FEET, HAIR_COLORS, HATS, LEGS, SKIN_TONES, TOPS, type HeadWear, type Pattern, type TopWear } from './wear.ts';
 import { Weapon, type FaceFx, type RigAnim, type RigProps } from './Rig.tsx';
+import { play, type Sfx } from '../../sound.ts';
 
 const INK = '#141010';
 const OUT = 2.2;
@@ -329,6 +330,62 @@ export function toonPose(anim: RigAnim, t: number, seed = 0): TPose {
       const m = nearTo(MOUTH[0] + 2, MOUTH[1] + 6);
       return { ...P0, y: -k, sq: 1 + 0.04 * k, aN: lerp(8, m.aN, k), eN: lerp(10, m.eN, k), mouth: k, eyes: k > 0.4 ? 0.05 : eyes, head: -6 * k };
     }
+    case 'upper': {
+      // добивание: присел, взрыв вверх с апперкотом, отрыв от земли
+      const gp = toonPose('guard', t, seed);
+      const low: TPose = { ...gp, y: 12, rot: 10, sq: 0.94, aN: 10, eN: 140, hN: 40, kN: 60, hF: -20, kF: 50, brow: 1, teeth: 1 };
+      const top: TPose = { ...gp, x: 12, y: -16, rot: -6, sq: 1.06, aN: 168, eN: 10, aF: 40, eF: 110, hN: 10, kN: 40, hF: -14, kF: 30, mouth: 1, brow: 1, teeth: 0, head: -8 };
+      if (s < 0.14) return mix(gp, low, ease(s / 0.14));
+      if (s < 0.28) return mix(low, top, back((s - 0.14) / 0.14));
+      if (s < 0.46) return top;
+      const land = mix(top, gp, ease(clamp01((s - 0.46) / 0.26)));
+      return { ...land, dust: s > 0.6 && s < 0.9 ? 1 - (s - 0.6) / 0.3 : 0 };
+    }
+    case 'nod': {
+      // кивок «здорово» с полуулыбкой
+      const k = step(s, 0, 0.15) - step(s, 1.4, 1.7);
+      const n = s < 0.9 ? Math.max(0, Math.sin(s * 14)) * 9 : 0;
+      return { ...P0, head: n * k, hy: n * 0.3, smile: 0.6 * k, brow: -0.2, eyes, look: 1 };
+    }
+    case 'shrug': {
+      const k = step(s, 0, 0.25) - step(s, 1.3, 1.7);
+      return { ...P0, hy: 4 * k, aN: lerp(8, 34, k), eN: lerp(10, 110, k), aF: lerp(-8, -34, k), eF: lerp(10, -110, k), brow: -0.8 * k, smile: -0.4 * k, eyes, look: 0.9 };
+    }
+    case 'sad': {
+      // сутулится, взгляд в пол — голодный или побитый
+      const b = Math.sin(s * 1.4);
+      return { ...P0, y: 3 + choppy(b * 0.8), rot: -3, sq: 0.97, head: 10, hy: 3, aN: 2, aF: -2, eN: 4, eF: 4, brow: -1, smile: -0.8, eyes: Math.min(eyes, 0.6), look: 0.3, lookY: 0.9 };
+    }
+    case 'proud': {
+      // грудь колесом, руки в боки — при деньгах
+      const b = Math.sin(s * 2);
+      return { ...P0, y: choppy(b), sq: 1.02, rot: -4, head: -6, ...nearTo(86, 158), ...farTo(36, 158), fist: 1, smile: 0.8, brow: 0.2, eyes, look: 0.8, lookY: -0.4 };
+    }
+    case 'bob': {
+      // боксёрский нырок: босс-кулачник
+      const gp = toonPose('guard', t, seed);
+      const ph = Math.sin(s * 5);
+      return { ...gp, x: choppy(ph * 5), y: gp.y + Math.abs(ph) * 5, rot: ph * 8, head: ph * 6, hN: 20 + ph * 6, kN: 20 + Math.abs(ph) * 14, kF: 14 + Math.abs(ph) * 14 };
+    }
+    case 'heavy': {
+      // тяжеловес: широкая стойка, медленно переваливается, плечи вперёд
+      const ph = Math.sin(s * 1.6);
+      return { ...P0, y: 4, x: choppy(ph * 3), rot: 6 + ph * 4, sq: 0.97, hN: 22, kN: 10, hF: -20, kF: 10, aN: 34 + ph * 6, eN: 30, aF: -10, eF: 40, fist: 1, brow: 1, teeth: ph > 0.6 ? 1 : 0, eyes, look: 1 };
+    }
+    case 'koFwd': {
+      // рухнул лицом вперёд
+      const fall = ease(clamp01(s / 0.45));
+      const lie: TPose = { ...P0, lie: 86, y: 4, aN: -150, eN: 10, aF: -130, eF: 20, hN: -10, kN: 20, hF: 6, kF: 30, eyes: 0, brow: -1, mouth: 0.3 };
+      const p = mix(toonPose('hit', 60, seed), lie, fall);
+      const bounce = s > 0.45 && s < 0.7 ? Math.sin(((s - 0.45) / 0.25) * Math.PI) * 4 : 0;
+      return { ...p, y: p.y - bounce, dust: s > 0.42 && s < 0.9 ? 1 - (s - 0.42) / 0.48 : 0 };
+    }
+    case 'koSpin': {
+      // крутанулся на месте и сел на землю, глаза в кучу
+      const sp = clamp01(s / 0.5);
+      const p = sp < 1 ? { ...toonPose('hit', 60, seed), rot: Math.sin(sp * Math.PI * 3) * 24, x: Math.sin(sp * Math.PI * 2) * 8 } : toonPose('floor', t, seed);
+      return { ...p, eyes: 0, dust: s > 0.5 && s < 0.9 ? 1 - (s - 0.5) / 0.4 : 0 };
+    }
   }
   return P0;
 }
@@ -368,7 +425,39 @@ const PROP: Partial<Record<RigAnim, 'cig' | 'mug' | 'bowl' | 'zzz' | 'hammer'>> 
 let seq = 0;
 
 /** Фигурка: тот же интерфейс, что у прежней куклы. */
-export function Toon({ look, anim = 'idle', mirror, still, shadow = true, startKey, bare, fidget = true, fx }: RigProps) {
+/**
+ * Звуки движений: в какой момент анимации (с) что звучит. period — для циклов (шаги, молоток).
+ * Разовые — от начала движения.
+ */
+const SOUNDS: Partial<Record<RigAnim, { at: number; sfx: Sfx; period?: number }[]>> = {
+  walk: [{ at: 0.1, sfx: 'step', period: 1 / 1.5 / 2 }],
+  run: [{ at: 0.05, sfx: 'step', period: 1 / 2.1 / 2 }],
+  punch: [{ at: 0.1, sfx: 'whoosh' }],
+  kick: [{ at: 0.12, sfx: 'whoosh' }],
+  upper: [{ at: 0.16, sfx: 'whoosh' }, { at: 0.62, sfx: 'thud' }],
+  dodge: [{ at: 0.02, sfx: 'whoosh' }],
+  ko: [{ at: 0.42, sfx: 'thud' }],
+  koFwd: [{ at: 0.45, sfx: 'thud' }],
+  koSpin: [{ at: 0.5, sfx: 'thud' }],
+  cheer: [{ at: 0.68, sfx: 'step', period: 0.9 }],
+  work: [{ at: 0.6 / 1.4, sfx: 'hammer', period: 1 / 1.4 }],
+  yawn: [{ at: 0.3, sfx: 'yawn' }],
+  smoke: [{ at: 2.6, sfx: 'cough', period: 13.2 }],
+  drink: [{ at: 0.5, sfx: 'clink', period: 3.4 }, { at: 1.2, sfx: 'slurp', period: 3.4 }],
+  eat: [{ at: 0.9, sfx: 'slurp', period: (2 * Math.PI) / 3.2 }],
+  think: [{ at: 0.8, sfx: 'hum' }],
+  nod: [{ at: 0.2, sfx: 'hum' }],
+};
+
+/** Пересёк ли момент `at` (с периодом) отрезок времени (a, b]. */
+function crossed(a: number, b: number, at: number, period?: number) {
+  if (b <= a) return false;
+  if (!period) return a < at && b >= at;
+  const n = Math.floor((b - at) / period);
+  return n >= 0 && at + n * period > a;
+}
+
+export function Toon({ look, anim = 'idle', mirror, still, shadow = true, startKey, bare, fidget = true, fx, sfx }: RigProps) {
   const id = useRef(++seq).current;
   const seed = useRef(Math.random() * 3).current;
   const t = useClock(!still);
@@ -394,6 +483,14 @@ export function Toon({ look, anim = 'idle', mirror, still, shadow = true, startK
     t0.current = now;
   }
   const local = still ? 0 : t - t0.current;
+  // звуки движений — только у главных героев сцены и не чаще кадра
+  const heard = useRef(0);
+  if (sfx && !still) {
+    const a = heard.current / 1000;
+    const b = local / 1000;
+    for (const e of SOUNDS[eff] ?? []) if (crossed(a, b, e.at, e.period)) play(e.sfx);
+  }
+  heard.current = local;
   let pose = toonPose(eff, Math.max(0, local), seed);
   const k = prev.current ? (now - prev.current.at) / 170 : 1;
   if (prev.current && k < 1) pose = mix(prev.current.pose, pose, ease(Math.max(0, k)));
@@ -403,7 +500,7 @@ export function Toon({ look, anim = 'idle', mirror, still, shadow = true, startK
   lag.current = still ? 0 : Math.max(-4, Math.min(4, lag.current * 0.55 - dy * 0.7));
   last.current = pose;
   const shown = lag.current ? { ...pose, hy: pose.hy + lag.current } : pose;
-  return <ToonBody look={look} pose={shown} mirror={mirror} shadow={shadow} bare={bare} prop={PROP[eff]} fx={fx} uid={`tn${id}`} time={local} ko={eff === 'ko'} />;
+  return <ToonBody look={look} pose={shown} mirror={mirror} shadow={shadow} bare={bare} prop={PROP[eff]} fx={fx} uid={`tn${id}`} time={local} ko={eff === 'ko' || eff === 'koFwd' || eff === 'koSpin'} />;
 }
 
 // --- Тело --------------------------------------------------------------------------------------

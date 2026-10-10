@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { Look } from '../shared/types.ts';
+import type { RigAnim } from './art/rig/Rig.tsx';
 import { BUILDS, GOLD_PRICES, SKINS, faceOf, faceParts } from '../shared/content.ts';
 import { Rig, RigHead } from './art/rig/Rig.tsx';
 import { SKIN_TONES } from './art/rig/wear.ts';
@@ -42,6 +44,7 @@ export function CharacterEditor() {
 
       {open === 'body' && (
         <>
+          <LivePreview look={{ equipped: p.equipped, tattoos: p.tattoos, str: p.str, face: p.face, skin: p.skin, build: p.build }} />
           <div className="muted small">Телосложение и кожа меняются бесплатно — смотри на персонажа в хате</div>
           <div className="chips" style={{ marginTop: 8 }}>
             {BUILDS.map((b) => (
@@ -108,10 +111,8 @@ function FacePicker() {
     <>
       <div className="face-preview">
         <RigHead look={look} size={96} />
-        <svg viewBox="0 0 120 214" width={70} height={125}>
-          <Rig look={{ ...look, equipped: p.equipped, tattoos: p.tattoos }} anim="idle" />
-        </svg>
       </div>
+      <LivePreview look={{ ...look, equipped: p.equipped, tattoos: p.tattoos }} />
       {row('hair', 'Причёска')}
       {row('beard', 'Борода')}
       {row('jaw', 'Лицо')}
@@ -128,5 +129,50 @@ function FacePicker() {
         {p.faceChosen ? `Применить · ${GOLD_PRICES.faceChange} 🪙` : 'Применить (первый раз бесплатно)'}
       </button>
     </>
+  );
+}
+
+/** Что показывает персонаж в предпросмотре — по кругу, или выбранное. */
+const SHOW: { anim: RigAnim; icon: string; label: string }[] = [
+  { anim: 'idle', icon: '🧍', label: 'Стоит' },
+  { anim: 'wave', icon: '👋', label: 'Привет' },
+  { anim: 'talk', icon: '🗣️', label: 'Базар' },
+  { anim: 'flex', icon: '💪', label: 'Мышцы' },
+  { anim: 'punch', icon: '👊', label: 'Удар' },
+  { anim: 'kick', icon: '🦶', label: 'Пинок' },
+  { anim: 'cheer', icon: '🙌', label: 'Радость' },
+  { anim: 'dance', icon: '🕺', label: 'Пляс' },
+  { anim: 'smoke', icon: '🚬', label: 'Курит' },
+  { anim: 'sad', icon: '😔', label: 'Грусть' },
+  { anim: 'proud', icon: '😎', label: 'Гордо' },
+];
+
+/** Живой предпросмотр: крупно, движения меняются сами — видно, как облик смотрится в деле. */
+export function LivePreview({ look }: { look: Look }) {
+  const [pick, setPick] = useState<number | null>(null);
+  const [auto, setAuto] = useState(0);
+  useEffect(() => {
+    if (pick !== null) return;
+    const t = setInterval(() => setAuto((a) => (a + 1) % SHOW.length), 2400);
+    return () => clearInterval(t);
+  }, [pick]);
+  const cur = pick ?? auto;
+  return (
+    <div className="live-preview">
+      <svg viewBox="-20 -6 160 222" className="live-svg">
+        <ellipse cx={60} cy={210} rx={46} ry={6} fill="#0004" />
+        <Rig look={look} anim={SHOW[cur].anim} startKey={`${cur}${pick ?? ''}`} sfx={pick !== null} />
+      </svg>
+      <div className="live-chips">
+        {SHOW.map((s, i) => (
+          <button key={s.anim} className={cur === i ? 'active' : ''} onClick={() => setPick(pick === i ? null : i)} title={s.label}>
+            {s.icon}
+          </button>
+        ))}
+        <button className={pick === null ? 'active' : ''} onClick={() => setPick(null)} title="По кругу">
+          🔁
+        </button>
+      </div>
+    </div>
   );
 }

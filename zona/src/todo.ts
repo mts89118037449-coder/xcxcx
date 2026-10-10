@@ -22,7 +22,7 @@ export function todo(p: PlayerView, now: number) {
   const holiday = !!p.holiday?.dailyReady;
   const shmon = p.contra.shmon;
   const sections = {
-    home: { story, look: !p.faceChosen },
+    home: { story, look: !p.faceChosen, cell: p.reno.until > 0 && p.reno.until <= now },
     work: { games: word, daily, quests: quest, gym: p.statPoints > 0 },
     zone: { now: shmon || holiday, market: shmon },
     fight: { riot },
@@ -31,7 +31,7 @@ export function todo(p: PlayerView, now: number) {
   return {
     sections,
     tabs: {
-      home: now >= p.dailyReadyAt || story || !p.faceChosen,
+      home: now >= p.dailyReadyAt || story || !p.faceChosen || !p.bunk.done || (p.reno.until > 0 && p.reno.until <= now),
       zone: shmon || holiday || (p.riot.phase === 'vote' && p.riot.myVote === null),
       work: word || daily || quest || p.statPoints > 0,
       fight: riot,

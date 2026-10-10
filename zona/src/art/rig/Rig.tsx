@@ -67,7 +67,8 @@ const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
 export type RigAnim =
   | 'idle' | 'walk' | 'run' | 'sit' | 'floor' | 'guard' | 'punch' | 'hit' | 'ko' | 'cheer' | 'work' | 'crossed' | 'pullup'
-  | 'smoke' | 'drink' | 'eat' | 'think' | 'stretch' | 'wave' | 'flex' | 'squat' | 'pushup' | 'sleep' | 'dance' | 'taunt' | 'kick' | 'dodge' | 'cold' | 'crouch' | 'talk' | 'scratch' | 'yawn';
+  | 'smoke' | 'drink' | 'eat' | 'think' | 'stretch' | 'wave' | 'flex' | 'squat' | 'pushup' | 'sleep' | 'dance' | 'taunt' | 'kick' | 'dodge' | 'cold' | 'crouch' | 'talk' | 'scratch' | 'yawn'
+  | 'upper' | 'nod' | 'shrug' | 'sad' | 'proud' | 'bob' | 'heavy' | 'koFwd' | 'koSpin';
 
 /** Что персонаж держит в руках в этой анимации. */
 export const ANIM_PROP: Partial<Record<RigAnim, 'cig' | 'mug' | 'bowl' | 'zzz' | 'hammer'>> = { smoke: 'cig', drink: 'mug', eat: 'bowl', sleep: 'zzz', work: 'hammer' };
@@ -1072,6 +1073,8 @@ export interface RigProps {
   bare?: boolean;
   /** стоя без дела — иногда закурить, попить чаю, потянуться (по умолчанию да) */
   fidget?: boolean;
+  /** озвучивать движения: шаги, взмахи, падения (только главные герои сцены) */
+  sfx?: boolean;
 }
 
 /** Прежняя «реалистичная» кукла — осталась для галереи и сравнения. */

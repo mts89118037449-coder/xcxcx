@@ -79,6 +79,9 @@ import { FOOT, resolveKick } from '../shared/football.ts';
 import { CONTRA, HIDE_SPOTS, goodById, goodPrice, shmonTonight, type GoodId } from '../shared/contra.ts';
 import { TUNNEL } from '../shared/tunnel.ts';
 import { FAMILY, FAMILY_ROUNDS, familyOutcome, type Visitor } from '../shared/family.ts';
+import { INTRO_REWARD, PLACE_INTRO } from '../shared/cutscenes.ts';
+import { bunkOfDay } from '../shared/bunk.ts';
+import { RENO, renoCost } from '../shared/reno.ts';
 import { MALYAVA, malyavaById } from '../shared/malyava.ts';
 import { PENPAL, PENPAL_GIRLS, PEN_ENDINGS, PEN_LETTERS, penEnding, type PenEnding } from '../shared/penpal.ts';
 import { COURT, courtArgById, courtChance, type ArgId } from '../shared/court.ts';
@@ -279,6 +282,12 @@ export interface Player {
   tunnel: { hodka: number; depth: number; digAt: number; masked: number; found: number; done: boolean };
   /** свиданка с роднёй: раз в неделю */
   family: { week: number; who: Visitor; rounds: number[]; picks: number[]; mood: number; done: boolean; buffUntil: number; buffPct: number };
+  /** с какими местами уже познакомился (сценка при первом заходе) */
+  intros: string[];
+  /** разговор у шконки: день и выбранный ответ */
+  bunk: { day: number; pick: number };
+  /** ремонт хаты: сколько этапов готово и когда закончится текущий (0 — не идёт) */
+  reno: { stage: number; until: number };
   /** входящие малявы */
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
@@ -448,6 +457,9 @@ export function newPlayer(id: number, name: string, username: string | null, now
     contra: { have: {}, spent: 0, earned: 0, shmonDay: -1 },
     tunnel: { hodka: 0, depth: 0, digAt: 0, masked: 0, found: 0, done: false },
     family: { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 },
+    intros: [],
+    bunk: { day: -1, pick: -1 },
+    reno: { stage: 0, until: 0 },
     ink: null,
     inkOrder: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
@@ -548,6 +560,9 @@ export function migrate(p: Player): Player {
   p.contra ??= { have: {}, spent: 0, earned: 0, shmonDay: -1 };
   p.tunnel ??= { hodka: 0, depth: 0, digAt: 0, masked: 0, found: 0, done: false };
   p.family ??= { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 };
+  p.intros ??= [];
+  p.bunk ??= { day: -1, pick: -1 };
+  p.reno ??= { stage: 0, until: 0 };
   p.ink ??= null;
   p.inkOrder ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
@@ -603,6 +618,8 @@ function bonuses(p: Player): Required<Bonus> {
     const f = furnitureById.get(id);
     if (f) add(f);
   }
+  // ремонт хаты: готовые этапы
+  for (const st of RENO.slice(0, p.reno?.stage ?? 0)) add(st.bonus);
   // тема хаты: вещи одного стиля в сцене
   for (const t of activeThemes(cellView(p.furniture, p.cellShow))) add(t.bonus);
   // комплекты: за две вещи и за полный набор
@@ -4220,6 +4237,65 @@ export function familyTalk(p: Player, choice: number, now: number, rng: Rng) {
   }
   log(p, now, `👪 Свиданка: ${out.title}`);
   return { mood: f.mood, end: { ...out, money, items } };
+}
+
+// --- Знакомство с местами, разговор у шконки, ремонт хаты -----------------------------------------
+
+export function placeIntro(p: Player, place: string, now: number) {
+  if (!(place in PLACE_INTRO)) throw new GameError('Нет такого места');
+  if (p.intros.includes(place)) return { already: true, butts: 0, xp: 0 };
+  p.intros.push(place);
+  p.butts += INTRO_REWARD.butts;
+  const xp = addXp(p, INTRO_REWARD.xp, now);
+  return { already: false, butts: INTRO_REWARD.butts, xp };
+}
+
+export function bunkTalk(p: Player, choice: number, now: number) {
+  const day = dayIndex(now);
+  if (p.bunk.day === day) throw new GameError('Сегодня уже поговорили — приходи завтра');
+  const talk = bunkOfDay(day);
+  const o = talk.options[choice];
+  if (!o) throw new GameError('Нет такого ответа');
+  p.bunk = { day, pick: choice };
+  const r = o.reward;
+  const s = stats(p, now);
+  if (r.butts) p.butts += r.butts;
+  if (r.authority) p.authority += r.authority;
+  if (r.energy) p.energy = Math.max(p.energy, Math.min(s.maxEnergy, p.energy + r.energy));
+  if (r.hp) p.hp = Math.min(s.maxHp, p.hp + Math.round(s.maxHp * r.hp));
+  const xp = r.xp ? addXp(p, r.xp, now) : 0;
+  return { reply: o.reply, reward: { ...r, xp } };
+}
+
+export function renoStart(p: Player, now: number) {
+  if (p.reno.until) throw new GameError('Ремонт уже идёт');
+  const st = RENO[p.reno.stage];
+  if (!st) throw new GameError('Хата и так как с картинки');
+  if (p.level < st.minLevel) throw new GameError(`С ${st.minLevel} уровня`);
+  const cost = renoCost(st, p.level);
+  spend(p, cost, 'money');
+  p.reno.until = now + st.hours * 60 * MIN;
+  return { stage: st.id, until: p.reno.until, cost };
+}
+
+/** Поторопить бригаду золотом: 2 золота за каждый оставшийся час. */
+export const renoRushCost = (p: Player, now: number) => Math.max(1, Math.ceil(((p.reno.until - now) / (60 * MIN)) * 2));
+
+export function renoRush(p: Player, now: number) {
+  if (!p.reno.until || p.reno.until <= now) throw new GameError('Нечего торопить');
+  const cost = renoRushCost(p, now);
+  spend(p, cost, 'gold');
+  p.reno.until = now;
+  return { cost };
+}
+
+export function renoFinish(p: Player, now: number) {
+  if (!p.reno.until) throw new GameError('Ремонт не идёт');
+  if (now < p.reno.until) throw new GameError('Бригада ещё работает');
+  const st = RENO[p.reno.stage];
+  p.reno = { stage: p.reno.stage + 1, until: 0 };
+  log(p, now, `${st.emoji} Ремонт: ${st.name} — готово`);
+  return { stage: st.id };
 }
 
 // --- Подкоп --------------------------------------------------------------------------------------

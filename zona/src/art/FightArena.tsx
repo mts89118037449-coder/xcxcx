@@ -64,7 +64,10 @@ export function FightArena({
     }
     // звук прошлого хода: удар, крит или промах
     const prev = replay.rounds[i - 1];
-    if (prev && i > startAt) play(prev.miss ? 'miss' : prev.crit ? 'crit' : prev.dmg > 0 ? 'hit' : 'click');
+    if (prev && i > startAt) {
+      play(prev.miss ? 'miss' : prev.fin ? 'finisher' : prev.crit ? 'crit' : prev.dmg > 0 ? 'hit' : 'click');
+      if ((prev.combo ?? 0) >= 2) play('combo');
+    }
     const next = replay.rounds[i];
     const t = setTimeout(() => setI(i + 1), i === 0 ? 350 : next && !next.dmg && !next.miss ? STEP_MS * 0.8 : STEP_MS);
     return () => clearTimeout(t);
@@ -100,6 +103,9 @@ export function FightArena({
   const alt = i % 2 ? ' alt' : '';
   // всплывашки: урон — над целью, лечение и перк — над тем, кто действует
   const move = enemy.npc ? BOSS_MOVES[enemy.npc] : undefined;
+  const stance = move?.stance ?? 'guard';
+  // серия ударов — счётчик над тем, кто бьёт; добивание — крупно на весь экран
+  const combo = last && !done && (last.combo ?? 0) >= 2 && !last.fin ? last : null;
   const notes = last && !done && (
     <>
       {move && last.by === 1 && strike && (
@@ -107,7 +113,18 @@ export function FightArena({
           {move.name}
         </div>
       )}
-      {last.note && (
+      {combo && (
+        <div key={`c${i}`} className={`combo-pop ${combo.by === 0 ? 'left' : 'right'}`}>
+          Серия ×{combo.combo}
+          {combo.combo === 3 && <small>следующий — добивание!</small>}
+        </div>
+      )}
+      {last.fin && (
+        <div key={`f${i}`} className="fin-pop">
+          ДОБИВАНИЕ!
+        </div>
+      )}
+      {last.note && !last.fin && (
         <div key={`n${i}`} className="perk-note" style={{ left: last.by === 0 ? '29%' : '71%' }}>
           {last.note}
         </div>
@@ -143,24 +160,26 @@ export function FightArena({
   );
 
   return (
-    <div className={`arena ${last && !done && last.crit && last.dmg > 0 ? `shake${alt}` : ''}`}>
+    <div className={`arena ${last && !done && (last.crit || last.fin) && last.dmg > 0 ? `shake${alt}` : ''}${last?.fin && !done ? ' fin-flash' : ''}`}>
       <YardScene tower={false}>
           <Place x={ME_X} y={266} scale={0.98} className={`pose ${meCls}${meCls ? alt : ''}`}>
             <PoseG
               startKey={i}
               name="guard34"
-              anim={done ? (replay.win ? 'cheer' : 'ko') : !last ? 'guard' : last.by === 0 ? (strike ? (last.crit || i % 3 === 2 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'}
+              anim={done ? (replay.win ? 'cheer' : 'ko') : !last ? 'guard' : last.by === 0 ? (strike ? (last.fin ? 'upper' : last.crit || i % 3 === 2 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? (last.fin ? 'koSpin' : 'hit') : 'guard'}
               look={me.look}
               fx={fxOf(0)}
+              sfx
             />
           </Place>
           <Place x={EN_X} y={266} scale={0.98} className={`pose ${enemyCls}${enemyCls ? alt : ''}`}>
             <PoseG
               startKey={i}
               name="guard34"
-              anim={done ? (replay.win ? 'ko' : 'taunt') : !last ? 'guard' : last.by === 1 ? (strike ? (last.crit || i % 3 === 1 ? 'kick' : 'punch') : 'guard') : last.miss ? 'dodge' : last.dmg > 0 ? 'hit' : 'guard'}
+              anim={done ? (replay.win ? (move?.ko ?? 'ko') : 'taunt') : !last ? stance : last.by === 1 ? (strike ? (last.fin ? 'upper' : last.crit || i % 3 === 1 ? 'kick' : 'punch') : stance) : last.miss ? 'dodge' : last.dmg > 0 ? (last.fin ? 'koSpin' : 'hit') : stance}
               look={enemyLook}
               fx={fxOf(1)}
+              sfx
               mirror
             />
           </Place>
@@ -175,7 +194,7 @@ export function FightArena({
               </g>
               {/* комиксное «БАЦ!» — как в мультике */}
               <text className={`comic-word ${last.crit ? 'crit' : ''}`} x={last.by === 0 ? 10 : -10} y={-22} textAnchor="middle" transform={`rotate(${last.by === 0 ? 12 : -12})`}>
-                {last.crit ? CRIT_WORDS[i % CRIT_WORDS.length] : HIT_WORDS[i % HIT_WORDS.length]}
+                {last.fin ? 'НА!' : last.crit ? CRIT_WORDS[i % CRIT_WORDS.length] : HIT_WORDS[i % HIT_WORDS.length]}
               </text>
             </g>
           )}

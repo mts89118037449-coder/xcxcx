@@ -1,3 +1,4 @@
+import { weatherFor } from '../../shared/weather.ts';
 import { itemLines } from '../Perks.tsx';
 import { Hint } from '../Hint.tsx';
 import { useEvent } from '../EventsLite.tsx';
@@ -8,7 +9,7 @@ import { api } from '../api.ts';
 import { NpcPortrait } from '../art/sprites.tsx';
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
-import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame, usePvp } from '../game.tsx';
+import { Bar, Card, fmt, lookOf, timeLeft, useAnim, useGame, usePvp, heroMood } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { RingPanel } from '../Ring.tsx';
 import { LeagueCard } from '../League.tsx';
@@ -85,7 +86,7 @@ export function Fight() {
   return (
     <>
       <div className="scene-wrap">
-        <Stage onTalk={talk} loc="yard" look={lookOf(p)} mood={lowHp ? 'hurt' : 'idle'} anim={anim} animKey={animKey} />
+        <Stage onTalk={talk} loc="yard" look={lookOf(p)} mood={heroMood(p, weatherFor(Date.now(), p.colony).temp)} anim={anim} animKey={animKey} />
         <div className="scene-tag">🥊 Двор</div>
         <button className="scene-btn" disabled={busy || now < p.yardReadyAt} onClick={walkYard}>
           {now < p.yardReadyAt ? `🚶 ${timeLeft(p.yardReadyAt - now)}` : '🚶 Прогуляться'}

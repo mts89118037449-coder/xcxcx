@@ -135,6 +135,22 @@ export function useAnim(): [string, number, (cls: string) => void] {
   return [state.cls, state.key, play];
 }
 
+/** Настроение героя по его состоянию — видно по позе и пузырю над головой. */
+export type HeroMood = 'idle' | 'hurt' | 'tired' | 'rich' | 'cold';
+export const HERO_MOOD: Record<Exclude<HeroMood, 'idle'>, { emoji: string; text: string }> = {
+  hurt: { emoji: '🤕', text: 'Побит — здоровья мало. Подлечись в санчасти или отдохни' },
+  tired: { emoji: '😴', text: 'Вымотан — энергии почти нет. Перекури, она восстановится' },
+  rich: { emoji: '🤑', text: 'При деньгах — ходит гоголем' },
+  cold: { emoji: '🥶', text: 'Мороз — во дворе зуб на зуб не попадает' },
+};
+export function heroMood(p: PlayerView, temp?: number): HeroMood {
+  if (p.hp < p.stats.maxHp * 0.3) return 'hurt';
+  if (p.energy < p.stats.maxEnergy * 0.15) return 'tired';
+  if (temp != null && temp <= -12) return 'cold';
+  if (p.money >= 5000 + p.level * 1500) return 'rich';
+  return 'idle';
+}
+
 export function lookOf(p: PlayerView): Look {
   return { equipped: p.equipped, tattoos: p.tattoos, str: p.str, face: p.face, build: p.build, skin: p.skin };
 }

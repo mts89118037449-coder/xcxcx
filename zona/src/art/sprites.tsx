@@ -38,12 +38,12 @@ export function useNpc(name: string): Npc | null {
 }
 
 /** НПС в системе координат персонажа, ступнями на y=210, по центру x=60. */
-export function ImageG({ url, mirror, tone }: { url: string; height?: number; mirror?: boolean; tone?: string; className?: string }) {
+export function ImageG({ url, mirror, tone, anim }: { url: string; height?: number; mirror?: boolean; tone?: string; className?: string; anim?: RigAnim }) {
   const n = NPC_RIGS[url.replace(/^rig:/, '')];
   if (!n) return null;
   return (
     <g style={tone ? { filter: tone } : undefined}>
-      <Rig look={n.look} anim={n.anim} mirror={mirror} />
+      <Rig look={n.look} anim={anim ?? n.anim} mirror={mirror} />
     </g>
   );
 }
@@ -56,13 +56,13 @@ const POSE_ANIM: Record<PoseName, RigAnim> = {
 };
 
 /** Персонаж игрока: кукла на скелете — одежда, наколки и внешность видны и двигаются вместе с телом. */
-export function PoseG({ name, mirror, tone, look, noShadow, anim, bare, startKey, fx }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean; anim?: RigAnim; bare?: boolean; startKey?: string | number; fx?: FaceFx }) {
+export function PoseG({ name, mirror, tone, look, noShadow, anim, bare, startKey, fx, sfx }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean; anim?: RigAnim; bare?: boolean; startKey?: string | number; fx?: FaceFx; sfx?: boolean }) {
   const l = look ?? { equipped: {}, tattoos: [], str: 5 };
   const a = anim ?? POSE_ANIM[name] ?? 'idle';
   return (
     <g style={tone ? { filter: tone } : undefined}>
       {a === 'sit' && <Stool />}
-      <Rig look={l} anim={a} mirror={mirror} shadow={!noShadow} bare={bare} startKey={startKey} fx={fx} />
+      <Rig look={l} anim={a} mirror={mirror} shadow={!noShadow} bare={bare} startKey={startKey} fx={fx} sfx={sfx} />
     </g>
   );
 }

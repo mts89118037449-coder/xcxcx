@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { PLACE_INTRO } from '../shared/cutscenes.ts';
 import { needFail } from '../shared/events.ts';
 import { PLACES, placeById, type PlaceId } from '../shared/places.ts';
 import { mastById } from '../shared/term.ts';
@@ -23,12 +24,34 @@ interface Got {
 
 /** Место зоны: сцена с хозяином и плитки занятий с откатами. */
 export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
-  const { p, now, act, busy } = useGame();
+  const { p, now, act, busy, toast } = useGame();
   const pl = placeById.get(id)!;
   const host = useNpc(pl.who);
   const [anim, animKey, play] = useAnim();
   const [res, setRes] = useState<Got | null>(null);
   const ration = 30 + p.level * 15;
+  // первый заход — сценка знакомства: хозяин подходит, пара реплик, награда
+  const intro = PLACE_INTRO[id];
+  const [step, setStep] = useState<number | null>(() => (intro && !p.intros?.includes(id) ? 0 : null));
+  const [arrived, setArrived] = useState(step === null);
+  useEffect(() => {
+    if (arrived) return;
+    const t = setTimeout(() => setArrived(true), 1100);
+    return () => clearTimeout(t);
+  }, [arrived]);
+  const line = step !== null && arrived ? intro[step] : null;
+  const next = async () => {
+    if (step === null) return;
+    if (step < intro.length - 1) return setStep(step + 1);
+    setStep(null);
+    const r = await act<{ already: boolean; butts: number; xp: number }>('placeIntro', { place: id });
+    if (r && !r.already) {
+      toast(`🤝 Познакомились: +${r.butts} 🚬 · +${r.xp} опыта`);
+      play('act-cheer');
+    }
+  };
+  const heroAnim = line ? (line.who === 1 ? 'talk' : 'nod') : undefined;
+  const hostAnim = step !== null ? (!arrived ? 'walk' : line?.who === 0 ? 'talk' : 'idle') : undefined;
 
   const run = async (actId: string) => {
     const r = await act<Got>('place', { place: id, act: actId });
@@ -42,19 +65,29 @@ export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
       <div className="scene-wrap">
         <LocationScene place={id}>
           <Place x={118} y={266} scale={0.92} key={animKey} className={`pose ${anim}`}>
-            <PoseG name="stand" look={lookOf(p)} />
+            <PoseG name="stand" look={lookOf(p)} anim={heroAnim} startKey={step ?? -1} sfx />
           </Place>
           {host && (
-            <Place x={264} y={264} scale={0.9}>
-              <ImageG url={host.url} height={host.height} mirror className="char-breathe" />
-            </Place>
+            <g className={arrived ? undefined : 'walk-in'}>
+              <Place x={264} y={264} scale={0.9}>
+                <ImageG url={host.url} height={host.height} mirror className="char-breathe" anim={hostAnim} />
+              </Place>
+            </g>
           )}
         </LocationScene>
-        <div className="ev-bubble place-bubble" key={res ? res.text : 'greet'}>
-          <b>{pl.host}</b>
-          {res ? res.text : pl.greet}
-          {res && <small className="place-got">{gotLine(res) || 'без последствий'}</small>}
-        </div>
+        {step !== null ? (
+          <div className={`ev-bubble place-bubble intro-bubble ${line?.who === 1 ? 'me' : ''}`} key={`i${step}${arrived}`} onClick={next}>
+            <b>{line?.who === 1 ? p.name : pl.host}</b>
+            {line ? line.text : '…'}
+            {line && <button className="btn btn-s intro-next">{step < intro.length - 1 ? 'Дальше ▸' : 'Познакомились ✓'}</button>}
+          </div>
+        ) : (
+          <div className="ev-bubble place-bubble" key={res ? res.text : 'greet'}>
+            <b>{pl.host}</b>
+            {res ? res.text : pl.greet}
+            {res && <small className="place-got">{gotLine(res) || 'без последствий'}</small>}
+          </div>
+        )}
         <div className="scene-tag">
           {pl.icon} {pl.name}
         </div>

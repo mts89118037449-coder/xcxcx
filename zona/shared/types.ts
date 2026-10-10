@@ -87,6 +87,9 @@ export interface PlayerView {
   tunnel: { depth: number; digAt: number; masked: number; found: number; done: boolean };
   family: { who: 'mom' | 'wife'; rounds: number[]; picks: number[]; mood: number; done: boolean; buffUntil: number; buffPct: number; nextAt: number };
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
+  intros: string[];
+  bunk: { done: boolean; pick: number; day: number };
+  reno: { stage: number; until: number; rush: number };
   penpal: { name: string; step: number; love: number; nextAt: number; ending: 'wedding' | 'wait' | 'gone' | 'scam' | 'caught' | null; picks: number[]; canRestart: boolean } | null;
   appeal: { args: string[]; done: boolean; won: boolean; delta: number };
   zoneBuild: { idx: number; pts: number; done: string[] };
@@ -168,7 +171,7 @@ export interface Look {
 export interface FightReplay {
   win: boolean;
   log: string[];
-  rounds: { by: 0 | 1; dmg: number; crit: boolean; heal?: number; miss?: boolean; note?: string }[];
+  rounds: { by: 0 | 1; dmg: number; crit: boolean; heal?: number; miss?: boolean; note?: string; combo?: number; fin?: boolean }[];
   startHp: [number, number];
   maxHp: [number, number];
 }

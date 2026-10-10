@@ -4,8 +4,9 @@ import { withPreview } from '../cellPreview.ts';
 import { named } from '../lazy.ts';
 import { StoryCard } from '../Story.tsx';
 import { Stage } from '../art/Stage.tsx';
-import { useTalk } from '../Talk.tsx';
-import { BonusList, Price, fmt, lookOf, useAnim, useGame } from '../game.tsx';
+import { useTalk, type TalkKind } from '../Talk.tsx';
+import { bunkOfDay } from '../../shared/bunk.ts';
+import { BonusList, Price, fmt, lookOf, useAnim, useGame, heroMood } from '../game.tsx';
 import { SegBar, useSeg } from '../Seg.tsx';
 import { chapterOf } from '../../shared/story.ts';
 import { Hint } from '../Hint.tsx';
@@ -17,10 +18,18 @@ const InteriorPicker = named(() => import('../Interior.tsx'), 'InteriorPicker');
 const CellShop = named(() => import('../Cell.tsx'), 'CellShop');
 const DailyWeek = named(() => import('../Term.tsx'), 'DailyWeek');
 const MastPicker = named(() => import('../Term.tsx'), 'MastPicker');
+const BunkModal = named(() => import('../Bunk.tsx'), 'BunkModal');
+const PhotoModal = named(() => import('../Photo.tsx'), 'PhotoModal');
+const RenoCard = named(() => import('../Reno.tsx'), 'RenoCard');
 
 export function Home() {
   const { p, now, online, act, busy } = useGame();
-  const talk = useTalk();
+  const talk0 = useTalk();
+  // разговор у шконки: сегодняшний собеседник горит «!» и зовёт к себе
+  const bunkWho = bunkOfDay(p.bunk.day).who;
+  const [bunkOpen, setBunkOpen] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const talk = (k: TalkKind) => (k === bunkWho && !p.bunk.done ? setBunkOpen(true) : talk0(k));
   const [bare, setBare] = useState(false);
   const [anim, animKey, play] = useAnim();
   const [seg, setSeg] = useSeg('home', p.faceChosen ? 'story' : 'look', ['story', 'look', 'cell'] as const);
@@ -54,10 +63,12 @@ export function Home() {
       <div className="scene-wrap">
         <Stage
           onTalk={talk}
+          hot={p.bunk.done ? null : bunkWho}
+          workers={p.reno.until > now}
           loc="cell"
           look={lookOf(p)}
           bare={bare}
-          mood={hurt ? 'hurt' : 'idle'}
+          mood={heroMood(p)}
           furniture={withPreview(p.cell, preview)}
           interior={p.interior}
           wall={p.wall}
@@ -85,6 +96,11 @@ export function Home() {
             📦 Грев
           </button>
         )}
+        {!tryOn && (
+          <button className="scene-btn scene-photo" onClick={() => setPhotoOpen(true)} title="Фото-режим">
+            📸
+          </button>
+        )}
         {ink.length > 0 && !dailyReady && !tryOn && (
           <button className="scene-btn" onClick={() => setBare(!bare)}>
             {bare ? '👕' : '💪'}
@@ -101,7 +117,7 @@ export function Home() {
         items={[
           { id: 'story', icon: '📖', label: 'Сюжет', badge: p.story.progress >= (chapterOf(p.story.ch, p.mast)?.steps[p.story.step]?.n ?? Infinity) },
           { id: 'look', icon: '✏️', label: 'Облик', badge: !p.faceChosen },
-          { id: 'cell', icon: '🛠️', label: 'Обустроить' },
+          { id: 'cell', icon: '🛠️', label: 'Обустроить', badge: p.reno.until > 0 && p.reno.until <= now },
         ]}
       />
 
@@ -125,6 +141,7 @@ export function Home() {
       )}
       {panel === 'cell' && (
         <Suspense fallback={null}>
+          <RenoCard onDone={() => play('act-cheer')} />
           <InteriorPicker />
           <CellShop onChange={() => play('act-cheer')} onPreview={showPreview} />
         </Suspense>
@@ -132,6 +149,8 @@ export function Home() {
       <Suspense fallback={null}>
       {weekOpen && <DailyWeek onClose={() => { setWeekOpen(false); play('act-cheer'); }} />}
       {mastOpen && <MastPicker onClose={() => setMastOpen(false)} />}
+      {bunkOpen && <BunkModal onClose={() => setBunkOpen(false)} />}
+      {photoOpen && <PhotoModal onClose={() => setPhotoOpen(false)} />}
       </Suspense>
     </>
   );

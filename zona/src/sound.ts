@@ -2,7 +2,8 @@
 // Звуки и музыка включаются отдельно, выбор помнится в браузере. Браузер не даёт играть
 // до первого касания, поэтому контекст создаётся и музыка стартует по первому жесту.
 
-export type Sfx = 'click' | 'coin' | 'gold' | 'hit' | 'crit' | 'miss' | 'win' | 'lose' | 'level' | 'event' | 'pop' | 'error' | 'dice' | 'card' | 'unlock';
+export type Sfx = 'click' | 'coin' | 'gold' | 'hit' | 'crit' | 'miss' | 'win' | 'lose' | 'level' | 'event' | 'pop' | 'error' | 'dice' | 'card' | 'unlock'
+  | 'step' | 'whoosh' | 'thud' | 'yawn' | 'cough' | 'clink' | 'hammer' | 'slurp' | 'shutter' | 'combo' | 'finisher' | 'hum';
 
 interface Prefs {
   sfx: boolean;
@@ -183,6 +184,65 @@ export function play(s: Sfx) {
       break;
     case 'card':
       noise(t, 0.07, { vol: 0.3, freq: 4000, q: 0.7, type: 'highpass' });
+      break;
+    // --- звуки движений: шаги, взмахи, падения, бытовуха ---
+    case 'step':
+      noise(t, 0.05, { vol: 0.12, freq: 320 + Math.random() * 120, q: 1.2, type: 'lowpass' });
+      break;
+    case 'whoosh': {
+      if (!ctx || !noiseBuf) break;
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuf;
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass';
+      f.Q.value = 2;
+      f.frequency.setValueAtTime(600, t);
+      f.frequency.exponentialRampToValueAtTime(2600, t + 0.12);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.35, t + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      src.connect(f).connect(g).connect(sfxBus!);
+      src.start(t, Math.random() * 0.5);
+      src.stop(t + 0.2);
+      break;
+    }
+    case 'thud':
+      tone(70, t, 0.3, { type: 'sine', vol: 0.7, slide: 0.5 });
+      noise(t, 0.18, { vol: 0.45, freq: 260, q: 0.7, type: 'lowpass' });
+      break;
+    case 'yawn':
+      tone(260, t, 0.7, { type: 'sawtooth', vol: 0.05, slide: 0.55, attack: 0.15 });
+      tone(390, t, 0.7, { type: 'sine', vol: 0.06, slide: 0.55, attack: 0.15 });
+      break;
+    case 'cough':
+      for (const k of [0, 0.16]) noise(t + k, 0.1, { vol: 0.3, freq: 700, q: 1.5 });
+      break;
+    case 'clink':
+      tone(2400, t, 0.18, { type: 'sine', vol: 0.12 });
+      tone(3600, t + 0.005, 0.12, { type: 'sine', vol: 0.06 });
+      break;
+    case 'hammer':
+      noise(t, 0.06, { vol: 0.5, freq: 2200, q: 2 });
+      tone(900, t, 0.08, { type: 'square', vol: 0.06, slide: 0.6 });
+      break;
+    case 'slurp':
+      noise(t, 0.25, { vol: 0.15, freq: 1400, q: 4 });
+      break;
+    case 'shutter':
+      noise(t, 0.03, { vol: 0.5, freq: 5000, q: 1, type: 'highpass' });
+      noise(t + 0.09, 0.04, { vol: 0.4, freq: 3500, q: 1, type: 'highpass' });
+      break;
+    case 'combo':
+      [784, 988].forEach((f, i) => tone(f, t + i * 0.06, 0.14, { type: 'square', vol: 0.09 }));
+      break;
+    case 'finisher':
+      noise(t, 0.35, { vol: 0.9, freq: 1200, q: 0.5 });
+      tone(60, t, 0.5, { type: 'sine', vol: 0.9, slide: 0.4 });
+      [523, 784, 1047].forEach((f, i) => tone(f, t + 0.12 + i * 0.07, 0.3, { type: 'square', vol: 0.1 }));
+      break;
+    case 'hum':
+      tone(150, t, 0.4, { type: 'sine', vol: 0.08, slide: 0.9, attack: 0.05 });
       break;
   }
 }
