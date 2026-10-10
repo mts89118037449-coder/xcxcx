@@ -35,7 +35,7 @@ const H = 60;
 export const PLACES: PlaceDef[] = [
   {
     id: 'logging', name: 'Лесоповал', icon: '🪓', minLevel: 1, who: 'sheet/cast/worker', host: 'Бригадир Тайга', colony: 'north',
-    greet: 'Норма — сорок кубов. Кто не выполнил — ночует у костра.',
+    greet: 'Норма — сорок кубов. Кто не выполнил — ночует у костра. Кто выполнил — тоже, но довольный.',
     activities: [
       { id: 'saw', icon: '🪚', label: 'Валить лес', hint: 'тяжело, но платят', cost: { energy: 15 }, cdMin: 2 * H, outcomes: [{ w: 8, text: 'Сосна легла, куда надо. Бригадир доволен.', money: 3, xp: 8 }, { w: 2, text: 'Пила заела, норму не сделал.', money: 1, hp: -0.05 }] },
       { id: 'stack', icon: '🪵', label: 'Складывать штабель', hint: 'дерево и опыт', cost: { energy: 8 }, cdMin: 2 * H, outcomes: [{ w: 1, text: 'Ровный штабель. Пару досок прибрал себе.', xp: 10 }] },
@@ -45,7 +45,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: 'kamera', name: 'Камера', icon: '🗝️', minLevel: 1, who: 'sheet/cast/blatnoy', host: 'Смотрящий хаты', colony: 'krytka',
-    greet: 'Заходи, присаживайся. Тут все на виду — и все друг про друга знают.',
+    greet: 'Заходи, присаживайся. Тут все на виду и все друг про друга знают. Даже то, чего не было.',
     activities: [
       { id: 'road', icon: '🧵', label: 'Гнать коня', hint: 'дорога между камерами', cdMin: 3 * H, outcomes: [{ w: 6, text: 'Малява дошла, обратно — грев.', item: true, xp: 6 }, { w: 4, text: 'Коня перехватил продольный.', xp: 3 }] },
       { id: 'talk', icon: '🗣️', label: 'Рассказать за жизнь', hint: 'авторитет', cdMin: 4 * H, outcomes: [{ w: 7, text: 'Слушали молча. Уважают.', authority: 3 }, { w: 3, text: 'Перебили: «Не гони».', authority: -1 }] },
@@ -55,7 +55,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: 'plac', name: 'Плац', icon: '🚩', minLevel: 1, who: 'sheet/cast/officer', host: 'Дневальный СДП', colony: 'red',
-    greet: 'Шаг чеканить! Здесь порядок, а не ваш «понятийный» базар.',
+    greet: 'Шаг чеканить! Здесь порядок, а не ваш «понятийный» базар. Шаг влево — тоже строевая.',
     activities: [
       { id: 'drill', icon: '🥾', label: 'Строевая', hint: 'опыт, уважение начальства', cost: { energy: 8 }, cdMin: 2 * H, outcomes: [{ w: 1, text: 'Отмаршировал. Начальник отряда кивнул.', xp: 10 }] },
       { id: 'paper', icon: '📰', label: 'Стенгазета', hint: 'деньги, почёт у администрации', cdMin: 6 * H, outcomes: [{ w: 7, text: 'Повесили на видном месте. Премия!', money: 2, xp: 6 }, { w: 3, text: 'Нашли ошибку в лозунге. Переписывай.', xp: 3 }] },
@@ -65,7 +65,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: 'canteen', name: 'Столовая', icon: '🍲', minLevel: 1, who: 'sheet/cast/cook', host: 'Повар Жора',
-    greet: 'Баланда сегодня густая. Чего стоишь — миску бери.',
+    greet: 'Баланда сегодня густая. Что в ней плавает — не спрашивай, оно тебя тоже не спрашивало.',
     activities: [
       { id: 'meal', icon: '🥣', label: 'Пайка', hint: 'бесплатно, силы', cdMin: 6 * H, outcomes: [{ w: 8, text: 'Каша с тушёнкой — повезло.', energy: 20 }, { w: 2, text: 'Баланда, как вода. Ну хоть горячая.', energy: 10 }] },
       { id: 'extra', icon: '🍖', label: 'Добавка', hint: 'котлета с офицерского', cost: { money: 1 }, cdMin: 6 * H, outcomes: [{ w: 9, text: 'Жора положил двойную. Сытно!', energy: 35, hp: 0.15 }, { w: 1, text: 'Котлета оказалась с сюрпризом.', energy: 15, hp: -0.1 }] },
@@ -75,7 +75,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: 'bath', name: 'Баня', icon: '🧖', minLevel: 1, who: 'sheet/cast/ushanka', host: 'Банщик Митрич',
-    greet: 'Пар сегодня хороший. Шайку бери, мыло своё.',
+    greet: 'Пар сегодня хороший. Шайку бери, мыло своё. И держи его крепко — жизнь длинная.',
     activities: [
       { id: 'steam', icon: '♨️', label: 'Попариться', hint: 'лечит и бодрит', cdMin: 4 * H, outcomes: [{ w: 1, text: 'Пар до костей. Как заново родился.', hp: 0.35, energy: 10 }] },
       { id: 'broom', icon: '🌿', label: 'Веник у Митрича', hint: 'дубовый, настоящий', cost: { butts: 4 }, cdMin: 6 * H, outcomes: [{ w: 1, text: 'Митрич отхлестал по всем правилам. Лёгкость в теле.', hp: 0.7, energy: 35 }] },
@@ -85,7 +85,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: 'library', name: 'Библиотека', icon: '📚', minLevel: 3, who: 'sheet/cast/librarian', host: 'Библиотекарь Семёныч',
-    greet: 'Тише. Здесь единственное место на зоне, где можно подумать.',
+    greet: 'Тише. Здесь единственное место на зоне, где можно подумать. Обычно о том, как сюда попал.',
     activities: [
       { id: 'read', icon: '📖', label: 'Почитать', hint: 'опыт', cdMin: 2 * H, outcomes: [{ w: 5, text: 'Дюма. Граф Монте-Кристо тоже сидел.', xp: 18 }, { w: 5, text: 'Справочник слесаря. Скучно, но полезно.', xp: 12 }] },
       { id: 'law', icon: '⚖️', label: 'Писать ходатайство', hint: 'может скостить срок', cdMin: 12 * H, outcomes: [{ w: 4, text: 'Ходатайство приняли! Срок скостили.', term: 1.5, xp: 10 }, { w: 6, text: 'Отказ по формальным основаниям. Опыт — тоже результат.', xp: 12 }] },
@@ -95,7 +95,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: 'club', name: 'Клуб', icon: '🎸', minLevel: 5, who: 'sheet/cast/writer', host: 'Худрук Лёва',
-    greet: 'Самодеятельность — прямая дорога к УДО. Ну и девчонки из бухгалтерии на концерт приходят.',
+    greet: 'Самодеятельность — прямая дорога к УДО. Кривая — через забор, но там не аплодируют.',
     activities: [
       { id: 'movie', icon: '🎬', label: 'Кино', hint: 'по субботам и не только', cdMin: 8 * H, outcomes: [{ w: 6, text: '«Джентльмены удачи». Смеялся весь зал.', energy: 20 }, { w: 4, text: 'Плёнка порвалась на самом интересном.', energy: 10 }] },
       { id: 'rehearse', icon: '🎸', label: 'Репетиция ансамбля', hint: 'опыт и уважение', cost: { energy: 10 }, cdMin: 4 * H, outcomes: [{ w: 7, text: 'Три блатных аккорда уже получаются.', xp: 12, authority: 1 }, { w: 3, text: 'Порвал струну. Лёва ругается.', xp: 6 }] },
@@ -105,7 +105,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: 'factory', name: 'Промка', icon: '🏭', minLevel: 2, who: 'sheet/cast/coverall', host: 'Мастер Палыч',
-    greet: 'Норма есть норма. Сделал — получи. Не сделал — сам знаешь.',
+    greet: 'Норма есть норма. Сделал — получи. Не сделал — получи тоже, но другое.',
     activities: [
       { id: 'sew', icon: '🧵', label: 'Швейный цех', hint: 'рукавицы да робы', cost: { energy: 15 }, cdMin: 60, outcomes: [{ w: 1, text: 'Сотня рукавиц. Палыч расписался в ведомости.', money: 2, xp: 5 }] },
       { id: 'wood', icon: '🪚', label: 'Столярка', hint: 'бывают находки', cost: { energy: 20 }, cdMin: 90, outcomes: [{ w: 7, text: 'Табуретки для офицерской столовой.', money: 2.5, xp: 6 }, { w: 3, text: 'Из обрезков вышла полезная вещь.', money: 1.5, item: true }] },
@@ -115,7 +115,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: 'visits', name: 'Свиданка', icon: '💌', minLevel: 8, who: 'sheet/cast/guardwoman', host: 'Прапорщица Галя',
-    greet: 'Заявление подано? Время — по часам, передачи — через меня.',
+    greet: 'Заявление подано? Время — по часам, передачи — через меня. Половина — тоже через меня, в меня.',
     activities: [
       { id: 'phone', icon: '☎️', label: 'Таксофон', hint: 'позвонить домой', cost: { money: 1 }, cdMin: 6 * H, outcomes: [{ w: 8, text: 'Голос родных. Сразу легче.', energy: 25, xp: 4 }, { w: 2, text: 'Никто не взял трубку.', energy: 5 }] },
       { id: 'short', icon: '🪟', label: 'Краткое свидание', hint: 'через стекло', cost: { money: 3 }, cdMin: 24 * H, outcomes: [{ w: 1, text: 'Час через стекло, трубка в руке. Мать плакала, ты держался.', energy: 60, hp: 0.3, xp: 15 }] },
@@ -125,7 +125,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: 'shizo', name: 'ШИЗО', icon: '🧱', minLevel: 4, who: 'sheet/cast/omon', host: 'Контролёр ШИЗО',
-    greet: 'Здесь сидят те, кто не понял с первого раза. Тебе туда, или так, поглазеть?',
+    greet: 'Здесь сидят те, кто не понял с первого раза. Со второго тоже не все. Ты поглазеть или по записи?',
     activities: [
       { id: 'grev', icon: '🚬', label: 'Загнать грев в ШИЗО', hint: 'свои не забудут', cost: { butts: 5 }, cdMin: 4 * H, outcomes: [{ w: 8, text: 'Грев дошёл. Из кормушки — «Благодарю, брат».', authority: 3 }, { w: 2, text: 'Контролёр перехватил. Спасибо, что не тебя.', authority: 1 }] },
       { id: 'knock', icon: '🔨', label: 'Перестукиваться', hint: 'новости через стену', cdMin: 2 * H, outcomes: [{ w: 6, text: 'Азбука через трубу: кто сел, за что, кто сдал.', xp: 10 }, { w: 4, text: 'Контролёр постучал в ответ. Дубинкой.', hp: -0.1, xp: 5 }] },

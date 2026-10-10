@@ -1,4 +1,5 @@
 import { GOLD_PRICES, JOBS, TRADES } from '../shared/content.ts';
+import { JOKES } from '../shared/jokes.ts';
 import { fmt, useGame, type DialogSpec } from './game.tsx';
 import { usePvp } from './game.tsx';
 
@@ -7,11 +8,10 @@ export type TalkKind = 'lyoha' | 'ded' | 'amba' | 'smoker' | 'worker' | 'coveral
 const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
 const DED_TIPS = [
-  'На зоне три правила: не верь, не бойся, не проси. Остальное — по ходу.',
-  'Бычки по двору собирай — барыга за них и чифир даст, и золотишко.',
+  ...JOKES.ded,
   'Лёха в напёрстки играет честно. Почти.',
-  'Хату обустрой — и спится лучше, и народ уважает.',
-  'Кто с кентами в клане — тому и энергии больше, и денег.',
+  'Хату обустрой — и спится лучше, и народ уважает. И хоронить приятнее.',
+  'Кто с кентами в клане — тому и энергии больше, и денег. И поминать есть кому.',
 ];
 
 /** Разговоры с персонажами в сценах вместо пунктов меню. */
@@ -26,7 +26,7 @@ export function useTalk() {
       lyoha: () => ({
         who: 'sheet/rival/3',
         name: 'Лёха-напёрсточник',
-        text: pick(['О, сосед! Сыграем? Угадаешь шарик — заберёшь почти втрое.', 'Скучно в хате… Давай в напёрстки, по-маленькой?']),
+        text: pick(JOKES.lyoha),
         options: [
           { label: `Сыграть (осталось ${p.shellsLeft})`, onPick: openShells, disabled: p.shellsLeft <= 0 },
           { label: 'Потом' },
@@ -47,7 +47,7 @@ export function useTalk() {
       amba: () => ({
         who: 'sheet/rival/1',
         name: 'Амбал',
-        text: pick(['Чё вылупился? Проблемы?', 'Место здесь моё. Хочешь оспорить — давай.']),
+        text: pick(JOKES.amba),
         options: [
           { label: 'Наехать (⚡10)', onPick: pvp, disabled: now < p.pvpReadyAt },
           { label: 'Отойти' },
@@ -56,13 +56,13 @@ export function useTalk() {
       smoker: () => ({
         who: 'sheet/rival/5',
         name: 'Курила',
-        text: `Бычков насобирал? У тебя ${p.butts}. Барыга на зоне меняет на чифир и золото.`,
+        text: `${pick(JOKES.smoker)} Бычков у тебя ${p.butts} — барыга на зоне меняет на чифир и золото.`,
         options: [{ label: 'Пойти на зону', onPick: () => go('zone') }, { label: 'Ага' }],
       }),
       worker: () => ({
         who: 'sheet/cast/worker',
         name: 'Бригадир промки',
-        text: `Смена ждёт. ${job.name} — ${fmt(job.money[0])}–${fmt(job.money[1])} ₽.`,
+        text: `${pick(JOKES.worker)} ${job.name} — ${fmt(job.money[0])}–${fmt(job.money[1])} ₽.`,
         options: [
           {
             label: `Отработать (⚡${job.energy})`,
@@ -77,13 +77,13 @@ export function useTalk() {
       coverall: () => ({
         who: 'sheet/rival/4',
         name: 'Молодой',
-        text: pick(['Начальник сегодня злой, норму подняли…', 'Говорят, в подвале подкоп роют. Только тсс.', 'Тебе поручений не надо? Внизу доска висит.']),
+        text: pick(JOKES.coverall),
         options: [{ label: 'Ясно' }],
       }),
       baryga: () => ({
         who: 'sheet/cast/sport',
         name: 'Барыга Сеня',
-        text: `Бычки есть? Вижу — ${p.butts}. Чем богат, тем и рад.`,
+        text: `${pick(JOKES.baryga)} Вижу — ${p.butts} 🚬.`,
         options: [
           ...TRADES.map((t) => ({
             label: `${t.label}${t.id === 'money' ? ` (+${fmt(40 + p.level * 10)} ₽)` : ''} — ${t.cost} 🚬`,
@@ -99,7 +99,7 @@ export function useTalk() {
       medic: () => ({
         who: 'sheet/cast/doctor',
         name: 'Лепила',
-        text: p.hp < p.stats.maxHp ? `Опять разукрасили? ${p.hp}/${p.stats.maxHp}. Заштопаю — ${GOLD_PRICES.heal} 🪙.` : 'Здоров как бык. Иди отсюда, не мешай.',
+        text: p.hp < p.stats.maxHp ? `Опять разукрасили? ${p.hp}/${p.stats.maxHp}. Заштопаю — ${GOLD_PRICES.heal} 🪙.` : pick(JOKES.medic),
         options: [
           ...(p.hp < p.stats.maxHp
             ? [{ label: `Подлечиться (${GOLD_PRICES.heal} 🪙)`, onPick: async () => { if ((await act('heal')) !== null) toast('Как новенький'); } }]

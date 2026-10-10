@@ -1,5 +1,6 @@
 // Случаи, побег, санчасть и гости: всё, где решает рандом.
 import { EVENTS_MORE } from './events_more.ts';
+import { EVENTS_DARK } from './events_dark.ts';
 import type { Mast } from './term.ts';
 import type { FactionId } from './factions.ts';
 
@@ -457,7 +458,7 @@ const EVENTS_BASE: GameEvent[] = [
     ],
   },
 ];
-export const EVENTS: GameEvent[] = [...EVENTS_BASE, ...EVENTS_MORE];
+export const EVENTS: GameEvent[] = [...EVENTS_BASE, ...EVENTS_MORE, ...EVENTS_DARK];
 export const eventById = new Map(EVENTS.map((e) => [e.id, e]));
 
 export const EVENT_TIMING = {

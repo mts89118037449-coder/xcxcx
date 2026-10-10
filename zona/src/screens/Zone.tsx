@@ -10,6 +10,7 @@ const PaperCard = named(() => import('../Paper.tsx'), 'PaperCard');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { ZoneLife } from '../art/Critters.tsx';
+import { RADIO } from '../../shared/jokes.ts';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
 import { lookOf, timeLeft, useGame } from '../game.tsx';
 import { useTalk } from '../Talk.tsx';
@@ -59,6 +60,20 @@ function useWalker() {
   };
   const reset = () => setPos({ x: HOME[0], y: HOME[1], dir: 1, moving: false });
   return { pos, walk, reset };
+}
+
+/** Громкоговоритель зоны: объявления с чёрным юмором, меняются сами. */
+function RadioTicker() {
+  const [i, setI] = useState(() => Math.floor(Math.random() * RADIO.length));
+  useEffect(() => {
+    const t = setInterval(() => setI((x) => (x + 1) % RADIO.length), 7000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="radio-bar" key={i} onClick={() => setI((x) => (x + 1) % RADIO.length)}>
+      {RADIO[i]}
+    </div>
+  );
 }
 
 /** Вся зона: здания ведут на экраны, по земле валяются бычки, барыга меняет их. */
@@ -145,6 +160,7 @@ export function Zone() {
         </ZoneScene>
         <div className="scene-tag">🗺️ Зона · 🚬 {p.butts} · <WeatherTag /></div>
         {wx.effect && <div className="wx-note">{wx.emoji} {wx.effect}</div>}
+        <RadioTicker />
       </div>
       {p.nextButtAt && !field.length && <div className="muted small center">🚬 через {timeLeft(p.nextButtAt - now)}</div>}
       <Hint id="zone" icon="🗺️">
