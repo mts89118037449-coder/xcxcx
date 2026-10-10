@@ -74,6 +74,7 @@ import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
 import { BARRACK, barrackBonus, barrackById, raidPts, type BarrackBonus } from '../shared/barracks.ts';
 import { INK, inkQuality } from '../shared/ink.ts';
+import { TUNNEL } from '../shared/tunnel.ts';
 import { FAMILY, FAMILY_ROUNDS, familyOutcome, type Visitor } from '../shared/family.ts';
 import { MALYAVA, malyavaById } from '../shared/malyava.ts';
 import { PENPAL, PENPAL_GIRLS, PEN_ENDINGS, PEN_LETTERS, penEnding, type PenEnding } from '../shared/penpal.ts';
@@ -265,6 +266,8 @@ export interface Player {
   ink: { skill: number; jobs: number; stars: number; votes: number; queue: { id: number; client: number; clientName: string; tattoo: string; paid: number; at: number }[] } | null;
   /** свой заказ у кольщика */
   inkOrder: { artist: number; artistName: string; tattoo: string; at: number; id: number; done: boolean; quality: number; rated: boolean } | null;
+  /** подкоп: один за ходку */
+  tunnel: { hodka: number; depth: number; digAt: number; masked: number; found: number; done: boolean };
   /** свиданка с роднёй: раз в неделю */
   family: { week: number; who: Visitor; rounds: number[]; picks: number[]; mood: number; done: boolean; buffUntil: number; buffPct: number };
   /** входящие малявы */
@@ -431,6 +434,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     built: 0,
     penpal: null,
     inbox: [],
+    tunnel: { hodka: 0, depth: 0, digAt: 0, masked: 0, found: 0, done: false },
     family: { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 },
     ink: null,
     inkOrder: null,
@@ -527,6 +531,7 @@ export function migrate(p: Player): Player {
   p.penpal ??= null;
   p.refEarn ??= { total: 0, by: {} };
   p.inbox ??= [];
+  p.tunnel ??= { hodka: 0, depth: 0, digAt: 0, masked: 0, found: 0, done: false };
   p.family ??= { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 };
   p.ink ??= null;
   p.inkOrder ??= null;
@@ -4197,4 +4202,59 @@ export function familyTalk(p: Player, choice: number, now: number, rng: Rng) {
   }
   log(p, now, `👪 Свиданка: ${out.title}`);
   return { mood: f.mood, end: { ...out, money, items } };
+}
+
+// --- Подкоп --------------------------------------------------------------------------------------
+
+export function ensureTunnel(p: Player) {
+  if (p.tunnel.hodka !== p.hodka) p.tunnel = { hodka: p.hodka, depth: 0, digAt: 0, masked: 0, found: 0, done: false };
+  return p.tunnel;
+}
+
+/** Копнуть: acc — как ловко копал в мини-игре (0..1). */
+export function tunnelDig(p: Player, acc: number, now: number, rng: Rng) {
+  if (p.level < TUNNEL.minLevel) throw new GameError(`С ${TUNNEL.minLevel} уровня`);
+  const t = ensureTunnel(p);
+  if (t.done) throw new GameError('Ты уже ушёл подкопом в эту ходку');
+  if (t.depth >= TUNNEL.goal) throw new GameError('Лаз готов — пора уходить');
+  if (now - t.digAt < TUNNEL.cooldownH * 60 * MIN) throw new GameError('Шумно копать подряд — вертухай услышит');
+  spendEnergy(p, TUNNEL.energy, now);
+  t.digAt = now;
+  const risk = (t.masked > 0 ? TUNNEL.riskMasked : TUNNEL.risk) * (live.cur?.id === 'shmon' ? 2 : 1);
+  if (t.masked > 0) t.masked--;
+  if (rng() * 100 < risk) {
+    const lost = Math.round(t.depth * TUNNEL.collapse * 10) / 10;
+    t.depth = Math.round((t.depth - lost) * 10) / 10;
+    t.found++;
+    p.term += TUNNEL.foundTerm;
+    log(p, now, `🔦 Шмон нашёл лаз: засыпали ${lost} м, тебе +${TUNNEL.foundTerm} дн.`);
+    return { found: true, lost, dug: 0, depth: t.depth };
+  }
+  const dug = Math.round((TUNNEL.base + Math.max(0, Math.min(1, Number(acc) || 0)) * TUNNEL.hand) * 10) / 10;
+  t.depth = Math.min(TUNNEL.goal, Math.round((t.depth + dug) * 10) / 10);
+  return { found: false, lost: 0, dug, depth: t.depth };
+}
+
+/** Замаскировать лаз досками и тряпьём: несколько раскопок почти без риска. */
+export function tunnelMask(p: Player) {
+  const t = ensureTunnel(p);
+  if (t.done) throw new GameError('Лаз уже не нужен');
+  if (t.masked > 0) throw new GameError('Уже замаскирован');
+  for (const [m, n] of Object.entries(TUNNEL.mask.mats)) if ((p.mats[m as MatId] ?? 0) < n) throw new GameError(`Не хватает: ${matById.get(m as MatId)?.name}`);
+  for (const [m, n] of Object.entries(TUNNEL.mask.mats)) p.mats[m as MatId] = (p.mats[m as MatId] ?? 0) - n;
+  t.masked = TUNNEL.mask.digs;
+}
+
+/** Уйти подкопом: половина оставшегося срока долой, авторитет и титул. */
+export function tunnelEscape(p: Player, now: number) {
+  const t = ensureTunnel(p);
+  if (t.done) throw new GameError('Уже уходил');
+  if (t.depth < TUNNEL.goal) throw new GameError('Ещё не докопал');
+  t.done = true;
+  const cut = Math.round(p.term * TUNNEL.cut * 10) / 10;
+  p.term = Math.max(0, Math.round((p.term - cut) * 10) / 10);
+  p.authority += TUNNEL.authority;
+  if (!p.cosmetics.includes('title_mole')) p.cosmetics.push('title_mole');
+  log(p, now, `⛏️ Ушёл подкопом! −${cut} дн. срока`);
+  return { cut };
 }

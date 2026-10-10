@@ -2032,3 +2032,38 @@ test('свиданка с роднёй: раз в неделю, три отве�
   assert.ok(weeks.includes('wife') && weeks.includes('mom'));
   assert.ok(FAMILY_ROUNDS.wife.length >= 3);
 });
+
+import { TUNNEL } from '../shared/tunnel.ts';
+
+test('подкоп: откат, метры от руки, шмон засыпает и добавляет срок, маскировка, уход режет срок', () => {
+  const H = 3600_000;
+  const p = g.newPlayer(1, 'Крот', null, T0);
+  p.level = 10;
+  p.energy = 1000;
+  p.mats = { wood: 2, cloth: 1 };
+  assert.throws(() => g.tunnelEscape(p, T0), /не докопал/);
+  let t = T0;
+  const a = g.tunnelDig(p, 1, t, () => 0.99);
+  assert.equal(a.dug, TUNNEL.base + TUNNEL.hand);
+  assert.throws(() => g.tunnelDig(p, 1, t + H, () => 0.99), /услышит/);
+  t += TUNNEL.cooldownH * H;
+  g.tunnelDig(p, 0, t, () => 0.99);
+  const depth = p.tunnel.depth;
+  const term = p.term;
+  t += TUNNEL.cooldownH * H;
+  const f = g.tunnelDig(p, 1, t, () => 0); // шмон нашёл
+  assert.ok(f.found && p.tunnel.depth < depth && p.term > term);
+  g.tunnelMask(p);
+  assert.equal(p.tunnel.masked, TUNNEL.mask.digs);
+  assert.throws(() => g.tunnelMask(p), /Уже/);
+  t += TUNNEL.cooldownH * H;
+  assert.ok(!g.tunnelDig(p, 1, t, () => 0.05).found, 'с маской 5% — мимо');
+  p.tunnel.depth = TUNNEL.goal;
+  p.term = 100;
+  g.tunnelEscape(p, t);
+  assert.equal(p.term, 50);
+  assert.ok(p.cosmetics.includes('title_mole'));
+  assert.throws(() => g.tunnelDig(p, 1, t + 99 * H, () => 0.99), /ушёл/);
+  p.hodka = 2;
+  assert.equal(g.ensureTunnel(p).depth, 0);
+});

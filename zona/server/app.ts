@@ -416,6 +416,10 @@ export function createApp(opts: AppOptions) {
       pet: p.pet,
       built: p.built,
       inbox: p.inbox,
+      tunnel: (() => {
+        const tn = g.ensureTunnel(p);
+        return { depth: tn.depth, digAt: tn.digAt, masked: tn.masked, found: tn.found, done: tn.done };
+      })(),
       family: (() => {
         const f = g.ensureFamily(p, t);
         return { who: f.who, rounds: f.rounds, picks: f.picks, mood: f.mood, done: f.done, buffUntil: f.buffUntil, buffPct: f.buffPct, nextAt: g.weekEndsAt(t) };
@@ -803,6 +807,9 @@ export function createApp(opts: AppOptions) {
         inkerSave(artist);
       }
     },
+    tunnelDig: (p, b, t) => g.tunnelDig(p, num(b.acc), t, rng),
+    tunnelMask: (p) => g.tunnelMask(p),
+    tunnelEscape: (p, _b, t) => g.tunnelEscape(p, t),
     familyTalk: (p, b, t) => g.familyTalk(p, num(b.choice), t, rng),
     malyava: (p, b, t) => {
       const target = db.getPlayer(num(b.id));

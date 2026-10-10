@@ -22,6 +22,7 @@ export const RUNS: Record<string, RunRule> = {
   arm: { minMs: ARM.seconds * 1000 },
   pullups: { minMs: 10_000 },
   brew: { minMs: 1800 },
+  tunnelDig: { minMs: 4000 },
 };
 
 export const ANTICHEAT = {

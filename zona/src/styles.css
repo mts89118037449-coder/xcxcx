@@ -2786,3 +2786,17 @@ body:has(.modal) .event-btn { z-index: 20; }
 .fam-gifts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 4px; }
 .fam-gifts span { padding: 3px 8px; border-radius: 10px; background: #0005; font-size: 14px; }
 .fam-gifts .buff { background: #3a2e10; color: var(--gold); font-size: 12px; }
+
+/* подкоп */
+.tun-card { border-color: #6a4a2a; background: linear-gradient(90deg, #2e2014, #22201a); }
+.tun-card .pet-bar { display: block; }
+.tun-art { width: 100%; display: block; border-radius: 12px; margin-bottom: 8px; }
+.tun-dig { animation: tun-dig 0.25s ease-in-out infinite alternate; }
+@keyframes tun-dig { to { transform: translateX(3px) rotate(10deg); } }
+.dig-game { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.dig-btn { width: 96px; height: 96px; border-radius: 50%; border: 3px solid #c08a4a; background: radial-gradient(circle, #5a3e28, #2a1a10); font-size: 46px; touch-action: manipulation; user-select: none; }
+.dig-btn span { display: inline-block; animation: dig-hit 0.18s ease-out; }
+@keyframes dig-hit { from { transform: rotate(-35deg) scale(1.15); } }
+.dig-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.dig-info b { font-size: 26px; }
+.dig-info small { color: var(--muted); }
