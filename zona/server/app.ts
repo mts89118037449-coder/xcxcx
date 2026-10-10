@@ -416,6 +416,10 @@ export function createApp(opts: AppOptions) {
       pet: p.pet,
       built: p.built,
       inbox: p.inbox,
+      family: (() => {
+        const f = g.ensureFamily(p, t);
+        return { who: f.who, rounds: f.rounds, picks: f.picks, mood: f.mood, done: f.done, buffUntil: f.buffUntil, buffPct: f.buffPct, nextAt: g.weekEndsAt(t) };
+      })(),
       ink: p.ink,
       inkOrder: p.inkOrder,
       // аферистка или нет — тайна до конца
@@ -799,6 +803,7 @@ export function createApp(opts: AppOptions) {
         inkerSave(artist);
       }
     },
+    familyTalk: (p, b, t) => g.familyTalk(p, num(b.choice), t, rng),
     malyava: (p, b, t) => {
       const target = db.getPlayer(num(b.id));
       if (!target) throw new g.GameError('Нет такого игрока');

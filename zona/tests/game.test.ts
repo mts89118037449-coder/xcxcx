@@ -2004,3 +2004,31 @@ test('кто стукач: выбор стукача, улики, большин
   assert.equal(snitchMajority({ 1: 5, 2: 5 }, 4), null);
   assert.equal(snitchMajority({ 1: 5, 2: 5, 3: 5 }, 4), 5);
 });
+
+import { FAMILY_ROUNDS } from '../shared/family.ts';
+
+test('свиданка с роднёй: раз в неделю, три ответа, тёплый разговор — передача и бафф со смен; жена после свадьбы', () => {
+  const p = g.newPlayer(1, 'Сын', null, T0);
+  p.level = 5;
+  const f = g.ensureFamily(p, T0);
+  assert.equal(f.who, 'mom');
+  assert.equal(new Set(f.rounds).size, 3);
+  // лучшие ответы — первые
+  g.familyTalk(p, 0, T0, () => 0);
+  g.familyTalk(p, 0, T0, () => 0);
+  const r = g.familyTalk(p, 0, T0, () => 0);
+  assert.ok(r.end && r.end.buffPct === 15 && r.end.items.length === 2);
+  assert.throws(() => g.familyTalk(p, 0, T0, () => 0), /уже виделись/);
+  // бафф работает на смене
+  const q = g.newPlayer(2, 'Без мамы', null, T0);
+  q.level = 5;
+  q.energy = p.energy = 100;
+  const a = g.doJob(p, 'j_floor', T0, () => 0.5);
+  const b = g.doJob(q, 'j_floor', T0, () => 0.5);
+  assert.ok(a.xp > b.xp && a.money > b.money);
+  // женат — через неделю приезжает жена
+  p.cosmetics.push('title_married');
+  const weeks = [1, 2].map((k) => g.ensureFamily(p, T0 + k * 7 * 86_400_000).who);
+  assert.ok(weeks.includes('wife') && weeks.includes('mom'));
+  assert.ok(FAMILY_ROUNDS.wife.length >= 3);
+});

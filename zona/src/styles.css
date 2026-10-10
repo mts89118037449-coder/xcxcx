@@ -2760,3 +2760,29 @@ body:has(.modal) .event-btn { z-index: 20; }
 .ref-donate b { display: block; font-size: 13px; }
 .ref-donate small { color: var(--muted); font-size: 12px; }
 .ref-donate small b { display: inline; color: var(--gold); }
+
+/* свиданка с роднёй */
+.fam-card { border-color: #8a6a3a; background: linear-gradient(90deg, #3a2a18, #22201a); }
+.fam-room { position: relative; margin-bottom: 8px; }
+.fam-room svg { width: 100%; display: block; border-radius: 12px; }
+.fam-guest { animation: fam-breathe 3.6s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+.fam-guest.happy { animation: fam-nod 1.8s ease-in-out infinite; }
+@keyframes fam-breathe { 50% { transform: scaleY(1.02); } }
+@keyframes fam-nod { 50% { transform: rotate(-3deg) translateY(2px); } }
+.fam-tear { animation: fam-tear 1.6s ease-in infinite; }
+@keyframes fam-tear { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(14px); opacity: 0; } }
+.fam-bubble { position: absolute; max-width: 72%; padding: 7px 10px; border-radius: 12px; font-size: 13px; line-height: 1.25; box-shadow: 0 2px 8px #0008; animation: pop-in 0.25s ease-out; }
+.fam-bubble.them { position: relative; display: block; max-width: none; margin-top: 8px; background: #f4ecd8; color: #2a2016; border-top-left-radius: 2px; }
+.fam-bubble.them::before { content: ''; position: absolute; top: -8px; left: 50%; border: 8px solid transparent; border-bottom-color: #f4ecd8; border-top: 0; }
+.fam-bubble.me { top: 8px; right: 6px; background: #2a5a8a; color: #fff; border-bottom-right-radius: 2px; }
+@keyframes pop-in { from { transform: scale(0.7); opacity: 0; } }
+.fam-steps { display: flex; justify-content: center; gap: 6px; }
+.fam-steps span { width: 10px; height: 10px; border-radius: 50%; background: #444; }
+.fam-steps .on { background: #f2c14e; }
+.fam-steps .cur { background: #fff; }
+.fam-end { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; margin-bottom: 8px; }
+.fam-end b { font-size: 18px; }
+.fam-end small { color: var(--muted); }
+.fam-gifts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 4px; }
+.fam-gifts span { padding: 3px 8px; border-radius: 10px; background: #0005; font-size: 14px; }
+.fam-gifts .buff { background: #3a2e10; color: var(--gold); font-size: 12px; }

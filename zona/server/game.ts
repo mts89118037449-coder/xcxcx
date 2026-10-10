@@ -74,6 +74,7 @@ import { CHAT, phraseById } from '../shared/chat.ts';
 import { ACTION_UNLOCK, UNLOCKS, unlockById } from '../shared/unlocks.ts';
 import { BARRACK, barrackBonus, barrackById, raidPts, type BarrackBonus } from '../shared/barracks.ts';
 import { INK, inkQuality } from '../shared/ink.ts';
+import { FAMILY, FAMILY_ROUNDS, familyOutcome, type Visitor } from '../shared/family.ts';
 import { MALYAVA, malyavaById } from '../shared/malyava.ts';
 import { PENPAL, PENPAL_GIRLS, PEN_ENDINGS, PEN_LETTERS, penEnding, type PenEnding } from '../shared/penpal.ts';
 import { COURT, courtArgById, courtChance, type ArgId } from '../shared/court.ts';
@@ -264,6 +265,8 @@ export interface Player {
   ink: { skill: number; jobs: number; stars: number; votes: number; queue: { id: number; client: number; clientName: string; tattoo: string; paid: number; at: number }[] } | null;
   /** свой заказ у кольщика */
   inkOrder: { artist: number; artistName: string; tattoo: string; at: number; id: number; done: boolean; quality: number; rated: boolean } | null;
+  /** свиданка с роднёй: раз в неделю */
+  family: { week: number; who: Visitor; rounds: number[]; picks: number[]; mood: number; done: boolean; buffUntil: number; buffPct: number };
   /** входящие малявы */
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
@@ -428,6 +431,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     built: 0,
     penpal: null,
     inbox: [],
+    family: { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 },
     ink: null,
     inkOrder: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
@@ -523,6 +527,7 @@ export function migrate(p: Player): Player {
   p.penpal ??= null;
   p.refEarn ??= { total: 0, by: {} };
   p.inbox ??= [];
+  p.family ??= { week: -1, who: 'mom', rounds: [], picks: [], mood: 0, done: false, buffUntil: 0, buffPct: 0 };
   p.ink ??= null;
   p.inkOrder ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
@@ -747,14 +752,14 @@ export function doJob(p: Player, jobId: string, now: number, rng: Rng) {
   spendEnergy(p, job.energy, now);
   // рандом смены: иногда премия от бригадира, иногда находка на промке
   const bonus = rng() < 0.1;
-  const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney') + repBonus(p, 'jobMoney')) / 100) * (bonus ? 2 : 1) * (liveFx(now).money ?? 1) * (colonyFx(p.colony).jobMoney ?? 1));
+  const money = Math.round(roll(rng, job.money) * (1 + (stats(p, now).moneyBonus + mastBonus(p, 'jobMoney') + repBonus(p, 'jobMoney') + famBuff(p, now)) / 100) * (bonus ? 2 : 1) * (liveFx(now).money ?? 1) * (colonyFx(p.colony).jobMoney ?? 1));
   p.money += money;
   let item: string | null = null;
   if (rng() < 0.05) {
     item = rollConsumable(rng);
     giveItem(p, item);
   }
-  const xp = Math.round(job.xp * (1 + (mastBonus(p, 'jobXp') + petPower(p, 'pigeon', now) + zoneB('jobXp') + barB(p, 'jobXp')) / 100));
+  const xp = Math.round(job.xp * (1 + (mastBonus(p, 'jobXp') + petPower(p, 'pigeon', now) + zoneB('jobXp') + barB(p, 'jobXp') + famBuff(p, now)) / 100));
   const levelUps = addXp(p, xp, now);
   track(p, 'job');
   gainRep(p, 'work', 1);
@@ -4143,4 +4148,53 @@ export function refDonate(ref: Player, from: Player, stars: number, share: numbe
   ref.refEarn.by[from.id] = (ref.refEarn.by[from.id] ?? 0) + gold;
   log(ref, now, `🤝 ${from.name} поддержал зону — тебе ${gold} 🪙 (${Math.round(share * 100)}%)`);
   return gold;
+}
+
+// --- Свиданка с роднёй ---------------------------------------------------------------------------
+
+const famBuff = (p: Player, now: number) => (p.family.buffUntil > now ? p.family.buffPct : 0);
+
+/** Кто приедет на этой неделе и о чём будут говорить. */
+export function ensureFamily(p: Player, now: number) {
+  const w = weekIndex(now);
+  if (p.family.week !== w) {
+    const married = p.cosmetics.includes('title_married');
+    const who: Visitor = married && w % 2 === 1 ? 'wife' : 'mom';
+    const rng = seeded(`fam:${p.id}:${w}`);
+    const pool = FAMILY_ROUNDS[who].map((_, i) => i);
+    const rounds: number[] = [];
+    while (rounds.length < 3) rounds.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
+    p.family = { ...p.family, week: w, who, rounds, picks: [], mood: 0, done: false };
+  }
+  return p.family;
+}
+
+/** Ответ на реплику; после третьей — передача и бафф на сутки. */
+export function familyTalk(p: Player, choice: number, now: number, rng: Rng) {
+  if (p.level < FAMILY.minLevel) throw new GameError(`С ${FAMILY.minLevel} уровня`);
+  const f = ensureFamily(p, now);
+  if (f.done) throw new GameError('На этой неделе уже виделись');
+  const round = FAMILY_ROUNDS[f.who][f.rounds[f.picks.length]];
+  const o = round.options[choice];
+  if (!o) throw new GameError('Нет такого ответа');
+  f.picks.push(choice);
+  f.mood += o.mood;
+  if (f.picks.length < f.rounds.length) return { mood: f.mood, end: null };
+  f.done = true;
+  const out = familyOutcome(f.mood);
+  p.butts += out.butts;
+  const money = out.rations * ration(p);
+  p.money += money;
+  const items: string[] = [];
+  for (let i = 0; i < out.items; i++) {
+    const id = rollConsumable(rng);
+    giveItem(p, id);
+    items.push(id);
+  }
+  if (out.buffPct) {
+    f.buffPct = out.buffPct;
+    f.buffUntil = now + FAMILY.buffH * 60 * MIN;
+  }
+  log(p, now, `👪 Свиданка: ${out.title}`);
+  return { mood: f.mood, end: { ...out, money, items } };
 }

@@ -12,6 +12,7 @@ import { PenpalCard } from './Penpal.tsx';
 import { MailCard } from './Malyava.tsx';
 import { InkCard } from './Ink.tsx';
 import { ShareButton } from './Share.tsx';
+import { FamilyCard } from './Family.tsx';
 
 /** Профиль: срок, характеристики, лечение, статус, настройки и жалоба. */
 export function ProfilePanel({ onMast }: { onMast(): void }) {
@@ -30,6 +31,7 @@ export function ProfilePanel({ onMast }: { onMast(): void }) {
           <div className="rank-line">🎖️ {p.rank} · ур. {p.level}</div>
           <TermCard onMast={onMast} />
           <CourtCard />
+          <FamilyCard />
           <MailCard />
           <InkCard />
           <PenpalCard />
