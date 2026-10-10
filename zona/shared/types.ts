@@ -110,7 +110,7 @@ export interface PlayerView {
   notifyOff: string[];
   games: {
     cards: number; race: number; brew: number; brewReadyAt: number; cardsMaxBet: number; dice: number; diceMaxBet: number; arm: number; darts: number;
-    nardy: number; domino: number; chess: number; speed: number; conveyor: number; beads: number; beadsReadyAt: number; fish: number; shizo: number; tableMaxBet: number;
+    nardy: number; domino: number; chess: number; speed: number; conveyor: number; beads: number; beadsReadyAt: number; fish: number; shizo: number; raid: number; tableMaxBet: number;
   };
   tables: {
     nardy?: { bet: number; me: number; him: number; dice: [number, number]; hisLast: [number, number] | null };

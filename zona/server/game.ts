@@ -82,6 +82,7 @@ import { FAMILY, FAMILY_ROUNDS, familyOutcome, type Visitor } from '../shared/fa
 import { INTRO_REWARD, PLACE_INTRO } from '../shared/cutscenes.ts';
 import { bunkOfDay } from '../shared/bunk.ts';
 import { RENO, renoCost } from '../shared/reno.ts';
+import { RAID, raidButts } from '../shared/raid.ts';
 import { featById, featProgress } from '../shared/feats.ts';
 import { MALYAVA, malyavaById } from '../shared/malyava.ts';
 import { PENPAL, PENPAL_GIRLS, PEN_ENDINGS, PEN_LETTERS, penEnding, type PenEnding } from '../shared/penpal.ts';
@@ -3227,6 +3228,16 @@ export function fishing(p: Player, accs: unknown, now: number, rng: Rng) {
 }
 
 /** Сварить чифир: quality — насколько точно снял с огня (0..1). */
+/** Шмон с неба: бычки за каждую продержанную секунду. */
+export function raid(p: Player, sec: number, now: number) {
+  playLimit(p, 'raid', RAID.perDay, now);
+  const s = Math.max(0, Math.min(RAID.seconds, Number(sec) || 0));
+  const butts = raidButts(s);
+  p.butts += butts;
+  track(p, 'minigame');
+  return { sec: Math.round(s * 10) / 10, butts, full: s >= RAID.seconds };
+}
+
 export function brew(p: Player, quality: number, now: number) {
   playLimit(p, 'brew', BREW.perDay, now, BREW.cooldownMin);
   const q = Math.max(0, Math.min(1, Number(quality) || 0));

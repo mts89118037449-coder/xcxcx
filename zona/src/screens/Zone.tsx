@@ -7,6 +7,7 @@ const ContraCard = named(() => import('../Contra.tsx'), 'ContraCard');
 const RiotCard = named(() => import('../Riot.tsx'), 'RiotCard');
 const SmotrCard = named(() => import('../Elect.tsx'), 'SmotrCard');
 const PaperCard = named(() => import('../Paper.tsx'), 'PaperCard');
+const NewsChip = named(() => import('../News.tsx'), 'NewsChip');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { ZoneLife } from '../art/Critters.tsx';
@@ -174,6 +175,7 @@ export function Zone() {
       <Suspense fallback={null}>
         <div className="now-strip" data-tut="now">
           {p.contra.shmon && <NowChip icon="🔦" label="Шмон!" sub="спрячь товар" hot onClick={() => setSeg('market')} />}
+          <NewsChip />
           {p.holiday && <HolidayCard chip />}
           <SmotrCard chip />
           <BuildCard chip />

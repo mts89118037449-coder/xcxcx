@@ -2204,3 +2204,14 @@ test('абсурдные ачивки: счётчики растут, награ
   p.losses = 20;
   g.claimFeat(p, 'f_floor');
 });
+
+test('шмон с неба: бычки за секунды, премия за полный заход, лимит в день', () => {
+  const now = 1_800_000_000_000;
+  const p = g.newPlayer(903, 'Бегун', null, now);
+  const a = g.raid(p, 7.3, now);
+  assert.equal(a.butts, 3);
+  const b = g.raid(p, 999, now);
+  assert.ok(b.full && b.butts === 14);
+  for (let i = 0; i < 3; i++) g.raid(p, 1, now);
+  assert.throws(() => g.raid(p, 1, now), /завтра/);
+});

@@ -1,5 +1,6 @@
 import { weatherAt } from '../shared/weather.ts';
 import { renoComfort } from '../shared/reno.ts';
+import { RAID } from '../shared/raid.ts';
 import { QUIZ, quizPhase, quizPoints, quizQuestions, quizSlot, quizTotalMs } from '../shared/quiz.ts';
 import { FOOT, dayPairs, footTable } from '../shared/football.ts';
 import { DECREES, ELECT, voteWeight, type ElectRow, type SmotrState } from '../shared/elect.ts';
@@ -526,6 +527,7 @@ export function createApp(opts: AppOptions) {
         beadsReadyAt: (p.minigames.beads?.at ?? 0) + BEADS.cooldownMin * 60_000,
         fish: g.playsLeft(p, 'fish', FISH.perDay, t),
         shizo: g.playsLeft(p, 'shizo', SHIZO.perDay, t),
+        raid: g.playsLeft(p, 'raid', RAID.perDay, t),
         tableMaxBet: NARDY.minBet + p.level * NARDY.betPerLevel,
       },
       tables: p.tables,
@@ -672,6 +674,7 @@ export function createApp(opts: AppOptions) {
     cardsStand: (p, _b, t) => g.cardsStand(p, t),
     race: (p, b, t) => g.roachRace(p, str(b.pick), num(b.bet), t, rng),
     brew: (p, b, t) => g.brew(p, num(b.quality), t),
+    raid: (p, b, t) => g.raid(p, num(b.sec), t),
     dice: (p, b, t) => g.dice(p, num(b.bet), t, rng),
     arm: (p, b, t) => {
       const r = g.armWrestle(p, str(b.rival), num(b.taps), t, rng);
