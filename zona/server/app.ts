@@ -1,3 +1,4 @@
+import { weatherAt } from '../shared/weather.ts';
 import { QUIZ, quizPhase, quizPoints, quizQuestions, quizSlot, quizTotalMs } from '../shared/quiz.ts';
 import { FOOT, dayPairs, footTable } from '../shared/football.ts';
 import { DECREES, ELECT, voteWeight, type ElectRow, type SmotrState } from '../shared/elect.ts';
@@ -228,6 +229,13 @@ export function createApp(opts: AppOptions) {
     const cur = liveNow(t);
     const def = cur && liveById.get(cur.id);
     return cur && def ? { startsAt: cur.startsAt, text: def.notice } : null;
+  };
+  // Хроника зоны: громкие события недели — для стенгазеты
+  type Chron = { at: number; emoji: string; text: string };
+  const chron = (emoji: string, text: string) => {
+    const t = now();
+    const key = `chron:${g.weekIndex(t)}`;
+    db.kvSet(key, [{ at: t, emoji, text }, ...db.kvGet<Chron[]>(key, [])].slice(0, 40));
   };
   const clanState = (id: number) => db.kvGet<ClanState>(`clan:${id}`, { hut: {}, boss: null });
   const saveClanState = (id: number, st: ClanState) => db.kvSet(`clan:${id}`, st);
@@ -862,6 +870,7 @@ export function createApp(opts: AppOptions) {
           s.phase = 'won';
           s.endedAt = t;
           next = 'won';
+          chron('🔥', 'Бунт удался! Три волны ОМОНа отбиты, администрация пошла на уступки');
         } else {
           const people = new Set([...Object.keys(s.hits), ...Object.entries(s.votes).filter(([, v]) => v).map(([id]) => id)]).size;
           s.max = s.hp = waveHp(s.wave, people);
@@ -914,6 +923,7 @@ export function createApp(opts: AppOptions) {
         const caught = who === st.snitch;
         st.resolved = { who, caught, at: t };
         result = { who, caught };
+        chron('🐀', caught ? `В клане [${db.getClan(p.clanId!)?.tag ?? '?'}] вычислили стукача` : `Клан [${db.getClan(p.clanId!)?.tag ?? '?'}] обвинил невиновного — стукач гуляет`);
         const c = db.getClan(p.clanId!)!;
         const touch = (id: number, f: (x: g.Player) => void) => {
           if (id === p.id) return f(p);
@@ -995,7 +1005,11 @@ export function createApp(opts: AppOptions) {
     shmonHide: (p, b, t) => g.shmonHide(p, (b.hide && typeof b.hide === 'object' ? b.hide : {}) as Record<string, string>, t, rng),
     tunnelDig: (p, b, t) => g.tunnelDig(p, num(b.acc), t, rng),
     tunnelMask: (p) => g.tunnelMask(p),
-    tunnelEscape: (p, _b, t) => g.tunnelEscape(p, t),
+    tunnelEscape: (p, _b, t) => {
+      const r = g.tunnelEscape(p, t);
+      chron('⛏️', `${p.name} ушёл подкопом — срок скостили вдвое`);
+      return r;
+    },
     familyTalk: (p, b, t) => g.familyTalk(p, num(b.choice), t, rng),
     malyava: (p, b, t) => {
       const target = db.getPlayer(num(b.id));
@@ -1423,7 +1437,12 @@ export function createApp(opts: AppOptions) {
       return r;
     },
     penStart: (p, _b, t) => g.penStart(p, t, rng),
-    penReply: (p, b, t) => g.penReply(p, num(b.choice), t, rng),
+    penReply: (p, b, t) => {
+      const r = g.penReply(p, num(b.choice), t, rng);
+      if (r.ending === 'wedding') chron('💍', `${p.name} расписался с заочницей прямо на зоне`);
+      if (r.ending === 'scam') chron('🎭', `${p.name} попал на аферистку-заочницу`);
+      return r;
+    },
     courtArg: (p, b, t) => g.courtArg(p, str(b.id), t),
     courtHearing: (p, _b, t) => g.courtHearing(p, t, rng),
     buildGive: (p, b, t) => {
@@ -1437,6 +1456,7 @@ export function createApp(opts: AppOptions) {
       const top = db.kvGet<Record<string, { name: string; pts: number }>>('build:top', {});
       top[p.id] = { name: p.name, pts: p.built };
       db.kvSet('build:top', top);
+      for (const id of finished) chron('🏗️', `Достроили: ${BUILDINGS.find((x) => x.id === id)!.name} — бонус всей зоне`);
       for (const id of finished) {
         const bl = BUILDINGS.find((x) => x.id === id)!;
         g.log(p, t, `${bl.emoji} Твой взнос достроил «${bl.name}»!`);
@@ -1707,6 +1727,32 @@ export function createApp(opts: AppOptions) {
     });
   });
 
+  // Стенгазета «За решёткой»: выпуск недели из всего, что творится на зоне
+  api.post('/paper', (req: AuthedRequest, res) => {
+    const t = now();
+    liveNow(t);
+    const w = g.weekIndex(t);
+    const tag = (id: number) => db.getClan(id)?.tag ?? '?';
+    const sm = smotrGet(t);
+    const riot = riotGet(t);
+    const foot = footTable(footGet(w).goals);
+    const league = db.leagueTop(w, 3);
+    const cur = BUILDINGS[buildState.idx];
+    res.json({
+      issue: w - 2900,
+      smotr: sm && { name: sm.name, decree: sm.decree, tax: sm.tax },
+      barracks: BARRACKS.map((b) => ({ id: b.id, owner: g.barracks.owners[b.id] ? tag(g.barracks.owners[b.id]) : null })),
+      build: cur ? { name: cur.name, emoji: cur.emoji, pct: Math.floor((buildState.pts / cur.goal) * 100) } : null,
+      built: buildState.done.length,
+      riot: riot.phase,
+      cup: foot.slice(0, 3).map((r) => ({ tag: tag(r.id), pts: r.pts })),
+      fighters: league.map((r) => ({ name: r.name, pts: r.pts })),
+      kum: db.kvGet<{ from: string; to: string; msg: string }[]>('kum:feed', []).slice(0, 2),
+      chron: db.kvGet<Chron[]>(`chron:${w}`, []).slice(0, 12),
+      weather: weatherAt(t),
+    });
+  });
+
   // Вечер в клубе: живая викторина по расписанию
   type QuizRun = { players: Record<string, { name: string; pts: number; right: number }>; answers: Record<string, number>; claimed: number[] };
   const quizCur = (t: number) => quizSlot(t, db.kvGet<number | null>('quiz:force', null));
@@ -1794,6 +1840,7 @@ export function createApp(opts: AppOptions) {
           g.log(winner, t, `👑 Зона выбрала тебя смотрящим на неделю: +${ELECT.gold} 🪙`);
           db.savePlayer(winner);
           notifyPlayer(winner.id, '👑 Зона выбрала тебя смотрящим! Поставь налог и огласи указ.');
+          chron('👑', `Новый смотрящий за зоной — ${winner.name}`);
         }
       }
     }
@@ -1844,7 +1891,11 @@ export function createApp(opts: AppOptions) {
   // Бунт: одно общее состояние на всю зону
   const riotGet = (t: number): RiotState => {
     const s = db.kvGet<RiotState>('riot', riotIdle());
-    if (riotAdvance(s, t)) db.kvSet('riot', s);
+    if (riotAdvance(s, t)) {
+      db.kvSet('riot', s);
+      if (s.phase === 'lost') chron('⛓️', 'Бунт подавлен. Гайки закручены на сутки');
+      if (s.phase === 'fight') chron('🔥', 'Зона проголосовала за бунт! ОМОН у ворот');
+    }
     g.riotPenalty.until = s.phase === 'lost' ? s.endedAt + RIOT.penaltyH * 3600_000 : 0;
     return s;
   };

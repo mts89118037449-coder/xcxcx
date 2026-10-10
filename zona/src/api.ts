@@ -118,6 +118,20 @@ export const api = {
     post<{ list: { id: string; owner: { id: number; tag: string; name: string } | null; top: { id: number; tag: string; name: string; pts: number }[]; mine: number }[]; endsAt: number }>('/barracks'),
   inkers: () => post<{ list: { id: number; name: string; skill: number; stars: number; votes: number; jobs: number; queue: number }[] }>('/inkers'),
   kum: () => post<{ feed: { from: string; to: string; msg: string; at: number }[] }>('/kum'),
+  paper: () =>
+    post<{
+      issue: number;
+      smotr: { name: string; decree: string | null; tax: number } | null;
+      barracks: { id: string; owner: string | null }[];
+      build: { name: string; emoji: string; pct: number } | null;
+      built: number;
+      riot: string;
+      cup: { tag: string; pts: number }[];
+      fighters: { name: string; pts: number }[];
+      kum: { from: string; to: string; msg: string }[];
+      chron: { at: number; emoji: string; text: string }[];
+      weather: { emoji: string; temp: number; label: string };
+    }>('/paper'),
   quiz: () =>
     post<{
       now: number;

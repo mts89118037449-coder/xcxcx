@@ -418,3 +418,20 @@ test('выборы смотрящего: выдвижение, голос по �
   assert.equal((await post('/api/action/smotrPardon', boss, { id: 9502 })).status, 200);
   assert.equal((await post('/api/action/smotrPardon', boss, { id: 9502 })).status, 400);
 });
+
+test('стенгазета: выпуск недели собирается, хроника пишет громкие события', async () => {
+  const auth = initData(9601, 'Читатель');
+  await post('/api/me', auth);
+  const r = await post('/api/paper', auth);
+  assert.equal(r.status, 200);
+  assert.equal(r.json.barracks.length, 6);
+  assert.ok(Array.isArray(r.json.chron));
+  // подкоп в хронике
+  const pl = db.getPlayer(9601)!;
+  pl.level = 10;
+  pl.tunnel = { hodka: pl.hodka, depth: 25, digAt: 0, masked: 0, found: 0, done: false };
+  db.savePlayer(pl);
+  assert.equal((await post('/api/action/tunnelEscape', auth)).status, 200);
+  const r2 = await post('/api/paper', auth);
+  assert.match(r2.json.chron[0].text, /подкопом/);
+});
