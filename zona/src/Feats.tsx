@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { FEATS, featProgress } from '../shared/feats.ts';
+import { FEATS, featById, featProgress } from '../shared/feats.ts';
+import { ShareButton } from './Share.tsx';
 import { ModalHead } from './Nav.tsx';
 import { useGame } from './game.tsx';
 
@@ -18,6 +19,7 @@ export function FeatsCard() {
         </span>
         <i>▸</i>
       </button>
+      <FeatBadges ids={p.featsClaimed} />
       {open && <FeatsModal onClose={() => setOpen(false)} />}
     </>
   );
@@ -50,7 +52,11 @@ function FeatsModal({ onClose }: { onClose(): void }) {
                   )}
                 </span>
                 {got ? (
-                  <span className="feat-done">✓</span>
+                  <ShareButton
+                    className="btn btn-s btn-dark"
+                    card={{ emoji: f.emoji, title: f.name, sub: f.desc, tone: 'gold' }}
+                    caption={`Ачивка «${f.name}» на зоне. ${f.desc}. А у тебя слабо?`}
+                  />
                 ) : (
                   <button className="btn btn-s btn-gold" disabled={busy || !done} onClick={() => act('claimFeat', { id: f.id })}>
                     {f.gold} 🪙
@@ -61,6 +67,23 @@ function FeatsModal({ onClose }: { onClose(): void }) {
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Значки полученных ачивок: в профиле и в гостях. */
+export function FeatBadges({ ids }: { ids: string[] }) {
+  if (!ids.length) return null;
+  return (
+    <div className="feat-badges">
+      {ids.map((id) => {
+        const f = featById.get(id);
+        return f ? (
+          <span key={id} title={`${f.name}: ${f.desc}`}>
+            {f.emoji}
+          </span>
+        ) : null;
+      })}
     </div>
   );
 }

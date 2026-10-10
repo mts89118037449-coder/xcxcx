@@ -5,6 +5,7 @@ import { api } from './api.ts';
 import { Place } from './art/Scenes.tsx';
 import { ImageG, useNpc } from './art/sprites.tsx';
 import { babble } from './sound.ts';
+import { WeeklyComic } from './Comic.tsx';
 
 type Paper = Awaited<ReturnType<typeof api.paper>>;
 
@@ -62,6 +63,7 @@ export function NewsChip() {
 function NewsModal({ onClose }: { onClose(): void }) {
   const [v, setV] = useState<Paper | null>(null);
   const [i, setI] = useState(0);
+  const [comic, setComic] = useState(false);
   const anchor = useNpc('sheet/cast/lawyer');
   useEffect(() => {
     api.paper().then(setV).catch(() => null);
@@ -96,6 +98,12 @@ function NewsModal({ onClose }: { onClose(): void }) {
             <div className="tv-line">{text}</div>
           </div>
         </div>
+        {v && (
+          <button className="btn btn-wide btn-gold" onClick={() => setComic(true)} style={{ marginBottom: 8 }}>
+            🎬 Сериал зоны — комикс недели
+          </button>
+        )}
+        {comic && v && <WeeklyComic issue={v.issue} chron={v.chron} onClose={() => setComic(false)} />}
         <div className="row gap-s">
           <button className="btn btn-dark grow" disabled={i === 0} onClick={() => setI(i - 1)}>
             ◂

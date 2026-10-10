@@ -3237,3 +3237,5 @@ body:has(.modal) .event-btn { z-index: 20; }
 .pillow-moves .btn { padding: 8px 4px; font-size: 13px; }
 .pillow-plan { display: flex; justify-content: center; gap: 8px; margin-bottom: 8px; }
 .pillow-plan span { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px; border: 2px dashed var(--line); font-size: 22px; cursor: pointer; }
+.feat-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.feat-badges span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: radial-gradient(#5a4a20, #2a2214); border: 2px solid var(--gold); font-size: 17px; box-shadow: 0 2px 0 #000a; }

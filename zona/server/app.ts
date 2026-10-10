@@ -2180,6 +2180,7 @@ export function createApp(opts: AppOptions) {
       rank: rankTitle(v.authority),
       authority: v.authority,
       wins: v.wins,
+      feats: v.featsClaimed ?? [],
       face: v.face,
       build: v.build,
       skin: v.skin,

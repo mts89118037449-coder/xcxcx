@@ -215,6 +215,7 @@ export interface QuestState {
 
 /** Что видно, когда заходишь в хату к соседу. */
 export interface VisitView {
+  feats: string[];
   id: number;
   name: string;
   level: number;

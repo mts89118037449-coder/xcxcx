@@ -23,6 +23,8 @@ type Snoop =
   | { outcome: 'money'; money: number };
 
 /** Хата соседа: его отделка, мебель и он сам. id = 0 — обход бараков: случайные хаты подряд. */
+import { FeatBadges } from './Feats.tsx';
+
 export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
   const { p, act, toast, busy, say } = useGame();
   const [v, setV] = useState<VisitView | null>(null);
@@ -124,6 +126,7 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
               <div className="stat"><span>🥊</span><b>{v.wins}</b><small>побед</small></div>
               <div className="stat"><span>🛋️</span><b>{v.comfort}</b><small>уют</small></div>
             </div>
+            <FeatBadges ids={v.feats} />
             {!self && (
               <div className="visit-acts">
                 <button className="btn" disabled={busy || v.respectedToday} onClick={respect}>

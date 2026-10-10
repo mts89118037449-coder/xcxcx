@@ -5,6 +5,8 @@ import { Place } from './art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from './art/sprites.tsx';
 import type { RigAnim } from './art/rig/Rig.tsx';
 import { lookOf, useGame } from './game.tsx';
+import type { Look } from '../shared/types.ts';
+import { NPC_RIGS } from './art/rig/npcs.ts';
 import { play } from './sound.ts';
 
 const DONE_LINES = [
@@ -18,7 +20,7 @@ const DONE_LINES = [
 const BGS = ['#c9d6de', '#f2e6c8', '#ffd56a'];
 
 /** Один кадр комикса: фон-плашка, двое на сцене, подпись снизу. */
-function Panel({ i, hero, heroAnim, who, whoAnim, caption, title }: { i: number; hero: ReturnType<typeof lookOf>; heroAnim: RigAnim; who: string; whoAnim: RigAnim; caption: string; title?: string }) {
+export function Panel({ i, hero, heroAnim, who, whoAnim, caption, title }: { i: number; hero: Look; heroAnim: RigAnim; who: string; whoAnim: RigAnim; caption: string; title?: string }) {
   const npc = useNpc(who);
   return (
     <div className="comic-panel" style={{ animationDelay: `${i * 0.9}s`, background: BGS[i % BGS.length], transform: `rotate(${[-1.2, 1, -0.6][i % 3]}deg)` }}>
@@ -74,6 +76,34 @@ export function ChapterComic({ chapter, onClose }: { chapter: number; onClose():
         </div>
         <button className="btn btn-wide" onClick={onClose}>
           Дальше ▸
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const EP_TITLES = ['Серия: «Кто съел котлету»', 'Серия: «Шмон в 4 утра»', 'Серия: «Месть тапка»', 'Серия: «Последний бычок»', 'Серия: «Кум не спит»', 'Серия: «Побег на обед»'];
+const CASTS = ['sheet/cast/oldman', 'sheet/cast/officer', 'sheet/cast/cook', 'sheet/cast/blatnoy', 'sheet/cast/youngster', 'sheet/cast/omon', 'sheet/cast/doctor'];
+const HEROES = ['sheet/rival/1', 'sheet/rival/3', 'sheet/rival/5', 'sheet/rival/4', 'sheet/rival/0'];
+const ANIMS: [RigAnim, RigAnim][] = [['punch', 'hit'], ['talk', 'shrug'], ['cheer', 'sad'], ['run', 'wave'], ['think', 'talk'], ['dance', 'crossed']];
+
+/** «Сериал зоны»: комикс недели из настоящих событий игроков. */
+export function WeeklyComic({ issue, chron, onClose }: { issue: number; chron: { emoji: string; text: string }[]; onClose(): void }) {
+  const items = chron.length ? chron.slice(0, 4) : [{ emoji: '😴', text: 'Всю неделю ничего не случилось. Даже кум заскучал' }];
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="modal-body comic-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} title={`🎬 Сериал зоны · сезон ${issue}`} />
+        <div className="comic">
+          {items.map((c, i) => {
+            const k = (issue * 7 + i * 3) % 97;
+            const hero = NPC_RIGS[HEROES[k % HEROES.length]]?.look ?? { equipped: {}, tattoos: [], str: 10 };
+            const [a, b] = ANIMS[k % ANIMS.length];
+            return <Panel key={i} i={i % 3} hero={hero} heroAnim={a} who={CASTS[k % CASTS.length]} whoAnim={b} caption={`${c.emoji} ${c.text}.`} title={i === 0 ? EP_TITLES[issue % EP_TITLES.length] : undefined} />;
+          })}
+        </div>
+        <button className="btn btn-wide" onClick={onClose}>
+          Продолжение следует… ▸
         </button>
       </div>
     </div>
