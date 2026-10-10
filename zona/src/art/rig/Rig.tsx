@@ -1073,7 +1073,8 @@ export interface RigProps {
   fidget?: boolean;
 }
 
-export function Rig({ look, anim = 'idle', mirror, still, shadow = true, startKey, bare, fidget = true, fx }: RigProps) {
+/** Прежняя «реалистичная» кукла — осталась для галереи и сравнения. */
+export function RigClassic({ look, anim = 'idle', mirror, still, shadow = true, startKey, bare, fidget = true, fx }: RigProps) {
   const uid = useRef(`rg${++uidSeq}`).current;
   const t = useClock(!still);
   const now = performance.now();
@@ -1557,7 +1558,7 @@ function ArmTattoo({ look, a, near, covered }: { look: Look; a: Mats['n']; near:
 
 // --- Портрет: только голова, для шапки, топа и полос здоровья ---------------------------------
 
-export function RigHead({ look, size = 40, className }: { look: Look; size?: number; className?: string }) {
+export function RigHeadClassic({ look, size = 40, className }: { look: Look; size?: number; className?: string }) {
   const uid = useRef(`rh${++uidSeq}`).current;
   const skin = SKIN_TONES[look.skin ?? 0] ?? SKIN_TONES[0];
   return (
@@ -1573,3 +1574,6 @@ export function RigHead({ look, size = 40, className }: { look: Look; size?: num
 }
 
 export { I as IDENTITY, S as SCALE };
+
+// Сейчас в игре — фигурки в духе «Южного парка» (Toon.tsx): тот же интерфейс.
+export { Toon as Rig, ToonHeadPortrait as RigHead } from './Toon.tsx';

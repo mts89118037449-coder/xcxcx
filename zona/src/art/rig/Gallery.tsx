@@ -1,5 +1,6 @@
 import type { Look } from '../../../shared/types.ts';
-import { Rig, RigBody, RigHead, poseAt, ANIM_PROP, type RigAnim } from './Rig.tsx';
+import { Rig, RigHead, ANIM_PROP, type RigAnim } from './Rig.tsx';
+import { ToonBody, toonPose } from './Toon.tsx';
 
 const L = (equipped: Look['equipped'], face = 0, extra: Partial<Look> = {}): Look => ({ equipped, tattoos: [], str: 10, face, build: 1, skin: 0, ...extra });
 
@@ -43,7 +44,7 @@ export function RigGallery() {
       <svg viewBox={`0 0 ${120 * 4} ${220 * Math.ceil(anims.length / 4)}`} width="100%" style={{ background: '#57544a' }}>
         {anims.map((a, i) => (
           <g key={a} transform={`translate(${(i % 4) * 120} ${Math.floor(i / 4) * 220})`}>
-            {at ? <RigBody look={looks[6]} pose={poseAt(only ?? a, +at)} uid={`g${i}`} prop={ANIM_PROP[only ?? a]} time={+at} fx={fx} /> : <Rig look={looks[6]} anim={only ?? a} fidget={false} />}
+            {at ? <ToonBody look={looks[6]} pose={toonPose(only ?? a, +at)} uid={`g${i}`} prop={ANIM_PROP[only ?? a]} time={+at} fx={fx} ko={(only ?? a) === 'ko'} /> : <Rig look={looks[6]} anim={only ?? a} fidget={false} />}
             <text x={4} y={14} fontSize={10} fill="#fff">{a}</text>
           </g>
         ))}

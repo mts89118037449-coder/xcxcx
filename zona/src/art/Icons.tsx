@@ -5,16 +5,16 @@ import { itemById } from '../../shared/content.ts';
 import { Rig, Weapon } from './rig/Rig.tsx';
 import { TattooGlyph } from './rig/tattoos.tsx';
 
-const RIG_CROP: Record<string, string> = { head: '36 4 50 50', body: '32 54 62 66', legs: '34 108 56 104', feet: '32 186 56 26' };
+const RIG_CROP: Record<string, string> = { head: '10 -4 100 80', body: '18 86 84 100', legs: '24 160 72 54', feet: '24 186 72 28' };
 
 export function ItemIcon({ id, size = 44 }: { id: string; size?: number }) {
   const item = itemById.get(id);
   if (!item) return null;
   // одежда — на той же кукле, что и персонаж, крупным планом
   if (RIG_CROP[item.slot]) {
-    const crop = id === 'drop_coat' || id === 'body_parka' || id === 'body_gown' || id === 'drop_greatcoat' || id === 'body_sheepskin' ? '26 54 74 110' : RIG_CROP[item.slot];
+    const crop = id === 'drop_coat' || id === 'body_parka' || id === 'body_gown' || id === 'drop_greatcoat' || id === 'body_sheepskin' ? '14 86 92 124' : RIG_CROP[item.slot];
     return (
-      <svg className="icon rig-icon" viewBox={id === 'feet_kirza' || id === 'feet_valenki' ? '30 168 60 44' : crop} width={size} height={size} aria-label={item.name}>
+      <svg className="icon rig-icon" viewBox={crop} width={size} height={size} aria-label={item.name}>
         <Rig look={{ equipped: { [item.slot]: id }, tattoos: [], str: 12, face: 16 }} anim="idle" still shadow={false} />
       </svg>
     );

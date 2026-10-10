@@ -98,7 +98,7 @@ export function NpcPortrait({ who, className, tight }: { who: string; className?
   const n = NPC_RIGS[who];
   if (!n) return null;
   return (
-    <svg className={`npc-portrait ${className ?? ''}`} viewBox={tight ? '38 16 44 44' : '24 10 72 92'} preserveAspectRatio="xMidYMin slice" aria-hidden>
+    <svg className={`npc-portrait ${className ?? ''}`} viewBox={tight ? '20 22 80 80' : '10 18 100 110'} preserveAspectRatio="xMidYMin slice" aria-hidden>
       <Rig look={n.look} anim="idle" shadow={false} />
     </svg>
   );
