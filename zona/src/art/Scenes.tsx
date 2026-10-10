@@ -18,18 +18,41 @@ function SceneDefs() {
     <defs>
       {/* Пятна и потёки: низкочастотный шум, окрашенный в грязно-бурый */}
       <filter id="sc-stains" x="0" y="0" width="100%" height="100%">
-        <feTurbulence type="fractalNoise" baseFrequency="0.011 0.03" numOctaves="4" seed="7" />
-        <feColorMatrix type="matrix" values="0 0 0 0 0.16  0 0 0 0 0.12  0 0 0 0 0.07  2.4 0 0 0 -1.05" />
+        <feFlood floodOpacity="0" />
       </filter>
       {/* Мелкая фактура штукатурки/бетона */}
       <filter id="sc-grime" x="0" y="0" width="100%" height="100%">
-        <feTurbulence type="fractalNoise" baseFrequency="0.55" numOctaves="3" seed="3" />
-        <feColorMatrix type="matrix" values="0 0 0 0 0.1  0 0 0 0 0.09  0 0 0 0 0.07  1.8 0 0 0 -0.75" />
+        <feFlood floodOpacity="0" />
       </filter>
       {/* Светлые сколы краски */}
       <filter id="sc-chips" x="0" y="0" width="100%" height="100%">
-        <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="11" />
-        <feColorMatrix type="matrix" values="0 0 0 0 0.72  0 0 0 0 0.7  0 0 0 0 0.62  6 0 0 0 -3.6" />
+        <feFlood floodOpacity="0" />
+      </filter>
+      {/* мультяшный фон: цвета ступеньками и чёрная обводка по краям пятен, как в «Южном парке» */}
+      <filter id="sp-toon" x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
+        <feComponentTransfer in="SourceGraphic" result="flat">
+          <feFuncR type="discrete" tableValues="0 0.14 0.28 0.42 0.56 0.7 0.84 1" />
+          <feFuncG type="discrete" tableValues="0 0.14 0.28 0.42 0.56 0.7 0.84 1" />
+          <feFuncB type="discrete" tableValues="0 0.14 0.28 0.42 0.56 0.7 0.84 1" />
+        </feComponentTransfer>
+        <feColorMatrix in="flat" type="matrix" values="0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0 0 0 1 0" result="gray" />
+        <feConvolveMatrix in="gray" order="3" kernelMatrix="-1 -1 -1 -1 8 -1 -1 -1 -1" preserveAlpha="true" result="edge" />
+        <feColorMatrix in="edge" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  5 5 5 0 -0.35" result="mask" />
+        <feMorphology in="mask" operator="dilate" radius="0.45" result="ink" />
+        <feFlood floodColor="#1a1410" result="black" />
+        <feComposite in="black" in2="ink" operator="in" result="lines" />
+        <feMerge>
+          <feMergeNode in="flat" />
+          <feMergeNode in="lines" />
+        </feMerge>
+      </filter>
+      <filter id="sp-ink" x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
+        <feColorMatrix in="SourceGraphic" type="matrix" values="0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0 0 0 1 0" result="gray" />
+        <feConvolveMatrix in="gray" order="3" kernelMatrix="-1 -1 -1 -1 8 -1 -1 -1 -1" preserveAlpha="true" result="edge" />
+        <feColorMatrix in="edge" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  5 5 5 0 -0.35" result="mask" />
+        <feMorphology in="mask" operator="dilate" radius="0.45" result="ink" />
+        <feFlood floodColor="#1a1410" />
+        <feComposite in2="ink" operator="in" />
       </filter>
       <filter id="sc-blur" x="-20%" y="-20%" width="140%" height="140%">
         <feGaussianBlur stdDeviation="3" />
@@ -123,6 +146,12 @@ export function Scene({
         <SceneDefs />
         {backdrop}
         {outdoor && <WeatherGround />}
+      </svg>
+      {/* мультяшная обводка: тот же фон без анимаций, из него — только чёрные контуры поверх.
+          Отдельный слой: считается один раз, живые лампы и пар под ним его не перерисовывают */}
+      <svg className="scene-layer sp-ink-layer sp-still" viewBox={box} preserveAspectRatio="xMidYMid slice" aria-hidden>
+        <SceneDefs />
+        <g filter="url(#sp-ink)">{backdrop}</g>
       </svg>
       <svg className="scene-layer" viewBox={box} preserveAspectRatio="xMidYMid slice">
         <SceneDefs />
@@ -947,7 +976,7 @@ function ZoneBackdrop() {
           {[150, 200, 250].map((x) => (
             <g key={x} transform={`translate(${x} 40)`}>
               <rect x={0} y={0} width={1.6} height={60} fill="#9aa2ab" />
-              <path className="flag-wave" d="M1.6,2 C9,0 15,5 22,3 L22,15 C15,17 9,12 1.6,14 Z" fill="#c22a22" />
+              <path d="M1.6,2 C9,0 15,5 22,3 L22,15 C15,17 9,12 1.6,14 Z" fill="#c22a22" />
             </g>
           ))}
         </g>

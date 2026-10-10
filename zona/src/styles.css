@@ -3170,3 +3170,9 @@ body:has(.modal) .event-btn { z-index: 20; }
 /* L3: радио зоны */
 .radio-bar { position: relative; margin: 6px 0 0; padding: 6px 10px; border-radius: 10px; background: #000c; border: 1px solid #f2c14e55; color: #f2e6c8; font-size: 12.5px; line-height: 1.3; animation: radio-in 0.5s ease-out; cursor: pointer; }
 @keyframes radio-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* L4: статичная копия фона для мультяшной обводки — без анимаций и кликов */
+.sp-still, .sp-still * { animation: none !important; transition: none !important; pointer-events: none; }
+.sp-ink-layer { will-change: transform; transform: translateZ(0); }
+/* то, что двигается, в слой обводки не попадает — иначе контур остался бы «призраком» на месте */
+.sp-still :is(.roach, .cat-tail, .dog-tail, .parrot, .bag-swing, .sway, .pendulum, .reel, .eq, .loc-fly, .loc-drip, .loc-splash, .loc-dust, .loc-rat, .loc-sway, .loc-needle, .loc-spin, .loc-swing, .steam, .flame, .lamp-flicker, .twinkle, .tv-glow, .smoke, .flag-wave) { display: none; }
