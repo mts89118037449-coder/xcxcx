@@ -251,8 +251,35 @@ export function play(s: Sfx) {
  * Мультяшное «бормотание» под реплику: короткие слоги на высоте голоса персонажа.
  * Голос зависит от имени — у каждого свой, но всегда одинаковый.
  */
+/** Кому положен настоящий голос (синтез речи браузера): низкий и медленный — так страшнее. */
+const VOICED: { match: RegExp; pitch: number; rate: number }[] = [
+  { match: /кум/i, pitch: 0.55, rate: 0.92 },
+  { match: /глухар|следовател/i, pitch: 0.7, rate: 1.05 },
+  { match: /прокурор/i, pitch: 0.8, rate: 0.9 },
+  { match: /начальник|майор|подполковник/i, pitch: 0.6, rate: 0.95 },
+];
+
+/** Сказать вслух (если браузер умеет и есть русский голос). true — сказали. */
+export function speak(text: string, pitch = 1, rate = 1): boolean {
+  const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;
+  if (!synth || !prefs.sfx) return false;
+  const ru = synth.getVoices().find((v) => v.lang?.toLowerCase().startsWith('ru'));
+  if (!ru) return false;
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance(text.replace(/[«»"]/g, '').slice(0, 160));
+  u.voice = ru;
+  u.lang = 'ru-RU';
+  u.pitch = pitch;
+  u.rate = rate;
+  u.volume = Math.min(1, prefs.volume + 0.2);
+  synth.speak(u);
+  return true;
+}
+
 export function babble(text: string, voice: string) {
   if (!prefs.sfx) return;
+  const v = VOICED.find((x) => x.match.test(voice));
+  if (v && speak(text, v.pitch, v.rate)) return;
   const c = ensure();
   if (!c || !sfxBus) return;
   if (c.state === 'suspended') c.resume();
@@ -337,6 +364,8 @@ export function setSoundPrefs(p: Partial<Prefs>) {
 
 /** Подключить звук к странице: первое касание будит аудио, свёрнутая игра молчит, кнопки щёлкают. */
 export function initSound() {
+  // список голосов браузер отдаёт не сразу — просим заранее
+  window.speechSynthesis?.getVoices();
   const wake = () => {
     ensure();
     ctx?.resume();

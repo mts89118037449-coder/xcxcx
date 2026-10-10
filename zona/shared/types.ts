@@ -89,6 +89,8 @@ export interface PlayerView {
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   intros: string[];
   feats: Record<string, number>;
+  streamToday: boolean;
+  streams: { id: number; name: string; face: number | null; skin: number; topic: string; until: number; likes: number; liked: boolean }[];
   featsClaimed: string[];
   bunk: { done: boolean; pick: number; day: number };
   reno: { stage: number; until: number; rush: number };

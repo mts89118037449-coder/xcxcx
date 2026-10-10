@@ -96,6 +96,7 @@ export function Home() {
             📦 Грев
           </button>
         )}
+        {p.streams.some((s) => s.id === p.id) && <div className="scene-live">● В ЭФИРЕ · ❤️ {p.streams.find((s) => s.id === p.id)!.likes}</div>}
         {!tryOn && (
           <button className="scene-btn scene-photo" onClick={() => setPhotoOpen(true)} title="Фото-режим">
             📸

@@ -5,7 +5,7 @@ import { Bar, fmt } from '../game.tsx';
 import { RigHead } from './rig/Rig.tsx';
 import { NPC_RIGS } from './rig/npcs.ts';
 import { PoseG } from './sprites.tsx';
-import { play } from '../sound.ts';
+import { babble, play } from '../sound.ts';
 import { Place, YardScene } from './Scenes.tsx';
 import { BOSS_MOVES, BossStrike } from './BossMoves.tsx';
 
@@ -53,6 +53,11 @@ export function FightArena({
   startAt?: number;
 }) {
   const [i, setI] = useState(startAt);
+  // представление босса — вслух (кум и начальство говорят голосом, остальные бормочут)
+  useEffect(() => {
+    const mv = enemy.npc ? BOSS_MOVES[enemy.npc] : undefined;
+    if (mv && startAt === 0) babble(mv.intro, enemy.name);
+  }, []);
   const total = replay.rounds.length;
   const caught = i >= total;
   const done = caught && final;

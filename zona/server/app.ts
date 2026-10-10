@@ -1,6 +1,7 @@
 import { weatherAt } from '../shared/weather.ts';
 import { renoComfort } from '../shared/reno.ts';
 import { RAID } from '../shared/raid.ts';
+import { STREAM, type LiveStream } from '../shared/stream.ts';
 import { QUIZ, quizPhase, quizPoints, quizQuestions, quizSlot, quizTotalMs } from '../shared/quiz.ts';
 import { FOOT, dayPairs, footTable } from '../shared/football.ts';
 import { DECREES, ELECT, voteWeight, type ElectRow, type SmotrState } from '../shared/elect.ts';
@@ -128,6 +129,19 @@ export function createApp(opts: AppOptions) {
   }
 
   // --- Побег вдвоём: общий забег в kv, игроки ссылаются на него
+  /** Живые эфиры: протухшие выкидываем при чтении. */
+  const liveStreams = (t: number) => {
+    const all = db.kvGet<Record<number, LiveStream>>('streams', {});
+    for (const k of Object.keys(all)) if (all[Number(k)].until <= t) delete all[Number(k)];
+    return all;
+  };
+  /** Десятка лучших по «Шмону с неба» за неделю и место игрока. */
+  const raidTop = (top: Record<number, { name: string; sec: number }>, me: number) => {
+    const rows = Object.entries(top)
+      .map(([id, v]) => ({ id: Number(id), name: v.name, sec: v.sec }))
+      .sort((a, b) => b.sec - a.sec);
+    return { rows: rows.slice(0, 10), me: rows.findIndex((r) => r.id === me) + 1, total: rows.length };
+  };
   const duoGet = (id: string | null) => (id ? db.kvGet<g.DuoRun | null>(`duo:${id}`, null) : null);
   const duoSave = (run: g.DuoRun) => db.kvSet(`duo:${run.id}`, run);
   /** Висящие ссылки на закончившиеся забеги и протухшие приглашения — убрать. */
@@ -448,6 +462,11 @@ export function createApp(opts: AppOptions) {
       inkOrder: p.inkOrder,
       intros: p.intros,
       feats: p.feats,
+      streamToday: p.streamDay === g.dayIndex(t),
+      streams: Object.values(liveStreams(t))
+        .sort((a, b) => b.likes - a.likes)
+        .slice(0, STREAM.maxLive)
+        .map((s) => ({ id: s.id, name: s.name, face: s.face, skin: s.skin, topic: s.topic, until: s.until, likes: s.likes, liked: s.likers.includes(p.id) })),
       featsClaimed: p.featsClaimed,
       bunk: { done: p.bunk.day === g.dayIndex(t), pick: p.bunk.day === g.dayIndex(t) ? p.bunk.pick : -1, day: g.dayIndex(t) },
       reno: { stage: p.reno.stage, until: p.reno.until, rush: p.reno.until > t ? g.renoRushCost(p, t) : 0 },
@@ -674,7 +693,35 @@ export function createApp(opts: AppOptions) {
     cardsStand: (p, _b, t) => g.cardsStand(p, t),
     race: (p, b, t) => g.roachRace(p, str(b.pick), num(b.bet), t, rng),
     brew: (p, b, t) => g.brew(p, num(b.quality), t),
-    raid: (p, b, t) => g.raid(p, num(b.sec), t),
+    raid: (p, b, t) => {
+      const r = g.raid(p, num(b.sec), t);
+      // рекорды недели: лучший заход каждого
+      const key = `raid:${g.weekIndex(t)}`;
+      const top = db.kvGet<Record<number, { name: string; sec: number }>>(key, {});
+      if (r.sec > (top[p.id]?.sec ?? -1)) {
+        top[p.id] = { name: p.name, sec: r.sec };
+        db.kvSet(key, top);
+      }
+      return { ...r, top: raidTop(top, p.id) };
+    },
+    streamStart: (p, b, t) => {
+      const r = g.streamStart(p, Math.floor(num(b.topic)), t);
+      const all = liveStreams(t);
+      all[p.id] = { id: p.id, name: p.name, face: p.face, skin: p.skin, topic: r.topic, until: r.until, likes: 0, likers: [] };
+      db.kvSet('streams', all);
+      chron('📱', `${p.name} вышел в эфир из хаты: «${r.topic}»`);
+      return r;
+    },
+    streamLike: (p, b, t) => {
+      const all = liveStreams(t);
+      const id = num(b.id);
+      const streamer = id !== p.id ? db.getPlayer(id) : null;
+      const r = g.streamLike(p, streamer, all[id], t);
+      if (streamer) db.savePlayer(streamer);
+      db.kvSet('streams', all);
+      return r;
+    },
+    raidTop: (p, _b, t) => ({ top: raidTop(db.kvGet(`raid:${g.weekIndex(t)}`, {}), p.id) }),
     dice: (p, b, t) => g.dice(p, num(b.bet), t, rng),
     arm: (p, b, t) => {
       const r = g.armWrestle(p, str(b.rival), num(b.taps), t, rng);

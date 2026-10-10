@@ -150,6 +150,7 @@ export function ZoneLife() {
       <g transform={`translate(${rat.x} 182) scale(${rat.dir < 0 ? -0.6 : 0.6} 0.6)`}>
         <Rat t={rat.moving ? lt : 0} />
       </g>
+      <Pigeons t={lt} />
       {night && <NightLights t={lt} />}
     </g>
   );
@@ -279,6 +280,68 @@ export function LivePet({ kind }: { kind: string }) {
   return (
     <g transform="translate(228 124) scale(0.8)">
       <Crow t={lt} body="#8b93a0" beak="#d9a07a" word="ГУЛЬ!" seed={1.1} />
+    </g>
+  );
+}
+
+/** Голубь-контрабандист: летит через зону с пакетиком на лапах. Мордой вправо. */
+export function FlyingPigeon({ t }: { t: number }) {
+  const s = t / 1000;
+  const flap = Math.sin(s * 18);
+  return (
+    <g>
+      <path d={`M-2,-6 Q-8,${-14 - flap * 8} -16,${-10 - flap * 10}`} stroke={INK} strokeWidth={1.4} fill="#9aa2ae" />
+      <ellipse cx={0} cy={-6} rx={9} ry={5} fill="#8b93a0" stroke={INK} strokeWidth={1.5} />
+      <circle cx={8} cy={-9} r={4} fill="#7a8290" stroke={INK} strokeWidth={1.4} />
+      <path d="M11,-9 L15,-8 L11,-7 Z" fill="#d9a07a" stroke={INK} strokeWidth={0.8} />
+      <circle cx={9} cy={-10} r={1.1} fill="#fff" stroke={INK} strokeWidth={0.5} />
+      <path d={`M2,-6 Q6,${-16 + flap * 8} 12,${-14 + flap * 10}`} stroke={INK} strokeWidth={1.4} fill="#b0b8c4" />
+      <path d="M-2,-1 v4 M2,-1 v4" stroke={INK} strokeWidth={0.8} />
+      <rect x={-4} y={3} width={8} height={6} fill="#c9a77a" stroke={INK} strokeWidth={1} />
+      <path d="M-4,6 h8" stroke="#e04a3a" strokeWidth={1} />
+    </g>
+  );
+}
+
+/** Голуби над зоной: пролетают по очереди с посылками. */
+export function Pigeons({ t }: { t: number }) {
+  const cyc = 14000;
+  return (
+    <>
+      {[0, 6500].map((off, i) => {
+        const k = ((t + off) % cyc) / cyc;
+        if (k > 0.6) return null;
+        const x = -20 + (k / 0.6) * 400;
+        const y = 30 + i * 18 + Math.sin(k * 20) * 4;
+        return (
+          <g key={i} transform={`translate(${i ? 380 - x : x} ${y}) scale(${i ? -0.7 : 0.7} 0.7)`}>
+            <FlyingPigeon t={t} />
+          </g>
+        );
+      })}
+    </>
+  );
+}
+
+/** Кошачья банда во дворе: главный на заборе, двое шныряют внизу. */
+export function YardCats() {
+  const t = useClock(true);
+  const [t0] = useState(t);
+  const lt = t - t0;
+  const a = patrol(lt, 70, 160, 22, 3);
+  const b = patrol(lt + 2000, 220, 300, 18, 4);
+  return (
+    <g pointerEvents="none">
+      <g transform="translate(300 118) scale(0.6)">
+        <Cat t={lt} color="#3a3a40" />
+      </g>
+      <g transform={`translate(${a.x} 258) scale(${a.dir < 0 ? -0.55 : 0.55} 0.55)`}>
+        <Cat t={lt} walk={a.moving} color="#e8e0d0" />
+      </g>
+      <g transform={`translate(${b.x} 250) scale(${b.dir < 0 ? -0.5 : 0.5} 0.5)`}>
+        <Cat t={lt + 500} walk={b.moving} color="#c87a3a" />
+      </g>
+      <Pigeons t={lt} />
     </g>
   );
 }

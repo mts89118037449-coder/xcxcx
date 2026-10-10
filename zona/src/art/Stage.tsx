@@ -6,6 +6,7 @@ import type { Look } from '../../shared/types.ts';
 import { CellScene, Place, WorkScene, YardScene, type InteriorIds } from './Scenes.tsx';
 import type { RigAnim } from './rig/Rig.tsx';
 import { ImageG, PoseG, useNpc, type PoseName } from './sprites.tsx';
+import { YardCats } from './Critters.tsx';
 
 type Loc = 'cell' | 'work' | 'yard';
 export type Mood = 'idle' | 'hurt' | 'win' | 'tired' | 'rich' | 'cold';
@@ -108,7 +109,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, p
   );
   if (loc === 'cell') return <CellScene furniture={furniture} interior={interior} wall={wall} pet={pet} deco={deco} onClick={onClick}>{crowd}{fig}</CellScene>;
   if (loc === 'work') return <WorkScene>{crowd}{fig}</WorkScene>;
-  return <YardScene>{crowd}{fig}</YardScene>;
+  return <YardScene><YardCats />{crowd}{fig}</YardScene>;
 }
 
 /** Сокамерники на заднем плане: чуть мельче и темнее, чтобы не спорить с героем. */

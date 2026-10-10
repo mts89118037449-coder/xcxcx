@@ -83,6 +83,7 @@ import { INTRO_REWARD, PLACE_INTRO } from '../shared/cutscenes.ts';
 import { bunkOfDay } from '../shared/bunk.ts';
 import { RENO, renoCost } from '../shared/reno.ts';
 import { RAID, raidButts } from '../shared/raid.ts';
+import { STREAM, STREAM_TOPICS, type LiveStream } from '../shared/stream.ts';
 import { featById, featProgress } from '../shared/feats.ts';
 import { MALYAVA, malyavaById } from '../shared/malyava.ts';
 import { PENPAL, PENPAL_GIRLS, PEN_ENDINGS, PEN_LETTERS, penEnding, type PenEnding } from '../shared/penpal.ts';
@@ -293,6 +294,8 @@ export interface Player {
   /** счётчики для абсурдных ачивок и какие уже забраны */
   feats: Record<string, number>;
   featsClaimed: string[];
+  /** день последнего стрима из хаты */
+  streamDay: number;
   /** входящие малявы */
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
@@ -467,6 +470,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     reno: { stage: 0, until: 0 },
     feats: {},
     featsClaimed: [],
+    streamDay: -1,
     ink: null,
     inkOrder: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
@@ -572,6 +576,7 @@ export function migrate(p: Player): Player {
   p.reno ??= { stage: 0, until: 0 };
   p.feats ??= {};
   p.featsClaimed ??= [];
+  p.streamDay ??= -1;
   p.ink ??= null;
   p.inkOrder ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
@@ -4325,6 +4330,30 @@ export function renoFinish(p: Player, now: number) {
   p.reno = { stage: p.reno.stage + 1, until: 0 };
   log(p, now, `${st.emoji} Ремонт: ${st.name} — готово`);
   return { stage: st.id };
+}
+
+/** Начать стрим: проверки и отметка дня. Сам эфир хранит app (общий для всех). */
+export function streamStart(p: Player, topic: number, now: number) {
+  if (p.level < STREAM.minLevel) throw new GameError(`Телефон доверяют с ${STREAM.minLevel} уровня`);
+  const day = dayIndex(now);
+  if (p.streamDay === day) throw new GameError('Сегодня уже стримил — кум и так косо смотрит');
+  const t = STREAM_TOPICS[topic];
+  if (!t) throw new GameError('Нет такой темы');
+  p.streamDay = day;
+  bump(p, 'stream');
+  return { topic: t, until: now + STREAM.minutes * MIN };
+}
+
+/** Лайк чужому стриму: стримеру бычки, тебе опыт. */
+export function streamLike(p: Player, streamer: Player | null, s: LiveStream | undefined, now: number) {
+  if (!s || s.until <= now) throw new GameError('Эфир уже закончился');
+  if (s.id === p.id) throw new GameError('Себе лайк не ставят — это не по понятиям');
+  if (s.likers.includes(p.id)) throw new GameError('Ты уже лайкнул');
+  s.likers.push(p.id);
+  s.likes++;
+  if (streamer) streamer.butts += STREAM.buttsPerLike;
+  const xp = addXp(p, STREAM.likeXp, now);
+  return { likes: s.likes, xp };
 }
 
 export function claimFeat(p: Player, id: string) {

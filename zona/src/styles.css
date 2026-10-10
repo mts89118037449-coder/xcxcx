@@ -3206,3 +3206,17 @@ body:has(.modal) .event-btn { z-index: 20; }
 
 /* M8: шмон с неба */
 .raid-field { display: block; width: 100%; border-radius: 12px; border: 3px solid #1a1410; touch-action: none; user-select: none; margin-bottom: 8px; }
+.raid-top { margin-top: 10px; padding: 10px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); display: grid; gap: 4px; font-size: 13px; }
+.raid-top > div { display: flex; gap: 8px; }
+.raid-top > div.me { color: var(--gold); font-weight: 800; }
+.raid-top small { color: var(--muted); }
+
+/* N4: стримы из хат */
+.stream-mine, .stream-start { display: grid; gap: 6px; padding: 12px; border-radius: 14px; border: 1px solid #6b5520; background: linear-gradient(#3a2e18, #2a2214); margin-bottom: 10px; }
+.stream-mine small, .stream-start small { color: var(--muted); }
+.stream-live { color: #ff5a4a; font-weight: 900; font-size: 12px; animation: hot-pulse 1s infinite; }
+.stream-h { margin: 6px 0; }
+.stream-list { display: grid; gap: 8px; }
+.stream-row { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.stream-row small { display: block; color: var(--muted); font-size: 12px; }
+.scene-live { position: absolute; left: 10px; bottom: 10px; padding: 3px 8px; border-radius: 8px; background: #000b; color: #ff5a4a; font-weight: 900; font-size: 12px; animation: hot-pulse 1.2s infinite; }

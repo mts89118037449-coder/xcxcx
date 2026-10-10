@@ -2215,3 +2215,20 @@ test('шмон с неба: бычки за секунды, премия за п
   for (let i = 0; i < 3; i++) g.raid(p, 1, now);
   assert.throws(() => g.raid(p, 1, now), /завтра/);
 });
+
+test('стрим из хаты: раз в день, лайк один раз, бычки стримеру', () => {
+  const now = 1_800_000_000_000;
+  const a = g.newPlayer(904, 'Стример', null, now);
+  const b = g.newPlayer(905, 'Зритель', null, now);
+  assert.throws(() => g.streamStart(a, 0, now), /уровня/);
+  a.level = 6;
+  const r = g.streamStart(a, 0, now);
+  assert.throws(() => g.streamStart(a, 1, now), /уже/);
+  const s = { id: a.id, name: a.name, face: null, skin: 0, topic: r.topic, until: r.until, likes: 0, likers: [] as number[] };
+  const butts = a.butts;
+  g.streamLike(b, a, s, now);
+  assert.equal(a.butts, butts + 2);
+  assert.throws(() => g.streamLike(b, a, s, now), /уже/);
+  assert.throws(() => g.streamLike(a, null, s, now), /Себе/);
+  assert.throws(() => g.streamLike(b, a, s, r.until + 1), /закончился/);
+});

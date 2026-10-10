@@ -4,7 +4,7 @@ import { Table } from './Minigames.tsx';
 import { Place } from './art/Scenes.tsx';
 import { PoseG } from './art/sprites.tsx';
 import { lookOf, useGame } from './game.tsx';
-import { startRun } from './api.ts';
+import { api, startRun } from './api.ts';
 import { play } from './sound.ts';
 
 const W = 300;
@@ -49,12 +49,20 @@ export function RaidGame({ onClose }: { onClose(): void }) {
   const [, setFrame] = useState(0);
   const st = useRef({ x: W / 2, target: W / 2, dir: 1, paras: [] as Para[], t0: 0, last: 0, spawn: 0, id: 0, sec: 0, caught: false });
   const svg = useRef<SVGSVGElement>(null);
+  type Top = { rows: { id: number; name: string; sec: number }[]; me: number; total: number };
+  const [top, setTop] = useState<Top | null>(null);
+  useEffect(() => {
+    api.action<{ top: Top }>('raidTop').then((r) => setTop(r.result.top)).catch(() => null);
+  }, []);
 
   const finish = async (sec: number, caught: boolean) => {
     setOn(false);
     play(caught ? 'lose' : 'win');
-    const r = await act<{ sec: number; butts: number; full: boolean }>('raid', { sec });
-    if (r) setRes(r);
+    const r = await act<{ sec: number; butts: number; full: boolean; top: Top }>('raid', { sec });
+    if (r) {
+      setRes(r);
+      setTop(r.top);
+    }
   };
 
   useEffect(() => {
@@ -159,6 +167,19 @@ export function RaidGame({ onClose }: { onClose(): void }) {
         <button className="btn btn-wide" disabled={busy || p.games.raid <= 0} onClick={start}>
           {p.games.raid <= 0 ? 'Завтра' : res ? 'Ещё раз' : 'Начать шмон'}
         </button>
+      )}
+      {!on && top && top.rows.length > 0 && (
+        <div className="raid-top">
+          <b>🏆 Рекорды недели</b>
+          {top.rows.map((r, i) => (
+            <div key={r.id} className={r.id === p.id ? 'me' : ''}>
+              <span>{['🥇', '🥈', '🥉'][i] ?? `${i + 1}.`}</span>
+              <span className="grow">{r.name}</span>
+              <span>{r.sec >= RAID.seconds ? '🏁 все 20 с' : `${r.sec} с`}</span>
+            </div>
+          ))}
+          {top.me > 10 && <small>Ты — {top.me} из {top.total}</small>}
+        </div>
       )}
     </Table>
   );
