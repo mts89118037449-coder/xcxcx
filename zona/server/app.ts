@@ -2,7 +2,7 @@ import { weatherAt } from '../shared/weather.ts';
 import { renoComfort } from '../shared/reno.ts';
 import { RAID } from '../shared/raid.ts';
 import { PILLOW } from '../shared/pillow.ts';
-import { STREAM, type LiveStream } from '../shared/stream.ts';
+import { STREAM, STREAM_COMMENTS, type LiveStream } from '../shared/stream.ts';
 import { QUIZ, quizPhase, quizPoints, quizQuestions, quizSlot, quizTotalMs } from '../shared/quiz.ts';
 import { FOOT, dayPairs, footTable } from '../shared/football.ts';
 import { DECREES, ELECT, voteWeight, type ElectRow, type SmotrState } from '../shared/elect.ts';
@@ -135,6 +135,18 @@ export function createApp(opts: AppOptions) {
     const all = db.kvGet<Record<number, LiveStream>>('streams', {});
     for (const k of Object.keys(all)) if (all[Number(k)].until <= t) delete all[Number(k)];
     return all;
+  };
+  /** Подушечный турнир: таблица недели и приз за прошлую (тройке лучших). */
+  const pillowTop = (p: g.Player, t: number) => {
+    const rank = (w: number) =>
+      Object.entries(db.kvGet<Record<number, { name: string; wins: number }>>(`pillow:${w}`, {}))
+        .map(([id, v]) => ({ id: Number(id), name: v.name, wins: v.wins }))
+        .sort((a, b) => b.wins - a.wins);
+    const week = g.weekIndex(t);
+    const rows = rank(week);
+    const lastPlace = rank(week - 1).findIndex((r) => r.id === p.id);
+    const prize = p.pillowClaimed !== week - 1 && lastPlace >= 0 && lastPlace < PILLOW.prizes.length ? PILLOW.prizes[lastPlace] : 0;
+    return { rows: rows.slice(0, 8), me: rows.findIndex((r) => r.id === p.id) + 1, prize, lastPlace: lastPlace + 1 };
   };
   /** Десятка лучших по «Шмону с неба» за неделю и место игрока. */
   const raidTop = (top: Record<number, { name: string; sec: number }>, me: number) => {
@@ -469,7 +481,7 @@ export function createApp(opts: AppOptions) {
       streams: Object.values(liveStreams(t))
         .sort((a, b) => b.likes - a.likes)
         .slice(0, STREAM.maxLive)
-        .map((s) => ({ id: s.id, name: s.name, face: s.face, skin: s.skin, topic: s.topic, until: s.until, likes: s.likes, liked: s.likers.includes(p.id) })),
+        .map((s) => ({ id: s.id, name: s.name, face: s.face, skin: s.skin, topic: s.topic, until: s.until, likes: s.likes, liked: s.likers.includes(p.id), comments: (s.comments ?? []).slice(-4), gifts: s.gifts ?? { butts: 0, heart: 0 } })),
       featsClaimed: p.featsClaimed,
       bunk: { done: p.bunk.day === g.dayIndex(t), pick: p.bunk.day === g.dayIndex(t) ? p.bunk.pick : -1, day: g.dayIndex(t) },
       reno: { stage: p.reno.stage, until: p.reno.until, rush: p.reno.until > t ? g.renoRushCost(p, t) : 0 },
@@ -725,9 +737,24 @@ export function createApp(opts: AppOptions) {
       db.kvSet('streams', all);
       return r;
     },
+    pillowTop: (p, _b, t) => pillowTop(p, t),
+    pillowClaim: (p, _b, t) => {
+      const v = pillowTop(p, t);
+      if (!v.prize) throw new g.GameError('Приза нет');
+      p.pillowClaimed = g.weekIndex(t) - 1;
+      p.gold += v.prize;
+      return { gold: v.prize };
+    },
     pillow: (p, b, t) => {
       const rival = db.getPlayer(db.randomNeighbour(p.id) ?? 0);
-      return { ...g.pillowFight(p, b.moves, rival?.name ?? 'Лёха', t, rng), look: rival ? { equipped: rival.equipped, tattoos: rival.tattoos, str: rival.str, face: rival.face, build: rival.build, skin: rival.skin } : null };
+      const fight = g.pillowFight(p, b.moves, rival?.name ?? 'Лёха', t, rng);
+      if (fight.win) {
+        const key = `pillow:${g.weekIndex(t)}`;
+        const w = db.kvGet<Record<number, { name: string; wins: number }>>(key, {});
+        w[p.id] = { name: p.name, wins: (w[p.id]?.wins ?? 0) + 1 };
+        db.kvSet(key, w);
+      }
+      return { ...fight, top: pillowTop(p, t), look: rival ? { equipped: rival.equipped, tattoos: rival.tattoos, str: rival.str, face: rival.face, build: rival.build, skin: rival.skin } : null };
     },
     catFeed: (p, b) => g.catFeed(p, str(b.id)),
     jokeVote: (p, b, t) => {
@@ -738,6 +765,25 @@ export function createApp(opts: AppOptions) {
       else v.down++;
       db.kvSet(key, v);
       return { ...r, ...v };
+    },
+    streamComment: (p, b, t) => {
+      const all = liveStreams(t);
+      const s = all[num(b.id)];
+      const msg = Math.floor(num(b.msg));
+      if (!s) throw new g.GameError('Эфир уже закончился');
+      if (!STREAM_COMMENTS[msg]) throw new g.GameError('Нет такого комментария');
+      s.comments = [...(s.comments ?? []), { name: p.name, msg }].slice(-20);
+      db.kvSet('streams', all);
+      return { ok: true };
+    },
+    streamGift: (p, b, t) => {
+      const all = liveStreams(t);
+      const id = num(b.id);
+      const streamer = id !== p.id ? db.getPlayer(id) : null;
+      const r = g.streamGift(p, streamer, all[id], str(b.kind), t);
+      if (streamer) db.savePlayer(streamer);
+      db.kvSet('streams', all);
+      return r;
     },
     raidTop: (p, _b, t) => ({ top: raidTop(db.kvGet(`raid:${g.weekIndex(t)}`, {}), p.id) }),
     dice: (p, b, t) => g.dice(p, num(b.bet), t, rng),
@@ -1106,6 +1152,16 @@ export function createApp(opts: AppOptions) {
       return r;
     },
     malyavaRead: (p) => g.malyavaRead(p),
+    pigeonSend: (p, b, t) => {
+      const target = db.getPlayer(num(b.id));
+      if (!target) throw new g.GameError('Нет такого игрока');
+      const r = g.pigeonSend(p, target, num(b.butts), t, rng);
+      if (!r.shot) {
+        db.savePlayer(target);
+        notifyPlayer(target.id, `🕊️ ${p.name} прислал голубя с посылкой`);
+      }
+      return r;
+    },
     snoop: (p, b, t) => {
       const target = db.getPlayer(num(b.id));
       if (!target) throw new g.GameError('Нет такого игрока');

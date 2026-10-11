@@ -3239,3 +3239,9 @@ body:has(.modal) .event-btn { z-index: 20; }
 .pillow-plan span { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px; border: 2px dashed var(--line); font-size: 22px; cursor: pointer; }
 .feat-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
 .feat-badges span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: radial-gradient(#5a4a20, #2a2214); border: 2px solid var(--gold); font-size: 17px; box-shadow: 0 2px 0 #000a; }
+.stream-card { border-radius: 12px; overflow: hidden; }
+.stream-room { padding: 8px; background: #0004; display: grid; gap: 8px; }
+.stream-chat { display: grid; gap: 2px; font-size: 12.5px; padding: 6px 8px; border-radius: 8px; background: #000a; }
+.stream-chat b { color: var(--gold); }
+.stream-say { display: flex; flex-wrap: wrap; gap: 4px; }
+.stream-say button { padding: 4px 8px; border-radius: 12px; border: 1px solid var(--line); background: #0005; color: var(--text); font-size: 12px; }

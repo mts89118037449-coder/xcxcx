@@ -86,9 +86,9 @@ import { RAID, raidButts } from '../shared/raid.ts';
 import { ANEKDOT } from '../shared/anekdot.ts';
 import { CATS, CAT_FEED } from '../shared/cats.ts';
 import { PILLOW, pillowRound, type PillowMove } from '../shared/pillow.ts';
-import { STREAM, STREAM_TOPICS, type LiveStream } from '../shared/stream.ts';
+import { STREAM, STREAM_GIFTS, STREAM_TOPICS, type LiveStream } from '../shared/stream.ts';
 import { featById, featProgress } from '../shared/feats.ts';
-import { MALYAVA, malyavaById } from '../shared/malyava.ts';
+import { MALYAVA, malyavaById, PIGEON, PIGEON_MSG } from '../shared/malyava.ts';
 import { PENPAL, PENPAL_GIRLS, PEN_ENDINGS, PEN_LETTERS, penEnding, type PenEnding } from '../shared/penpal.ts';
 import { COURT, courtArgById, courtChance, type ArgId } from '../shared/court.ts';
 import { BUILD, buildBonus, type BuildBonus } from '../shared/build.ts';
@@ -303,6 +303,8 @@ export interface Player {
   jokeDay: number;
   /** каких котов зоны уже прикормил */
   catsFed: string[];
+  /** за какую неделю забран приз подушечного турнира */
+  pillowClaimed: number;
   /** входящие малявы */
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
@@ -480,6 +482,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     streamDay: -1,
     jokeDay: -1,
     catsFed: [],
+    pillowClaimed: -1,
     ink: null,
     inkOrder: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
@@ -588,6 +591,7 @@ export function migrate(p: Player): Player {
   p.streamDay ??= -1;
   p.jokeDay ??= -1;
   p.catsFed ??= [];
+  p.pillowClaimed ??= -1;
   p.ink ??= null;
   p.inkOrder ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
@@ -4122,6 +4126,25 @@ export function malyavaSend(p: Player, to: Player, msgId: string, butts: number,
   return { caught: false, days: 0 };
 }
 
+/** Голубиная почта: бычки другу через забор. Своему голубю — три вылета в день, иначе один. */
+export function pigeonSend(p: Player, to: Player, butts: number, now: number, rng: Rng) {
+  if (to.id === p.id) throw new GameError('Голубь не полетит к тебе же');
+  const b = Math.floor(Number(butts) || 0);
+  if (!PIGEON.butts.includes(b)) throw new GameError('Голубь столько не унесёт');
+  if (p.butts < b) throw new GameError('Не хватает бычков');
+  playLimit(p, 'pigeon', p.pet?.kind === 'pigeon' ? PIGEON.perDayWithPet : PIGEON.perDay, now);
+  p.butts -= b;
+  bump(p, 'pigeon');
+  if (rng() * 100 < PIGEON.shotPct) {
+    log(p, now, `🕊️ Голубя к ${to.name} сбил вертухай из рогатки. Бычки рассыпались по плацу`);
+    return { shot: true };
+  }
+  to.inbox.unshift({ id: now + Math.floor(rng() * 1000), from: p.id, fromName: p.name, msg: PIGEON_MSG.id, butts: b, at: now, read: false });
+  to.inbox.length = Math.min(to.inbox.length, MALYAVA.inbox);
+  to.butts += b;
+  return { shot: false };
+}
+
 export function malyavaRead(p: Player) {
   for (const m of p.inbox) m.read = true;
 }
@@ -4408,6 +4431,26 @@ export function catFeed(p: Player, id: string) {
   const all = p.catsFed.length >= CATS.length;
   if (all) p.gold += CAT_FEED.rewardGold;
   return { name: cat.name, fed: p.catsFed.length, total: CATS.length, gold: all ? CAT_FEED.rewardGold : 0 };
+}
+
+/** Подарок стримеру: бычки за бычки или «сердечко» за золото. */
+export function streamGift(p: Player, streamer: Player | null, s: LiveStream | undefined, kind: string, now: number) {
+  if (!s || s.until <= now) throw new GameError('Эфир уже закончился');
+  if (s.id === p.id) throw new GameError('Сам себе не даришь');
+  const g = kind === 'heart' ? STREAM_GIFTS.heart : kind === 'butts' ? STREAM_GIFTS.butts : null;
+  if (!g) throw new GameError('Нет такого подарка');
+  if (kind === 'heart') {
+    if (p.gold < g.cost) throw new GameError('Не хватает золота');
+    p.gold -= g.cost;
+    if (streamer) streamer.gold += g.give;
+  } else {
+    if (p.butts < g.cost) throw new GameError('Не хватает бычков');
+    p.butts -= g.cost;
+    if (streamer) streamer.butts += g.give;
+  }
+  s.gifts ??= { butts: 0, heart: 0 };
+  s.gifts[kind as 'butts' | 'heart']++;
+  return { gifts: s.gifts };
 }
 
 export function claimFeat(p: Player, id: string) {

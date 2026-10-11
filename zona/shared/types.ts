@@ -92,7 +92,7 @@ export interface PlayerView {
   streamToday: boolean;
   joke: { day: number; voted: boolean };
   catsFed: string[];
-  streams: { id: number; name: string; face: number | null; skin: number; topic: string; until: number; likes: number; liked: boolean }[];
+  streams: { id: number; name: string; face: number | null; skin: number; topic: string; until: number; likes: number; liked: boolean; comments: { name: string; msg: number }[]; gifts: { butts: number; heart: number } }[];
   featsClaimed: string[];
   bunk: { done: boolean; pick: number; day: number };
   reno: { stage: number; until: number; rush: number };

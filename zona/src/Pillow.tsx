@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { api } from './api.ts';
 import { PILLOW, PILLOW_MOVES, PILLOW_TAUNTS, type PillowMove } from '../shared/pillow.ts';
 import type { Look } from '../shared/types.ts';
 import { Table } from './Minigames.tsx';
@@ -8,7 +9,10 @@ import type { RigAnim } from './art/rig/Rig.tsx';
 import { lookOf, useGame } from './game.tsx';
 import { play } from './sound.ts';
 
+type Top = { rows: { id: number; name: string; wins: number }[]; me: number; prize: number; lastPlace: number };
+
 interface Res {
+  top: Top;
   rival: string;
   his: PillowMove[];
   rounds: number[];
@@ -42,6 +46,14 @@ export function PillowGame({ onClose }: { onClose(): void }) {
   const [moves, setMoves] = useState<PillowMove[]>([]);
   const [res, setRes] = useState<Res | null>(null);
   const [step, setStep] = useState(-1);
+  const [top, setTop] = useState<Top | null>(null);
+  useEffect(() => {
+    api.action<Top>('pillowTop').then((r) => setTop(r.result)).catch(() => null);
+  }, []);
+  const claim = async () => {
+    const r = await act<{ gold: number }>('pillowClaim');
+    if (r) setTop(top && { ...top, prize: 0 });
+  };
   const [taunt] = useState(() => PILLOW_TAUNTS[Math.floor(Math.random() * PILLOW_TAUNTS.length)]);
   useEffect(() => {
     if (!res || step >= 3) return;
@@ -57,6 +69,7 @@ export function PillowGame({ onClose }: { onClose(): void }) {
     const r = await act<Res>('pillow', { moves });
     if (r) {
       setRes(r);
+      setTop(r.top);
       setStep(-1);
     }
   };
@@ -126,6 +139,23 @@ export function PillowGame({ onClose }: { onClose(): void }) {
         <button className="btn btn-wide" disabled={p.games.pillow <= 0} onClick={again}>
           {p.games.pillow <= 0 ? 'Завтра' : 'Ещё раунд'}
         </button>
+      )}
+      {top && top.prize > 0 && (
+        <button className="btn btn-wide btn-gold" disabled={busy} onClick={claim} style={{ marginTop: 8 }}>
+          🏆 {top.lastPlace}-е место прошлой недели · забрать {top.prize} 🪙
+        </button>
+      )}
+      {top && top.rows.length > 0 && (
+        <div className="raid-top">
+          <b>🪶 Турнир недели · призы {PILLOW.prizes.join(' / ')} 🪙</b>
+          {top.rows.map((r, i) => (
+            <div key={r.id} className={r.id === p.id ? 'me' : ''}>
+              <span>{['🥇', '🥈', '🥉'][i] ?? `${i + 1}.`}</span>
+              <span className="grow">{r.name}</span>
+              <span>{r.wins} побед</span>
+            </div>
+          ))}
+        </div>
       )}
     </Table>
   );

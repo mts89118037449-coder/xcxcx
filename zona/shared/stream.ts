@@ -17,7 +17,18 @@ export const STREAM_TOPICS = [
   'Стрим, пока не отобрали',
 ];
 
+/** Готовые комментарии — без свободного текста: мат и угрозы в эфир не попадут. */
+export const STREAM_COMMENTS = ['Жиза 😂', 'Кум смотрит 👀', 'Покажи хату!', 'Где взял телефон?', 'Лайк за деда', 'Скинь рецепт чифира', 'Держись, брат', 'Это постанова', 'Тараканы — топ', 'Привет из третьего барака'];
+
+/** Подарки стримеру: бычки или «сердечко с колючкой» за золото. */
+export const STREAM_GIFTS = {
+  butts: { cost: 3, emoji: '🚬', give: 3 },
+  heart: { cost: 1, emoji: '💝', give: 1 },
+};
+
 export interface LiveStream {
+  comments?: { name: string; msg: number }[];
+  gifts?: { butts: number; heart: number };
   id: number;
   name: string;
   face: number | null;

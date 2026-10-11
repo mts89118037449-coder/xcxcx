@@ -2257,3 +2257,19 @@ test('коты зоны: каждого раз, за всех — золото; 
   g.jokeVote(p, now);
   assert.throws(() => g.jokeVote(p, now + 1000), /уже/);
 });
+
+test('голубиная почта: бычки доходят или голубя сбивают, лимит в день', () => {
+  const now = 1_800_000_000_000;
+  const a = g.newPlayer(908, 'Голубятник', null, now);
+  const b = g.newPlayer(909, 'Друг', null, now);
+  a.butts = 100;
+  const before = b.butts;
+  assert.equal(g.pigeonSend(a, b, 10, now, () => 0.9).shot, false);
+  assert.equal(b.butts, before + 10);
+  assert.equal(b.inbox[0].msg, 'pigeon');
+  assert.throws(() => g.pigeonSend(a, b, 10, now, () => 0.9), /завтра/);
+  const c = g.newPlayer(910, 'Неудачник', null, now);
+  c.butts = 50;
+  assert.equal(g.pigeonSend(c, b, 5, now, () => 0.01).shot, true);
+  assert.throws(() => g.pigeonSend(c, b, 7, now + 86_400_000, () => 0.9), /унесёт/);
+});

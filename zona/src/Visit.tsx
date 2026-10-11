@@ -24,8 +24,10 @@ type Snoop =
 
 /** Хата соседа: его отделка, мебель и он сам. id = 0 — обход бараков: случайные хаты подряд. */
 import { FeatBadges } from './Feats.tsx';
+import { PigeonModal } from './PigeonPost.tsx';
 
 export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
+  const [pigeon, setPigeon] = useState(false);
   const { p, act, toast, busy, say } = useGame();
   const [v, setV] = useState<VisitView | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -135,6 +137,9 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
                 <button className="btn btn-dark" disabled={busy || v.giftedToday || p.butts < VISIT.giftButts} onClick={gift}>
                   {v.giftedToday ? '✓ Подогрел' : `🚬 Подогреть · ${VISIT.giftButts}`}
                 </button>
+                <button className="btn btn-dark" onClick={() => setPigeon(true)}>
+                  🕊️ Голубем
+                </button>
                 <button className="btn btn-red" disabled={busy || p.snoopsLeft <= 0} onClick={snoop}>
                   🫳 Пошарить · {p.snoopsLeft}
                 </button>
@@ -182,6 +187,7 @@ export function VisitModal({ id, onClose }: { id: number; onClose(): void }) {
             </button>
           </>
         )}
+        {pigeon && v && <PigeonModal to={v.id} name={v.name} onClose={() => setPigeon(false)} />}
       </div>
     </div>
   );

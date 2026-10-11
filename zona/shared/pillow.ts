@@ -1,6 +1,6 @@
 // Подушечный бой в хате: три раунда «камень-ножницы-бумага» на подушках.
 // Голова бьёт бок, бок пробивает блок, блок держит удар в голову.
-export const PILLOW = { perDay: 3, winButts: 6, winAuthority: 1 };
+export const PILLOW = { perDay: 3, winButts: 6, winAuthority: 1, prizes: [10, 6, 3] };
 
 export type PillowMove = 'head' | 'side' | 'block';
 export const PILLOW_MOVES: { id: PillowMove; label: string; emoji: string }[] = [

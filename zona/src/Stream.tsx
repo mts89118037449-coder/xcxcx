@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { STREAM, STREAM_TOPICS } from '../shared/stream.ts';
+import { STREAM, STREAM_COMMENTS, STREAM_GIFTS, STREAM_TOPICS } from '../shared/stream.ts';
 import { ModalHead } from './Nav.tsx';
 import { NowChip } from './Chip.tsx';
 import { Face } from './art/sprites.tsx';
@@ -25,6 +25,7 @@ export function StreamsModal({ onClose }: { onClose(): void }) {
   const mine = p.streams.find((s) => s.id === p.id);
   // три темы на выбор — каждый раз свои
   const topics = useMemo(() => [...STREAM_TOPICS.keys()].sort(() => Math.random() - 0.5).slice(0, 3), []);
+  const [open, setOpen] = useState<number | null>(null);
   const like = async (id: number) => {
     if (await act('streamLike', { id })) play('pop');
   };
@@ -37,8 +38,9 @@ export function StreamsModal({ onClose }: { onClose(): void }) {
             <span className="stream-live">● В ЭФИРЕ</span>
             <b>«{mine.topic}»</b>
             <small>
-              ❤️ {mine.likes} · +{mine.likes * STREAM.buttsPerLike} 🚬 · ещё {timeLeft(mine.until - now)}
+              ❤️ {mine.likes} · 🚬×{mine.gifts.butts} · 💝×{mine.gifts.heart} · ещё {timeLeft(mine.until - now)}
             </small>
+            <Chat list={mine.comments} />
           </div>
         ) : p.level < STREAM.minLevel ? (
           <p className="muted small">Запрещённый телефон доверяют с {STREAM.minLevel} уровня.</p>
@@ -61,19 +63,62 @@ export function StreamsModal({ onClose }: { onClose(): void }) {
           {p.streams
             .filter((s) => s.id !== p.id)
             .map((s) => (
-              <div key={s.id} className="stream-row">
-                <Face face={s.face} skin={s.skin} size={40} />
-                <span className="grow">
-                  <b>{s.name}</b>
-                  <small>«{s.topic}» · ещё {timeLeft(s.until - now)}</small>
-                </span>
-                <button className={`btn btn-s ${s.liked ? 'btn-dark' : 'btn-red'}`} disabled={busy || s.liked} onClick={() => like(s.id)}>
-                  ❤️ {s.likes}
-                </button>
+              <div key={s.id} className="stream-card">
+                <div className="stream-row" onClick={() => setOpen(open === s.id ? null : s.id)}>
+                  <Face face={s.face} skin={s.skin} size={40} />
+                  <span className="grow">
+                    <b>{s.name}</b>
+                    <small>«{s.topic}» · ещё {timeLeft(s.until - now)}</small>
+                  </span>
+                  <button
+                    className={`btn btn-s ${s.liked ? 'btn-dark' : 'btn-red'}`}
+                    disabled={busy || s.liked}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      like(s.id);
+                    }}
+                  >
+                    ❤️ {s.likes}
+                  </button>
+                </div>
+                {open === s.id && (
+                  <div className="stream-room">
+                    <Chat list={s.comments} />
+                    <div className="stream-say">
+                      {STREAM_COMMENTS.map((c, i) => (
+                        <button key={i} disabled={busy} onClick={() => act('streamComment', { id: s.id, msg: i })}>
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="row gap-s">
+                      <button className="btn btn-s btn-dark grow" disabled={busy || p.butts < STREAM_GIFTS.butts.cost} onClick={() => act('streamGift', { id: s.id, kind: 'butts' }).then((r) => r && play('coin'))}>
+                        🚬 Кинуть {STREAM_GIFTS.butts.cost} бычка
+                      </button>
+                      <button className="btn btn-s btn-gold grow" disabled={busy || p.gold < STREAM_GIFTS.heart.cost} onClick={() => act('streamGift', { id: s.id, kind: 'heart' }).then((r) => r && play('gold'))}>
+                        💝 Сердечко с колючкой · {STREAM_GIFTS.heart.cost} 🪙
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Последние комментарии эфира. */
+function Chat({ list }: { list: { name: string; msg: number }[] }) {
+  if (!list.length) return <small className="muted">Комментариев пока нет — чат стесняется.</small>;
+  return (
+    <div className="stream-chat">
+      {list.map((c, i) => (
+        <div key={i}>
+          <b>{c.name}:</b> {STREAM_COMMENTS[c.msg]}
+        </div>
+      ))}
     </div>
   );
 }

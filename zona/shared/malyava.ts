@@ -21,7 +21,10 @@ export const MALYAVY: MalyavaText[] = [
   { id: 'stash', text: 'Нычка на старом месте, под третьей половицей.', risky: true },
   { id: 'escape', text: 'Готовлю рывок. Ты в деле?', risky: true },
 ];
-export const malyavaById = new Map(MALYAVY.map((m) => [m.id, m]));
+/** Голубиная почта: посылка без слов, только бычки и запах голубя. */
+export const PIGEON_MSG: MalyavaText = { id: 'pigeon', text: '🕊️ Голубь принёс посылку. Пахнет свободой и немного голубем.' };
+export const PIGEON = { perDay: 1, perDayWithPet: 3, butts: [5, 10, 20], shotPct: 15 };
+export const malyavaById = new Map([...MALYAVY, PIGEON_MSG].map((m) => [m.id, m]));
 
 export const MALYAVA = {
   minLevel: 3,
