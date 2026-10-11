@@ -1,6 +1,7 @@
 import { weatherAt } from '../shared/weather.ts';
 import { renoComfort } from '../shared/reno.ts';
 import { RAID } from '../shared/raid.ts';
+import { SLING } from '../shared/sling.ts';
 import { PILLOW } from '../shared/pillow.ts';
 import { BEAUTY, type BeautyEntry } from '../shared/beauty.ts';
 import { STREAM, STREAM_COMMENTS, type LiveStream } from '../shared/stream.ts';
@@ -578,6 +579,7 @@ export function createApp(opts: AppOptions) {
         fish: g.playsLeft(p, 'fish', FISH.perDay, t),
         shizo: g.playsLeft(p, 'shizo', SHIZO.perDay, t),
         raid: g.playsLeft(p, 'raid', RAID.perDay, t),
+        sling: g.playsLeft(p, 'sling', SLING.perDay, t),
         pillow: g.playsLeft(p, 'pillow', PILLOW.perDay, t),
         tableMaxBet: NARDY.minBet + p.level * NARDY.betPerLevel,
       },
@@ -827,6 +829,7 @@ export function createApp(opts: AppOptions) {
       db.kvSet('streams', all);
       return r;
     },
+    sling: (p, b, t) => g.sling(p, num(b.hits), t),
     raidTop: (p, _b, t) => ({ top: raidTop(db.kvGet(`raid:${g.weekIndex(t)}`, {}), p.id) }),
     dice: (p, b, t) => g.dice(p, num(b.bet), t, rng),
     arm: (p, b, t) => {

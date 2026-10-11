@@ -2309,3 +2309,10 @@ test('кот: косметика покупается раз, надеваетс
   assert.equal(g.petWear(p, 'cap').on, 'cap');
   assert.throws(() => g.petWear(p, 'chain'), /мал/);
 });
+
+test('перекинь маляву: бычки за попадания, бонус за все три', () => {
+  const now = 1_800_000_000_000;
+  const p = g.newPlayer(915, 'Снайпер', null, now);
+  assert.equal(g.sling(p, 2, now).butts, 8);
+  assert.equal(g.sling(p, 99, now).butts, 16);
+});

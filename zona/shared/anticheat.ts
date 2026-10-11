@@ -25,6 +25,7 @@ export const RUNS: Record<string, RunRule> = {
   tunnelDig: { minMs: 4000 },
   footShoot: { minMs: 2500 },
   raid: { minMs: 1500 },
+  sling: { minMs: 2500 },
 };
 
 export const ANTICHEAT = {

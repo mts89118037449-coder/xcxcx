@@ -83,6 +83,7 @@ import { INTRO_REWARD, PLACE_INTRO } from '../shared/cutscenes.ts';
 import { bunkOfDay } from '../shared/bunk.ts';
 import { RENO, renoCost } from '../shared/reno.ts';
 import { RAID, raidButts } from '../shared/raid.ts';
+import { SLING, slingButts } from '../shared/sling.ts';
 import { ANEKDOT } from '../shared/anekdot.ts';
 import { HALLOWEEN, PUMPKINS, isHalloween } from '../shared/halloween.ts';
 import { BEAUTY, BEAUTY_ANIMS, BEAUTY_BGS, BEAUTY_FX, type BeautyEntry } from '../shared/beauty.ts';
@@ -3258,6 +3259,16 @@ export function fishing(p: Player, accs: unknown, now: number, rng: Rng) {
 }
 
 /** Сварить чифир: quality — насколько точно снял с огня (0..1). */
+/** Перекинь маляву: бычки за попадания в окно. */
+export function sling(p: Player, hits: number, now: number) {
+  playLimit(p, 'sling', SLING.perDay, now);
+  const h = Math.max(0, Math.min(SLING.shots, Math.floor(Number(hits) || 0)));
+  const butts = slingButts(h);
+  p.butts += butts;
+  track(p, 'minigame');
+  return { hits: h, butts };
+}
+
 /** Шмон с неба: бычки за каждую продержанную секунду. */
 export function raid(p: Player, sec: number, now: number) {
   playLimit(p, 'raid', RAID.perDay, now);

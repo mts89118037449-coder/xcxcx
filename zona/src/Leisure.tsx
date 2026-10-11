@@ -55,6 +55,7 @@ export function GameTiles() {
         { icon: '📦', name: 'Конвейер', left: p.games.conveyor, on: () => openMini('conveyor') },
         { icon: '📿', name: 'Чётки', left: p.games.beads, on: () => openMini('beads'), wait: p.games.beadsReadyAt > now },
         { icon: '🎣', name: 'Рыбалка', left: p.games.fish, on: () => openMini('fish') },
+        { icon: '🎯', name: 'Перекинь маляву', left: p.games.sling, on: () => openMini('sling') },
         { icon: '🪶', name: 'Подушечный бой', left: p.games.pillow, on: () => openMini('pillow') },
         { icon: '🪂', name: 'Шмон с неба', left: p.games.raid, on: () => openMini('raid') },
         { icon: '🧱', name: 'Выжить в ШИЗО', left: p.tables.shizo ? null : p.games.shizo, on: () => openMini('shizo') },

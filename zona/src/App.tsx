@@ -52,6 +52,7 @@ const RaceGame = named(() => import('./Minigames.tsx'), 'RaceGame');
 const BrewGame = named(() => import('./Minigames.tsx'), 'BrewGame');
 const RaidGame = named(() => import('./Raid.tsx'), 'RaidGame');
 const PillowGame = named(() => import('./Pillow.tsx'), 'PillowGame');
+const SlingGame = named(() => import('./Sling.tsx'), 'SlingGame');
 const DiceGame = named(() => import('./Minigames.tsx'), 'DiceGame');
 const ArmGame = named(() => import('./Minigames.tsx'), 'ArmGame');
 const DartsGame = named(() => import('./Minigames.tsx'), 'DartsGame');
@@ -361,6 +362,7 @@ export function App() {
       {mini === 'brew' && <BrewGame onClose={() => setMini(null)} />}
       {mini === 'raid' && <RaidGame onClose={() => setMini(null)} />}
       {mini === 'pillow' && <PillowGame onClose={() => setMini(null)} />}
+      {mini === 'sling' && <SlingGame onClose={() => setMini(null)} />}
       {mini === 'dice' && <DiceGame onClose={() => setMini(null)} />}
       {mini === 'arm' && <ArmGame onClose={() => setMini(null)} />}
       {mini === 'darts' && <DartsGame onClose={() => setMini(null)} />}

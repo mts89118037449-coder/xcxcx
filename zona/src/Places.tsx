@@ -3,6 +3,7 @@ import { PLACE_INTRO } from '../shared/cutscenes.ts';
 import { LoneCat } from './art/Critters.tsx';
 import { useCatsQuest } from './catQuest.ts';
 import { PumpkinSpot } from './Pumpkin.tsx';
+import { ConcertModal, EnsembleCard } from './Ensemble.tsx';
 import { babble, play as sfx } from './sound.ts';
 import { needFail } from '../shared/events.ts';
 import { PLACES, placeById, type PlaceId } from '../shared/places.ts';
@@ -35,6 +36,7 @@ export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
   const [res, setRes] = useState<Got | null>(null);
   const ration = 30 + p.level * 15;
   const cats = useCatsQuest();
+  const [concert, setConcert] = useState(false);
   // первый заход — сценка знакомства: хозяин подходит, пара реплик, награда
   const intro = PLACE_INTRO[id];
   const [step, setStep] = useState<number | null>(() => (intro && !p.intros?.includes(id) ? 0 : null));
@@ -68,6 +70,7 @@ export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
     play(r.hp < 0 ? 'got-hit' : 'act-cheer');
     // клуб: зал смеётся над шуткой и хлопает концерту
     if (id === 'club') sfx(actId === 'kvn' || actId === 'movie' ? 'laugh' : 'applause');
+    if (id === 'club' && actId === 'concert') setConcert(true);
   };
 
   return (
@@ -107,6 +110,8 @@ export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
           ← На зону
         </button>
       </div>
+      {id === 'club' && <EnsembleCard />}
+      {concert && <ConcertModal onClose={() => setConcert(false)} />}
       <div className="place-acts">
         {pl.activities.map((a) => {
           const readyAt = p.placeCd[`${id}.${a.id}`] ?? 0;
