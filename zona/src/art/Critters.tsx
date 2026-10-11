@@ -157,7 +157,7 @@ export function ZoneLife() {
 }
 
 /** Табличка с надписью: кривая, прибита одним гвоздём. */
-function Sign({ x, y, w, text, rot = 0, bg = '#f2e6c8', fg = '#2a1a10', size = 5.4 }: { x: number; y: number; w: number; text: string; rot?: number; bg?: string; fg?: string; size?: number }) {
+export function Sign({ x, y, w, text, rot = 0, bg = '#f2e6c8', fg = '#2a1a10', size = 5.4 }: { x: number; y: number; w: number; text: string; rot?: number; bg?: string; fg?: string; size?: number }) {
   const lines = text.split('\n');
   const h = lines.length * (size + 1.6) + 3;
   return (
@@ -323,25 +323,65 @@ export function Pigeons({ t }: { t: number }) {
   );
 }
 
-/** Кошачья банда во дворе: главный на заборе, двое шныряют внизу. */
-export function YardCats() {
+/** Кот зоны для квеста: сытому — сердечко, голодному — пузырь с рыбой; по тапу — кормим. */
+export interface CatsQuest {
+  fed: string[];
+  feed(id: string): void;
+}
+
+export function CatSpot({ id, x, y, scale, color, t, walk, dir = 1, quest }: { id: string; x: number; y: number; scale: number; color: string; t: number; walk?: boolean; dir?: number; quest?: CatsQuest }) {
+  const fed = quest?.fed.includes(id);
+  return (
+    <g
+      className={quest && !fed ? 'npc-click' : undefined}
+      pointerEvents={quest ? 'auto' : 'none'}
+      onClick={(e) => {
+        if (!quest || fed) return;
+        e.stopPropagation();
+        quest.feed(id);
+      }}
+    >
+      <g transform={`translate(${x} ${y}) scale(${dir < 0 ? -scale : scale} ${scale})`}>
+        <rect x={-24} y={-44} width={52} height={46} fill="#fff" opacity={0.001} />
+        <Cat t={t} walk={walk} color={color} />
+      </g>
+      {quest && (
+        <g transform={`translate(${x} ${y - 46 * scale - 10})`}>
+          {fed ? (
+            <text fontSize={10} textAnchor="middle">❤️</text>
+          ) : (
+            <g className="talk-bubble hot">
+              <rect x={-11} y={-10} width={22} height={15} rx={7.5} fill="#ffd24a" stroke={INK} strokeWidth={0.8} />
+              <text y={1.5} fontSize={9} textAnchor="middle">🐟</text>
+            </g>
+          )}
+        </g>
+      )}
+    </g>
+  );
+}
+
+/** Кошачья банда во дворе: главный на заборе, двое шныряют внизу. Голуби — над головой. */
+export function YardCats({ quest }: { quest?: CatsQuest }) {
   const t = useClock(true);
   const [t0] = useState(t);
   const lt = t - t0;
   const a = patrol(lt, 70, 160, 22, 3);
   const b = patrol(lt + 2000, 220, 300, 18, 4);
   return (
-    <g pointerEvents="none">
-      <g transform="translate(300 118) scale(0.6)">
-        <Cat t={lt} color="#3a3a40" />
+    <g>
+      <CatSpot id="fence" x={300} y={118} scale={0.6} color="#3a3a40" t={lt} quest={quest} />
+      <CatSpot id="white" x={a.x} y={258} scale={0.55} color="#e8e0d0" t={lt} walk={a.moving} dir={a.dir} quest={quest} />
+      <CatSpot id="ginger" x={b.x} y={250} scale={0.5} color="#c87a3a" t={lt + 500} walk={b.moving} dir={b.dir} quest={quest} />
+      <g pointerEvents="none">
+        <Pigeons t={lt} />
       </g>
-      <g transform={`translate(${a.x} 258) scale(${a.dir < 0 ? -0.55 : 0.55} 0.55)`}>
-        <Cat t={lt} walk={a.moving} color="#e8e0d0" />
-      </g>
-      <g transform={`translate(${b.x} 250) scale(${b.dir < 0 ? -0.5 : 0.5} 0.5)`}>
-        <Cat t={lt + 500} walk={b.moving} color="#c87a3a" />
-      </g>
-      <Pigeons t={lt} />
     </g>
   );
+}
+
+/** Один кот на месте (для зоны и столовой). */
+export function LoneCat({ id, x, y, scale, color, quest }: { id: string; x: number; y: number; scale: number; color: string; quest?: CatsQuest }) {
+  const t = useClock(true);
+  return <CatSpot id={id} x={x} y={y} scale={scale} color={color} t={t} quest={quest} />;
 }

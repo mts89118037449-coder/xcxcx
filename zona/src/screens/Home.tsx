@@ -65,6 +65,7 @@ export function Home() {
           onTalk={talk}
           hot={p.bunk.done ? null : bunkWho}
           workers={p.reno.until > now}
+          hold={p.streams.some((s) => s.id === p.id) ? 'phone' : undefined}
           loc="cell"
           look={lookOf(p)}
           bare={bare}

@@ -464,6 +464,8 @@ export function createApp(opts: AppOptions) {
       intros: p.intros,
       feats: p.feats,
       streamToday: p.streamDay === g.dayIndex(t),
+      joke: { day: g.dayIndex(t), voted: p.jokeDay === g.dayIndex(t) },
+      catsFed: p.catsFed,
       streams: Object.values(liveStreams(t))
         .sort((a, b) => b.likes - a.likes)
         .slice(0, STREAM.maxLive)
@@ -726,6 +728,16 @@ export function createApp(opts: AppOptions) {
     pillow: (p, b, t) => {
       const rival = db.getPlayer(db.randomNeighbour(p.id) ?? 0);
       return { ...g.pillowFight(p, b.moves, rival?.name ?? 'Лёха', t, rng), look: rival ? { equipped: rival.equipped, tattoos: rival.tattoos, str: rival.str, face: rival.face, build: rival.build, skin: rival.skin } : null };
+    },
+    catFeed: (p, b) => g.catFeed(p, str(b.id)),
+    jokeVote: (p, b, t) => {
+      const r = g.jokeVote(p, t);
+      const key = `joke:${r.day}`;
+      const v = db.kvGet<{ up: number; down: number }>(key, { up: 0, down: 0 });
+      if (b.up) v.up++;
+      else v.down++;
+      db.kvSet(key, v);
+      return { ...r, ...v };
     },
     raidTop: (p, _b, t) => ({ top: raidTop(db.kvGet(`raid:${g.weekIndex(t)}`, {}), p.id) }),
     dice: (p, b, t) => g.dice(p, num(b.bet), t, rng),

@@ -90,6 +90,8 @@ export interface PlayerView {
   intros: string[];
   feats: Record<string, number>;
   streamToday: boolean;
+  joke: { day: number; voted: boolean };
+  catsFed: string[];
   streams: { id: number; name: string; face: number | null; skin: number; topic: string; until: number; likes: number; liked: boolean }[];
   featsClaimed: string[];
   bunk: { done: boolean; pick: number; day: number };

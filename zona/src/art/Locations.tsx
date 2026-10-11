@@ -1,4 +1,5 @@
 // Места зоны: баня, столовая, библиотека, клуб, свиданка, промка, ШИЗО. Координаты 360×280, пол с y=236.
+import { Sign } from './Critters.tsx';
 import type { ReactNode } from 'react';
 import type { PlaceId } from '../../shared/places.ts';
 import { FLOOR, Scene } from './Scenes.tsx';
@@ -696,6 +697,32 @@ function Life({ place }: { place: PlaceId }) {
 
 const BACKDROPS: Record<PlaceId, () => ReactNode> = { bath: Bath, canteen: Canteen, library: Library, club: Club, visits: Visits, factory: Factory, shizo: Shizo, logging: Logging, kamera: Kamera, plac: Plac };
 
+/** Таблички-шутки в каждом месте: мультяшно, криво, по делу. */
+const SIGNS: Record<PlaceId, { x: number; y: number; w: number; text: string; rot: number; bg?: string; fg?: string }[]> = {
+  canteen: [{ x: 300, y: 40, w: 70, text: 'МЕНЮ:\nКОТЛЕТА (НЕ СПРАШИВАЙ)\nКОМПОТ (ТОЖЕ)', rot: 3, bg: '#fff' }],
+  bath: [{ x: 60, y: 36, w: 58, text: 'МЫЛО\nНЕ РОНЯТЬ!', rot: -4, bg: '#c9e6f8' }],
+  library: [{ x: 300, y: 34, w: 64, text: 'ТИШЕ!\nЗДЕСЬ ДУМАЮТ\nО ПОБЕГЕ', rot: 4 }],
+  club: [{ x: 64, y: 34, w: 68, text: 'КОНЦЕРТ:\n«ВЛАДИМИРСКИЙ\nЦЕНТРАЛ» — 48-Й РАЗ', rot: -3, bg: '#ffd24a' }],
+  visits: [{ x: 300, y: 36, w: 62, text: 'ЦЕЛОВАТЬСЯ —\nЧЕРЕЗ СТЕКЛО', rot: 3, bg: '#f8d2da' }],
+  factory: [{ x: 64, y: 36, w: 62, text: 'НОРМА — ЗАКОН.\nПАЛЕЦ — НЕ ТВОЙ', rot: -3, bg: '#c9d6de' }],
+  shizo: [{ x: 290, y: 40, w: 56, text: 'ДОБРО\nПОЖАЛОВАТЬ.\nСНОВА', rot: 5, bg: '#e8e0d0' }],
+  logging: [{ x: 70, y: 46, w: 60, text: 'ТАЙГА:\nЗОНА\nБЕЗ ЗАБОРА', rot: -5, bg: '#d8f0c8' }],
+  kamera: [{ x: 300, y: 38, w: 58, text: 'ЗДЕСЬ\nВСЕ СВОИ.\nПОКА', rot: 3 }],
+  plac: [{ x: 300, y: 40, w: 64, text: 'ШАГОМ — МАРШ.\nМЫСЛЬЮ — ТОЖЕ', rot: -3, bg: '#f8d2c8', fg: '#8a1a10' }],
+};
+
+function PlaceSigns({ place }: { place: PlaceId }) {
+  return (
+    <g pointerEvents="none">
+      {SIGNS[place].map((s, i) => (
+        <g key={i} transform={`translate(${s.x} ${s.y}) scale(1.6) translate(${-s.x} ${-s.y})`}>
+          <Sign {...s} size={4.6} />
+        </g>
+      ))}
+    </g>
+  );
+}
+
 export function LocationScene({ place, children }: { place: PlaceId; children?: ReactNode }) {
   const B = BACKDROPS[place];
   return (
@@ -709,6 +736,7 @@ export function LocationScene({ place, children }: { place: PlaceId; children?: 
       )}
       {place !== 'bath' && place !== 'club' && place !== 'logging' && place !== 'plac' && <Lamp x={180} />}
       <Life place={place} />
+      <PlaceSigns place={place} />
       {children}
     </Scene>
   );

@@ -148,7 +148,7 @@ function Courtroom({ bang, verdict }: { bang: number; verdict: 'won' | 'lost' | 
         {/* прокурор и адвокат */}
         {pros && (
           <Place x={250} y={166} scale={0.5}>
-            <ImageG url={pros.url} height={pros.height} anim={prosAnim} mirror />
+            <ImageG url={pros.url} height={pros.height} anim={prosAnim} mirror hold="papers" />
           </Place>
         )}
         {law && (

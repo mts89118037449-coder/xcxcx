@@ -1,5 +1,7 @@
 import { GOLD_PRICES, JOBS, TRADES } from '../shared/content.ts';
 import { JOKES } from '../shared/jokes.ts';
+import { anekdotOfDay } from '../shared/anekdot.ts';
+import { play as playSfx } from './sound.ts';
 import { fmt, useGame, type DialogSpec } from './game.tsx';
 import { usePvp } from './game.tsx';
 
@@ -20,6 +22,13 @@ export function useTalk() {
   const pvp = usePvp();
   const job = [...JOBS].reverse().find((j) => j.minLevel <= p.level)!;
 
+  const jokeVote = async (up: boolean) => {
+    const r = await act<{ up: number; down: number; butts: number }>('jokeVote', { up });
+    if (!r) return;
+    const pct = Math.round((100 * r.up) / Math.max(1, r.up + r.down));
+    if (up) playSfx('laugh');
+    toast(`Зоне смешно на ${pct}% · +${r.butts} 🚬`);
+  };
   return (kind: TalkKind) => {
     if (kind === 'turnik') return openPlace('pullups');
     const specs: Record<Exclude<TalkKind, 'turnik'>, () => DialogSpec> = {
@@ -41,6 +50,21 @@ export function useTalk() {
             ? [{ label: 'Забрать грев', onPick: async () => { await act('daily'); } }]
             : []),
           { label: 'Ещё что скажешь?', onPick: () => say({ ...specs.ded(), text: pick(DED_TIPS) }) },
+          {
+            label: p.joke.voted ? 'Анекдот дня (уже слышал)' : '😂 Расскажи анекдот',
+            onPick: () =>
+              say({
+                who: 'sheet/cast/ushanka',
+                name: 'Дед Митрич',
+                text: anekdotOfDay(p.joke.day),
+                options: p.joke.voted
+                  ? [{ label: 'Ха. Бывай, дед' }]
+                  : [
+                      { label: '😂 Смешно!', onPick: () => jokeVote(true) },
+                      { label: '😐 Не смешно', onPick: () => jokeVote(false) },
+                    ],
+              }),
+          },
           { label: 'Бывай, дед' },
         ],
       }),

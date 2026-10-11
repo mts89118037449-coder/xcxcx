@@ -18,18 +18,6 @@ interface Res {
   look: Look | null;
 }
 
-/** Подушка в руке: белый мешок, швы, пух. */
-function PillowG({ x, y, swing, flip }: { x: number; y: number; swing: boolean; flip?: boolean }) {
-  return (
-    <g transform={`translate(${x} ${y}) scale(${flip ? -1 : 1} 1)`}>
-      <g className={swing ? 'pillow-swing' : undefined}>
-        <rect x={4} y={-34} width={30} height={20} rx={8} fill="#f8f6ee" stroke="#1a1410" strokeWidth={2} />
-        <path d="M8,-30 l3,3 M30,-30 l-3,3 M8,-18 l3,-3 M30,-18 l-3,-3" stroke="#1a1410" strokeWidth={1} />
-      </g>
-    </g>
-  );
-}
-
 /** Перья: летят из точки удара. */
 function Feathers({ x, y, n = 8 }: { x: number; y: number; n?: number }) {
   return (
@@ -89,13 +77,11 @@ export function PillowGame({ onClose }: { onClose(): void }) {
         {Array.from({ length: 8 }, (_, k) => <rect key={k} x={k * 40 + (k % 2) * 6} y={20 + (k % 3) * 30} width={34} height={14} fill="#4a4339" />)}
         <rect y={146} width={300} height={34} fill="#7a4a2a" stroke="#1a1410" strokeWidth={2} />
         <Place x={95} y={170} scale={0.62}>
-          <PoseG name="stand" look={lookOf(p)} anim={meAnim} startKey={`m${step}`} />
+          <PoseG name="stand" look={lookOf(p)} anim={meAnim} startKey={`m${step}`} hold="pillow" />
         </Place>
-        <PillowG x={112} y={110} swing={cur !== null && cur >= 0} />
         <Place x={205} y={170} scale={0.62}>
-          <PoseG name="stand" look={rivalLook} anim={himAnim} startKey={`h${step}`} mirror />
+          <PoseG name="stand" look={rivalLook} anim={himAnim} startKey={`h${step}`} mirror hold="pillow" />
         </Place>
-        <PillowG x={188} y={110} swing={cur !== null && cur <= 0} flip />
         {cur !== null && cur !== 0 && <Feathers key={step} x={cur > 0 ? 200 : 100} y={80} />}
         {done && res!.win && <Feathers key="end" x={150} y={60} n={16} />}
         {res && step >= 0 && step < 3 && (

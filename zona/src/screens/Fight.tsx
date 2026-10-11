@@ -1,3 +1,4 @@
+import { useCatsQuest } from '../catQuest.ts';
 import { weatherFor } from '../../shared/weather.ts';
 import { itemLines } from '../Perks.tsx';
 import { Hint } from '../Hint.tsx';
@@ -41,6 +42,7 @@ export function FightNav({ value, onChange }: { value: FightSeg; onChange(v: Fig
 type FightResult = FightReplay;
 
 export function Fight() {
+  const cats = useCatsQuest();
   const { p, now, act, busy, toast } = useGame();
   const [seg, setSeg] = useSeg('fight', 'bosses', ['bosses', 'riot', 'pvp', 'ring'] as const);
   const talk = useTalk();
@@ -86,7 +88,7 @@ export function Fight() {
   return (
     <>
       <div className="scene-wrap">
-        <Stage onTalk={talk} loc="yard" look={lookOf(p)} mood={heroMood(p, weatherFor(Date.now(), p.colony).temp)} anim={anim} animKey={animKey} />
+        <Stage onTalk={talk} cats={cats} loc="yard" look={lookOf(p)} mood={heroMood(p, weatherFor(Date.now(), p.colony).temp)} anim={anim} animKey={animKey} />
         <div className="scene-tag">🥊 Двор</div>
         <button className="scene-btn" disabled={busy || now < p.yardReadyAt} onClick={walkYard}>
           {now < p.yardReadyAt ? `🚶 ${timeLeft(p.yardReadyAt - now)}` : '🚶 Прогуляться'}

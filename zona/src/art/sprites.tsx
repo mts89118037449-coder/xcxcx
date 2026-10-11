@@ -50,14 +50,14 @@ export function seasonHat(now = new Date()): string | null {
   return null;
 }
 
-export function ImageG({ url, mirror, tone, anim }: { url: string; height?: number; mirror?: boolean; tone?: string; className?: string; anim?: RigAnim }) {
+export function ImageG({ url, mirror, tone, anim, hold }: { url: string; height?: number; mirror?: boolean; tone?: string; className?: string; anim?: RigAnim; hold?: 'pillow' | 'phone' | 'papers' | 'spoon' }) {
   const n = NPC_RIGS[url.replace(/^rig:/, '')];
   if (!n) return null;
   const hat = seasonHat();
   const look = hat ? { ...n.look, equipped: { ...n.look.equipped, head: hat } } : n.look;
   return (
     <g style={tone ? { filter: tone } : undefined}>
-      <Rig look={look} anim={anim ?? n.anim} mirror={mirror} />
+      <Rig look={look} anim={anim ?? n.anim} mirror={mirror} hold={hold} />
     </g>
   );
 }
@@ -70,13 +70,13 @@ const POSE_ANIM: Record<PoseName, RigAnim> = {
 };
 
 /** Персонаж игрока: кукла на скелете — одежда, наколки и внешность видны и двигаются вместе с телом. */
-export function PoseG({ name, mirror, tone, look, noShadow, anim, bare, startKey, fx, sfx }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean; anim?: RigAnim; bare?: boolean; startKey?: string | number; fx?: FaceFx; sfx?: boolean }) {
+export function PoseG({ name, mirror, tone, look, noShadow, anim, bare, startKey, fx, sfx, hold }: { name: PoseName; mirror?: boolean; tone?: string; look?: Look; noShadow?: boolean; anim?: RigAnim; bare?: boolean; startKey?: string | number; fx?: FaceFx; sfx?: boolean; hold?: 'pillow' | 'phone' | 'papers' | 'spoon' }) {
   const l = look ?? { equipped: {}, tattoos: [], str: 5 };
   const a = anim ?? POSE_ANIM[name] ?? 'idle';
   return (
     <g style={tone ? { filter: tone } : undefined}>
       {a === 'sit' && <Stool />}
-      <Rig look={l} anim={a} mirror={mirror} shadow={!noShadow} bare={bare} startKey={startKey} fx={fx} sfx={sfx} />
+      <Rig look={l} anim={a} mirror={mirror} shadow={!noShadow} bare={bare} startKey={startKey} fx={fx} sfx={sfx} hold={hold} />
     </g>
   );
 }

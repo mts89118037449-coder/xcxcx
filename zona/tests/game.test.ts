@@ -2244,3 +2244,16 @@ test('подушечный бой: три хода, награда за побе
   g.pillowFight(p, ['side', 'side', 'side'], 'Лёха', now, () => 0.5);
   assert.throws(() => g.pillowFight(p, ['head', 'head', 'head'], 'Лёха', now, () => 0.5), /завтра/);
 });
+
+test('коты зоны: каждого раз, за всех — золото; анекдот — раз в день', () => {
+  const now = 1_800_000_000_000;
+  const p = g.newPlayer(907, 'Котовод', null, now);
+  p.butts = 100;
+  for (const id of ['fence', 'white', 'ginger', 'map']) assert.equal(g.catFeed(p, id).gold, 0);
+  assert.throws(() => g.catFeed(p, 'map'), /сыт/);
+  const gold = p.gold;
+  assert.equal(g.catFeed(p, 'canteen').gold, 5);
+  assert.equal(p.gold, gold + 5);
+  g.jokeVote(p, now);
+  assert.throws(() => g.jokeVote(p, now + 1000), /уже/);
+});

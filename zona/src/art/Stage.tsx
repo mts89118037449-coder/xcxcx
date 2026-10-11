@@ -6,7 +6,7 @@ import type { Look } from '../../shared/types.ts';
 import { CellScene, Place, WorkScene, YardScene, type InteriorIds } from './Scenes.tsx';
 import type { RigAnim } from './rig/Rig.tsx';
 import { ImageG, PoseG, useNpc, type PoseName } from './sprites.tsx';
-import { YardCats } from './Critters.tsx';
+import { YardCats, type CatsQuest } from './Critters.tsx';
 
 type Loc = 'cell' | 'work' | 'yard';
 export type Mood = 'idle' | 'hurt' | 'win' | 'tired' | 'rich' | 'cold';
@@ -42,11 +42,15 @@ interface Props {
   hot?: TalkKind | null;
   /** в хате идёт ремонт — бригада работает */
   workers?: boolean;
+  /** что герой держит: телефон на стриме */
+  hold?: 'phone';
+  /** квест с котами во дворе */
+  cats?: CatsQuest;
 }
 
 const RIG_DRIVEN = new Set(['act-work', 'lunge-r', 'act-cheer', 'act-dress']);
 
-export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, pet, deco, anim, animKey, onClick, onTalk, hot, workers }: Props) {
+export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, pet, deco, anim, animKey, onClick, onTalk, hot, workers, hold, cats }: Props) {
   // Короткая «рабочая» поза после действия, потом снова обычная.
   const [busyPose, setBusyPose] = useState<RigAnim | null>(null);
   const [face, setFace] = useState<'sweat' | 'smile' | null>(null);
@@ -78,7 +82,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, p
   const fig = (
     <Place x={at.x} y={at.y} scale={at.scale} key={rigDriven ? 'fig' : animKey} className={`pose ${rigDriven ? '' : anim}`}>
       <g className={walking ? 'yard-walk' : undefined}>
-        <PoseG name={idle} anim={busyPose ?? moodAnim} look={look} bare={bare} startKey={animKey} sfx={!walking} fx={{ bruise: mood === 'hurt', sweat: face === 'sweat', smile: face === 'smile' || (mood === 'rich' && !face) }} />
+        <PoseG name={idle} anim={busyPose ?? moodAnim} look={look} bare={bare} startKey={animKey} sfx={!walking} hold={hold} fx={{ bruise: mood === 'hurt', sweat: face === 'sweat', smile: face === 'smile' || (mood === 'rich' && !face) }} />
       </g>
       {moodEmoji && !busyPose && (
         <g className="mood-bubble" transform={`translate(${loc === 'cell' ? 96 : 92} ${loc === 'cell' && mood === 'hurt' ? 150 : 34})`}>
@@ -109,7 +113,7 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, p
   );
   if (loc === 'cell') return <CellScene furniture={furniture} interior={interior} wall={wall} pet={pet} deco={deco} onClick={onClick}>{crowd}{fig}</CellScene>;
   if (loc === 'work') return <WorkScene>{crowd}{fig}</WorkScene>;
-  return <YardScene><YardCats />{crowd}{fig}</YardScene>;
+  return <YardScene><YardCats quest={cats} />{crowd}{fig}</YardScene>;
 }
 
 /** Сокамерники на заднем плане: чуть мельче и темнее, чтобы не спорить с героем. */

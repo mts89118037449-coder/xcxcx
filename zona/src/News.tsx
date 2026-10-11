@@ -85,7 +85,7 @@ function NewsModal({ onClose }: { onClose(): void }) {
               <rect y={110} width={300} height={60} fill="#5a3a20" />
               {anchor && (
                 <Place x={150} y={200} scale={0.85}>
-                  <ImageG url={anchor.url} height={anchor.height} anim="talk" />
+                  <ImageG url={anchor.url} height={anchor.height} anim="talk" hold="papers" />
                 </Place>
               )}
               <rect x={70} y={128} width={160} height={42} fill="#7a5230" stroke="#1a1410" strokeWidth={3} />

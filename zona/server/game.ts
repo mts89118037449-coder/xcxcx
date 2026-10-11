@@ -83,6 +83,8 @@ import { INTRO_REWARD, PLACE_INTRO } from '../shared/cutscenes.ts';
 import { bunkOfDay } from '../shared/bunk.ts';
 import { RENO, renoCost } from '../shared/reno.ts';
 import { RAID, raidButts } from '../shared/raid.ts';
+import { ANEKDOT } from '../shared/anekdot.ts';
+import { CATS, CAT_FEED } from '../shared/cats.ts';
 import { PILLOW, pillowRound, type PillowMove } from '../shared/pillow.ts';
 import { STREAM, STREAM_TOPICS, type LiveStream } from '../shared/stream.ts';
 import { featById, featProgress } from '../shared/feats.ts';
@@ -297,6 +299,10 @@ export interface Player {
   featsClaimed: string[];
   /** день последнего стрима из хаты */
   streamDay: number;
+  /** день, когда голосовал за анекдот */
+  jokeDay: number;
+  /** каких котов зоны уже прикормил */
+  catsFed: string[];
   /** входящие малявы */
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
@@ -472,6 +478,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     feats: {},
     featsClaimed: [],
     streamDay: -1,
+    jokeDay: -1,
+    catsFed: [],
     ink: null,
     inkOrder: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
@@ -578,6 +586,8 @@ export function migrate(p: Player): Player {
   p.feats ??= {};
   p.featsClaimed ??= [];
   p.streamDay ??= -1;
+  p.jokeDay ??= -1;
+  p.catsFed ??= [];
   p.ink ??= null;
   p.inkOrder ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
@@ -4374,6 +4384,30 @@ export function pillowFight(p: Player, moves: unknown, rival: string, now: numbe
   bump(p, win ? 'pillow_win' : 'pillow');
   track(p, 'minigame');
   return { rival, his, rounds, win, draw: score === 0, butts: win ? PILLOW.winButts : 0 };
+}
+
+/** Голос за анекдот дня: раз в сутки, пара бычков за участие. */
+export function jokeVote(p: Player, now: number) {
+  const day = dayIndex(now);
+  if (p.jokeDay === day) throw new GameError('Сегодня уже голосовал — дед больше не знает');
+  p.jokeDay = day;
+  p.butts += ANEKDOT.butts;
+  bump(p, 'joke');
+  return { day, butts: ANEKDOT.butts };
+}
+
+/** Покормить кота зоны: когда прикормлены все — банда признаёт своим. */
+export function catFeed(p: Player, id: string) {
+  const cat = CATS.find((c) => c.id === id);
+  if (!cat) throw new GameError('Нет такого кота');
+  if (p.catsFed.includes(id)) throw new GameError(`${cat.name} уже сыт и смотрит снисходительно`);
+  if (p.butts < CAT_FEED.butts) throw new GameError('Нужно пару бычков — выменять рыбью голову');
+  p.butts -= CAT_FEED.butts;
+  p.catsFed.push(id);
+  bump(p, 'cats');
+  const all = p.catsFed.length >= CATS.length;
+  if (all) p.gold += CAT_FEED.rewardGold;
+  return { name: cat.name, fed: p.catsFed.length, total: CATS.length, gold: all ? CAT_FEED.rewardGold : 0 };
 }
 
 export function claimFeat(p: Player, id: string) {

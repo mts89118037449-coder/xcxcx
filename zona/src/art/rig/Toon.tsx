@@ -420,6 +420,9 @@ export function useClock(on: boolean) {
 }
 
 const FIDGETS: [RigAnim, number][] = [['smoke', 4400], ['think', 3200], ['drink', 3400], ['stretch', 2600], ['wave', 2000], ['flex', 2200], ['scratch', 1800], ['yawn', 2200]];
+/** Что можно дать в руку поверх анимации. */
+export type Hold = 'pillow' | 'phone' | 'papers' | 'spoon';
+
 const PROP: Partial<Record<RigAnim, 'cig' | 'mug' | 'bowl' | 'zzz' | 'hammer'>> = { smoke: 'cig', drink: 'mug', eat: 'bowl', sleep: 'zzz', work: 'hammer' };
 
 let seq = 0;
@@ -457,7 +460,7 @@ function crossed(a: number, b: number, at: number, period?: number) {
   return n >= 0 && at + n * period > a;
 }
 
-export function Toon({ look, anim = 'idle', mirror, still, shadow = true, startKey, bare, fidget = true, fx, sfx }: RigProps) {
+export function Toon({ look, anim = 'idle', mirror, still, shadow = true, startKey, bare, fidget = true, fx, sfx, hold }: RigProps) {
   const id = useRef(++seq).current;
   const seed = useRef(Math.random() * 3).current;
   const t = useClock(!still);
@@ -500,7 +503,7 @@ export function Toon({ look, anim = 'idle', mirror, still, shadow = true, startK
   lag.current = still ? 0 : Math.max(-4, Math.min(4, lag.current * 0.55 - dy * 0.7));
   last.current = pose;
   const shown = lag.current ? { ...pose, hy: pose.hy + lag.current } : pose;
-  return <ToonBody look={look} pose={shown} mirror={mirror} shadow={shadow} bare={bare} prop={PROP[eff]} fx={fx} uid={`tn${id}`} time={local} ko={eff === 'ko' || eff === 'koFwd' || eff === 'koSpin'} />;
+  return <ToonBody look={look} pose={shown} mirror={mirror} shadow={shadow} bare={bare} prop={hold ?? PROP[eff]} fx={fx} uid={`tn${id}`} time={local} ko={eff === 'ko' || eff === 'koFwd' || eff === 'koSpin'} />;
 }
 
 // --- Тело --------------------------------------------------------------------------------------
@@ -511,7 +514,7 @@ interface BodyProps {
   mirror?: boolean;
   shadow?: boolean;
   bare?: boolean;
-  prop?: 'cig' | 'mug' | 'bowl' | 'zzz' | 'hammer';
+  prop?: 'cig' | 'mug' | 'bowl' | 'zzz' | 'hammer' | Hold;
   fx?: FaceFx;
   uid: string;
   time: number;
@@ -601,7 +604,36 @@ function Leg({ x, h, k, color, foot, stripe, dark }: { x: number; h: number; k: 
 }
 
 /** Предмет в ближней руке. */
-function Prop({ kind }: { kind: 'cig' | 'mug' | 'bowl' | 'hammer' }) {
+function Prop({ kind }: { kind: 'cig' | 'mug' | 'bowl' | 'hammer' | Hold }) {
+  if (kind === 'pillow')
+    return (
+      <g transform="translate(-2 2) rotate(20)">
+        <rect x={-6} y={-4} width={30} height={20} rx={8} fill="#f8f6ee" stroke={INK} strokeWidth={1.8} />
+        <path d="M-2,0 l3,3 M20,0 l-3,3 M-2,12 l3,-3 M20,12 l-3,-3" stroke={INK} strokeWidth={0.9} />
+      </g>
+    );
+  if (kind === 'phone')
+    return (
+      <g transform="translate(-3 -10)">
+        <rect x={0} y={0} width={7} height={13} rx={1.5} fill="#2a2a30" stroke={INK} strokeWidth={1.2} />
+        <rect x={1.2} y={1.5} width={4.6} height={8} fill="#7ac0f0" />
+        <circle className="tv-rec" cx={3.5} cy={11.3} r={0.9} fill="#ff4a3a" />
+      </g>
+    );
+  if (kind === 'papers')
+    return (
+      <g transform="translate(-4 -6) rotate(-8)">
+        <rect x={0} y={0} width={14} height={18} fill="#fff" stroke={INK} strokeWidth={1.2} />
+        <path d="M3,4 h8 M3,7 h8 M3,10 h6" stroke="#8a8a8a" strokeWidth={1} />
+      </g>
+    );
+  if (kind === 'spoon')
+    return (
+      <g transform="translate(0 0) rotate(160)">
+        <rect x={-1} y={0} width={2.4} height={18} fill="#c8ccd2" stroke={INK} strokeWidth={0.8} />
+        <path d="M-1,18 L0.2,24 L1.4,18 Z" fill="#e8ecf0" stroke={INK} strokeWidth={0.8} />
+      </g>
+    );
   if (kind === 'cig')
     return (
       <g transform="translate(5 -3) rotate(-50)">

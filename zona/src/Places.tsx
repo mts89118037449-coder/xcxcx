@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { PLACE_INTRO } from '../shared/cutscenes.ts';
-import { babble } from './sound.ts';
+import { LoneCat } from './art/Critters.tsx';
+import { useCatsQuest } from './catQuest.ts';
+import { babble, play as sfx } from './sound.ts';
 import { needFail } from '../shared/events.ts';
 import { PLACES, placeById, type PlaceId } from '../shared/places.ts';
 import { mastById } from '../shared/term.ts';
@@ -31,6 +33,7 @@ export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
   const [anim, animKey, play] = useAnim();
   const [res, setRes] = useState<Got | null>(null);
   const ration = 30 + p.level * 15;
+  const cats = useCatsQuest();
   // первый заход — сценка знакомства: хозяин подходит, пара реплик, награда
   const intro = PLACE_INTRO[id];
   const [step, setStep] = useState<number | null>(() => (intro && !p.intros?.includes(id) ? 0 : null));
@@ -62,6 +65,8 @@ export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
     if (!r) return;
     setRes(r);
     play(r.hp < 0 ? 'got-hit' : 'act-cheer');
+    // клуб: зал смеётся над шуткой и хлопает концерту
+    if (id === 'club') sfx(actId === 'kvn' || actId === 'movie' ? 'laugh' : 'applause');
   };
 
   return (
@@ -78,6 +83,7 @@ export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
               </Place>
             </g>
           )}
+          {id === 'canteen' && <LoneCat id="canteen" x={326} y={264} scale={0.62} color="#b0a090" quest={cats} />}
         </LocationScene>
         {step !== null ? (
           <div className={`ev-bubble place-bubble intro-bubble ${line?.who === 1 ? 'me' : ''}`} key={`i${step}${arrived}`} onClick={next}>

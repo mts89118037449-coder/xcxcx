@@ -3,7 +3,7 @@
 // до первого касания, поэтому контекст создаётся и музыка стартует по первому жесту.
 
 export type Sfx = 'click' | 'coin' | 'gold' | 'hit' | 'crit' | 'miss' | 'win' | 'lose' | 'level' | 'event' | 'pop' | 'error' | 'dice' | 'card' | 'unlock'
-  | 'step' | 'whoosh' | 'thud' | 'yawn' | 'cough' | 'clink' | 'hammer' | 'slurp' | 'shutter' | 'combo' | 'finisher' | 'hum';
+  | 'step' | 'whoosh' | 'thud' | 'yawn' | 'cough' | 'clink' | 'hammer' | 'slurp' | 'shutter' | 'combo' | 'finisher' | 'hum' | 'laugh' | 'applause';
 
 interface Prefs {
   sfx: boolean;
@@ -240,6 +240,25 @@ export function play(s: Sfx) {
       noise(t, 0.35, { vol: 0.9, freq: 1200, q: 0.5 });
       tone(60, t, 0.5, { type: 'sine', vol: 0.9, slide: 0.4 });
       [523, 784, 1047].forEach((f, i) => tone(f, t + 0.12 + i * 0.07, 0.3, { type: 'square', vol: 0.1 }));
+      break;
+    case 'laugh':
+      // зал ржёт: десяток голосов «ха-ха» на разной высоте
+      for (let v = 0; v < 6; v++) {
+        const base = 160 + v * 45 + Math.random() * 40;
+        for (let k = 0; k < 5; k++) {
+          const at = t + v * 0.05 + k * (0.13 + Math.random() * 0.04);
+          tone(base * (1 - k * 0.04), at, 0.09, { type: 'sawtooth', vol: 0.025, slide: 0.8, attack: 0.01 });
+          noise(at, 0.07, { vol: 0.04, freq: 900 + v * 150, q: 2 });
+        }
+      }
+      break;
+    case 'applause':
+      // аплодисменты: много коротких хлопков вразнобой, нарастают и стихают
+      for (let k = 0; k < 90; k++) {
+        const at = t + Math.random() * 1.8;
+        const env = Math.sin(((at - t) / 1.8) * Math.PI);
+        noise(at, 0.025, { vol: 0.12 + env * 0.25, freq: 1500 + Math.random() * 2500, q: 1.2 });
+      }
       break;
     case 'hum':
       tone(150, t, 0.4, { type: 'sine', vol: 0.08, slide: 0.9, attack: 0.05 });
