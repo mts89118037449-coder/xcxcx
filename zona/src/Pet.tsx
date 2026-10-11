@@ -1,3 +1,4 @@
+import { DogShowModal, DogTricks } from './DogShow.tsx';
 import { ModalHead } from './Nav.tsx';
 import { useState } from 'react';
 import { PET, PETS, petByKind, CAT_WEAR } from '../shared/pets.ts';
@@ -9,6 +10,7 @@ const H = 3600_000;
 export function PetCard() {
   const { p, now, act, busy, toast } = useGame();
   const [pick, setPick] = useState(false);
+  const [show, setShow] = useState(false);
   const pet = p.pet;
   if (!pet) {
     return (
@@ -66,6 +68,15 @@ export function PetCard() {
             {max ? '🏅 Макс.' : trainIn > 0 ? `🎾 ${timeLeft(trainIn)}` : `🎾 Учить · ${PET.trainEnergy} ⚡`}
           </button>
         </span>
+        {pet.kind === 'dog' && (
+          <>
+            <DogTricks level={pet.level} />
+            <button className="btn btn-s btn-gold" onClick={() => setShow(true)} style={{ marginTop: 6 }}>
+              🏆 Выставка собак
+            </button>
+            {show && <DogShowModal onClose={() => setShow(false)} />}
+          </>
+        )}
         {pet.kind === 'cat' && (
           <span className="pet-wear">
             {CAT_WEAR.map((w) => {

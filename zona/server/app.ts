@@ -1,3 +1,4 @@
+import { DOG_SHOW, dogScore } from '../shared/pets.ts';
 import { weatherAt } from '../shared/weather.ts';
 import { renoComfort } from '../shared/reno.ts';
 import { RAID } from '../shared/raid.ts';
@@ -132,6 +133,17 @@ export function createApp(opts: AppOptions) {
   }
 
   // --- Побег вдвоём: общий забег в kv, игроки ссылаются на него
+  /** Выставка собак: рейтинг недели и приз за прошлую. */
+  const dogView = (p: g.Player, t: number) => {
+    const rank = (w: number) =>
+      Object.entries(db.kvGet<Record<number, { name: string; dog: string; score: number }>>(`dogs:${w}`, {}))
+        .map(([id, v]) => ({ id: Number(id), ...v }))
+        .sort((a, b) => b.score - a.score);
+    const week = g.weekIndex(t);
+    const last = rank(week - 1).findIndex((r) => r.id === p.id);
+    const prize = p.dogClaimed !== week - 1 && last >= 0 && last < DOG_SHOW.prizes.length ? DOG_SHOW.prizes[last] : 0;
+    return { rows: rank(week).slice(0, 8), prize, lastPlace: last + 1 };
+  };
   /** «Самый смешной недели»: лайки и «Жиза» в эфирах. */
   const funnyAdd = (s: LiveStream | undefined, t: number, n: number) => {
     if (!s) return;
@@ -508,6 +520,7 @@ export function createApp(opts: AppOptions) {
       funny: funnyTop(t),
       joke: { day: g.dayIndex(t), voted: p.jokeDay === g.dayIndex(t) },
       catsFed: p.catsFed,
+      nyToday: p.nyDay === g.dayIndex(t),
       pumpkins: p.pumpkins.year === new Date(t).getUTCFullYear() ? p.pumpkins.found : [],
       streams: Object.values(liveStreams(t))
         .sort((a, b) => b.likes - a.likes)
@@ -816,6 +829,23 @@ export function createApp(opts: AppOptions) {
     catFeed: (p, b) => g.catFeed(p, str(b.id)),
     petWear: (p, b) => g.petWear(p, str(b.id)),
     pumpkinFind: (p, b, t) => g.pumpkinFind(p, str(b.id), t),
+    nyGift: (p, _b, t) => g.nyGift(p, t, rng),
+    dogShow: (p, _b, t) => {
+      if (p.pet?.kind !== 'dog') throw new g.GameError('На выставку — только с собакой');
+      const key = `dogs:${g.weekIndex(t)}`;
+      const all = db.kvGet<Record<number, { name: string; dog: string; score: number }>>(key, {});
+      all[p.id] = { name: p.name, dog: p.pet.name, score: dogScore(p.pet.level) };
+      db.kvSet(key, all);
+      return dogView(p, t);
+    },
+    dogTop: (p, _b, t) => dogView(p, t),
+    dogClaim: (p, _b, t) => {
+      const v = dogView(p, t);
+      if (!v.prize) throw new g.GameError('Приза нет');
+      p.dogClaimed = g.weekIndex(t) - 1;
+      p.gold += v.prize;
+      return { gold: v.prize };
+    },
     jokeVote: (p, b, t) => {
       const r = g.jokeVote(p, t);
       const key = `joke:${r.day}`;

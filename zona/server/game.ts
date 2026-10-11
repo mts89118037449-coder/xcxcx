@@ -85,6 +85,7 @@ import { RENO, renoCost } from '../shared/reno.ts';
 import { RAID, raidButts } from '../shared/raid.ts';
 import { SLING, slingButts } from '../shared/sling.ts';
 import { ANEKDOT } from '../shared/anekdot.ts';
+import { NY, isNewYear } from '../shared/newyear.ts';
 import { HALLOWEEN, PUMPKINS, isHalloween } from '../shared/halloween.ts';
 import { BEAUTY, BEAUTY_ANIMS, BEAUTY_BGS, BEAUTY_FX, type BeautyEntry } from '../shared/beauty.ts';
 import { CATS, CAT_FEED } from '../shared/cats.ts';
@@ -312,6 +313,10 @@ export interface Player {
   beautyClaimed: number;
   /** тыквы Хэллоуина: год и найденные */
   pumpkins: { year: number; found: string[] };
+  /** день последнего подарка Деда Мороза */
+  nyDay: number;
+  /** за какую неделю забран приз выставки собак */
+  dogClaimed: number;
   /** входящие малявы */
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
@@ -492,6 +497,8 @@ export function newPlayer(id: number, name: string, username: string | null, now
     pillowClaimed: -1,
     beautyClaimed: -1,
     pumpkins: { year: 0, found: [] },
+    nyDay: -1,
+    dogClaimed: -1,
     ink: null,
     inkOrder: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
@@ -603,6 +610,8 @@ export function migrate(p: Player): Player {
   p.pillowClaimed ??= -1;
   p.beautyClaimed ??= -1;
   p.pumpkins ??= { year: 0, found: [] };
+  p.nyDay ??= -1;
+  p.dogClaimed ??= -1;
   p.ink ??= null;
   p.inkOrder ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
@@ -733,7 +742,7 @@ export function stats(p: Player, now: number) {
   const vip = isVip(p, now);
   return {
     atk: Math.round((5 + p.str * 3 + b.atk) * (1 + (mastBonus(p, 'atk') + hutBonus(p, 'atk') + zoneB('atk') + barB(p, 'atk')) / 100)),
-    def: Math.round((p.agi * 2 + b.def) * (1 + (hutBonus(p, 'def') + zoneB('def') + barB(p, 'def')) / 100)),
+    def: Math.round((p.agi * 2 + b.def) * (1 + (hutBonus(p, 'def') + zoneB('def') + barB(p, 'def') + petPower(p, 'dog', now) * 2) / 100)),
     maxHp: Math.round((80 + p.end * 12 + b.hp) * (1 + petPower(p, 'cat', now) * 0.02 + (zoneB('hp') + barB(p, 'hp')) / 100)),
     crit: Math.min(40, 2 + Math.floor(p.agi * 0.3) + b.crit + mastBonus(p, 'crit') + (p.blessUntil > now ? CHURCH.blessCrit : 0)),
     maxEnergy: BALANCE.baseEnergy + b.energy + mastBonus(p, 'energy') + (vip ? BALANCE.vipEnergyBonus : 0) + p.clanLevel * CLAN.energyPerLevel + hutBonus(p, 'energy') + zoneB('energy') + barB(p, 'energy'),
@@ -4525,6 +4534,27 @@ export function pumpkinFind(p: Player, id: string, now: number) {
     p.butts += HALLOWEEN.butts;
   }
   return { found: p.pumpkins.found.length, total: PUMPKINS.length, gold: all ? HALLOWEEN.gold : 0, butts: all ? HALLOWEEN.butts : 0 };
+}
+
+/** Подарок Деда Мороза-конвоира: раз в день в новогодние. */
+export function nyGift(p: Player, now: number, rng: Rng) {
+  if (!isNewYear(now)) throw new GameError('Дед Мороз приходит только под Новый год');
+  const day = dayIndex(now);
+  if (p.nyDay === day) throw new GameError('Сегодня подарок уже был. Завтра приходи');
+  p.nyDay = day;
+  const roll = rng();
+  if (roll < 0.6) {
+    const butts = NY.butts[0] + Math.floor(rng() * (NY.butts[1] - NY.butts[0] + 1));
+    p.butts += butts;
+    return { butts, gold: 0, item: null };
+  }
+  if (roll < 0.9) {
+    p.gold += NY.gold;
+    return { butts: 0, gold: NY.gold, item: null };
+  }
+  const item = 'c_bandage';
+  giveItem(p, item);
+  return { butts: 0, gold: 0, item };
 }
 
 export function claimFeat(p: Player, id: string) {

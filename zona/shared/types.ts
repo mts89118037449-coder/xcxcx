@@ -77,7 +77,7 @@ export interface PlayerView {
   /** обучение первых минут: номер шага и прогресс; null — позади */
   tut: { step: number; n: number } | null;
   word: { len: number; guesses: { g: string; marks: ('g' | 'y' | 'x')[] }[]; done: boolean; won: boolean; answer: string | null; meaning: string | null; streak: number; best: number };
-  pet: { kind: 'cat' | 'rat' | 'pigeon'; name: string; level: number; xp: number; fedAt: number; trainAt: number; wear?: string[]; on?: string | null } | null;
+  pet: { kind: 'cat' | 'rat' | 'pigeon' | 'dog'; name: string; level: number; xp: number; fedAt: number; trainAt: number; wear?: string[]; on?: string | null } | null;
   built: number;
   ink: { skill: number; jobs: number; stars: number; votes: number; queue: { id: number; client: number; clientName: string; tattoo: string; paid: number; at: number }[] } | null;
   inkOrder: { artist: number; artistName: string; tattoo: string; at: number; id: number; done: boolean; quality: number; rated: boolean } | null;
@@ -93,6 +93,7 @@ export interface PlayerView {
   funny: { id: number; name: string; pts: number }[];
   joke: { day: number; voted: boolean };
   catsFed: string[];
+  nyToday: boolean;
   pumpkins: string[];
   streams: { id: number; name: string; face: number | null; skin: number; topic: string; until: number; likes: number; liked: boolean; comments: { name: string; msg: number }[]; gifts: { butts: number; heart: number } }[];
   featsClaimed: string[];
@@ -236,7 +237,7 @@ export interface VisitView {
   interior: { wall: string; floor: string };
   tattoos: string[];
   wall: string[];
-  pet: { kind: 'cat' | 'rat' | 'pigeon'; name: string; level: number } | null;
+  pet: { kind: 'cat' | 'rat' | 'pigeon' | 'dog'; name: string; level: number } | null;
   clan: { id: number; name: string; tag: string } | null;
   respectedToday: boolean;
   giftedToday: boolean;

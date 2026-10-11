@@ -2316,3 +2316,24 @@ test('перекинь маляву: бычки за попадания, бон�
   assert.equal(g.sling(p, 2, now).butts, 8);
   assert.equal(g.sling(p, 99, now).butts, 16);
 });
+
+test('Новый год: подарок раз в день и только в праздники', () => {
+  const ny = Date.UTC(2026, 11, 31, 12);
+  const p = g.newPlayer(916, 'Снегурочка', null, ny);
+  assert.throws(() => g.nyGift(p, Date.UTC(2026, 5, 1), () => 0.1), /Новый год/);
+  const r = g.nyGift(p, ny, () => 0.1);
+  assert.ok(r.butts >= 10);
+  assert.throws(() => g.nyGift(p, ny + 1000, () => 0.1), /уже/);
+});
+
+test('пёс: покупается с 8 уровня и даёт защиту', () => {
+  const now = 1_800_000_000_000;
+  const p = g.newPlayer(917, 'Кинолог', null, now);
+  p.level = 8;
+  p.money = 10000;
+  const def0 = g.stats(p, now).def;
+  g.petBuy(p, 'dog', 'Джульбарс', now);
+  assert.equal(p.pet?.kind, 'dog');
+  p.pet!.level = 5;
+  assert.ok(g.stats(p, now).def >= def0);
+});

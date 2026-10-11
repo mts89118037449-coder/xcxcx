@@ -292,6 +292,20 @@ export function LivePet({ kind: spec }: { kind: string }) {
       </g>
     );
   }
+  if (kind === 'dog') {
+    // пёс ходит по хате, иногда садится и «даёт голос»
+    const w = patrol(lt, 220, 300, 18, 5);
+    return (
+      <g transform={`translate(${w.x} 268) scale(${w.dir < 0 ? -0.75 : 0.75} 0.75)`}>
+        <Dog t={w.moving ? lt : 0} sit={!w.moving} />
+        {!w.moving && (lt / 1000) % 6 < 1 && (
+          <text x={30} y={-46} fontSize={12} fontWeight={900} fill="#fff" stroke={INK} strokeWidth={0.5}>
+            ГАВ!
+          </text>
+        )}
+      </g>
+    );
+  }
   if (kind === 'rat') {
     const w = patrol(lt, 30, 120, 50, 3);
     return (
