@@ -127,6 +127,19 @@ function QuizModal({ onClose }: { onClose(): void }) {
             )}
           </div>
         )}
+        {v.clans.length > 0 && (
+          <div className="foot-table">
+            <b>🏴 Клановый зачёт</b>
+            {v.clans.map((c, i) => (
+              <div key={c.tag + i} className={c.mine ? 'me' : ''}>
+                <span>{['🥇', '🥈', '🥉'][i] ?? `${i + 1}.`}</span>
+                <span className="grow">[{c.tag}]</span>
+                <small>{c.n} бойц.</small>
+                <b>{c.pts}</b>
+              </div>
+            ))}
+          </div>
+        )}
         {v.top.length > 0 && (
           <div className="foot-table">
             <b>🏆 Таблица выпуска</b>

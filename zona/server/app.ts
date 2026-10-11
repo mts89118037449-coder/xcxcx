@@ -22,7 +22,7 @@ import { ERRLOG, REPORT } from '../shared/support.ts';
 import { LEAGUE, leagueTier } from '../shared/league.ts';
 import { LIVE, currentLive, liveById, nextAutoLive, type LiveId, type LiveRun } from '../shared/live.ts';
 import crypto from 'node:crypto';
-import { CHAT } from '../shared/chat.ts';
+import { CHAT, REACTIONS } from '../shared/chat.ts';
 import { seasonEndsAt, seasonIndex, seasonTheme } from '../shared/season.ts';
 import { CLAN_BOSS, CLAN_WAR, HUT_RULES, PARCEL, REFERRAL, RING, hutById, type HutId } from '../shared/clans.ts';
 import { BEADS, BELT, CHESS, DOMINO, FISH, NARDY, SHIZO, SPEED } from '../shared/minigames2.ts';
@@ -896,7 +896,7 @@ export function createApp(opts: AppOptions) {
       const right = quizQuestions(slot.key)[q].answer === choice;
       const used = QUIZ.qSec * 1000 - (phNow.answering ? phNow.msLeft : 0);
       const pts = right ? quizPoints(used) : 0;
-      const row = (run.players[p.id] ??= { name: p.name, pts: 0, right: 0 });
+      const row = (run.players[p.id] ??= { name: p.name, pts: 0, right: 0, clan: p.clanId });
       row.pts += pts;
       if (right) row.right++;
       db.kvSet(key, run);
@@ -1232,6 +1232,24 @@ export function createApp(opts: AppOptions) {
       if (channel === 'clan' && !p.clanId) throw new g.GameError('Ты не в клане');
       g.chatSay(p, str(b.phrase), t);
       return { id: db.chatAdd(channel === 'clan' ? `clan:${p.clanId}` : 'all', p.id, p.name, p.face ?? null, str(b.phrase), t, p.frame, p.title) };
+    },
+    chatReact: (p, b) => {
+      const channel = str(b.channel) === 'clan' ? `clan:${p.clanId}` : 'all';
+      const emoji = str(b.emoji);
+      if (!REACTIONS.includes(emoji)) throw new g.GameError('Нет такой реакции');
+      const id = num(b.id);
+      const key = `react:${channel}`;
+      const all = db.kvGet<Record<number, Record<string, number[]>>>(key, {});
+      const m = (all[id] ??= {});
+      const who = (m[emoji] ??= []);
+      const i = who.indexOf(p.id);
+      if (i >= 0) who.splice(i, 1);
+      else who.push(p.id);
+      // храним реакции только на последние сообщения
+      const ids = Object.keys(all).map(Number).sort((a, b) => b - a);
+      for (const old of ids.slice(150)) delete all[old];
+      db.kvSet(key, all);
+      return { ok: true };
     },
     unlocksSeen: (p, b) => g.seeUnlocks(p, Array.isArray(b.ids) ? b.ids.map(str) : []),
     seasonClaim: (p, b, t) => g.seasonClaim(p, Math.floor(num(b.level)), b.paid === true, t, rng),
@@ -1871,7 +1889,16 @@ export function createApp(opts: AppOptions) {
       if (!p?.clanId) return res.json({ messages: [] });
       channel = `clan:${p.clanId}`;
     }
-    res.json({ messages: db.chatList(channel, CHAT.keep) });
+    const reacts = db.kvGet<Record<number, Record<string, number[]>>>(`react:${channel}`, {});
+    const me = req.tgUser!.id;
+    res.json({
+      messages: db.chatList(channel, CHAT.keep).map((m) => ({
+        ...m,
+        reacts: Object.entries(reacts[m.id] ?? {})
+          .filter(([, ids]) => ids.length)
+          .map(([e, ids]) => ({ e, n: ids.length, mine: ids.includes(me) })),
+      })),
+    });
   });
 
   api.post('/ring', (req: AuthedRequest, res) => {
@@ -1935,7 +1962,7 @@ export function createApp(opts: AppOptions) {
   });
 
   // Вечер в клубе: живая викторина по расписанию
-  type QuizRun = { players: Record<string, { name: string; pts: number; right: number }>; answers: Record<string, number>; claimed: number[] };
+  type QuizRun = { players: Record<string, { name: string; pts: number; right: number; clan?: number | null }>; answers: Record<string, number>; claimed: number[] };
   const quizCur = (t: number) => quizSlot(t, db.kvGet<number | null>('quiz:force', null));
   const quizView = (p: g.Player, t: number) => {
     const slot = quizCur(t);
@@ -1948,7 +1975,20 @@ export function createApp(opts: AppOptions) {
       .sort((a, b) => b.pts - a.pts)
       .slice(0, 10);
     const rank = top.findIndex((r) => r.id === p.id);
+    // «Что? Где? Когда?» по-зоновски: клановый зачёт — сумма очков бойцов клана
+    const byClan: Record<number, { pts: number; n: number }> = {};
+    for (const r of Object.values(run.players)) {
+      if (!r.clan) continue;
+      const c = (byClan[r.clan] ??= { pts: 0, n: 0 });
+      c.pts += r.pts;
+      c.n++;
+    }
+    const clans = Object.entries(byClan)
+      .map(([id, c]) => ({ tag: db.getClan(Number(id))?.tag ?? '?', pts: c.pts, n: c.n, mine: Number(id) === p.clanId }))
+      .sort((a, b) => b.pts - a.pts)
+      .slice(0, 5);
     return {
+      clans,
       now: t,
       startsAt: slot.startsAt,
       totalMs: quizTotalMs(),

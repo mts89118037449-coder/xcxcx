@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PHRASE_GROUPS, phraseById } from '../shared/chat.ts';
+import { PHRASE_GROUPS, REACTIONS, STICKERS, phraseById, stickerById } from '../shared/chat.ts';
+import { NpcPortrait } from './art/sprites.tsx';
 import { api } from './api.ts';
 import { Face } from './art/sprites.tsx';
 import { useGame } from './game.tsx';
@@ -26,6 +27,11 @@ export function ChatPanel() {
   useEffect(() => {
     box.current?.scrollTo({ top: box.current.scrollHeight });
   }, [msgs?.length]);
+  const [picker, setPicker] = useState<number | null>(null);
+  const react = async (id: number, emoji: string) => {
+    setPicker(null);
+    if ((await act('chatReact', { channel, id, emoji })) !== null) load();
+  };
   const say = async (phrase: string) => {
     if ((await act('chatSay', { channel, phrase })) !== null) load();
   };
@@ -57,8 +63,31 @@ export function ChatPanel() {
                   {titleOf(m.title) && <em className="chat-title"> · {titleOf(m.title)}</em>}
                 </b>
               )}
-              <span>{phraseById.get(m.phrase)?.text ?? '…'}</span>
+              {stickerById.get(m.phrase) ? (
+                <span className="chat-sticker">
+                  <NpcPortrait who={stickerById.get(m.phrase)!.who} />
+                  <i>{stickerById.get(m.phrase)!.text}</i>
+                </span>
+              ) : (
+                <span>{phraseById.get(m.phrase)?.text ?? '…'}</span>
+              )}
               <small>{time(m.at)}</small>
+              <span className="chat-reacts">
+                {m.reacts.map((r) => (
+                  <button key={r.e} className={r.mine ? 'mine' : ''} onClick={() => react(m.id, r.e)}>
+                    {r.e} {r.n}
+                  </button>
+                ))}
+                <button className="add" onClick={() => setPicker(picker === m.id ? null : m.id)}>
+                  ＋
+                </button>
+                {picker === m.id &&
+                  REACTIONS.map((e) => (
+                    <button key={e} onClick={() => react(m.id, e)}>
+                      {e}
+                    </button>
+                  ))}
+              </span>
             </div>
           </div>
         ))}
@@ -69,9 +98,19 @@ export function ChatPanel() {
             {g.emoji} {g.name}
           </button>
         ))}
+        <button className={group === PHRASE_GROUPS.length ? 'active' : ''} onClick={() => setGroup(PHRASE_GROUPS.length)}>
+          🖼️ Стикеры
+        </button>
       </div>
       <div className="chat-phrases">
-        {PHRASE_GROUPS[group].items.map((ph) => (
+        {group === PHRASE_GROUPS.length &&
+          STICKERS.map((s) => (
+            <button key={s.id} className="chat-phrase chat-st" disabled={busy} onClick={() => say(s.id)}>
+              <NpcPortrait who={s.who} />
+              {s.text}
+            </button>
+          ))}
+        {(PHRASE_GROUPS[group]?.items ?? []).map((ph) => (
           <button key={ph.id} className="chat-phrase" disabled={busy} onClick={() => say(ph.id)}>
             {ph.text}
           </button>

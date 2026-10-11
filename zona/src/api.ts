@@ -134,6 +134,7 @@ export const api = {
     }>('/paper'),
   quiz: () =>
     post<{
+      clans: { tag: string; pts: number; n: number; mine: boolean }[];
       now: number;
       startsAt: number;
       totalMs: number;
@@ -175,7 +176,7 @@ export const api = {
   adminSus: (id?: number, act?: 'clear' | 'ban' | 'unban') => post<{ list: SusRow[]; flagAt: number }>('/admin/sus', { id, act }),
   season: () => post<{ top: { id: number; name: string; face: number | null; frame: string | null; pts: number }[] }>('/season'),
   refs: () => post<{ refs: { id: number; name: string; level: number; earned: number }[]; earned: number }>('/refs'),
-  chat: (channel: 'all' | 'clan') => post<{ messages: { id: number; pid: number; name: string; face: number | null; phrase: string; at: number; frame: string | null; title: string | null }[] }>('/chat', { channel }),
+  chat: (channel: 'all' | 'clan') => post<{ messages: { id: number; pid: number; name: string; face: number | null; phrase: string; at: number; frame: string | null; title: string | null; reacts: { e: string; n: number; mine: boolean }[] }[] }>('/chat', { channel }),
   ring: () => post<{ ring: import('./Ring.tsx').RingView; now: number }>('/ring'),
   world: () => post<{ world: WorldBossView; online: number }>('/world'),
   visit: (id: number, skip: number[] = []) => post<{ visit: VisitView }>('/visit', { id, skip }),
