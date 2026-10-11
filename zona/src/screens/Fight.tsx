@@ -1,3 +1,4 @@
+import { PumpkinSpot } from '../Pumpkin.tsx';
 import { useCatsQuest } from '../catQuest.ts';
 import { weatherFor } from '../../shared/weather.ts';
 import { itemLines } from '../Perks.tsx';
@@ -88,7 +89,7 @@ export function Fight() {
   return (
     <>
       <div className="scene-wrap">
-        <Stage onTalk={talk} cats={cats} loc="yard" look={lookOf(p)} mood={heroMood(p, weatherFor(Date.now(), p.colony).temp)} anim={anim} animKey={animKey} />
+        <Stage onTalk={talk} cats={cats} extra={<PumpkinSpot id="yard" x={250} y={262} scale={0.8} />} loc="yard" look={lookOf(p)} mood={heroMood(p, weatherFor(Date.now(), p.colony).temp)} anim={anim} animKey={animKey} />
         <div className="scene-tag">🥊 Двор</div>
         <button className="scene-btn" disabled={busy || now < p.yardReadyAt} onClick={walkYard}>
           {now < p.yardReadyAt ? `🚶 ${timeLeft(p.yardReadyAt - now)}` : '🚶 Прогуляться'}

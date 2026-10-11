@@ -10,6 +10,7 @@ import { BonusList, Price, fmt, lookOf, useAnim, useGame, heroMood } from '../ga
 import { SegBar, useSeg } from '../Seg.tsx';
 import { chapterOf } from '../../shared/story.ts';
 import { Hint } from '../Hint.tsx';
+import { PumpkinSpot } from '../Pumpkin.tsx';
 
 
 // всё, что не на первом экране, — грузится, когда понадобится
@@ -66,6 +67,7 @@ export function Home() {
           hot={p.bunk.done ? null : bunkWho}
           workers={p.reno.until > now}
           hold={p.streams.some((s) => s.id === p.id) ? 'phone' : undefined}
+          extra={<PumpkinSpot id="cell" x={250} y={262} scale={0.8} />}
           loc="cell"
           look={lookOf(p)}
           bare={bare}

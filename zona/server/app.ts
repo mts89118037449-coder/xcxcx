@@ -493,6 +493,7 @@ export function createApp(opts: AppOptions) {
       streamToday: p.streamDay === g.dayIndex(t),
       joke: { day: g.dayIndex(t), voted: p.jokeDay === g.dayIndex(t) },
       catsFed: p.catsFed,
+      pumpkins: p.pumpkins.year === new Date(t).getUTCFullYear() ? p.pumpkins.found : [],
       streams: Object.values(liveStreams(t))
         .sort((a, b) => b.likes - a.likes)
         .slice(0, STREAM.maxLive)
@@ -796,6 +797,7 @@ export function createApp(opts: AppOptions) {
       return { ...fight, top: pillowTop(p, t), look: rival ? { equipped: rival.equipped, tattoos: rival.tattoos, str: rival.str, face: rival.face, build: rival.build, skin: rival.skin } : null };
     },
     catFeed: (p, b) => g.catFeed(p, str(b.id)),
+    pumpkinFind: (p, b, t) => g.pumpkinFind(p, str(b.id), t),
     jokeVote: (p, b, t) => {
       const r = g.jokeVote(p, t);
       const key = `joke:${r.day}`;

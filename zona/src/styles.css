@@ -3273,3 +3273,4 @@ body:has(.modal) .event-btn { z-index: 20; }
 /* P3: свадьба */
 .rice { animation: rice 1.6s linear infinite; }
 @keyframes rice { from { transform: translateY(0) rotate(0); } to { transform: translateY(260px) rotate(360deg); } }
+.pumpkin-face { animation: hot-pulse 1.4s infinite; }

@@ -2287,3 +2287,12 @@ test('конкурс красоты: заявка с проверкой, гол�
   assert.throws(() => g.beautyVote(b, e, now), /уже/);
   assert.throws(() => g.beautyVote(a, e, now), /себя/);
 });
+
+test('Хэллоуин: тыквы только в сезон, все пять — награда', () => {
+  const hw = Date.UTC(2026, 9, 28, 12);
+  const p = g.newPlayer(913, 'Тыквенник', null, hw);
+  assert.throws(() => g.pumpkinFind(p, 'zone', Date.UTC(2026, 6, 1)), /Хэллоуин/);
+  for (const id of ['cell', 'zone', 'yard', 'work']) assert.equal(g.pumpkinFind(p, id, hw).gold, 0);
+  assert.throws(() => g.pumpkinFind(p, 'zone', hw), /уже/);
+  assert.equal(g.pumpkinFind(p, 'canteen', hw).gold, 6);
+});

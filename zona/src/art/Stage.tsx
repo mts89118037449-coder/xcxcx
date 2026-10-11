@@ -1,6 +1,6 @@
 // Сцена локации: SVG-фон и кукла героя на риге, вокруг — сокамерники.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TalkKind } from '../Talk.tsx';
 import type { Look } from '../../shared/types.ts';
 import { CellScene, Place, WorkScene, YardScene, type InteriorIds } from './Scenes.tsx';
@@ -46,11 +46,13 @@ interface Props {
   hold?: 'phone';
   /** квест с котами во дворе */
   cats?: CatsQuest;
+  /** что ещё положить в сцену (тыква на Хэллоуин и т. п.) */
+  extra?: ReactNode;
 }
 
 const RIG_DRIVEN = new Set(['act-work', 'lunge-r', 'act-cheer', 'act-dress']);
 
-export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, pet, deco, anim, animKey, onClick, onTalk, hot, workers, hold, cats }: Props) {
+export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, pet, deco, anim, animKey, onClick, onTalk, hot, workers, hold, cats, extra }: Props) {
   // Короткая «рабочая» поза после действия, потом снова обычная.
   const [busyPose, setBusyPose] = useState<RigAnim | null>(null);
   const [face, setFace] = useState<'sweat' | 'smile' | null>(null);
@@ -111,9 +113,9 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, p
       )}
     </>
   );
-  if (loc === 'cell') return <CellScene furniture={furniture} interior={interior} wall={wall} pet={pet} deco={deco} onClick={onClick}>{crowd}{fig}</CellScene>;
-  if (loc === 'work') return <WorkScene>{crowd}{fig}</WorkScene>;
-  return <YardScene><YardCats quest={cats} />{crowd}{fig}</YardScene>;
+  if (loc === 'cell') return <CellScene furniture={furniture} interior={interior} wall={wall} pet={pet} deco={deco} onClick={onClick}>{crowd}{extra}{fig}</CellScene>;
+  if (loc === 'work') return <WorkScene>{crowd}{extra}{fig}</WorkScene>;
+  return <YardScene><YardCats quest={cats} />{crowd}{extra}{fig}</YardScene>;
 }
 
 /** Сокамерники на заднем плане: чуть мельче и темнее, чтобы не спорить с героем. */

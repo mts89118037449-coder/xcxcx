@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { PLACE_INTRO } from '../shared/cutscenes.ts';
 import { LoneCat } from './art/Critters.tsx';
 import { useCatsQuest } from './catQuest.ts';
+import { PumpkinSpot } from './Pumpkin.tsx';
 import { babble, play as sfx } from './sound.ts';
 import { needFail } from '../shared/events.ts';
 import { PLACES, placeById, type PlaceId } from '../shared/places.ts';
@@ -83,6 +84,7 @@ export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
               </Place>
             </g>
           )}
+          {id === 'canteen' && <PumpkinSpot id="canteen" x={60} y={262} scale={0.8} />}
           {id === 'canteen' && <LoneCat id="canteen" x={292} y={256} scale={0.6} color="#b0a090" quest={cats} />}
         </LocationScene>
         {step !== null ? (

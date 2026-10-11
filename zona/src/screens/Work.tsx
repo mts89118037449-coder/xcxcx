@@ -1,3 +1,4 @@
+import { PumpkinSpot } from '../Pumpkin.tsx';
 import { GOLD_PRICES, JOBS, STAT_NAMES, trainCost, type Stat } from '../../shared/content.ts';
 import { Stage } from '../art/Stage.tsx';
 import { useTalk } from '../Talk.tsx';
@@ -38,7 +39,7 @@ export function Work() {
   return (
     <>
       <div className="scene-wrap">
-        <Stage onTalk={talk} loc="work" look={lookOf(p)} mood={heroMood(p)} anim={anim} animKey={animKey} />
+        <Stage onTalk={talk} extra={<PumpkinSpot id="work" x={120} y={258} scale={0.8} />} loc="work" look={lookOf(p)} mood={heroMood(p)} anim={anim} animKey={animKey} />
         <div className="scene-tag">⚒️ Дела: смены, игры, поручения</div>
       </div>
       <Hint id="work" icon="⚒️">

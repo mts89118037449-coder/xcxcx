@@ -14,6 +14,7 @@ import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { LoneCat, ZoneLife } from '../art/Critters.tsx';
 import { useCatsQuest } from '../catQuest.ts';
+import { PumpkinSpot } from '../Pumpkin.tsx';
 import { RADIO } from '../../shared/jokes.ts';
 import { ImageG, PoseG, useNpc } from '../art/sprites.tsx';
 import { lookOf, timeLeft, useGame } from '../game.tsx';
@@ -133,6 +134,7 @@ export function Zone() {
           onPlace={goTo}
         >
           <ZoneLife />
+          <PumpkinSpot id="zone" x={300} y={232} scale={0.7} />
           <LoneCat id="map" x={196} y={182} scale={0.5} color="#8a8a92" quest={cats} />
           {going && (
             <g className="go-marker" transform={`translate(${DOORS[going][0]} ${DOORS[going][1]})`}>

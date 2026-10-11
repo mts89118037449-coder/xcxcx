@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Rig } from './rig/Rig.tsx';
 import { useClock } from './rig/Toon.tsx';
 import { NPC_RIGS } from './rig/npcs.ts';
+import { seasonHat } from './sprites.tsx';
 
 const INK = '#1a1410';
 
@@ -151,6 +152,7 @@ export function ZoneLife() {
         <Rat t={rat.moving ? lt : 0} />
       </g>
       <Pigeons t={lt} />
+      {seasonHat() === 'hat_pumpkin' && <GhostCat t={lt} />}
       {night && <NightLights t={lt} />}
     </g>
   );
@@ -384,4 +386,25 @@ export function YardCats({ quest }: { quest?: CatsQuest }) {
 export function LoneCat({ id, x, y, scale, color, quest }: { id: string; x: number; y: number; scale: number; color: string; quest?: CatsQuest }) {
   const t = useClock(true);
   return <CatSpot id={id} x={x} y={y} scale={scale} color={color} t={t} quest={quest} />;
+}
+
+/** Призрак кота Васьки: полупрозрачный, плывёт над зоной, иногда говорит «Мяу… котлеты…». */
+export function GhostCat({ t }: { t: number }) {
+  const s = t / 1000;
+  const x = 180 + Math.sin(s * 0.3) * 130;
+  const y = 70 + Math.sin(s * 1.1) * 12;
+  const say = s % 9 > 6.5;
+  return (
+    <g transform={`translate(${x} ${y})`} opacity={0.55}>
+      <path d="M-14,-4 q-4,14 4,18 q4,-6 8,0 q4,-6 8,0 q8,-4 4,-18 Z" fill="#e8f0ff" stroke={INK} strokeWidth={1.2} />
+      <g transform="scale(0.6) translate(0 -2)">
+        <Cat t={t} color="#e8f0ff" />
+      </g>
+      {say && (
+        <text x={18} y={-30} fontSize={8} fontWeight={900} fill="#fff" stroke={INK} strokeWidth={0.4}>
+          Мяу… котлеты…
+        </text>
+      )}
+    </g>
+  );
 }

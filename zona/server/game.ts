@@ -84,6 +84,7 @@ import { bunkOfDay } from '../shared/bunk.ts';
 import { RENO, renoCost } from '../shared/reno.ts';
 import { RAID, raidButts } from '../shared/raid.ts';
 import { ANEKDOT } from '../shared/anekdot.ts';
+import { HALLOWEEN, PUMPKINS, isHalloween } from '../shared/halloween.ts';
 import { BEAUTY, BEAUTY_ANIMS, BEAUTY_BGS, BEAUTY_FX, type BeautyEntry } from '../shared/beauty.ts';
 import { CATS, CAT_FEED } from '../shared/cats.ts';
 import { PILLOW, pillowRound, type PillowMove } from '../shared/pillow.ts';
@@ -308,6 +309,8 @@ export interface Player {
   pillowClaimed: number;
   /** за какую неделю забран приз конкурса красоты */
   beautyClaimed: number;
+  /** тыквы Хэллоуина: год и найденные */
+  pumpkins: { year: number; found: string[] };
   /** входящие малявы */
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
@@ -487,6 +490,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     catsFed: [],
     pillowClaimed: -1,
     beautyClaimed: -1,
+    pumpkins: { year: 0, found: [] },
     ink: null,
     inkOrder: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
@@ -597,6 +601,7 @@ export function migrate(p: Player): Player {
   p.catsFed ??= [];
   p.pillowClaimed ??= -1;
   p.beautyClaimed ??= -1;
+  p.pumpkins ??= { year: 0, found: [] };
   p.ink ??= null;
   p.inkOrder ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
@@ -4474,6 +4479,22 @@ export function beautyVote(p: Player, e: BeautyEntry | undefined, now: number) {
   e.voters.push(p.id);
   e.votes++;
   return { votes: e.votes };
+}
+
+/** Тыква найдена: только в Хэллоуин, каждая раз в год, за все пять — награда. */
+export function pumpkinFind(p: Player, id: string, now: number) {
+  if (!isHalloween(now)) throw new GameError('Тыквы появляются только на Хэллоуин');
+  if (!PUMPKINS.some((x) => x.id === id)) throw new GameError('Тут тыквы нет');
+  const year = new Date(now).getUTCFullYear();
+  if (p.pumpkins.year !== year) p.pumpkins = { year, found: [] };
+  if (p.pumpkins.found.includes(id)) throw new GameError('Эту тыкву ты уже нашёл');
+  p.pumpkins.found.push(id);
+  const all = p.pumpkins.found.length >= PUMPKINS.length;
+  if (all) {
+    p.gold += HALLOWEEN.gold;
+    p.butts += HALLOWEEN.butts;
+  }
+  return { found: p.pumpkins.found.length, total: PUMPKINS.length, gold: all ? HALLOWEEN.gold : 0, butts: all ? HALLOWEEN.butts : 0 };
 }
 
 export function claimFeat(p: Player, id: string) {
