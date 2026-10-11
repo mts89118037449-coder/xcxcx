@@ -1,3 +1,4 @@
+import { STOCK } from '../shared/stock.ts';
 import { DOG_SHOW, dogScore } from '../shared/pets.ts';
 import { weatherAt } from '../shared/weather.ts';
 import { renoComfort } from '../shared/reno.ts';
@@ -133,6 +134,17 @@ export function createApp(opts: AppOptions) {
   }
 
   // --- Побег вдвоём: общий забег в kv, игроки ссылаются на него
+  /** Склад завхоза: сколько клан вынес за неделю, кто больше всех, можно ли забрать награду. */
+  const stockView = (p: g.Player, t: number) => {
+    const week = g.weekIndex(t);
+    const c = p.clanId ? db.kvGet<Record<number, { total: number; members: Record<number, { name: string; boxes: number }> }>>(`stock:${week}`, {})[p.clanId] : undefined;
+    const total = c?.total ?? 0;
+    const top = Object.entries(c?.members ?? {})
+      .map(([id, m]) => ({ id: Number(id), ...m }))
+      .sort((a, b) => b.boxes - a.boxes)
+      .slice(0, 5);
+    return { total, goal: STOCK.goal, top, claimable: total >= STOCK.goal && p.stockClaimed !== week && !!c?.members[p.id] };
+  };
   /** Выставка собак: рейтинг недели и приз за прошлую. */
   const dogView = (p: g.Player, t: number) => {
     const rank = (w: number) =>
@@ -520,6 +532,9 @@ export function createApp(opts: AppOptions) {
       funny: funnyTop(t),
       joke: { day: g.dayIndex(t), voted: p.jokeDay === g.dayIndex(t) },
       catsFed: p.catsFed,
+      zcards: p.zcards,
+      cardToday: p.cardDay === g.dayIndex(t),
+      cardsDone: p.cardsDone,
       nyToday: p.nyDay === g.dayIndex(t),
       pumpkins: p.pumpkins.year === new Date(t).getUTCFullYear() ? p.pumpkins.found : [],
       streams: Object.values(liveStreams(t))
@@ -607,6 +622,7 @@ export function createApp(opts: AppOptions) {
         shizo: g.playsLeft(p, 'shizo', SHIZO.perDay, t),
         raid: g.playsLeft(p, 'raid', RAID.perDay, t),
         sling: g.playsLeft(p, 'sling', SLING.perDay, t),
+        stock: g.playsLeft(p, 'stock', STOCK.perDay, t),
         pillow: g.playsLeft(p, 'pillow', PILLOW.perDay, t),
         tableMaxBet: NARDY.minBet + p.level * NARDY.betPerLevel,
       },
@@ -839,6 +855,35 @@ export function createApp(opts: AppOptions) {
       return dogView(p, t);
     },
     dogTop: (p, _b, t) => dogView(p, t),
+    stockRaid: (p, b, t) => {
+      const r = g.stockRaid(p, num(b.boxes), t);
+      const key = `stock:${g.weekIndex(t)}`;
+      const all = db.kvGet<Record<number, { total: number; members: Record<number, { name: string; boxes: number }> }>>(key, {});
+      const c = (all[p.clanId!] ??= { total: 0, members: {} });
+      c.total += r.boxes;
+      c.members[p.id] = { name: p.name, boxes: (c.members[p.id]?.boxes ?? 0) + r.boxes };
+      db.kvSet(key, all);
+      return { ...r, view: stockView(p, t) };
+    },
+    stockView: (p, _b, t) => stockView(p, t),
+    cardDaily: (p, _b, t) => g.cardDaily(p, t, rng),
+    cardsClaim: (p) => g.cardsClaim(p),
+    cardGive: (p, b) => {
+      const to = db.getPlayer(num(b.to));
+      if (!to) throw new g.GameError('Нет такого игрока');
+      const r = g.cardGive(p, to, str(b.id));
+      db.savePlayer(to);
+      notifyPlayer(to.id, `🃏 ${p.name} подарил тебе карточку`);
+      return r;
+    },
+    stockClaim: (p, _b, t) => {
+      const v = stockView(p, t);
+      if (!v.claimable) throw new g.GameError('Склад ещё не вынесен');
+      p.stockClaimed = g.weekIndex(t);
+      p.gold += STOCK.gold;
+      p.butts += STOCK.butts;
+      return { gold: STOCK.gold, butts: STOCK.butts };
+    },
     dogClaim: (p, _b, t) => {
       const v = dogView(p, t);
       if (!v.prize) throw new g.GameError('Приза нет');

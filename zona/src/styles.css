@@ -3290,3 +3290,18 @@ body:has(.modal) .event-btn { z-index: 20; }
 .chat-reacts button.add { opacity: 0.55; }
 .chat-st { display: flex; align-items: center; gap: 6px; }
 .chat-st svg { width: 32px; height: 32px; }
+
+/* Q5: Типажи зоны */
+.zcards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+.zcard { position: relative; display: grid; justify-items: center; gap: 2px; padding: 6px 4px; border-radius: 10px; border: 3px solid #8a8a8a; background: #2a2620; text-align: center; color: var(--text); }
+.zcard svg, .zcard .npc-pic { width: 100%; height: auto; }
+.zcard b { font-size: 10.5px; line-height: 1.1; }
+.zcard em { position: absolute; right: 3px; top: 2px; font-style: normal; font-weight: 900; font-size: 11px; color: var(--gold); }
+.zcard.none { opacity: 0.45; }
+.zcard .zq { font-size: 34px; font-weight: 900; color: #6a6a6a; padding: 10px 0; }
+.zcard.r-rare { border-color: #4a90e0; }
+.zcard.r-epic { border-color: #a04ae0; }
+.zcard.r-legend { border-color: #ffc83a; box-shadow: 0 0 10px #ffc83a88; }
+.zcard.big { width: 60%; margin: 0 auto 10px; padding: 10px; animation: comic-in 0.5s cubic-bezier(0.2, 1.5, 0.4, 1); }
+.zcard.big b { font-size: 15px; }
+.zcard.big i { font-size: 12px; color: var(--muted); }

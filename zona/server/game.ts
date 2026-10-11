@@ -83,8 +83,10 @@ import { INTRO_REWARD, PLACE_INTRO } from '../shared/cutscenes.ts';
 import { bunkOfDay } from '../shared/bunk.ts';
 import { RENO, renoCost } from '../shared/reno.ts';
 import { RAID, raidButts } from '../shared/raid.ts';
+import { STOCK } from '../shared/stock.ts';
 import { SLING, slingButts } from '../shared/sling.ts';
 import { ANEKDOT } from '../shared/anekdot.ts';
+import { ZONE_CARDS, CARD_SET, RARITY_W, cardById } from '../shared/cards.ts';
 import { NY, isNewYear } from '../shared/newyear.ts';
 import { HALLOWEEN, PUMPKINS, isHalloween } from '../shared/halloween.ts';
 import { BEAUTY, BEAUTY_ANIMS, BEAUTY_BGS, BEAUTY_FX, type BeautyEntry } from '../shared/beauty.ts';
@@ -317,6 +319,12 @@ export interface Player {
   nyDay: number;
   /** за какую неделю забран приз выставки собак */
   dogClaimed: number;
+  /** за какую неделю забрана награда налёта на склад */
+  stockClaimed: number;
+  /** карточки «Типажи зоны»: сколько каждой, день бесплатной пачки, забрана ли награда */
+  zcards: Record<string, number>;
+  cardDay: number;
+  cardsDone: boolean;
   /** входящие малявы */
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
@@ -499,6 +507,10 @@ export function newPlayer(id: number, name: string, username: string | null, now
     pumpkins: { year: 0, found: [] },
     nyDay: -1,
     dogClaimed: -1,
+    stockClaimed: -1,
+    zcards: {},
+    cardDay: -1,
+    cardsDone: false,
     ink: null,
     inkOrder: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
@@ -612,6 +624,10 @@ export function migrate(p: Player): Player {
   p.pumpkins ??= { year: 0, found: [] };
   p.nyDay ??= -1;
   p.dogClaimed ??= -1;
+  p.stockClaimed ??= -1;
+  p.zcards ??= {};
+  p.cardDay ??= -1;
+  p.cardsDone ??= false;
   p.ink ??= null;
   p.inkOrder ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
@@ -3278,6 +3294,15 @@ export function sling(p: Player, hits: number, now: number) {
   return { hits: h, butts };
 }
 
+/** Налёт на склад: проверки и лимит; сколько утащил — считает клиент, проверяет античит. */
+export function stockRaid(p: Player, boxes: number, now: number) {
+  if (!p.clanId) throw new GameError('На склад ходят кланом — вступи в клан');
+  playLimit(p, 'stock', STOCK.perDay, now);
+  const b = Math.max(0, Math.min(STOCK.seconds * STOCK.maxPerSec, Math.floor(Number(boxes) || 0)));
+  track(p, 'minigame');
+  return { boxes: b };
+}
+
 /** Шмон с неба: бычки за каждую продержанную секунду. */
 export function raid(p: Player, sec: number, now: number) {
   playLimit(p, 'raid', RAID.perDay, now);
@@ -4555,6 +4580,38 @@ export function nyGift(p: Player, now: number, rng: Rng) {
   const item = 'c_bandage';
   giveItem(p, item);
   return { butts: 0, gold: 0, item };
+}
+
+/** Бесплатная пачка раз в день: одна карточка по редкости. */
+export function cardDaily(p: Player, now: number, rng: Rng) {
+  const day = dayIndex(now);
+  if (p.cardDay === day) throw new GameError('Пачка сегодня уже была');
+  p.cardDay = day;
+  const total = ZONE_CARDS.reduce((a, c) => a + RARITY_W[c.rarity], 0);
+  let r = rng() * total;
+  const card = ZONE_CARDS.find((c) => (r -= RARITY_W[c.rarity]) < 0) ?? ZONE_CARDS[0];
+  p.zcards[card.id] = (p.zcards[card.id] ?? 0) + 1;
+  return { id: card.id, count: p.zcards[card.id] };
+}
+
+/** Подарить дубль: себе оставляешь хотя бы одну. */
+export function cardGive(p: Player, to: Player, id: string) {
+  if (to.id === p.id) throw new GameError('Себе не даришь');
+  if (!cardById.has(id)) throw new GameError('Нет такой карточки');
+  if ((p.zcards[id] ?? 0) < 2) throw new GameError('Дарить можно только дубли');
+  p.zcards[id]--;
+  to.zcards ??= {};
+  to.zcards[id] = (to.zcards[id] ?? 0) + 1;
+  return { left: p.zcards[id] };
+}
+
+/** Собрал всю коллекцию — награда один раз. */
+export function cardsClaim(p: Player) {
+  if (p.cardsDone) throw new GameError('Уже забрал');
+  if (!ZONE_CARDS.every((c) => (p.zcards[c.id] ?? 0) > 0)) throw new GameError('Коллекция не собрана');
+  p.cardsDone = true;
+  p.gold += CARD_SET.gold;
+  return { gold: CARD_SET.gold };
 }
 
 export function claimFeat(p: Player, id: string) {

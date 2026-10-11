@@ -1,3 +1,4 @@
+import { StockCard } from './Stock.tsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CLAN } from '../shared/content.ts';
 import type { ClanView } from '../shared/types.ts';
@@ -23,6 +24,7 @@ export function Clans() {
     <>
       <NpcBanner who="blatnoy" name="Бригадир" text="Одному на зоне не выжить. Держись своих — и свои за тебя впишутся" />
       {p.clan ? <ClanCard id={p.clan.id} mine /> : <CreateClan />}
+      <StockCard />
       <SnitchBoard />
       <BarracksMap />
       <h3 className="section">Кланы зоны</h3>

@@ -2337,3 +2337,29 @@ test('пёс: покупается с 8 уровня и даёт защиту', 
   p.pet!.level = 5;
   assert.ok(g.stats(p, now).def >= def0);
 });
+
+test('типажи зоны: пачка раз в день, дарятся только дубли, награда за всю коллекцию', async () => {
+  const { ZONE_CARDS } = await import('../shared/cards.ts');
+  const now = 1_800_000_000_000;
+  const a = g.newPlayer(918, 'Коллекционер', null, now);
+  const b = g.newPlayer(919, 'Друг', null, now);
+  const r = g.cardDaily(a, now, () => 0);
+  assert.throws(() => g.cardDaily(a, now + 1000, () => 0), /уже/);
+  assert.throws(() => g.cardGive(a, b, r.id), /дубли/);
+  a.zcards[r.id] = 2;
+  g.cardGive(a, b, r.id);
+  assert.equal(b.zcards[r.id], 1);
+  assert.throws(() => g.cardsClaim(a), /не собрана/);
+  for (const c of ZONE_CARDS) a.zcards[c.id] = 1;
+  assert.equal(g.cardsClaim(a).gold, 20);
+});
+
+test('склад завхоза: только в клане, лимит заходов', () => {
+  const now = 1_800_000_000_000;
+  const p = g.newPlayer(920, 'Несун', null, now);
+  assert.throws(() => g.stockRaid(p, 10, now), /клан/);
+  p.clanId = 1;
+  assert.equal(g.stockRaid(p, 999, now).boxes, 75);
+  g.stockRaid(p, 5, now);
+  assert.throws(() => g.stockRaid(p, 5, now), /завтра/);
+});

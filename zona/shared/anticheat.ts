@@ -26,6 +26,7 @@ export const RUNS: Record<string, RunRule> = {
   footShoot: { minMs: 2500 },
   raid: { minMs: 1500 },
   sling: { minMs: 2500 },
+  stock: { minMs: 14000 },
 };
 
 export const ANTICHEAT = {
@@ -77,5 +78,6 @@ export function impossible(game: string, body: Record<string, unknown>, elapsedM
   if (game === 'arm' && Number(body.taps) > (elapsedMs / 1000) * 16) return 'нажатий быстрее, чем можно';
   if (game === 'pullups' && Number(body.reps) > (elapsedMs / 1000) * 6) return 'подтягиваний быстрее, чем можно';
   if (game === 'raid' && Number(body.sec) * 1000 > elapsedMs + 1500) return 'продержался дольше, чем играл';
+  if (game === 'stock' && Number(body.boxes) > (elapsedMs / 1000) * 5 + 2) return 'коробок больше, чем можно утащить';
   return null;
 }

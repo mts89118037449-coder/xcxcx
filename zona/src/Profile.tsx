@@ -14,6 +14,7 @@ import { InkCard } from './Ink.tsx';
 import { ShareButton } from './Share.tsx';
 import { FamilyCard } from './Family.tsx';
 import { FeatsCard } from './Feats.tsx';
+import { ZoneCardsCard } from './ZoneCards.tsx';
 import { TunnelCard } from './Tunnel.tsx';
 
 /** Профиль: срок, характеристики, лечение, статус, настройки и жалоба. */
@@ -55,6 +56,7 @@ export function ProfilePanel({ onMast }: { onMast(): void }) {
             </button>
             <MailCard />
             <FeatsCard />
+            <ZoneCardsCard />
             <FamilyCard />
             <PenpalCard />
             <InkCard />

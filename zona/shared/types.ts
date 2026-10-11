@@ -93,6 +93,9 @@ export interface PlayerView {
   funny: { id: number; name: string; pts: number }[];
   joke: { day: number; voted: boolean };
   catsFed: string[];
+  zcards: Record<string, number>;
+  cardToday: boolean;
+  cardsDone: boolean;
   nyToday: boolean;
   pumpkins: string[];
   streams: { id: number; name: string; face: number | null; skin: number; topic: string; until: number; likes: number; liked: boolean; comments: { name: string; msg: number }[]; gifts: { butts: number; heart: number } }[];
@@ -117,7 +120,7 @@ export interface PlayerView {
   notifyOff: string[];
   games: {
     cards: number; race: number; brew: number; brewReadyAt: number; cardsMaxBet: number; dice: number; diceMaxBet: number; arm: number; darts: number;
-    nardy: number; domino: number; chess: number; speed: number; conveyor: number; beads: number; beadsReadyAt: number; fish: number; shizo: number; raid: number; pillow: number; sling: number; tableMaxBet: number;
+    nardy: number; domino: number; chess: number; speed: number; conveyor: number; beads: number; beadsReadyAt: number; fish: number; shizo: number; raid: number; pillow: number; sling: number; stock: number; tableMaxBet: number;
   };
   tables: {
     nardy?: { bet: number; me: number; him: number; dice: [number, number]; hisLast: [number, number] | null };
