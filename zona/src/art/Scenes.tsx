@@ -181,13 +181,9 @@ function sky(hour: number) {
 }
 
 /** Грязь поверх прямоугольника: пятна и мелкая фактура. */
-function Grime({ x, y, w, h, stains = 0.6, grime = 0.35 }: { x: number; y: number; w: number; h: number; stains?: number; grime?: number }) {
-  return (
-    <>
-      <rect x={x} y={y} width={w} height={h} filter="url(#sc-stains)" opacity={stains} />
-      <rect x={x} y={y} width={w} height={h} filter="url(#sc-grime)" opacity={grime} />
-    </>
-  );
+function Grime(_: { x: number; y: number; w: number; h: number; stains?: number; grime?: number }) {
+  // мультяшный стиль: никаких пятен и потёков — поверхности чистые и плоские
+  return null;
 }
 
 // --- Хата -------------------------------------------------------------------
@@ -253,7 +249,7 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
 
       {/* Окно: ниша, небо, решётка, свет */}
       <g>
-        <rect x={252} y={44} width={84} height={76} fill="#3b362c" />
+        <rect x={252} y={44} width={84} height={76} fill="#3b362c" stroke="#1a1410" strokeWidth={1.8} />
         <path d="M252,44 L262,52 L262,112 L252,120 Z M336,44 L326,52 L326,112 L336,120 Z" fill="#26221c" />
         <path d="M252,44 L336,44 L326,52 L262,52 Z" fill="#1d1a15" />
         <linearGradient id="cell-sky" x1="0" y1="0" x2="0" y2="1">
@@ -274,7 +270,7 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
         {[72, 92].map((y) => (
           <rect key={y} x={262} y={y - 1.6} width={64} height={3.2} fill="url(#sc-steel)" />
         ))}
-        <rect x={246} y={118} width={96} height={6} fill="#4d463a" />
+        <rect x={246} y={118} width={96} height={6} fill="#4d463a" stroke="#1a1410" strokeWidth={1.8} />
         <rect x={246} y={123} width={96} height={2} fill="#000" opacity={0.35} />
         {!s.night && <path d="M262,112 L326,112 L250,236 L120,236 Z" fill="url(#sc-shaft)" />}
       </g>
@@ -308,8 +304,8 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
       {f.wall === 'f_calendar' && (
         <g transform="translate(62 50)">
           <rect x={1.5} y={1.5} width={34} height={46} fill="#000" opacity={0.3} />
-          <rect width={34} height={46} fill="#e9e3d2" />
-          <rect x={3} y={3} width={28} height={24} fill="#c9a88e" />
+          <rect width={34} height={46} fill="#e9e3d2" stroke="#1a1410" strokeWidth={1.8} />
+          <rect x={3} y={3} width={28} height={24} fill="#c9a88e" stroke="#1a1410" strokeWidth={1.8} />
           <path d="M11,27 C11,19 14,13 17,12 C20,13 23,19 23,27 Z" fill="#a8453e" />
           <circle cx={17} cy={10} r={3.2} fill="#d9a37f" />
           <path d="M13.5,8 C14,5 20,5 20.5,9 L21,13 C19,11 15,11 13,13 Z" fill="#6a3a1c" />
@@ -320,9 +316,9 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
       {f.wall === 'f_carpet' && (
         <g transform="translate(22 30)">
           <rect x={2} y={3} width={120} height={82} fill="#000" opacity={0.3} />
-          <rect width={120} height={82} fill="#6e1a1a" />
-          <rect x={5} y={5} width={110} height={72} fill="none" stroke="#b58a3a" strokeWidth={3} />
-          <rect x={10} y={10} width={100} height={62} fill="#8a2323" />
+          <rect width={120} height={82} fill="#6e1a1a" stroke="#1a1410" strokeWidth={1.8} />
+          <rect x={5} y={5} width={110} height={72} fill="none" stroke="#1a1410" strokeWidth={1.8} />
+          <rect x={10} y={10} width={100} height={62} fill="#8a2323" stroke="#1a1410" strokeWidth={1.8} />
           {[30, 60, 90].map((cx) => (
             <g key={cx}>
               <path d={`M${cx},16 L${cx + 14},41 L${cx},66 L${cx - 14},41 Z`} fill="#1f3558" stroke="#c49a48" strokeWidth={1.2} />
@@ -330,7 +326,7 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
             </g>
           ))}
           <rect width={120} height={82} filter="url(#sc-grime)" opacity={0.6} />
-          <rect width={120} height={82} fill="none" stroke="#3a0e0e" strokeWidth={1.5} />
+          <rect width={120} height={82} fill="none" stroke="#1a1410" strokeWidth={1.8} />
         </g>
       )}
       {f.wall === 'f_icons' && (
@@ -338,8 +334,8 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
           {[0, 28, 56].map((x, i) => (
             <g key={x} transform={`translate(${x} ${i === 1 ? -6 : 0})`}>
               <rect x={1.5} y={2} width={24} height={32} fill="#000" opacity={0.3} />
-              <rect width={24} height={32} fill="#a67a22" stroke="#5a3e0c" strokeWidth={1} />
-              <rect x={3} y={3} width={18} height={26} fill="#4a2a14" />
+              <rect width={24} height={32} fill="#a67a22" stroke="#1a1410" strokeWidth={1.8} />
+              <rect x={3} y={3} width={18} height={26} fill="#4a2a14" stroke="#1a1410" strokeWidth={1.8} />
               <circle cx={12} cy={12} r={5} fill="#d6ad4a" opacity={0.85} />
               <ellipse cx={12} cy={13} rx={2.6} ry={3.2} fill="#b98b62" />
               <path d="M7,29 C7,20 17,20 17,29 Z" fill="#6b1f1f" />
@@ -435,7 +431,7 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
         <g transform="translate(312 166)">
           <rect x={4} y={36} width={40} height={34} fill="url(#sc-wood)" />
           <rect x={0} y={0} width={48} height={36} fill="#2d6a82" opacity={0.75} />
-          <rect x={0} y={28} width={48} height={8} fill="#8a7a55" />
+          <rect x={0} y={28} width={48} height={8} fill="#8a7a55" stroke="#1a1410" strokeWidth={1.8} />
           <path d="M8,30 C6,20 10,14 8,8 M40,30 C42,22 38,16 41,10" stroke="#2d5a2a" strokeWidth={2} fill="none" />
           <rect x={0} y={0} width={48} height={36} fill="url(#sc-glass)" stroke="#9fc4cf" strokeWidth={1} />
           <rect x={0} y={-3} width={48} height={4} fill="#1a1a1a" />
@@ -446,8 +442,8 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
         <g transform="translate(262 186)">
           <rect x={-2} y={46} width={48} height={8} fill="#000" opacity={0.45} filter="url(#sc-blur-s)" />
           <rect width={44} height={50} fill="url(#sc-wood)" stroke="#2a1a0e" strokeWidth={1} />
-          <rect x={4} y={6} width={36} height={14} fill="#5b3a24" stroke="#2a1a0e" strokeWidth={0.8} />
-          <rect x={4} y={24} width={36} height={22} fill="#5b3a24" stroke="#2a1a0e" strokeWidth={0.8} />
+          <rect x={4} y={6} width={36} height={14} fill="#5b3a24" stroke="#1a1410" strokeWidth={1.8} />
+          <rect x={4} y={24} width={36} height={22} fill="#5b3a24" stroke="#1a1410" strokeWidth={1.8} />
           <circle cx={22} cy={13} r={1.4} fill="#c9a86a" />
           <rect width={44} height={50} filter="url(#sc-grime)" opacity={0.4} />
         </g>
@@ -483,7 +479,7 @@ function CellBackdrop({ furniture, interior = DEFAULT_INTERIOR }: { furniture: s
         <g transform={`translate(${tech.x} ${tech.y - 4})`}>
           <path d="M12,0 L4,-14 M26,0 L34,-14" stroke="#2a2a2a" strokeWidth={1.2} />
           <rect width={42} height={32} rx={3} fill="url(#sc-wood)" stroke="#1a100a" strokeWidth={1} />
-          <rect x={4} y={4} width={26} height={24} rx={4} fill="#1a2226" />
+          <rect x={4} y={4} width={26} height={24} rx={4} fill="#1a2226" stroke="#1a1410" strokeWidth={1.8} />
           <circle cx={36} cy={10} r={2.2} fill="#bdb49a" />
           <circle cx={36} cy={18} r={2.2} fill="#bdb49a" />
         </g>
@@ -561,8 +557,8 @@ function TrophyShelf({ wall }: { wall: string[] }) {
         return (
           <g key={id} transform={`translate(${i * 30} 0)`}>
             <path d="M2,30 L13,4 L24,30" fill="none" stroke="#2a1a0a" strokeWidth={0.4} opacity={0.5} />
-            <rect x={1} y={6} width={24} height={24} rx={3} fill="#8a5a2c" stroke="#3a2210" strokeWidth={1} />
-            <rect x={3.5} y={8.5} width={19} height={19} rx={2} fill="#e8d6a8" stroke="#b8952e" strokeWidth={0.8} />
+            <rect x={1} y={6} width={24} height={24} rx={3} fill="#8a5a2c" stroke="#1a1410" strokeWidth={1.8} />
+            <rect x={3.5} y={8.5} width={19} height={19} rx={2} fill="#e8d6a8" stroke="#1a1410" strokeWidth={1.8} />
             <text x={13} y={22} fontSize={12} textAnchor="middle">
               {b?.emoji ?? '🏆'}
             </text>

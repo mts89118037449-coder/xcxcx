@@ -40,10 +40,10 @@ export function SilkCarpet() {
   return (
     <g transform="translate(14 24)">
       <rect x={3} y={4} width={132} height={92} fill="#000" opacity={0.32} />
-      <rect width={132} height={92} fill="#1d2a52" />
-      <rect x={5} y={5} width={122} height={82} fill="#8e1f24" />
-      <rect x={5} y={5} width={122} height={82} fill="none" stroke="#d6ae57" strokeWidth={1.5} />
-      <rect x={11} y={11} width={110} height={70} fill="#a8282c" stroke="#243664" strokeWidth={3} />
+      <rect width={132} height={92} fill="#1d2a52" stroke="#1a1410" strokeWidth={1.8} />
+      <rect x={5} y={5} width={122} height={82} fill="#8e1f24" stroke="#1a1410" strokeWidth={1.8} />
+      <rect x={5} y={5} width={122} height={82} fill="none" stroke="#1a1410" strokeWidth={1.8} />
+      <rect x={11} y={11} width={110} height={70} fill="#a8282c" stroke="#1a1410" strokeWidth={1.8} />
       {/* бордюр — ромбики */}
       {Array.from({ length: 13 }, (_, i) => (
         <g key={i}>
@@ -83,7 +83,7 @@ export function Painting() {
         <stop offset="1" stopColor="#f0cc68" />
       </linearGradient>
       <rect width={104} height={80} rx={3} fill="url(#frame-gold)" />
-      <rect x={4} y={4} width={96} height={72} fill="none" stroke="#6b4a10" strokeWidth={1} />
+      <rect x={4} y={4} width={96} height={72} fill="none" stroke="#1a1410" strokeWidth={1.8} />
       {[
         [0, 0],
         [104, 0],
@@ -109,7 +109,7 @@ export function Painting() {
         </g>
       ))}
       <rect x={9} y={9} width={86} height={62} filter="url(#sc-grime)" opacity={0.25} />
-      <rect x={40} y={82} width={24} height={6} fill="#c79a3e" />
+      <rect x={40} y={82} width={24} height={6} fill="#c79a3e" stroke="#1a1410" strokeWidth={1.8} />
     </g>
   );
 }
@@ -134,7 +134,7 @@ export function Canopy() {
     <g>
       <rect x={8} y={58} width={4} height={100} fill="#6b4a1e" />
       <rect x={161} y={58} width={4} height={100} fill="#6b4a1e" />
-      <rect x={4} y={54} width={165} height={6} rx={2} fill="#c49a48" />
+      <rect x={4} y={54} width={165} height={6} rx={2} fill="#c49a48" stroke="#1a1410" strokeWidth={1.8} />
       <path d="M6,60 C30,82 60,82 86,64 C110,82 140,82 167,60 L167,64 C140,88 110,88 86,70 C60,88 30,88 6,64 Z" fill="#6e1522" />
       <path d="M6,60 L6,150 C12,120 16,96 22,74 Z" fill="#6e1522" opacity={0.9} />
       <path d="M167,60 L167,150 C160,120 156,96 150,74 Z" fill="#6e1522" opacity={0.9} />
@@ -266,7 +266,7 @@ export function WallTv({ kind }: { kind: string }) {
       {big && <circle cx={x + w - 5} cy={y + h - 2} r={0.9} fill="#e33" />}
       {kind === 'f_console' && (
         <g>
-          <rect x={206} y={226} width={30} height={9} rx={2} fill="#15171a" stroke="#3a3f47" strokeWidth={0.8} />
+          <rect x={206} y={226} width={30} height={9} rx={2} fill="#15171a" stroke="#1a1410" strokeWidth={1.8} />
           <circle cx={230} cy={230.5} r={1.1} fill="#4ad06a" className="twinkle" />
           <path d={`M221,226 C226,210 236,196 238,${y + h}`} stroke="#15171a" strokeWidth={0.8} fill="none" />
           <g transform="translate(118 162) rotate(-12)">
@@ -394,7 +394,7 @@ export function MiniBar() {
     <g transform="translate(314 150)">
       <rect x={-3} y={80} width={46} height={10} fill="#000" opacity={0.45} filter="url(#sc-blur-s)" />
       <rect width={42} height={86} rx={2} fill="url(#sc-wood)" stroke="#2a1a0e" strokeWidth={1} />
-      <rect x={4} y={6} width={34} height={44} fill="#1a1410" />
+      <rect x={4} y={6} width={34} height={44} fill="#1a1410" stroke="#1a1410" strokeWidth={1.8} />
       {[0, 1].map((row) =>
         [0, 1, 2, 3].map((k) => {
           const x = 7 + k * 8;
@@ -410,7 +410,7 @@ export function MiniBar() {
         }),
       )}
       <rect x={4} y={6} width={34} height={44} fill="url(#sc-glass)" stroke="#8a6a3a" strokeWidth={1} />
-      <rect x={4} y={54} width={34} height={28} fill="#5b3a24" stroke="#2a1a0e" strokeWidth={0.8} />
+      <rect x={4} y={54} width={34} height={28} fill="#5b3a24" stroke="#1a1410" strokeWidth={1.8} />
       <circle cx={21} cy={68} r={1.6} fill="#c9a86a" />
       {/* бокалы наверху */}
       <path d="M8,-10 L14,-10 L11,-4 Z M11,-4 V0 M8,0 H14" stroke="#cfe6f0" strokeWidth={0.8} fill="#cfe6f0" fillOpacity={0.3} />
@@ -441,7 +441,7 @@ export function Sport({ kind }: { kind: string }) {
     return (
       <g transform="translate(14 222)">
         <ellipse cx={50} cy={46} rx={56} ry={5} fill="#000" opacity={0.4} />
-        <rect x={8} y={22} width={84} height={8} rx={3} fill="#3a2a22" stroke="#15100c" strokeWidth={0.8} />
+        <rect x={8} y={22} width={84} height={8} rx={3} fill="#3a2a22" stroke="#1a1410" strokeWidth={1.8} />
         <path d="M16,30 L14,46 M84,30 L86,46" stroke="#2b2b2b" strokeWidth={3} />
         <path d="M22,22 L22,4 M78,22 L78,4" stroke="#444" strokeWidth={2.4} />
         <rect x={0} y={1} width={100} height={3} fill="url(#sc-steel)" />
@@ -456,7 +456,7 @@ export function Sport({ kind }: { kind: string }) {
         <path d="M22,0 L22,160 M22,0 L0,0 M14,160 L30,160" stroke="#3a3a3a" strokeWidth={3} />
         <path d="M0,0 L0,14" stroke="#888" strokeWidth={1} strokeDasharray="1.5 1" />
         <g className="bag-swing">
-          <rect x={-10} y={14} width={20} height={62} rx={8} fill="#7a2020" stroke="#3a0e0e" strokeWidth={1} />
+          <rect x={-10} y={14} width={20} height={62} rx={8} fill="#7a2020" stroke="#1a1410" strokeWidth={1.8} />
           <path d="M-10,26 H10 M-10,64 H10" stroke="#3a0e0e" strokeWidth={1.4} />
           <path d="M-6,20 C-8,40 -8,56 -6,72" stroke="#b84a3a" strokeWidth={2} opacity={0.6} fill="none" />
         </g>
@@ -476,7 +476,7 @@ export function Sport({ kind }: { kind: string }) {
       ))}
       <path d="M95,6 V96" stroke="#aaa" strokeWidth={1} />
       <path d="M40,6 C40,30 60,40 70,34" stroke="#888" strokeWidth={0.9} fill="none" />
-      <rect x={30} y={96} width={40} height={10} rx={4} fill="#1d1d1d" />
+      <rect x={30} y={96} width={40} height={10} rx={4} fill="#1d1d1d" stroke="#1a1410" strokeWidth={1.8} />
       <rect x={34} y={48} width={8} height={48} rx={3} fill="#1d1d1d" />
       <path d="M66,34 L80,34" stroke="#1d1d1d" strokeWidth={4} strokeLinecap="round" />
       <path d="M50,106 L50,148" stroke="#2b2f33" strokeWidth={3} />
@@ -492,7 +492,7 @@ export function Pet({ kind }: { kind: string }) {
   if (kind === 'f_roach') {
     return (
       <g transform="translate(292 262)">
-        <rect x={0} y={0} width={16} height={9} fill="#d9c9a0" stroke="#6b5a3a" strokeWidth={0.6} />
+        <rect x={0} y={0} width={16} height={9} fill="#d9c9a0" stroke="#1a1410" strokeWidth={1.8} />
         <rect x={2} y={2} width={12} height={5} fill="#b84a2a" />
         <text x={8} y={6} fontSize={3} textAnchor="middle" fill="#fff">
           СПИЧКИ
@@ -558,16 +558,16 @@ export function Music({ kind }: { kind: string }) {
   if (kind === 'f_bayan')
     return (
       <g transform="translate(70 124)">
-        <rect x={0} y={4} width={12} height={24} rx={2} fill="#2a2a2e" stroke="#0e0e10" strokeWidth={0.8} />
+        <rect x={0} y={4} width={12} height={24} rx={2} fill="#2a2a2e" stroke="#1a1410" strokeWidth={1.8} />
         {[8, 13, 18, 23].map((y) => (
           <circle key={y} cx={6} cy={y} r={1.4} fill="#e8e4d8" />
         ))}
-        <rect x={12} y={6} width={26} height={20} fill="#8a1c22" />
+        <rect x={12} y={6} width={26} height={20} fill="#8a1c22" stroke="#1a1410" strokeWidth={1.8} />
         {[15, 19, 23, 27, 31, 35].map((x) => (
           <path key={x} d={`M${x},6 V26`} stroke="#3a0a0e" strokeWidth={1.2} />
         ))}
         <path d="M12,6 H38 M12,26 H38" stroke="#e8c35a" strokeWidth={1} />
-        <rect x={38} y={2} width={16} height={28} rx={2} fill="#1e1e22" stroke="#0e0e10" strokeWidth={0.8} />
+        <rect x={38} y={2} width={16} height={28} rx={2} fill="#1e1e22" stroke="#1a1410" strokeWidth={1.8} />
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <rect key={i} x={41} y={5 + i * 4} width={10} height={2.6} rx={0.6} fill={i % 2 ? '#1a1a1a' : '#f2eee4'} stroke="#555" strokeWidth={0.3} />
         ))}
@@ -579,8 +579,8 @@ export function Music({ kind }: { kind: string }) {
       <g transform="translate(76 186)">
         <rect x={-2} y={26} width={54} height={5} fill="#000" opacity={0.4} />
         <path d="M12,0 C12,-6 38,-6 38,0" stroke="#2a2a2e" strokeWidth={2} fill="none" />
-        <rect width={50} height={28} rx={3} fill="#b8bcc0" stroke="#3a3e44" strokeWidth={1} />
-        <rect x={3} y={3} width={24} height={14} rx={1.6} fill="#1e2226" />
+        <rect width={50} height={28} rx={3} fill="#b8bcc0" stroke="#1a1410" strokeWidth={1.8} />
+        <rect x={3} y={3} width={24} height={14} rx={1.6} fill="#1e2226" stroke="#1a1410" strokeWidth={1.8} />
         <g className="reel" style={{ transformOrigin: '10px 10px' }}>
           <circle cx={10} cy={10} r={4.4} fill="#e8e4d8" />
           <path d="M10,6 V14 M6,10 H14" stroke="#555" strokeWidth={1} />
@@ -605,18 +605,18 @@ export function Music({ kind }: { kind: string }) {
       <rect x={-2} y={30} width={108} height={5} fill="#000" opacity={0.4} />
       {[0, 80].map((x) => (
         <g key={x} transform={`translate(${x} 0)`}>
-          <rect width={24} height={32} rx={2} fill="#1a1a1e" stroke="#3a3a40" strokeWidth={0.8} />
+          <rect width={24} height={32} rx={2} fill="#1a1a1e" stroke="#1a1410" strokeWidth={1.8} />
           <circle cx={12} cy={10} r={6} fill="#2a2a30" stroke="#55555c" strokeWidth={0.8} />
           <circle cx={12} cy={23} r={4.4} fill="#2a2a30" stroke="#55555c" strokeWidth={0.8} />
           <circle cx={12} cy={10} r={2} fill="#101014" />
         </g>
       ))}
-      <rect x={28} y={4} width={48} height={28} rx={2} fill="#2a2a30" stroke="#55555c" strokeWidth={0.8} />
-      <rect x={32} y={8} width={40} height={10} rx={1} fill="#0a1a2a" />
+      <rect x={28} y={4} width={48} height={28} rx={2} fill="#2a2a30" stroke="#1a1410" strokeWidth={1.8} />
+      <rect x={32} y={8} width={40} height={10} rx={1} fill="#0a1a2a" stroke="#1a1410" strokeWidth={1.8} />
       {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
         <rect key={i} className={`eq eq-${i % 4}`} x={34 + i * 4.6} y={9} width={3} height={8} fill={i % 3 ? '#4ac2ff' : '#7affc2'} style={{ transformOrigin: `0 17px` }} />
       ))}
-      <rect x={34} y={21} width={36} height={6} rx={1} fill="#1a1a1e" />
+      <rect x={34} y={21} width={36} height={6} rx={1} fill="#1a1a1e" stroke="#1a1410" strokeWidth={1.8} />
       <circle cx={66} cy={24} r={1.2} fill="#ff5a4a" />
     </g>
   );
@@ -660,7 +660,7 @@ export function Deco({ kind }: { kind: string }) {
     return (
       <g transform="translate(152 1) scale(0.82)">
         <path d="M-2,12 L14,0 L30,12 Z" fill="#4a2a14" stroke="#1a0e06" strokeWidth={0.8} />
-        <rect x={1} y={12} width={26} height={24} fill="#7a4a24" stroke="#1a0e06" strokeWidth={0.8} />
+        <rect x={1} y={12} width={26} height={24} fill="#7a4a24" stroke="#1a1410" strokeWidth={1.8} />
         <rect x={11} y={13} width={6} height={5} fill="#1a0e06" />
         <circle cx={14} cy={27} r={7} fill="#efe6cc" stroke="#1a0e06" strokeWidth={0.6} />
         <path d="M14,27 V22.6 M14,27 L17,28.4" stroke="#1a0e06" strokeWidth={0.8} />
@@ -717,7 +717,7 @@ export function Shelf({ kind }: { kind: string }) {
       {kind === 'f_shelf_board' ? (
         <>
           <path d="M6,6 L10,14 M62,6 L58,14" stroke="#555" strokeWidth={1.4} />
-          <rect x={8} y={-10} width={14} height={10} fill="#d8cfb8" transform="rotate(-8 15 -5)" />
+          <rect x={8} y={-10} width={14} height={10} fill="#d8cfb8" transform="rotate(-8 15 -5)" stroke="#1a1410" strokeWidth={1.8} />
           <rect x={30} y={-14} width={8} height={14} fill="#c8c4b8" stroke="#555" strokeWidth={0.5} />
           <ellipse cx={52} cy={-3} rx={7} ry={3} fill="#9aa0a4" />
         </>
@@ -728,7 +728,7 @@ export function Shelf({ kind }: { kind: string }) {
             const h = 14 + ((k * 5) % 7);
             return <rect key={k} x={4 + k * 5.4} y={-h} width={4.8} height={h} fill={books[k % books.length]} stroke="#1a120a" strokeWidth={0.4} />;
           })}
-          {kind === 'f_shelf_books' && <rect x={44} y={-9} width={20} height={9} fill="#5a2a22" transform="rotate(-4 54 -4)" />}
+          {kind === 'f_shelf_books' && <rect x={44} y={-9} width={20} height={9} fill="#5a2a22" transform="rotate(-4 54 -4)" stroke="#1a1410" strokeWidth={1.8} />}
         </>
       )}
       {(kind === 'f_shelf_trophy' || carved) && (
@@ -740,14 +740,14 @@ export function Shelf({ kind }: { kind: string }) {
             <rect x={2} y={16} width={8} height={4} fill="#4a2a14" />
           </g>
           <g transform="translate(52 -24)">
-            <rect width={16} height={20} fill="#efe8d0" stroke="#b8902e" strokeWidth={1.2} />
+            <rect width={16} height={20} fill="#efe8d0" stroke="#1a1410" strokeWidth={1.8} />
             <path d="M3,6 H13 M3,10 H13 M3,14 H10" stroke="#8a2a22" strokeWidth={0.6} />
           </g>
         </g>
       )}
       {carved && (
         <g transform="translate(46 -12)">
-          <rect width={20} height={12} fill="#7a4a24" stroke="#2a1a0e" strokeWidth={0.6} />
+          <rect width={20} height={12} fill="#7a4a24" stroke="#1a1410" strokeWidth={1.8} />
           <path d="M10,0 V12" stroke="#2a1a0e" strokeWidth={0.6} />
           <circle cx={5} cy={6} r={2} fill="#efe8d0" />
           <circle cx={15} cy={6} r={2} fill="#1a1a1a" />
@@ -773,7 +773,7 @@ export function Stove({ kind, onTable }: { kind: string; onTable: boolean }) {
       )}
       {kind === 'f_hotplate' && (
         <g>
-          <rect x={0} y={18} width={34} height={12} rx={2} fill="#e8e4da" stroke="#555" strokeWidth={0.6} />
+          <rect x={0} y={18} width={34} height={12} rx={2} fill="#e8e4da" stroke="#1a1410" strokeWidth={1.8} />
           <ellipse cx={17} cy={18} rx={12} ry={3} fill="#3a3a3a" />
           <path d="M8,18 C6,6 28,6 26,18 Z" fill="#c9302c" stroke="#5a1010" strokeWidth={0.6} />
           <path d="M26,12 L33,6" stroke="#c9302c" strokeWidth={2.4} />
@@ -783,9 +783,9 @@ export function Stove({ kind, onTable }: { kind: string; onTable: boolean }) {
       )}
       {kind === 'f_microwave' && (
         <g>
-          <rect x={-2} y={22} width={42} height={8} fill="#5a3d22" />
-          <rect x={0} y={0} width={40} height={22} rx={2} fill="#e8e8e2" stroke="#555" strokeWidth={0.7} />
-          <rect x={3} y={3} width={26} height={16} rx={1} fill="#2a2e30" />
+          <rect x={-2} y={22} width={42} height={8} fill="#5a3d22" stroke="#1a1410" strokeWidth={1.8} />
+          <rect x={0} y={0} width={40} height={22} rx={2} fill="#e8e8e2" stroke="#1a1410" strokeWidth={1.8} />
+          <rect x={3} y={3} width={26} height={16} rx={1} fill="#2a2e30" stroke="#1a1410" strokeWidth={1.8} />
           <rect x={4} y={4} width={24} height={14} fill="#f0d070" opacity={0.25} className="lamp-flicker" />
           <rect x={31} y={4} width={6} height={4} fill="#3a8a3a" />
           {[10, 14].map((y) => <circle key={y} cx={34} cy={y} r={1.2} fill="#555" />)}
@@ -793,9 +793,9 @@ export function Stove({ kind, onTable }: { kind: string; onTable: boolean }) {
       )}
       {kind === 'f_coffee' && (
         <g>
-          <rect x={-2} y={22} width={42} height={8} fill="#3a2416" />
-          <rect x={6} y={-8} width={26} height={30} rx={3} fill="#2a2a2e" stroke="#111" strokeWidth={0.7} />
-          <rect x={9} y={-5} width={20} height={6} rx={1} fill="#c9a040" />
+          <rect x={-2} y={22} width={42} height={8} fill="#3a2416" stroke="#1a1410" strokeWidth={1.8} />
+          <rect x={6} y={-8} width={26} height={30} rx={3} fill="#2a2a2e" stroke="#1a1410" strokeWidth={1.8} />
+          <rect x={9} y={-5} width={20} height={6} rx={1} fill="#c9a040" stroke="#1a1410" strokeWidth={1.8} />
           <rect x={14} y={4} width={10} height={4} fill="#555" />
           <rect x={15} y={12} width={8} height={9} rx={1} fill="#f1efe6" />
           <path className="steam" d="M19,10 Q16,4 20,-2" stroke="#fff" strokeWidth={1.2} fill="none" opacity={0.5} />
@@ -828,15 +828,15 @@ export function Stash({ kind }: { kind: string }) {
     return (
       <g transform="translate(120 162)">
         <path d="M0,0 C4,-3 10,-3 14,0 L14,8 L0,8 Z" fill="#6a5a3a" />
-        <rect x={2} y={-5} width={10} height={6} fill="#3a7a3a" stroke="#1a3a1a" strokeWidth={0.5} transform="rotate(-10 7 -2)" />
+        <rect x={2} y={-5} width={10} height={6} fill="#3a7a3a" transform="rotate(-10 7 -2)" stroke="#1a1410" strokeWidth={1.8} />
         <path d="M-2,4 L16,4" stroke="#d8d2c2" strokeWidth={0.8} strokeDasharray="1.5 1.5" />
       </g>
     );
   return (
     <g transform="translate(112 196)">
       <rect x={-2} y={36} width={46} height={6} fill="#000" opacity={0.45} filter="url(#sc-blur-s)" />
-      <rect width={40} height={36} rx={2} fill="#3a4448" stroke="#111" strokeWidth={1} />
-      <rect x={4} y={4} width={32} height={28} rx={1} fill="#4a565a" stroke="#222" strokeWidth={0.6} />
+      <rect width={40} height={36} rx={2} fill="#3a4448" stroke="#1a1410" strokeWidth={1.8} />
+      <rect x={4} y={4} width={32} height={28} rx={1} fill="#4a565a" stroke="#1a1410" strokeWidth={1.8} />
       <circle cx={20} cy={18} r={6} fill="#8a9296" stroke="#222" strokeWidth={0.8} />
       <path d="M20,12 V14 M20,22 V24 M14,18 H16 M24,18 H26" stroke="#222" strokeWidth={0.8} />
       <rect x={30} y={14} width={3} height={9} rx={1} fill="#c9a040" />
@@ -851,8 +851,8 @@ export function Photos({ kind, tv }: { kind: string; tv: boolean }) {
   const photo = (x: number, y: number, r: number, tint: string, key: number) => (
     <g key={key} transform={`translate(${x} ${y}) rotate(${r})`}>
       <rect x={0.8} y={1} width={16} height={20} fill="#000" opacity={0.3} />
-      <rect width={16} height={20} fill="#f1ebd8" />
-      <rect x={2} y={2} width={12} height={13} fill={tint} />
+      <rect width={16} height={20} fill="#f1ebd8" stroke="#1a1410" strokeWidth={1.8} />
+      <rect x={2} y={2} width={12} height={13} fill={tint} stroke="#1a1410" strokeWidth={1.8} />
       <circle cx={8} cy={7} r={2.6} fill="#8a6a50" />
       <path d="M4,15 C4,10 12,10 12,15 Z" fill="#4a4a50" />
       <path d="M7,-1 L9,-1 L9,2 L7,2 Z" fill="#c9c2a8" opacity={0.8} />
@@ -862,8 +862,8 @@ export function Photos({ kind, tv }: { kind: string; tv: boolean }) {
     return (
       <g transform={`translate(${186 + ox} ${62 + oy})`}>
         <rect x={2} y={2} width={40} height={48} fill="#000" opacity={0.3} />
-        <rect width={40} height={48} fill="#c49a48" stroke="#6a5010" strokeWidth={1} />
-        <rect x={5} y={5} width={30} height={38} fill="#c9b89a" />
+        <rect width={40} height={48} fill="#c49a48" stroke="#1a1410" strokeWidth={1.8} />
+        <rect x={5} y={5} width={30} height={38} fill="#c9b89a" stroke="#1a1410" strokeWidth={1.8} />
         <circle cx={20} cy={18} r={7} fill="#9a7a5a" />
         <path d="M9,43 C10,30 30,30 31,43 Z" fill="#3a3a44" />
         <path d="M13,16 C14,8 26,8 27,16 L27,22 C24,19 16,19 13,22 Z" fill="#6a4a2a" />
@@ -876,7 +876,7 @@ export function Photos({ kind, tv }: { kind: string; tv: boolean }) {
       {Array.from({ length: n }, (_, i) => photo(180 + ox + i * 15, 70 + oy + (i % 2) * 8, i % 2 ? 6 : -5, tints[i], i))}
       {kind === 'f_photo_girl' && (
         <g transform={`translate(${212 + ox} ${96 + oy})`}>
-          <rect width={20} height={13} fill="#efe8d0" stroke="#aaa" strokeWidth={0.5} />
+          <rect width={20} height={13} fill="#efe8d0" stroke="#1a1410" strokeWidth={1.8} />
           <path d="M0,0 L10,7 L20,0" stroke="#aaa" strokeWidth={0.5} fill="none" />
           <path d="M8,4 C8,2 10,2 10,4 C10,2 12,2 12,4 C12,6 10,7 10,8 C10,7 8,6 8,4 Z" fill="#c9302c" />
         </g>
