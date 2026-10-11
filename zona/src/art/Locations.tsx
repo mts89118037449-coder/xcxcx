@@ -7,12 +7,11 @@ import { FLOOR, Scene } from './Scenes.tsx';
 const W = 360;
 const H = 280;
 
-const Grime = ({ o = 0.35 }: { o?: number }) => (
-  <>
-    <rect width={W} height={FLOOR} filter="url(#sc-grime)" opacity={o} />
-    <rect width={W} height={FLOOR} filter="url(#sc-stains)" opacity={o * 0.8} />
-  </>
-);
+/** Мультяшный контур. */
+const INK = '#1a1410';
+
+// грязь и потёки больше не рисуем: в мультяшном стиле поверхности чистые и плоские
+const Grime = (_: { o?: number }) => null;
 
 function Floor({ color, tiles }: { color: string; tiles?: string }) {
   return (
@@ -21,8 +20,7 @@ function Floor({ color, tiles }: { color: string; tiles?: string }) {
       {tiles &&
         Array.from({ length: 13 }, (_, i) => <path key={i} d={`M${i * 30 - 10},${FLOOR} L${i * 36 - 60},${H}`} stroke={tiles} strokeWidth={0.8} />)}
       {tiles && [248, 262].map((y) => <path key={y} d={`M0,${y} H${W}`} stroke={tiles} strokeWidth={0.8} />)}
-      <rect y={FLOOR} width={W} height={H - FLOOR} filter="url(#sc-grime)" opacity={0.45} />
-      <rect y={FLOOR - 3} width={W} height={3} fill="#000" opacity={0.3} />
+      <path d={`M0,${FLOOR} H${W}`} stroke={INK} strokeWidth={2.4} />
     </>
   );
 }
@@ -34,8 +32,8 @@ function Tiles({ y0, y1, size, fill, line }: { y0: number; y1: number; size: num
   return (
     <g>
       <rect y={y0} width={W} height={y1 - y0} fill={fill} />
-      {Array.from({ length: cols }, (_, i) => <path key={`v${i}`} d={`M${i * size},${y0} V${y1}`} stroke={line} strokeWidth={0.7} />)}
-      {Array.from({ length: rows }, (_, i) => <path key={`h${i}`} d={`M0,${y0 + i * size} H${W}`} stroke={line} strokeWidth={0.7} />)}
+      {Array.from({ length: cols }, (_, i) => <path key={`v${i}`} d={`M${i * size},${y0} V${y1}`} stroke={line} strokeWidth={1.2} />)}
+      {Array.from({ length: rows }, (_, i) => <path key={`h${i}`} d={`M0,${y0 + i * size} H${W}`} stroke={line} strokeWidth={1.2} />)}
     </g>
   );
 }
@@ -77,16 +75,16 @@ function Bath() {
       <Grime o={0.4} />
       {/* полок в две ступени */}
       <g>
-        <rect x={10} y={150} width={200} height={10} fill="#b58a58" stroke="#5e4125" />
-        <rect x={10} y={190} width={240} height={10} fill="#b58a58" stroke="#5e4125" />
+        <rect x={10} y={150} width={200} height={10} fill="#b58a58" stroke={INK} strokeWidth={1.8} />
+        <rect x={10} y={190} width={240} height={10} fill="#b58a58" stroke={INK} strokeWidth={1.8} />
         {[20, 100, 190].map((x) => <rect key={x} x={x} y={160} width={8} height={30} fill="#7a5530" />)}
         {[20, 120, 230].map((x) => <rect key={x} x={x} y={200} width={8} height={36} fill="#7a5530" />)}
       </g>
       {/* печь-каменка */}
       <g transform="translate(270 118)">
-        <rect x={0} y={0} width={70} height={118} fill="#3a3632" stroke="#1d1b19" />
+        <rect x={0} y={0} width={70} height={118} fill="#3a3632" stroke={INK} strokeWidth={1.8} />
         {Array.from({ length: 9 }, (_, i) => <circle key={i} cx={10 + (i % 5) * 12 + (i > 4 ? 6 : 0)} cy={i > 4 ? -6 : 2} r={7} fill={['#6d6a64', '#807b72', '#5d5a55'][i % 3]} />)}
-        <rect x={16} y={60} width={38} height={26} fill="#1b1512" />
+        <rect x={16} y={60} width={38} height={26} fill="#1b1512" stroke={INK} strokeWidth={1.8} />
         <rect className="lamp-flicker" x={18} y={64} width={34} height={20} fill="#e2742a" opacity={0.85} />
         <path d="M0,40 H70" stroke="#1d1b19" />
       </g>
@@ -116,23 +114,23 @@ function Canteen() {
       <Grime />
       {/* окно раздачи */}
       <g transform="translate(120 40)">
-        <rect width={130} height={80} fill="#2a2621" stroke="#555" strokeWidth={2} />
-        <rect x={6} y={6} width={118} height={56} fill="#3b342c" />
+        <rect width={130} height={80} fill="#2a2621" stroke={INK} strokeWidth={1.8} />
+        <rect x={6} y={6} width={118} height={56} fill="#3b342c" stroke={INK} strokeWidth={1.8} />
         <rect className="lamp-flicker" x={6} y={6} width={118} height={56} fill="#e8d7a0" opacity={0.25} />
         {[20, 50, 80].map((x) => (
           <g key={x}>
-            <rect x={x} y={34} width={24} height={22} fill="#9aa0a4" stroke="#555" />
+            <rect x={x} y={34} width={24} height={22} fill="#9aa0a4" stroke={INK} strokeWidth={1.8} />
             <path className="steam" d={`M${x + 12},30 Q${x + 8},22 ${x + 12},14`} stroke="#fff" strokeWidth={1.5} fill="none" opacity={0.5} />
           </g>
         ))}
-        <rect x={0} y={62} width={130} height={18} fill="#8a8f92" stroke="#555" />
+        <rect x={0} y={62} width={130} height={18} fill="#8a8f92" stroke={INK} strokeWidth={1.8} />
         <text x={65} y={-6} fontSize={9} textAnchor="middle" fill="#3a3a30" fontWeight="bold">
           РАЗДАЧА
         </text>
       </g>
       {/* меню на стене */}
       <g transform="translate(20 30)">
-        <rect width={70} height={74} fill="#efe8d0" stroke="#9a9a92" />
+        <rect width={70} height={74} fill="#efe8d0" stroke={INK} strokeWidth={1.8} />
         <text x={35} y={12} fontSize={7} textAnchor="middle" fill="#8a2a22" fontWeight="bold">
           МЕНЮ
         </text>
@@ -143,7 +141,7 @@ function Canteen() {
         ))}
       </g>
       <g transform="translate(274 30)">
-        <rect width={66} height={48} fill="#d9d2b8" stroke="#9a9a92" />
+        <rect width={66} height={48} fill="#d9d2b8" stroke={INK} strokeWidth={1.8} />
         <text x={33} y={20} fontSize={6.5} textAnchor="middle" fill="#2a4a8a" fontWeight="bold">
           ХЛЕБ — ВСЕМУ
         </text>
@@ -182,7 +180,7 @@ function Library() {
       {[10, 250].map((x0) => (
         <g key={x0} transform={`translate(${x0} 30)`}>
           <rect x={3} y={3} width={100} height={206} fill="#000" opacity={0.25} />
-          <rect width={100} height={206} fill="#6b4a2c" stroke="#3a2716" />
+          <rect width={100} height={206} fill="#6b4a2c" stroke={INK} strokeWidth={1.8} />
           {[0, 1, 2, 3, 4].map((r) => (
             <g key={r}>
               {Array.from({ length: 13 }, (_, k) => {
@@ -196,8 +194,8 @@ function Library() {
       ))}
       {/* портрет и лампа */}
       <g transform="translate(152 22)">
-        <rect width={56} height={70} fill="#caa55a" />
-        <rect x={5} y={5} width={46} height={60} fill="#d9d1b8" />
+        <rect width={56} height={70} fill="#caa55a" stroke={INK} strokeWidth={1.8} />
+        <rect x={5} y={5} width={46} height={60} fill="#d9d1b8" stroke={INK} strokeWidth={1.8} />
         <circle cx={28} cy={28} r={11} fill="#b08a6a" />
         <path d="M14,64 C16,44 40,44 42,64 Z" fill="#3a3a44" />
         <path d="M19,26 C20,14 36,14 37,26 L37,32 C34,38 22,38 19,32 Z" fill="#6a5a4a" opacity={0.5} />
@@ -207,11 +205,11 @@ function Library() {
       </g>
       {/* стол библиотекаря */}
       <g>
-        <rect x={130} y={180} width={100} height={8} fill="#7a5530" stroke="#3a2716" />
+        <rect x={130} y={180} width={100} height={8} fill="#7a5530" stroke={INK} strokeWidth={1.8} />
         <rect x={136} y={188} width={8} height={48} fill="#5a3d22" />
         <rect x={216} y={188} width={8} height={48} fill="#5a3d22" />
-        <rect x={150} y={170} width={30} height={10} fill="#e9e1c6" stroke="#888" strokeWidth={0.5} />
-        <rect x={186} y={172} width={22} height={8} fill="#2a4a6a" />
+        <rect x={150} y={170} width={30} height={10} fill="#e9e1c6" stroke={INK} strokeWidth={1.8} />
+        <rect x={186} y={172} width={22} height={8} fill="#2a4a6a" stroke={INK} strokeWidth={1.8} />
         <path d="M200,180 L204,150 L216,146" stroke="#2a3a2a" strokeWidth={2} fill="none" />
         <path d="M210,142 L226,148 L218,156 Z" fill="#3a6a4a" />
         <circle cx={218} cy={158} r={18} fill="#ffe9a0" opacity={0.25} filter="url(#sc-blur-s)" />
@@ -230,7 +228,7 @@ function Club() {
       <Grime o={0.3} />
       {/* сцена с занавесом */}
       <g>
-        <rect x={40} y={20} width={280} height={150} fill="#1a1414" />
+        <rect x={40} y={20} width={280} height={150} fill="#1a1414" stroke={INK} strokeWidth={1.8} />
         {Array.from({ length: 10 }, (_, i) => (
           <path key={`l${i}`} d={`M${40 + i * 7},20 Q${46 + i * 7},100 ${40 + i * 7},170`} stroke={i % 2 ? '#7a1a1a' : '#9a2222'} strokeWidth={8} fill="none" />
         ))}
@@ -242,7 +240,7 @@ function Club() {
         <rect x={30} y={170} width={300} height={14} fill="#6a4a2a" stroke="#3a2716" />
         {/* плакат */}
         <g transform="translate(144 60)">
-          <rect width={72} height={50} fill="#e8dfc4" />
+          <rect width={72} height={50} fill="#e8dfc4" stroke={INK} strokeWidth={1.8} />
           <text x={36} y={16} fontSize={7} textAnchor="middle" fill="#8a1a1a" fontWeight="bold">
             КОНЦЕРТ
           </text>
@@ -270,7 +268,7 @@ function Club() {
         <g key={y}>
           {Array.from({ length: 9 }, (_, i) => (
             <g key={i} transform={`translate(${14 + i * 38 + r * 12} ${y})`}>
-              <rect width={24} height={12} rx={2} fill="#6a2a2a" stroke="#2a1010" />
+              <rect width={24} height={12} rx={2} fill="#6a2a2a" stroke={INK} strokeWidth={1.8} />
               <rect y={12} width={24} height={4} fill="#4a1a1a" />
             </g>
           ))}
@@ -292,8 +290,8 @@ function Visits() {
       {/* кабинки с стеклом и трубками */}
       {[0, 1, 2].map((i) => (
         <g key={i} transform={`translate(${30 + i * 106} 60)`}>
-          <rect width={90} height={120} fill="#6f7f72" stroke="#3a4a3e" />
-          <rect x={8} y={10} width={74} height={80} fill="#9ec2d0" />
+          <rect width={90} height={120} fill="#6f7f72" stroke={INK} strokeWidth={1.8} />
+          <rect x={8} y={10} width={74} height={80} fill="#9ec2d0" stroke={INK} strokeWidth={1.8} />
           <rect x={8} y={10} width={74} height={80} fill="url(#sc-glass)" />
           {/* за стеклом — силуэт гостя */}
           {i === 1 && (
@@ -303,7 +301,7 @@ function Visits() {
               <path d="M33,40 C35,30 55,30 57,40 L58,56 C52,52 38,52 32,56 Z" fill="#4a3020" />
             </g>
           )}
-          <rect x={0} y={90} width={90} height={12} fill="#5a6a5e" />
+          <rect x={0} y={90} width={90} height={12} fill="#5a6a5e" stroke={INK} strokeWidth={1.8} />
           <path d="M14,70 C6,76 6,92 14,96" stroke="#222" strokeWidth={2} fill="none" />
           <rect x={10} y={62} width={8} height={14} rx={3} fill="#222" />
           <text x={45} y={116} fontSize={7} textAnchor="middle" fill="#e8e0c8">
@@ -312,7 +310,7 @@ function Visits() {
         </g>
       ))}
       <g transform="translate(118 18)">
-        <rect width={124} height={26} fill="#efe8d0" stroke="#9a9a92" />
+        <rect width={124} height={26} fill="#efe8d0" stroke={INK} strokeWidth={1.8} />
         <text x={62} y={11} fontSize={6.5} textAnchor="middle" fill="#2a4a8a" fontWeight="bold">
           КОМНАТА КРАТКОСРОЧНЫХ
         </text>
@@ -323,7 +321,7 @@ function Visits() {
       {/* стулья у кабинок */}
       {[0, 1, 2].map((i) => (
         <g key={i} transform={`translate(${60 + i * 106} 196)`}>
-          <rect width={30} height={6} fill="#6a4a2a" />
+          <rect width={30} height={6} fill="#6a4a2a" stroke={INK} strokeWidth={1.8} />
           <rect x={2} y={-26} width={4} height={26} fill="#4a3018" />
           <rect x={2} y={6} width={3} height={34} fill="#4a3018" />
           <rect x={25} y={6} width={3} height={34} fill="#4a3018" />
@@ -349,34 +347,34 @@ function Factory() {
       {/* кран-балка */}
       <rect x={0} y={92} width={W} height={8} fill="#c9a52a" stroke="#6a5a10" />
       <g transform="translate(220 100)">
-        <rect x={-10} y={0} width={20} height={10} fill="#8a7a20" />
+        <rect x={-10} y={0} width={20} height={10} fill="#8a7a20" stroke={INK} strokeWidth={1.8} />
       </g>
       {/* швейные машинки */}
       {[0, 1].map((i) => (
         <g key={i} transform={`translate(${20 + i * 90} 160)`}>
-          <rect x={0} y={20} width={76} height={8} fill="#7a6a4a" stroke="#3a3020" />
+          <rect x={0} y={20} width={76} height={8} fill="#7a6a4a" stroke={INK} strokeWidth={1.8} />
           <rect x={6} y={28} width={4} height={48} fill="#333" />
           <rect x={66} y={28} width={4} height={48} fill="#333" />
           <path d="M18,20 V2 H56 V10 H50 V20" fill="#2a2a2a" stroke="#111" />
           <circle cx={56} cy={6} r={5} fill="#555" />
-          <rect x={30} y={14} width={20} height={6} fill="#e8e0d0" />
+          <rect x={30} y={14} width={20} height={6} fill="#e8e0d0" stroke={INK} strokeWidth={1.8} />
         </g>
       ))}
       {/* станок */}
       <g transform="translate(250 126)">
-        <rect x={0} y={60} width={100} height={50} fill="#4a5a5a" stroke="#222" />
-        <rect x={10} y={20} width={50} height={40} fill="#5a6a6a" stroke="#222" />
+        <rect x={0} y={60} width={100} height={50} fill="#4a5a5a" stroke={INK} strokeWidth={1.8} />
+        <rect x={10} y={20} width={50} height={40} fill="#5a6a6a" stroke={INK} strokeWidth={1.8} />
         <circle cx={80} cy={50} r={16} fill="#777" stroke="#333" />
         <circle cx={80} cy={50} r={4} fill="#222" />
-        <rect x={20} y={0} width={30} height={20} fill="#4a5a5a" stroke="#222" />
-        <rect x={8} y={74} width={30} height={12} fill="#c9a52a" />
+        <rect x={20} y={0} width={30} height={20} fill="#4a5a5a" stroke={INK} strokeWidth={1.8} />
+        <rect x={8} y={74} width={30} height={12} fill="#c9a52a" stroke={INK} strokeWidth={1.8} />
         <text x={23} y={83} fontSize={6} textAnchor="middle" fill="#222" fontWeight="bold">
           ТБ!
         </text>
       </g>
       {/* ящики с продукцией */}
       <g transform="translate(200 200)">
-        <rect width={40} height={36} fill="#9a7a4a" stroke="#4a3a1a" />
+        <rect width={40} height={36} fill="#9a7a4a" stroke={INK} strokeWidth={1.8} />
         <path d="M0,12 H40 M0,24 H40" stroke="#4a3a1a" />
       </g>
       <Floor color="#4e4e48" />
@@ -397,13 +395,13 @@ function Shizo() {
       {/* коридор: три двери камер */}
       {[30, 146, 262].map((x, i) => (
         <g key={x} transform={`translate(${x} 60)`}>
-          <rect x={-4} y={-4} width={76} height={180} fill="#2e2e2c" />
-          <rect width={68} height={176} fill="#4a5048" stroke="#1d1f1c" strokeWidth={2} />
+          <rect x={-4} y={-4} width={76} height={180} fill="#2e2e2c" stroke={INK} strokeWidth={1.8} />
+          <rect width={68} height={176} fill="#4a5048" stroke={INK} strokeWidth={1.8} />
           {[20, 88, 156].map((y) => <rect key={y} x={0} y={y} width={68} height={4} fill="#3a403a" />)}
           {[10, 58].map((cx) => [30, 100, 150].map((cy) => <circle key={`${cx}${cy}`} cx={cx} cy={cy} r={1.8} fill="#2a2e2a" />))}
           {/* кормушка и глазок */}
-          <rect x={16} y={96} width={36} height={16} fill="#2a2e2a" />
-          {i === 1 && <rect x={18} y={98} width={32} height={12} fill="#0d0d0c" />}
+          <rect x={16} y={96} width={36} height={16} fill="#2a2e2a" stroke={INK} strokeWidth={1.8} />
+          {i === 1 && <rect x={18} y={98} width={32} height={12} fill="#0d0d0c" stroke={INK} strokeWidth={1.8} />}
           <circle cx={34} cy={60} r={3.5} fill="#1a1a18" stroke="#6a6e66" />
           <text x={34} y={-10} fontSize={8} textAnchor="middle" fill="#ddd" fontWeight="bold">
             {i + 7}
@@ -445,7 +443,7 @@ function Logging() {
       <g transform="translate(300 70)" opacity={0.8}>
         <rect x={0} y={20} width={4} height={80} fill="#3a3530" />
         <rect x={24} y={20} width={4} height={80} fill="#3a3530" />
-        <rect x={-6} y={0} width={40} height={22} fill="#4a4038" />
+        <rect x={-6} y={0} width={40} height={22} fill="#4a4038" stroke={INK} strokeWidth={1.8} />
         <path d="M-10,0 L14,-12 L38,0 Z" fill="#3a3530" />
       </g>
       <path d="M0,176 H360" stroke="#555" strokeWidth={1} />
@@ -455,7 +453,7 @@ function Logging() {
       {/* пни и штабель брёвен */}
       {[[130, 226], [250, 232]].map(([x, y]) => (
         <g key={x} transform={`translate(${x} ${y})`}>
-          <rect x={-9} y={-10} width={18} height={12} fill="#6a4a2a" />
+          <rect x={-9} y={-10} width={18} height={12} fill="#6a4a2a" stroke={INK} strokeWidth={1.8} />
           <ellipse cx={0} cy={-10} rx={9} ry={3} fill="#c9a06a" />
           <ellipse cx={0} cy={-10} rx={5} ry={1.6} fill="none" stroke="#8a6a3a" strokeWidth={0.6} />
           <ellipse cx={0} cy={-11} rx={10} ry={2} fill="#f2f6f8" opacity={0.8} />
@@ -465,7 +463,7 @@ function Logging() {
         {[0, 1, 2].map((r) =>
           Array.from({ length: 4 - r }, (_, i) => (
             <g key={`${r}-${i}`} transform={`translate(${i * 16 + r * 8} ${-r * 13})`}>
-              <rect x={0} y={0} width={60} height={13} rx={6} fill="#7a5530" stroke="#3a2210" strokeWidth={0.6} />
+              <rect x={0} y={0} width={60} height={13} rx={6} fill="#7a5530" stroke={INK} strokeWidth={1.8} />
               <circle cx={60} cy={6.5} r={6.5} fill="#c9a06a" stroke="#3a2210" strokeWidth={0.6} />
               <circle cx={60} cy={6.5} r={3} fill="none" stroke="#8a6a3a" strokeWidth={0.5} />
             </g>
@@ -495,8 +493,8 @@ function Kamera() {
       <Grime o={0.6} />
       {/* узкое окно с «ресничками» под потолком */}
       <g transform="translate(140 22)">
-        <rect x={-4} y={-4} width={88} height={44} fill="#2e2c28" />
-        <rect width={80} height={36} fill="#9ab0c0" />
+        <rect x={-4} y={-4} width={88} height={44} fill="#2e2c28" stroke={INK} strokeWidth={1.8} />
+        <rect width={80} height={36} fill="#9ab0c0" stroke={INK} strokeWidth={1.8} />
         {Array.from({ length: 9 }, (_, i) => (
           <rect key={i} x={i * 9 + 2} width={3} height={36} fill="#2a2a28" />
         ))}
@@ -507,11 +505,11 @@ function Kamera() {
       {/* двухъярусные шконки */}
       {[16, 250].map((x) => (
         <g key={x} transform={`translate(${x} 100)`}>
-          <rect x={0} y={0} width={94} height={6} fill="#5a6a6a" stroke="#2a2a2a" />
-          <rect x={0} y={6} width={94} height={8} fill="#b8b0a0" />
-          <rect x={0} y={66} width={94} height={6} fill="#5a6a6a" stroke="#2a2a2a" />
-          <rect x={0} y={72} width={94} height={10} fill="#8a7a6a" />
-          <rect x={4} y={-6} width={22} height={10} rx={3} fill="#d8d2c2" />
+          <rect x={0} y={0} width={94} height={6} fill="#5a6a6a" stroke={INK} strokeWidth={1.8} />
+          <rect x={0} y={6} width={94} height={8} fill="#b8b0a0" stroke={INK} strokeWidth={1.8} />
+          <rect x={0} y={66} width={94} height={6} fill="#5a6a6a" stroke={INK} strokeWidth={1.8} />
+          <rect x={0} y={72} width={94} height={10} fill="#8a7a6a" stroke={INK} strokeWidth={1.8} />
+          <rect x={4} y={-6} width={22} height={10} rx={3} fill="#d8d2c2" stroke={INK} strokeWidth={1.8} />
           {[0, 90].map((px) => (
             <rect key={px} x={px} y={-10} width={4} height={136} fill="#3a4040" />
           ))}
@@ -521,11 +519,11 @@ function Kamera() {
       <path d="M150,58 C180,90 200,80 230,120" stroke="#e8e0c8" strokeWidth={0.8} fill="none" strokeDasharray="2 2" />
       {/* стол-дубок и шахматы */}
       <g transform="translate(140 182)">
-        <rect x={0} y={0} width={80} height={6} fill="#6a4a2a" stroke="#3a2210" />
+        <rect x={0} y={0} width={80} height={6} fill="#6a4a2a" stroke={INK} strokeWidth={1.8} />
         <rect x={8} y={6} width={6} height={48} fill="#4a3018" />
         <rect x={66} y={6} width={6} height={48} fill="#4a3018" />
-        <rect x={20} y={-6} width={20} height={6} fill="#e8e0d0" />
-        <rect x={50} y={-8} width={10} height={8} fill="#8a8e94" />
+        <rect x={20} y={-6} width={20} height={6} fill="#e8e0d0" stroke={INK} strokeWidth={1.8} />
+        <rect x={50} y={-8} width={10} height={8} fill="#8a8e94" stroke={INK} strokeWidth={1.8} />
       </g>
       <Floor color="#3e3c36" tiles="#2e2c28" />
     </>
@@ -546,15 +544,15 @@ function Plac() {
       <rect x={0} y={110} width={W} height={FLOOR - 110} fill="#c8bfa8" />
       <rect x={0} y={104} width={W} height={8} fill="#7a3a2a" />
       <g transform="translate(60 124)">
-        <rect width={240} height={28} fill="#b8241e" />
+        <rect width={240} height={28} fill="#b8241e" stroke={INK} strokeWidth={1.8} />
         <text x={120} y={18.5} fontSize={9.6} textAnchor="middle" fill="#ffe9c0" fontWeight="bold" letterSpacing={0.5}>
           ПОРЯДОК — ОСНОВА ИСПРАВЛЕНИЯ
         </text>
       </g>
       {[20, 120, 220, 320].map((x) => (
         <g key={x}>
-          <rect x={x} y={164} width={30} height={36} fill="#5a6a72" stroke="#3a3a36" />
-          <rect x={x + 3} y={167} width={24} height={30} fill="#9ab0c0" />
+          <rect x={x} y={164} width={30} height={36} fill="#5a6a72" stroke={INK} strokeWidth={1.8} />
+          <rect x={x + 3} y={167} width={24} height={30} fill="#9ab0c0" stroke={INK} strokeWidth={1.8} />
         </g>
       ))}
       {/* флагшток с красным флагом */}
@@ -564,8 +562,8 @@ function Plac() {
       </g>
       {/* трибуна */}
       <g transform="translate(40 196)">
-        <rect width={70} height={40} fill="#7a3a2a" stroke="#3a1a10" />
-        <rect x={-4} y={-6} width={78} height={8} fill="#5a2a1a" />
+        <rect width={70} height={40} fill="#7a3a2a" stroke={INK} strokeWidth={1.8} />
+        <rect x={-4} y={-6} width={78} height={8} fill="#5a2a1a" stroke={INK} strokeWidth={1.8} />
         <path d="M35,8 L39,16 L48,16 L41,22 L44,31 L35,25 L26,31 L29,22 L22,16 L31,16 Z" fill="#e8c34a" />
       </g>
       <Floor color="#8a8a86" />
