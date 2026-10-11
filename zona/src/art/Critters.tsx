@@ -221,7 +221,7 @@ function NightLights({ t }: { t: number }) {
 }
 
 /** Кот: рыжий, толстый, с презрением. Сидит, машет хвостом, иногда умывается. Мордой вправо. */
-export function Cat({ t, walk, color = '#e08a3a' }: { t: number; walk?: boolean; color?: string }) {
+export function Cat({ t, walk, color = '#e08a3a', wear }: { t: number; walk?: boolean; color?: string; wear?: string }) {
   const s = t / 1000;
   const tail = Math.sin(s * 3) * 18;
   const wash = !walk && s % 9 > 7.5;
@@ -237,6 +237,11 @@ export function Cat({ t, walk, color = '#e08a3a' }: { t: number; walk?: boolean;
         ))}
       <ellipse cx={0} cy={walk ? -12 : -10} rx={walk ? 15 : 12} ry={walk ? 7 : 10} fill={color} stroke={INK} strokeWidth={1.8} />
       <path d="M-5,-18 q3,4 0,8 M1,-19 q3,4 0,8" stroke="#b0601c" strokeWidth={1.6} fill="none" />
+      {wear === 'murka' && (
+        <text x={-6} y={walk ? -9 : -7} fontSize={4.6} fontWeight={900} textAnchor="middle" fill="#2a3a8a">
+          МУРКА
+        </text>
+      )}
       <g transform={`translate(${walk ? 14 : 9} ${walk ? -20 : -22}) rotate(${wash ? 14 : 0})`}>
         <path d="M-7,-5 L-6,-14 L-1,-7 Z M2,-7 L7,-14 L7,-5 Z" fill={color} stroke={INK} strokeWidth={1.4} strokeLinejoin="round" />
         <circle r={8} fill={color} stroke={INK} strokeWidth={1.8} />
@@ -253,13 +258,29 @@ export function Cat({ t, walk, color = '#e08a3a' }: { t: number; walk?: boolean;
         <path d="M-1,3 h2 l-1,1.4 Z" fill="#e2687a" />
         <path d="M-9,3 h5 M4,3 h5" stroke={INK} strokeWidth={0.6} />
         {wash && <ellipse cx={6} cy={4} rx={3} ry={2.4} fill={color} stroke={INK} strokeWidth={1.2} />}
+        {wear === 'cap' && (
+          <g>
+            <path d="M-8,-5 Q0,-15 8,-5 Z" fill="#3a3a44" stroke={INK} strokeWidth={1.2} />
+            <path d="M2,-6 L13,-5 L8,-3 Z" fill="#2a2a30" stroke={INK} strokeWidth={1} />
+          </g>
+        )}
+        {wear === 'bandana' && <path d="M-8,-5 Q0,-11 8,-5 L4,-2 L-4,-2 Z" fill="#1a1410" stroke={INK} strokeWidth={1} />}
+        {wear === 'bow' && (
+          <g transform="translate(0 9)">
+            <path d="M0,0 L-6,-4 L-6,4 Z M0,0 L6,-4 L6,4 Z" fill="#d8302a" stroke={INK} strokeWidth={1} />
+            <circle r={1.6} fill="#d8302a" stroke={INK} strokeWidth={0.8} />
+          </g>
+        )}
+        {wear === 'chain' && <path d="M-6,6 Q0,13 6,6" stroke="#ffc83a" strokeWidth={2} fill="none" strokeDasharray="1.6 1" />}
       </g>
     </g>
   );
 }
 
 /** Питомец игрока в хате: живёт по своим часам. */
-export function LivePet({ kind }: { kind: string }) {
+export function LivePet({ kind: spec }: { kind: string }) {
+  // «cat:cap» — вид и что надето
+  const [kind, wear] = spec.split(':');
   const t = useClock(true);
   const [t0] = useState(t);
   const lt = t - t0;
@@ -267,7 +288,7 @@ export function LivePet({ kind }: { kind: string }) {
     const w = patrol(lt, 214, 286, 14, 6);
     return (
       <g transform={`translate(${w.x} 266) scale(${w.dir < 0 ? -0.95 : 0.95} 0.95)`}>
-        <Cat t={lt} walk={w.moving} />
+        <Cat t={lt} walk={w.moving} wear={wear} />
       </g>
     );
   }

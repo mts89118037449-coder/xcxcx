@@ -2296,3 +2296,16 @@ test('Хэллоуин: тыквы только в сезон, все пять �
   assert.throws(() => g.pumpkinFind(p, 'zone', hw), /уже/);
   assert.equal(g.pumpkinFind(p, 'canteen', hw).gold, 6);
 });
+
+test('кот: косметика покупается раз, надевается и снимается', () => {
+  const now = 1_800_000_000_000;
+  const p = g.newPlayer(914, 'Кошатник', null, now);
+  assert.throws(() => g.petWear(p, 'cap'), /кота/);
+  p.pet = { kind: 'cat', name: 'Мурзик', level: 1, xp: 0, fedAt: now, trainAt: 0 };
+  p.butts = 100;
+  assert.equal(g.petWear(p, 'cap').bought, true);
+  assert.equal(p.butts, 70);
+  assert.equal(g.petWear(p, 'cap').on, null);
+  assert.equal(g.petWear(p, 'cap').on, 'cap');
+  assert.throws(() => g.petWear(p, 'chain'), /мал/);
+});

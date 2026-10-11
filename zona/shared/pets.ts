@@ -32,3 +32,12 @@ export const PETS: PetDef[] = [
   { kind: 'pigeon', name: 'Голубь', emoji: '🕊️', desc: 'Носит посылки через забор', price: 2500, minLevel: 6, perk: (l) => `+${1 + Math.floor(l / 4)} посылки в день, +${l}% опыта со смен` },
 ];
 export const petByKind = new Map(PETS.map((x) => [x.kind, x]));
+
+/** Косметика для кота: покупаешь раз, носит одну вещь. Чисто для красоты и уважения хаты. */
+export const CAT_WEAR: { id: string; name: string; emoji: string; butts: number; gold: number; minLevel: number }[] = [
+  { id: 'cap', name: 'Кепочка-восьмиклинка', emoji: '🧢', butts: 30, gold: 0, minLevel: 1 },
+  { id: 'bandana', name: 'Бандана', emoji: '🏴', butts: 40, gold: 0, minLevel: 2 },
+  { id: 'bow', name: 'Бабочка на свадьбу', emoji: '🎀', butts: 50, gold: 0, minLevel: 3 },
+  { id: 'murka', name: 'Наколка «МУРКА»', emoji: '🖋️', butts: 0, gold: 8, minLevel: 4 },
+  { id: 'chain', name: 'Голда на шею', emoji: '📿', butts: 0, gold: 15, minLevel: 6 },
+];

@@ -61,7 +61,7 @@ import { ANTICHEAT, RUNS, impossible, tooPerfect } from '../shared/anticheat.ts'
 import { TUTORIAL, TUT_BUTTS, TUT_GIFT } from '../shared/tutorial.ts';
 import { weatherAt, weatherFor, weatherFx } from '../shared/weather.ts';
 import { WORD, markGuess, normWord, wordOfDay } from '../shared/fenya.ts';
-import { PET, petByKind, type PetKind } from '../shared/pets.ts';
+import { PET, petByKind, type PetKind, CAT_WEAR } from '../shared/pets.ts';
 import { colonyById, colonyFx, type ColonyId } from '../shared/colonies.ts';
 import { TRADE, type TradeKind, type TradeLine } from '../shared/trade.ts';
 import { WALL_MAX, albumById, albumProgress, type AlbumId } from '../shared/album.ts';
@@ -272,7 +272,7 @@ export interface Player {
   albums: string[];
   /** побег вдвоём: идущий забег и приглашение от кента */
   /** питомец в хате */
-  pet: { kind: PetKind; name: string; level: number; xp: number; fedAt: number; trainAt: number } | null;
+  pet: { kind: PetKind; name: string; level: number; xp: number; fedAt: number; trainAt: number; wear?: string[]; on?: string | null } | null;
   /** праздник: прогресс заданий, валюта, покупки; сбрасывается с новым праздником */
   /** сколько очков вложил в стройку зоны */
   built: number;
@@ -3837,6 +3837,25 @@ export function petBuy(p: Player, kind: string, name: string, now: number) {
   p.pet = { kind: def.kind, name: nm, level: 1, xp: 0, fedAt: now, trainAt: 0 };
   log(p, now, `${def.emoji} В хате завёлся ${def.name.toLowerCase()} — ${nm}`);
   return p.pet;
+}
+
+/** Косметика для кота: купить (раз) или надеть/снять. */
+export function petWear(p: Player, id: string) {
+  if (!p.pet || p.pet.kind !== 'cat') throw new GameError('Наряжать можно только кота');
+  const w = CAT_WEAR.find((x) => x.id === id);
+  if (!w) throw new GameError('Нет такой вещи');
+  p.pet.wear ??= [];
+  if (!p.pet.wear.includes(id)) {
+    if (p.pet.level < w.minLevel) throw new GameError(`Кот ещё мал: нужен ${w.minLevel} уровень`);
+    if (p.butts < w.butts) throw new GameError('Не хватает бычков');
+    if (w.gold) spend(p, w.gold, 'gold');
+    p.butts -= w.butts;
+    p.pet.wear.push(id);
+    p.pet.on = id;
+    return { bought: true, on: id };
+  }
+  p.pet.on = p.pet.on === id ? null : id;
+  return { bought: false, on: p.pet.on };
 }
 
 export function petFeed(p: Player, now: number) {

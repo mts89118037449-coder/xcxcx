@@ -797,6 +797,7 @@ export function createApp(opts: AppOptions) {
       return { ...fight, top: pillowTop(p, t), look: rival ? { equipped: rival.equipped, tattoos: rival.tattoos, str: rival.str, face: rival.face, build: rival.build, skin: rival.skin } : null };
     },
     catFeed: (p, b) => g.catFeed(p, str(b.id)),
+    petWear: (p, b) => g.petWear(p, str(b.id)),
     pumpkinFind: (p, b, t) => g.pumpkinFind(p, str(b.id), t),
     jokeVote: (p, b, t) => {
       const r = g.jokeVote(p, t);

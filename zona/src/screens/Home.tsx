@@ -75,7 +75,7 @@ export function Home() {
           furniture={withPreview(p.cell, preview)}
           interior={p.interior}
           wall={p.wall}
-          pet={p.pet?.kind}
+          pet={p.pet ? (p.pet.on ? `${p.pet.kind}:${p.pet.on}` : p.pet.kind) : null}
           deco={p.holiday ? (p.holiday.id === 'newyear' ? (p.holiday.tree ? 'tree' : null) : p.holiday.id) : null}
           anim={anim}
           animKey={animKey}

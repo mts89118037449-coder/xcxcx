@@ -1,6 +1,6 @@
 import { ModalHead } from './Nav.tsx';
 import { useState } from 'react';
-import { PET, PETS, petByKind } from '../shared/pets.ts';
+import { PET, PETS, petByKind, CAT_WEAR } from '../shared/pets.ts';
 import { fmt, timeLeft, useGame } from './game.tsx';
 
 const H = 3600_000;
@@ -66,6 +66,19 @@ export function PetCard() {
             {max ? '🏅 Макс.' : trainIn > 0 ? `🎾 ${timeLeft(trainIn)}` : `🎾 Учить · ${PET.trainEnergy} ⚡`}
           </button>
         </span>
+        {pet.kind === 'cat' && (
+          <span className="pet-wear">
+            {CAT_WEAR.map((w) => {
+              const own = pet.wear?.includes(w.id);
+              return (
+                <button key={w.id} className={pet.on === w.id ? 'active' : ''} disabled={busy || (!own && pet.level < w.minLevel)} title={w.name} onClick={() => act('petWear', { id: w.id })}>
+                  {w.emoji}
+                  <small>{own ? (pet.on === w.id ? 'надето' : 'надеть') : w.gold ? `${w.gold}🪙` : `${w.butts}🚬`}</small>
+                </button>
+              );
+            })}
+          </span>
+        )}
       </span>
     </div>
   );

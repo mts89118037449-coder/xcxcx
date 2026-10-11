@@ -3274,3 +3274,7 @@ body:has(.modal) .event-btn { z-index: 20; }
 .rice { animation: rice 1.6s linear infinite; }
 @keyframes rice { from { transform: translateY(0) rotate(0); } to { transform: translateY(260px) rotate(360deg); } }
 .pumpkin-face { animation: hot-pulse 1.4s infinite; }
+.pet-wear { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.pet-wear button { display: grid; justify-items: center; min-width: 48px; padding: 4px; border-radius: 10px; border: 1px solid var(--line); background: #0005; font-size: 18px; color: var(--text); }
+.pet-wear button small { font-size: 9.5px; color: var(--muted); }
+.pet-wear button.active { border-color: var(--gold); background: #6b552055; }
