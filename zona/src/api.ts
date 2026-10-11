@@ -128,6 +128,7 @@ export const api = {
       riot: string;
       cup: { tag: string; pts: number }[];
       fighters: { name: string; pts: number }[];
+      cast: { name: string; look: import('../shared/types.ts').Look }[];
       kum: { from: string; to: string; msg: string }[];
       chron: { at: number; emoji: string; text: string }[];
       weather: { emoji: string; temp: number; label: string };

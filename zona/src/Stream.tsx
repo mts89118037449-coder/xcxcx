@@ -57,6 +57,18 @@ export function StreamsModal({ onClose }: { onClose(): void }) {
             ))}
           </div>
         )}
+        {p.funny.length > 0 && (
+          <div className="raid-top">
+            <b>🤣 Самый смешной недели</b>
+            {p.funny.map((f, i) => (
+              <div key={f.id} className={f.id === p.id ? 'me' : ''}>
+                <span>{['🥇', '🥈', '🥉'][i] ?? `${i + 1}.`}</span>
+                <span className="grow">{f.name}</span>
+                <span>{f.pts} 😂</span>
+              </div>
+            ))}
+          </div>
+        )}
         <h4 className="stream-h">Сейчас в эфире</h4>
         {p.streams.filter((s) => s.id !== p.id).length === 0 && <p className="muted small">Тихо. Видимо, у всех отобрали телефоны.</p>}
         <div className="stream-list">

@@ -1,5 +1,6 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { hideBoot } from './boot.ts';
+import { closeDiscipline, disciplineCase, onDiscipline } from './discipline.ts';
 import type { PlayerView } from '../shared/types.ts';
 import { api, ApiError, tg } from './api.ts';
 import { Face } from './art/sprites.tsx';
@@ -46,6 +47,7 @@ const AdminPanel = named(() => import('./Admin.tsx'), 'AdminPanel');
 const IntroOverlay = named(() => import('./Intro.tsx'), 'IntroOverlay');
 const IntroMovie = named(() => import('./IntroMovie.tsx'), 'IntroMovie');
 const ChronicleModal = named(() => import('./Chronicle.tsx'), 'ChronicleModal');
+const DisciplineModal = named(() => import('./Court.tsx'), 'DisciplineModal');
 const MastPicker = named(() => import('./Term.tsx'), 'MastPicker');
 const CardsGame = named(() => import('./Minigames.tsx'), 'CardsGame');
 const RaceGame = named(() => import('./Minigames.tsx'), 'RaceGame');
@@ -174,6 +176,7 @@ export function App() {
     }
   };
   const [chronSeen, setChronSeen] = useState(false);
+  const discipline = useSyncExternalStore(onDiscipline, disciplineCase);
   const [mastAsked, setMastAsked] = useState(false);
   // открытия, которые уже закрыли в этой сессии (пока сервер не подтвердил)
   const [unlockHidden, setUnlockHidden] = useState<string[]>([]);
@@ -376,6 +379,7 @@ export function App() {
       {mini === 'shizo' && <ShizoGame onClose={() => setMini(null)} />}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
       {introOn && movie && <IntroMovie onDone={endMovie} />}
+      {discipline && <DisciplineModal days={discipline.days} reason={discipline.reason} onClose={closeDiscipline} />}
       {!introOn && chronDue && !chronSeen && fresh.length === 0 && <ChronicleModal onClose={() => setChronSeen(true)} />}
       {introOn && !movie && <IntroOverlay onDone={() => setIntroOn(false)} />}
       {!introOn && tutOn && <TutorialCoach tab={tab} />}

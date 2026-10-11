@@ -2,6 +2,7 @@ import { ModalHead } from './Nav.tsx';
 import { useEffect, useState } from 'react';
 import { MALYAVA, MALYAVY, malyavaById } from '../shared/malyava.ts';
 import { api } from './api.ts';
+import { showDiscipline } from './discipline.ts';
 import { timeLeft, useGame } from './game.tsx';
 
 const ago = (ms: number) => (ms < 60_000 ? 'только что' : `${timeLeft(ms)} назад`);
@@ -14,7 +15,7 @@ export function MalyavaComposer({ to, onClose }: { to: { id: number; name: strin
   const send = async (safe: boolean) => {
     const r = await act<{ caught: boolean; days: number }>('malyava', { id: to.id, msg, butts, safe });
     if (!r) return;
-    if (r.caught) toast(`👮 Вертухай перехватил! Кум читает вслух. +${r.days} дн. срока`, 'err');
+    if (r.caught) showDiscipline(r.days, `перехваченная малява: «${malyavaById.get(msg)?.text ?? ''}»`);
     else toast(`✉️ Малява ушла к ${to.name}`);
     onClose();
   };

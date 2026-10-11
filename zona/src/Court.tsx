@@ -1,5 +1,5 @@
 import { ModalHead } from './Nav.tsx';
-import { babble } from './sound.ts';
+import { babble, play } from './sound.ts';
 import { useEffect, useState } from 'react';
 import { Place } from './art/Scenes.tsx';
 import { ImageG, PoseG, useNpc } from './art/sprites.tsx';
@@ -168,6 +168,36 @@ function Courtroom({ bang, verdict }: { bang: number; verdict: 'won' | 'lost' | 
           <b>{who}:</b> {text}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Дисциплинарная комиссия: зал суда, кум зачитывает дело, молоток — и срок растёт. */
+export function DisciplineModal({ days, reason, onClose }: { days: number; reason: string; onClose(): void }) {
+  const [bang, setBang] = useState(0);
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    babble(`Слушается дело. ${reason}`, 'кум');
+    const a = setTimeout(() => setBang(1), 2600);
+    const b = setTimeout(() => {
+      setDone(true);
+      play('lose');
+    }, 3600);
+    return () => (clearTimeout(a), clearTimeout(b));
+  }, []);
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+        <ModalHead onClose={onClose} title="⚖️ Дисциплинарная комиссия" />
+        <Courtroom bang={bang} verdict={done ? 'lost' : null} />
+        <div className="court-verdict lost">
+          {done ? `Виновен. +${days} дн. к сроку` : 'Слушается дело…'}
+          <small>{reason}</small>
+        </div>
+        <button className="btn btn-wide" onClick={onClose}>
+          {done ? 'Обжалованию не подлежит' : 'Пропустить'}
+        </button>
+      </div>
     </div>
   );
 }

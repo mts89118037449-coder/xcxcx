@@ -132,6 +132,19 @@ export function createApp(opts: AppOptions) {
   }
 
   // --- Побег вдвоём: общий забег в kv, игроки ссылаются на него
+  /** «Самый смешной недели»: лайки и «Жиза» в эфирах. */
+  const funnyAdd = (s: LiveStream | undefined, t: number, n: number) => {
+    if (!s) return;
+    const key = `funny:${g.weekIndex(t)}`;
+    const all = db.kvGet<Record<number, { name: string; pts: number }>>(key, {});
+    all[s.id] = { name: s.name, pts: (all[s.id]?.pts ?? 0) + n };
+    db.kvSet(key, all);
+  };
+  const funnyTop = (t: number) =>
+    Object.entries(db.kvGet<Record<number, { name: string; pts: number }>>(`funny:${g.weekIndex(t)}`, {}))
+      .map(([id, v]) => ({ id: Number(id), ...v }))
+      .sort((a, b) => b.pts - a.pts)
+      .slice(0, 5);
   /** Живые эфиры: протухшие выкидываем при чтении. */
   const liveStreams = (t: number) => {
     const all = db.kvGet<Record<number, LiveStream>>('streams', {});
@@ -492,6 +505,7 @@ export function createApp(opts: AppOptions) {
       intros: p.intros,
       feats: p.feats,
       streamToday: p.streamDay === g.dayIndex(t),
+      funny: funnyTop(t),
       joke: { day: g.dayIndex(t), voted: p.jokeDay === g.dayIndex(t) },
       catsFed: p.catsFed,
       pumpkins: p.pumpkins.year === new Date(t).getUTCFullYear() ? p.pumpkins.found : [],
@@ -752,6 +766,7 @@ export function createApp(opts: AppOptions) {
       const streamer = id !== p.id ? db.getPlayer(id) : null;
       const r = g.streamLike(p, streamer, all[id], t);
       if (streamer) db.savePlayer(streamer);
+      funnyAdd(all[id], t, 1);
       db.kvSet('streams', all);
       return r;
     },
@@ -817,6 +832,8 @@ export function createApp(opts: AppOptions) {
       if (!s) throw new g.GameError('Эфир уже закончился');
       if (!STREAM_COMMENTS[msg]) throw new g.GameError('Нет такого комментария');
       s.comments = [...(s.comments ?? []), { name: p.name, msg }].slice(-20);
+      // «Жиза 😂» — засчитывается в «Самого смешного»
+      if (msg === 0 && s.id !== p.id) funnyAdd(s, t, 1);
       db.kvSet('streams', all);
       return { ok: true };
     },
@@ -1955,6 +1972,11 @@ export function createApp(opts: AppOptions) {
       riot: riot.phase,
       cup: foot.slice(0, 3).map((r) => ({ tag: tag(r.id), pts: r.pts })),
       fighters: league.map((r) => ({ name: r.name, pts: r.pts })),
+      // актёры «Сериала зоны»: облики лучших бойцов недели
+      cast: league
+        .map((r) => db.getPlayer(r.id))
+        .filter((x): x is g.Player => !!x)
+        .map((x) => ({ name: x.name, look: { equipped: x.equipped, tattoos: x.tattoos, str: x.str, face: x.face, build: x.build, skin: x.skin } })),
       kum: db.kvGet<{ from: string; to: string; msg: string }[]>('kum:feed', []).slice(0, 2),
       chron: db.kvGet<Chron[]>(`chron:${w}`, []).slice(0, 12),
       weather: weatherAt(t),

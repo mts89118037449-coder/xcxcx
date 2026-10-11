@@ -103,7 +103,7 @@ function NewsModal({ onClose }: { onClose(): void }) {
             🎬 Сериал зоны — комикс недели
           </button>
         )}
-        {comic && v && <WeeklyComic issue={v.issue} chron={v.chron} onClose={() => setComic(false)} />}
+        {comic && v && <WeeklyComic issue={v.issue} chron={v.chron} cast={v.cast} onClose={() => setComic(false)} />}
         <div className="row gap-s">
           <button className="btn btn-dark grow" disabled={i === 0} onClick={() => setI(i - 1)}>
             ◂

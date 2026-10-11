@@ -276,6 +276,8 @@ const VOICED: { match: RegExp; pitch: number; rate: number }[] = [
   { match: /глухар|следовател/i, pitch: 0.7, rate: 1.05 },
   { match: /прокурор/i, pitch: 0.8, rate: 0.9 },
   { match: /начальник|майор|подполковник/i, pitch: 0.6, rate: 0.95 },
+  { match: /митрич|^дед/i, pitch: 0.75, rate: 0.82 },
+  { match: /батюшк|никодим/i, pitch: 0.7, rate: 0.85 },
 ];
 
 /** Сказать вслух (если браузер умеет и есть русский голос). true — сказали. */

@@ -88,7 +88,7 @@ const HEROES = ['sheet/rival/1', 'sheet/rival/3', 'sheet/rival/5', 'sheet/rival/
 const ANIMS: [RigAnim, RigAnim][] = [['punch', 'hit'], ['talk', 'shrug'], ['cheer', 'sad'], ['run', 'wave'], ['think', 'talk'], ['dance', 'crossed']];
 
 /** «Сериал зоны»: комикс недели из настоящих событий игроков. */
-export function WeeklyComic({ issue, chron, onClose }: { issue: number; chron: { emoji: string; text: string }[]; onClose(): void }) {
+export function WeeklyComic({ issue, chron, cast = [], onClose }: { issue: number; chron: { emoji: string; text: string }[]; cast?: { name: string; look: Look }[]; onClose(): void }) {
   const items = chron.length ? chron.slice(0, 4) : [{ emoji: '😴', text: 'Всю неделю ничего не случилось. Даже кум заскучал' }];
   return (
     <div className="modal" onClick={onClose}>
@@ -97,9 +97,11 @@ export function WeeklyComic({ issue, chron, onClose }: { issue: number; chron: {
         <div className="comic">
           {items.map((c, i) => {
             const k = (issue * 7 + i * 3) % 97;
-            const hero = NPC_RIGS[HEROES[k % HEROES.length]]?.look ?? { equipped: {}, tattoos: [], str: 10 };
+            // в главной роли — настоящие игроки недели (если есть), иначе массовка
+            const star = cast[i % Math.max(1, cast.length)];
+            const hero = star?.look ?? NPC_RIGS[HEROES[k % HEROES.length]]?.look ?? { equipped: {}, tattoos: [], str: 10 };
             const [a, b] = ANIMS[k % ANIMS.length];
-            return <Panel key={i} i={i % 3} hero={hero} heroAnim={a} who={CASTS[k % CASTS.length]} whoAnim={b} caption={`${c.emoji} ${c.text}.`} title={i === 0 ? EP_TITLES[issue % EP_TITLES.length] : undefined} />;
+            return <Panel key={i} i={i % 3} hero={hero} heroAnim={a} who={CASTS[k % CASTS.length]} whoAnim={b} caption={`${c.emoji} ${c.text}.${star && i === 0 ? ` В главной роли — ${star.name}.` : ''}`} title={i === 0 ? EP_TITLES[issue % EP_TITLES.length] : undefined} />;
           })}
         </div>
         <button className="btn btn-wide" onClick={onClose}>

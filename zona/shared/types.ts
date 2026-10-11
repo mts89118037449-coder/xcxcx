@@ -90,6 +90,7 @@ export interface PlayerView {
   intros: string[];
   feats: Record<string, number>;
   streamToday: boolean;
+  funny: { id: number; name: string; pts: number }[];
   joke: { day: number; voted: boolean };
   catsFed: string[];
   pumpkins: string[];
