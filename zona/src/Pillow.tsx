@@ -80,8 +80,8 @@ export function PillowGame({ onClose }: { onClose(): void }) {
   };
   const cur = res && step >= 0 && step < 3 ? res.rounds[step] : null;
   const done = !!res && step >= 3;
-  const meAnim: RigAnim = done ? (res!.win ? 'cheer' : res!.draw ? 'shrug' : 'koSpin') : cur === null ? 'guard' : cur >= 0 ? 'punch' : 'hit';
-  const himAnim: RigAnim = done ? (res!.win ? 'koSpin' : res!.draw ? 'shrug' : 'cheer') : cur === null ? 'guard' : cur <= 0 ? 'punch' : 'hit';
+  const meAnim: RigAnim = done ? (res!.win ? 'cheer' : res!.draw ? 'shrug' : 'koSpin') : cur === null ? 'idle' : cur >= 0 ? 'punch' : 'hit';
+  const himAnim: RigAnim = done ? (res!.win ? 'koSpin' : res!.draw ? 'shrug' : 'cheer') : cur === null ? 'idle' : cur <= 0 ? 'punch' : 'hit';
   const rivalLook = res?.look ?? { equipped: { body: 'body_robe' }, tattoos: [], str: 10, face: 2 };
   return (
     <Table who="sheet/rival/3" title="🪶 Подушечный бой" left={`боёв сегодня: ${p.games.pillow}`} onClose={onClose}>

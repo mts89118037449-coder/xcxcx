@@ -2,6 +2,7 @@ import { weatherAt } from '../shared/weather.ts';
 import { renoComfort } from '../shared/reno.ts';
 import { RAID } from '../shared/raid.ts';
 import { PILLOW } from '../shared/pillow.ts';
+import { BEAUTY, type BeautyEntry } from '../shared/beauty.ts';
 import { STREAM, STREAM_COMMENTS, type LiveStream } from '../shared/stream.ts';
 import { QUIZ, quizPhase, quizPoints, quizQuestions, quizSlot, quizTotalMs } from '../shared/quiz.ts';
 import { FOOT, dayPairs, footTable } from '../shared/football.ts';
@@ -135,6 +136,20 @@ export function createApp(opts: AppOptions) {
     const all = db.kvGet<Record<number, LiveStream>>('streams', {});
     for (const k of Object.keys(all)) if (all[Number(k)].until <= t) delete all[Number(k)];
     return all;
+  };
+  /** Конкурс красоты: участники недели по голосам и приз за прошлую. */
+  const beautyView = (p: g.Player, t: number) => {
+    const week = g.weekIndex(t);
+    const list = Object.values(db.kvGet<Record<number, BeautyEntry>>(`beauty:${week}`, {})).sort((a, b) => b.votes - a.votes);
+    const last = Object.values(db.kvGet<Record<number, BeautyEntry>>(`beauty:${week - 1}`, {})).sort((a, b) => b.votes - a.votes);
+    const place = last.findIndex((e) => e.id === p.id);
+    const prize = p.beautyClaimed !== week - 1 && place >= 0 && place < BEAUTY.prizes.length && last[place].votes > 0 ? BEAUTY.prizes[place] : 0;
+    return {
+      entries: list.slice(0, 30).map((e) => ({ id: e.id, name: e.name, look: e.look, anim: e.anim, fx: e.fx, bg: e.bg, votes: e.votes, voted: e.voters.includes(p.id) })),
+      mine: list.some((e) => e.id === p.id),
+      prize,
+      lastPlace: place + 1,
+    };
   };
   /** Подушечный турнир: таблица недели и приз за прошлую (тройке лучших). */
   const pillowTop = (p: g.Player, t: number) => {
@@ -738,6 +753,30 @@ export function createApp(opts: AppOptions) {
       return r;
     },
     pillowTop: (p, _b, t) => pillowTop(p, t),
+    beautyEnter: (p, b, t) => {
+      const key = `beauty:${g.weekIndex(t)}`;
+      const all = db.kvGet<Record<number, BeautyEntry>>(key, {});
+      const prev = all[p.id];
+      // переснялся — голоса сохраняются
+      all[p.id] = { ...g.beautyEntry(p, str(b.anim), str(b.fx), str(b.bg)), votes: prev?.votes ?? 0, voters: prev?.voters ?? [] };
+      db.kvSet(key, all);
+      return beautyView(p, t);
+    },
+    beautyVote: (p, b, t) => {
+      const key = `beauty:${g.weekIndex(t)}`;
+      const all = db.kvGet<Record<number, BeautyEntry>>(key, {});
+      g.beautyVote(p, all[num(b.id)], t);
+      db.kvSet(key, all);
+      return beautyView(p, t);
+    },
+    beautyTop: (p, _b, t) => beautyView(p, t),
+    beautyClaim: (p, _b, t) => {
+      const v = beautyView(p, t);
+      if (!v.prize) throw new g.GameError('Приза нет');
+      p.beautyClaimed = g.weekIndex(t) - 1;
+      p.gold += v.prize;
+      return { gold: v.prize };
+    },
     pillowClaim: (p, _b, t) => {
       const v = pillowTop(p, t);
       if (!v.prize) throw new g.GameError('Приза нет');

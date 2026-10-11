@@ -865,7 +865,7 @@ test('сюжет: 12 глав, у седьмой — своя версия дл�
   const { NPC_RIGS } = await import('../src/art/rig/npcs.ts');
   const { consumableById } = await import('../shared/perks.ts');
   const { itemById } = await import('../shared/content.ts');
-  assert.equal(STORY.length, 12);
+  assert.equal(STORY.length, 15);
   for (const c of STORY)
     for (const v of [c, ...Object.values(c.variants ?? {})]) {
       assert.ok(NPC_RIGS[v!.who], `${c.id}: нет НПС ${v!.who}`);
@@ -2272,4 +2272,18 @@ test('голубиная почта: бычки доходят или голуб
   c.butts = 50;
   assert.equal(g.pigeonSend(c, b, 5, now, () => 0.01).shot, true);
   assert.throws(() => g.pigeonSend(c, b, 7, now + 86_400_000, () => 0.9), /унесёт/);
+});
+
+test('конкурс красоты: заявка с проверкой, голос один раз, не за себя', () => {
+  const now = 1_800_000_000_000;
+  const a = g.newPlayer(911, 'Красавец', null, now);
+  const b = g.newPlayer(912, 'Жюри', null, now);
+  assert.throws(() => g.beautyEntry(a, 'proud', 'smile', 'gold'), /уровня/);
+  a.level = 5;
+  assert.throws(() => g.beautyEntry(a, 'hack', 'smile', 'gold'), /нельзя/);
+  const e = { ...g.beautyEntry(a, 'proud', 'smile', 'gold'), votes: 0, voters: [] as number[] };
+  g.beautyVote(b, e, now);
+  assert.equal(e.votes, 1);
+  assert.throws(() => g.beautyVote(b, e, now), /уже/);
+  assert.throws(() => g.beautyVote(a, e, now), /себя/);
 });

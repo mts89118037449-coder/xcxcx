@@ -6,7 +6,7 @@ import { lookOf, useGame } from './game.tsx';
 import { sendShare } from './Share.tsx';
 import { play } from './sound.ts';
 
-const POSES: { anim: RigAnim; icon: string; label: string }[] = [
+export const POSES: { anim: RigAnim; icon: string; label: string }[] = [
   { anim: 'proud', icon: '😎', label: 'Гоголем' },
   { anim: 'flex', icon: '💪', label: 'Мышцы' },
   { anim: 'crossed', icon: '🙅', label: 'Руки скрестил' },
@@ -23,7 +23,7 @@ const POSES: { anim: RigAnim; icon: string; label: string }[] = [
   { anim: 'sad', icon: '😔', label: 'Тоска' },
 ];
 
-const FACES: { id: string; icon: string; fx: FaceFx }[] = [
+export const FACES: { id: string; icon: string; fx: FaceFx }[] = [
   { id: 'none', icon: '😐', fx: {} },
   { id: 'smile', icon: '😁', fx: { smile: true } },
   { id: 'sweat', icon: '😓', fx: { sweat: true } },
@@ -32,7 +32,7 @@ const FACES: { id: string; icon: string; fx: FaceFx }[] = [
   { id: 'breath', icon: '🥶', fx: { breath: true } },
 ];
 
-type Bg = 'cell' | 'yard' | 'gold' | 'night';
+export type Bg = 'cell' | 'yard' | 'gold' | 'night';
 const BGS: { id: Bg; icon: string; label: string }[] = [
   { id: 'cell', icon: '🧱', label: 'Хата' },
   { id: 'yard', icon: '🌆', label: 'Двор' },
@@ -149,7 +149,7 @@ async function shoot(svg: SVGSVGElement, bg: Bg, caption: string, name: string, 
 
 /** Фото-режим: поза, лицо, фон — и снимок в Telegram. */
 export function PhotoModal({ onClose }: { onClose(): void }) {
-  const { p, toast } = useGame();
+  const { p, toast, act, busy: acting } = useGame();
   const [pose, setPose] = useState(0);
   const [face, setFace] = useState(1);
   const [bg, setBg] = useState<Bg>('cell');
@@ -209,6 +209,16 @@ export function PhotoModal({ onClose }: { onClose(): void }) {
             </button>
           ))}
         </div>
+        <button
+          className="btn btn-wide btn-dark"
+          disabled={acting}
+          onClick={async () => {
+            if (await act('beautyEnter', { anim: POSES[pose].anim, fx: FACES[face].id, bg })) toast('👑 Фото на конкурсе «Мистер Зона». Ждём голосов!');
+          }}
+          style={{ marginBottom: 6 }}
+        >
+          👑 Выставить на конкурс красоты
+        </button>
         <button className="btn btn-wide btn-gold" disabled={busy} onClick={snap}>
           {busy ? '📸 Снимаем…' : '📸 Снять и отправить'}
         </button>

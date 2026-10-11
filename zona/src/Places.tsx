@@ -83,7 +83,7 @@ export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
               </Place>
             </g>
           )}
-          {id === 'canteen' && <LoneCat id="canteen" x={326} y={264} scale={0.62} color="#b0a090" quest={cats} />}
+          {id === 'canteen' && <LoneCat id="canteen" x={292} y={256} scale={0.6} color="#b0a090" quest={cats} />}
         </LocationScene>
         {step !== null ? (
           <div className={`ev-bubble place-bubble intro-bubble ${line?.who === 1 ? 'me' : ''}`} key={`i${step}${arrived}`} onClick={next}>

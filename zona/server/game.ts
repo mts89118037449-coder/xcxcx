@@ -84,6 +84,7 @@ import { bunkOfDay } from '../shared/bunk.ts';
 import { RENO, renoCost } from '../shared/reno.ts';
 import { RAID, raidButts } from '../shared/raid.ts';
 import { ANEKDOT } from '../shared/anekdot.ts';
+import { BEAUTY, BEAUTY_ANIMS, BEAUTY_BGS, BEAUTY_FX, type BeautyEntry } from '../shared/beauty.ts';
 import { CATS, CAT_FEED } from '../shared/cats.ts';
 import { PILLOW, pillowRound, type PillowMove } from '../shared/pillow.ts';
 import { STREAM, STREAM_GIFTS, STREAM_TOPICS, type LiveStream } from '../shared/stream.ts';
@@ -305,6 +306,8 @@ export interface Player {
   catsFed: string[];
   /** за какую неделю забран приз подушечного турнира */
   pillowClaimed: number;
+  /** за какую неделю забран приз конкурса красоты */
+  beautyClaimed: number;
   /** входящие малявы */
   inbox: { id: number; from: number; fromName: string; msg: string; butts: number; at: number; read: boolean }[];
   /** заочница: переписка с концовками, одна за ходку */
@@ -483,6 +486,7 @@ export function newPlayer(id: number, name: string, username: string | null, now
     jokeDay: -1,
     catsFed: [],
     pillowClaimed: -1,
+    beautyClaimed: -1,
     ink: null,
     inkOrder: null,
     appeal: { hodka: 0, args: [], done: false, won: false, delta: 0 },
@@ -592,6 +596,7 @@ export function migrate(p: Player): Player {
   p.jokeDay ??= -1;
   p.catsFed ??= [];
   p.pillowClaimed ??= -1;
+  p.beautyClaimed ??= -1;
   p.ink ??= null;
   p.inkOrder ??= null;
   p.appeal ??= { hodka: 0, args: [], done: false, won: false, delta: 0 };
@@ -4451,6 +4456,24 @@ export function streamGift(p: Player, streamer: Player | null, s: LiveStream | u
   s.gifts ??= { butts: 0, heart: 0 };
   s.gifts[kind as 'butts' | 'heart']++;
   return { gifts: s.gifts };
+}
+
+/** Заявка на конкурс красоты: проверка позы, лица, фона. */
+export function beautyEntry(p: Player, anim: string, fx: string, bg: string): Omit<BeautyEntry, 'votes' | 'voters'> {
+  if (p.level < BEAUTY.minLevel) throw new GameError(`На конкурс — с ${BEAUTY.minLevel} уровня`);
+  if (!BEAUTY_ANIMS.includes(anim) || !BEAUTY_FX.includes(fx) || !BEAUTY_BGS.includes(bg)) throw new GameError('Так фотографироваться нельзя');
+  return { id: p.id, name: p.name, look: { equipped: p.equipped, tattoos: p.tattoos, str: p.str, face: p.face, build: p.build, skin: p.skin }, anim, fx, bg };
+}
+
+/** Голос за чужое фото: пять голосов в день, за одного — один раз. */
+export function beautyVote(p: Player, e: BeautyEntry | undefined, now: number) {
+  if (!e) throw new GameError('Нет такого участника');
+  if (e.id === p.id) throw new GameError('За себя голосовать — не по понятиям');
+  if (e.voters.includes(p.id)) throw new GameError('Ты уже голосовал за него');
+  playLimit(p, 'beautyVote', BEAUTY.votesPerDay, now);
+  e.voters.push(p.id);
+  e.votes++;
+  return { votes: e.votes };
 }
 
 export function claimFeat(p: Player, id: string) {

@@ -9,6 +9,7 @@ const SmotrCard = named(() => import('../Elect.tsx'), 'SmotrCard');
 const PaperCard = named(() => import('../Paper.tsx'), 'PaperCard');
 const NewsChip = named(() => import('../News.tsx'), 'NewsChip');
 const StreamChip = named(() => import('../Stream.tsx'), 'StreamChip');
+const BeautyChip = named(() => import('../Beauty.tsx'), 'BeautyChip');
 import { BUTTS } from '../../shared/content.ts';
 import { ButtG, Place, ZoneScene } from '../art/Scenes.tsx';
 import { LoneCat, ZoneLife } from '../art/Critters.tsx';
@@ -181,6 +182,7 @@ export function Zone() {
           {p.contra.shmon && <NowChip icon="🔦" label="Шмон!" sub="спрячь товар" hot onClick={() => setSeg('market')} />}
           <NewsChip />
           <StreamChip />
+          <BeautyChip />
           {p.holiday && <HolidayCard chip />}
           <SmotrCard chip />
           <BuildCard chip />

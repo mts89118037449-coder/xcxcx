@@ -607,9 +607,9 @@ function Leg({ x, h, k, color, foot, stripe, dark }: { x: number; h: number; k: 
 function Prop({ kind }: { kind: 'cig' | 'mug' | 'bowl' | 'hammer' | Hold }) {
   if (kind === 'pillow')
     return (
-      <g transform="translate(-2 2) rotate(20)">
-        <rect x={-6} y={-4} width={30} height={20} rx={8} fill="#f8f6ee" stroke={INK} strokeWidth={1.8} />
-        <path d="M-2,0 l3,3 M20,0 l-3,3 M-2,12 l3,-3 M20,12 l-3,-3" stroke={INK} strokeWidth={0.9} />
+      <g transform="translate(-6 4) rotate(10)">
+        <rect x={-8} y={-2} width={38} height={26} rx={10} fill="#f8f6ee" stroke={INK} strokeWidth={2} />
+        <path d="M-3,3 l4,4 M25,3 l-4,4 M-3,19 l4,-4 M25,19 l-4,-4" stroke={INK} strokeWidth={1} />
       </g>
     );
   if (kind === 'phone')

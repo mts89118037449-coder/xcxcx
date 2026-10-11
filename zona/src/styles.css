@@ -3245,3 +3245,10 @@ body:has(.modal) .event-btn { z-index: 20; }
 .stream-chat b { color: var(--gold); }
 .stream-say { display: flex; flex-wrap: wrap; gap: 4px; }
 .stream-say button { padding: 4px 8px; border-radius: 12px; border: 1px solid var(--line); background: #0005; color: var(--text); font-size: 12px; }
+
+/* O9: конкурс красоты */
+.beauty-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+.beauty-card { display: grid; gap: 4px; justify-items: center; text-align: center; }
+.beauty-card .photo-frame { width: 100%; margin: 0; border-width: 3px; }
+.beauty-card.me .photo-frame { border-color: var(--gold); }
+.beauty-place { position: absolute; left: 6px; top: 4px; font-size: 22px; z-index: 1; }
