@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { PENPAL, PEN_ENDINGS, PEN_LETTERS } from '../shared/penpal.ts';
 import { consumableById } from '../shared/perks.ts';
 import { fmt, timeLeft, useGame } from './game.tsx';
+import { WeddingModal } from './Wedding.tsx';
 import { ShareButton } from './Share.tsx';
 
 const fill = (t: string, name: string, me: string) => t.replace(/\{name\}/g, name).replace(/\{me\}/g, me);
@@ -39,6 +40,7 @@ export function PenpalCard() {
 
 function PenpalModal({ onClose }: { onClose(): void }) {
   const { p, now, act, busy, toast } = useGame();
+  const [wedding, setWedding] = useState(false);
   const s = p.penpal;
   const me = p.name;
   const reply = async (i: number) => {
@@ -73,6 +75,12 @@ function PenpalModal({ onClose }: { onClose(): void }) {
           </small>
         )}
         <ShareButton card={{ emoji: e.emoji, title: e.title, sub: `Переписка с заочницей: ${s.name}`, tone: s.ending === 'wedding' || s.ending === 'wait' ? 'pink' : 'red' }} caption={`${e.emoji} ${e.title} — вот чем кончилась моя переписка с заочницей на зоне`} />
+        {s.ending === 'wedding' && (
+          <button className="btn btn-wide btn-gold" onClick={() => setWedding(true)}>
+            💒 Смотреть свадьбу
+          </button>
+        )}
+        {wedding && <WeddingModal name={s.name} onClose={() => setWedding(false)} />}
         <small className="muted">Новая заочница — в следующую ходку</small>
       </div>
     );

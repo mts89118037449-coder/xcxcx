@@ -44,6 +44,8 @@ const Top = named(() => import('./screens/Top.tsx'), 'Top');
 const Shop = named(() => import('./screens/Shop.tsx'), 'Shop');
 const AdminPanel = named(() => import('./Admin.tsx'), 'AdminPanel');
 const IntroOverlay = named(() => import('./Intro.tsx'), 'IntroOverlay');
+const IntroMovie = named(() => import('./IntroMovie.tsx'), 'IntroMovie');
+const ChronicleModal = named(() => import('./Chronicle.tsx'), 'ChronicleModal');
 const MastPicker = named(() => import('./Term.tsx'), 'MastPicker');
 const CardsGame = named(() => import('./Minigames.tsx'), 'CardsGame');
 const RaceGame = named(() => import('./Minigames.tsx'), 'RaceGame');
@@ -154,6 +156,23 @@ export function App() {
   useEffect(() => {
     if (introPending) setIntroOn(true);
   }, [introPending]);
+  // мультик заезда — один раз, перед этапированием новичка
+  const [movie, setMovie] = useState(() => {
+    try {
+      return !localStorage.getItem('zona:movie');
+    } catch {
+      return false;
+    }
+  });
+  const endMovie = () => {
+    setMovie(false);
+    try {
+      localStorage.setItem('zona:movie', '1');
+    } catch {
+      /* приватный режим */
+    }
+  };
+  const [chronSeen, setChronSeen] = useState(false);
   const [mastAsked, setMastAsked] = useState(false);
   // открытия, которые уже закрыли в этой сессии (пока сервер не подтвердил)
   const [unlockHidden, setUnlockHidden] = useState<string[]>([]);
@@ -240,6 +259,14 @@ export function App() {
 
   const p = player;
   const fresh = freshUnlocks(p.level, [...p.unlocksSeen, ...unlockHidden]);
+  // криминальная хроника: раз в день, если за сутки было что рассказать
+  const chronDue = (() => {
+    try {
+      return localStorage.getItem('zona:chron') !== new Date().toISOString().slice(0, 10) && p.journal.filter((j) => now - j.t < 86_400_000).length >= 2;
+    } catch {
+      return false;
+    }
+  })();
   const go = (t: Tab) => {
     setTab(t);
     setPlace(null);
@@ -346,7 +373,9 @@ export function App() {
       {mini === 'fish' && <FishGame onClose={() => setMini(null)} />}
       {mini === 'shizo' && <ShizoGame onClose={() => setMini(null)} />}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
-      {introOn && <IntroOverlay onDone={() => setIntroOn(false)} />}
+      {introOn && movie && <IntroMovie onDone={endMovie} />}
+      {!introOn && chronDue && !chronSeen && fresh.length === 0 && <ChronicleModal onClose={() => setChronSeen(true)} />}
+      {introOn && !movie && <IntroOverlay onDone={() => setIntroOn(false)} />}
       {!introOn && tutOn && <TutorialCoach tab={tab} />}
       {!introOn && fresh.length > 0 && <UnlockModal list={fresh} onClose={() => setUnlockHidden(fresh.map((u) => u.id))} />}
       {!introOn && !mastAsked && !p.mast && p.level >= MAST_RULES.minLevel && <MastPicker onClose={() => setMastAsked(true)} />}
