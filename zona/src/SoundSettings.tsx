@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { onSoundPrefs, play, setSoundPrefs, soundPrefs } from './sound.ts';
+import { fxMode, hapticEnabled, setFxMode, setHaptic, type FxMode } from './feel.ts';
 
 /** Звук и музыка: два переключателя и громкость. Выбор помнится в этом браузере. */
 export function SoundSettings() {
   const [p, setP] = useState(soundPrefs());
+  const [vib, setVib] = useState(hapticEnabled());
+  const [gfx, setGfx] = useState<FxMode>(fxMode());
   useEffect(() => {
     const off = onSoundPrefs(() => setP({ ...soundPrefs() }));
     return () => {
@@ -19,6 +22,18 @@ export function SoundSettings() {
       <label className="notify-toggle">
         <input type="checkbox" checked={p.music} onChange={(e) => setSoundPrefs({ music: e.target.checked })} />
         <span>🎸 Музыка: перебор во дворе</span>
+      </label>
+      <label className="notify-toggle">
+        <input type="checkbox" checked={vib} onChange={(e) => (setHaptic(e.target.checked), setVib(e.target.checked))} />
+        <span>📳 Вибрация: тапы, удары, награды</span>
+      </label>
+      <label className="sound-vol">
+        <span>Графика</span>
+        <select value={gfx} onChange={(e) => (setFxMode(e.target.value as FxMode), setGfx(e.target.value as FxMode))}>
+          <option value="auto">Авто (по телефону)</option>
+          <option value="high">Полная</option>
+          <option value="low">Облегчённая</option>
+        </select>
       </label>
       <label className="sound-vol">
         <span>Громкость</span>

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { impact } from './feel.ts';
 import { api } from './api.ts';
 import { PILLOW, PILLOW_MOVES, PILLOW_TAUNTS, type PillowMove } from '../shared/pillow.ts';
 import type { Look } from '../shared/types.ts';
@@ -46,6 +47,7 @@ export function PillowGame({ onClose }: { onClose(): void }) {
   const [moves, setMoves] = useState<PillowMove[]>([]);
   const [res, setRes] = useState<Res | null>(null);
   const [step, setStep] = useState(-1);
+  const field = useRef<SVGSVGElement>(null);
   const [top, setTop] = useState<Top | null>(null);
   useEffect(() => {
     api.action<Top>('pillowTop').then((r) => setTop(r.result)).catch(() => null);
@@ -60,8 +62,11 @@ export function PillowGame({ onClose }: { onClose(): void }) {
     const t = setTimeout(() => {
       const next = step + 1;
       setStep(next);
-      if (next < 3) play(res.rounds[next] === 0 ? 'miss' : 'hit');
-      else play(res.win ? 'win' : res.draw ? 'click' : 'lose');
+      if (next < 3) {
+        play(res.rounds[next] === 0 ? 'miss' : 'hit');
+        if (res.rounds[next] !== 0) impact(field.current);
+      } else if (res.win) impact(field.current, 'ko');
+      if (next >= 3) play(res.win ? 'win' : res.draw ? 'click' : 'lose');
     }, step < 0 ? 300 : 1000);
     return () => clearTimeout(t);
   }, [res, step]);
@@ -85,7 +90,7 @@ export function PillowGame({ onClose }: { onClose(): void }) {
   const rivalLook = res?.look ?? { equipped: { body: 'body_robe' }, tattoos: [], str: 10, face: 2 };
   return (
     <Table who="sheet/rival/3" title="🪶 Подушечный бой" left={`боёв сегодня: ${p.games.pillow}`} onClose={onClose}>
-      <svg viewBox="0 0 300 180" className="pillow-field">
+      <svg ref={field} viewBox="0 0 300 180" className="pillow-field">
         <rect width={300} height={180} fill="#5b5348" />
         {Array.from({ length: 8 }, (_, k) => <rect key={k} x={k * 40 + (k % 2) * 6} y={20 + (k % 3) * 30} width={34} height={14} fill="#4a4339" />)}
         <rect y={146} width={300} height={34} fill="#7a4a2a" stroke="#1a1410" strokeWidth={2} />

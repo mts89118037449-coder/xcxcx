@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { haptic, impact } from '../feel.ts';
 import { ITEMS } from '../../shared/content.ts';
 import type { FightReplay, Look } from '../../shared/types.ts';
 import { Bar, fmt } from '../game.tsx';
@@ -53,6 +54,7 @@ export function FightArena({
   startAt?: number;
 }) {
   const [i, setI] = useState(startAt);
+  const box = useRef<HTMLDivElement>(null);
   // представление босса — вслух (кум и начальство говорят голосом, остальные бормочут)
   useEffect(() => {
     const mv = enemy.npc ? BOSS_MOVES[enemy.npc] : undefined;
@@ -72,6 +74,9 @@ export function FightArena({
     if (prev && i > startAt) {
       play(prev.miss ? 'miss' : prev.fin ? 'finisher' : prev.crit ? 'crit' : prev.dmg > 0 ? 'hit' : 'click');
       if ((prev.combo ?? 0) >= 2) play('combo');
+      // стоп-кадр, тряска и вибрация — удар чувствуется рукой
+      if (prev.dmg > 0 && !prev.miss) impact(box.current, prev.fin ? 'ko' : prev.crit ? 'crit' : 'hit');
+      else if (prev.miss) haptic('select');
     }
     const next = replay.rounds[i];
     const t = setTimeout(() => setI(i + 1), i === 0 ? 350 : next && !next.dmg && !next.miss ? STEP_MS * 0.8 : STEP_MS);
@@ -165,7 +170,7 @@ export function FightArena({
   );
 
   return (
-    <div className={`arena ${last && !done && (last.crit || last.fin) && last.dmg > 0 ? `shake${alt}` : ''}${last?.fin && !done ? ' fin-flash' : ''}`}>
+    <div ref={box} className={`arena${last?.fin && !done ? ' fin-flash' : ''}`}>
       <YardScene tower={false}>
           <Place x={ME_X} y={266} scale={0.98} className={`pose ${meCls}${meCls ? alt : ''}`}>
             <PoseG

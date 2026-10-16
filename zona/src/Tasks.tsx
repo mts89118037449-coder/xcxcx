@@ -32,6 +32,7 @@ export function Dailies() {
             </div>
             <button
               className="btn btn-s"
+              data-hint={ready ? 'claim' : undefined}
               disabled={busy || !ready}
               onClick={async () => {
                 await act('task', { index: i });

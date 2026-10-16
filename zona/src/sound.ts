@@ -125,7 +125,14 @@ function pluck(freq: number, at: number, dur: number, vol: number, bus: GainNode
 
 // --- эффекты ---------------------------------------------------------------------------
 
+let sfxHook: ((s: Sfx) => void) | null = null;
+/** Кто ещё хочет знать о звуке (вибрация в такт). */
+export function setSfxHook(f: (s: Sfx) => void) {
+  sfxHook = f;
+}
+
 export function play(s: Sfx) {
+  sfxHook?.(s);
   if (!prefs.sfx) return;
   const c = ensure();
   if (!c) return;
@@ -293,7 +300,9 @@ export function speak(text: string, pitch = 1, rate = 1): boolean {
   u.pitch = pitch;
   u.rate = rate;
   u.volume = Math.min(1, prefs.volume + 0.2);
+  u.onend = () => duck(50);
   synth.speak(u);
+  duck(Math.min(12000, 900 + text.length * 70));
   return true;
 }
 
@@ -310,6 +319,7 @@ export function babble(text: string, voice: string) {
   const kind: OscillatorType = h % 3 === 0 ? 'square' : h % 3 === 1 ? 'sawtooth' : 'triangle';
   const n = Math.max(3, Math.min(12, Math.round(text.length / 6)));
   const t0 = c.currentTime + 0.02;
+  duck(n * 85 + 300);
   for (let i = 0; i < n; i++) {
     const at = t0 + i * 0.085 + Math.random() * 0.015;
     const f = base * (0.85 + Math.random() * 0.4) * (i === n - 1 && text.trim().endsWith('?') ? 1.3 : 1);
@@ -331,9 +341,38 @@ export function babble(text: string, voice: string) {
   }
 }
 
+/** Звук награды в серии: каждая следующая — на полтона выше (до октавы). */
+export function playStep(n: number) {
+  if (!prefs.sfx) return;
+  const c = ensure();
+  if (!c) return;
+  const t = c.currentTime + 0.01;
+  const f = 988 * 2 ** (Math.min(12, n) / 12);
+  tone(f, t, 0.07, { type: 'square', vol: 0.09 });
+  tone(f * 1.335, t + 0.06, 0.16, { type: 'square', vol: 0.09 });
+}
+
+/** Музыка тише, пока говорят: голос не тонет в гитаре. */
+let duckTimer = 0;
+export function duck(ms: number) {
+  if (!ctx || !musicBus) return;
+  const now = ctx.currentTime;
+  musicBus.gain.cancelScheduledValues(now);
+  musicBus.gain.setValueAtTime(Math.max(0.0001, musicBus.gain.value), now);
+  musicBus.gain.linearRampToValueAtTime(0.14, now + 0.15);
+  clearTimeout(duckTimer);
+  duckTimer = window.setTimeout(() => {
+    if (!ctx || !musicBus) return;
+    const n = ctx.currentTime;
+    musicBus.gain.cancelScheduledValues(n);
+    musicBus.gain.setValueAtTime(musicBus.gain.value, n);
+    musicBus.gain.linearRampToValueAtTime(0.45, n + 0.6);
+  }, ms);
+}
+
 // --- музыка: отдельный файл, грузится после первого касания -------------------------------
 
-export type Theme = 'yard' | 'night' | 'fight' | 'bath' | 'canteen' | 'library' | 'club' | 'visits' | 'factory' | 'shizo';
+export type Theme = 'cell' | 'yard' | 'night' | 'fight' | 'bath' | 'canteen' | 'library' | 'club' | 'visits' | 'factory' | 'shizo';
 
 let theme: Theme = 'yard';
 /** Сменить музыку: со следующего такта, без обрыва. */

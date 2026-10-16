@@ -4,6 +4,7 @@ import { Table } from './Minigames.tsx';
 import { startRun } from './api.ts';
 import { useGame } from './game.tsx';
 import { play } from './sound.ts';
+import { haptic, shake } from './feel.ts';
 
 const W = 300;
 const H = 220;
@@ -66,6 +67,8 @@ export function SlingGame({ onClose }: { onClose(): void }) {
     if (!shot?.done) return;
     const hit = shot.done === 'hit';
     play(hit ? 'coin' : shot.done === 'caught' ? 'error' : 'miss');
+    haptic(hit ? 'success' : shot.done === 'caught' ? 'heavy' : 'select');
+    if (shot.done === 'caught') shake(svg.current, 2);
     const nh = hits + (hit ? 1 : 0);
     const nl = left - 1;
     const tm = setTimeout(async () => {

@@ -5,6 +5,7 @@
 // Система координат 360×280, пол на y≈236.
 
 import type { ReactNode } from 'react';
+import { lowFx } from '../feel.ts';
 import { FURNITURE, bossById, interiorById, type Spot } from '../../shared/content.ts';
 import { WeatherGround, WeatherLayer, sceneColony } from './Weather.tsx';
 import { LivePet } from './Critters.tsx';
@@ -150,10 +151,12 @@ export function Scene({
       </svg>
       {/* мультяшная обводка: тот же фон без анимаций, из него — только чёрные контуры поверх.
           Отдельный слой: считается один раз, живые лампы и пар под ним его не перерисовывают */}
-      <svg className="scene-layer sp-ink-layer sp-still" viewBox={box} preserveAspectRatio="xMidYMid slice" aria-hidden>
-        <SceneDefs />
-        <g filter="url(#sp-ink)">{backdrop}</g>
-      </svg>
+      {!lowFx() && (
+        <svg className="scene-layer sp-ink-layer sp-still" viewBox={box} preserveAspectRatio="xMidYMid slice" aria-hidden>
+          <SceneDefs />
+          <g filter="url(#sp-ink)">{backdrop}</g>
+        </svg>
+      )}
       <svg className="scene-layer" viewBox={box} preserveAspectRatio="xMidYMid slice">
         <SceneDefs />
         {children}

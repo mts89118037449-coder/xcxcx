@@ -1,6 +1,7 @@
 // Живность и массовка в стиле «Южного парка»: плоские цвета, толстый чёрный контур, круглые глаза.
 // Все двигаются от общих часов — 20 кадров в секунду, «вырезная» анимация.
 import { useState } from 'react';
+import { lowFx } from '../feel.ts';
 import { Rig } from './rig/Rig.tsx';
 import { useClock } from './rig/Toon.tsx';
 import { NPC_RIGS } from './rig/npcs.ts';
@@ -119,8 +120,10 @@ function patrol(t: number, a: number, b: number, speed: number, pause = 0.6) {
 
 /** Массовка карты зоны: вертухай с псом в патруле, ворона на заборе, крыса у столовой. */
 export function ZoneLife() {
-  const t = useClock(true);
+  // слабый телефон: зверьё не бегает, кадры — герою
+  const t = useClock(!lowFx());
   const [t0] = useState(t);
+  if (lowFx()) return null;
   const lt = t - t0;
   const guard = patrol(lt, 200, 330, 26, 1.4);
   const dog = patrol(lt + 300, 214, 344, 26, 1.4);
@@ -400,8 +403,9 @@ export function CatSpot({ id, x, y, scale, color, t, walk, dir = 1, quest }: { i
 
 /** Кошачья банда во дворе: главный на заборе, двое шныряют внизу. Голуби — над головой. */
 export function YardCats({ quest }: { quest?: CatsQuest }) {
-  const t = useClock(true);
+  const t = useClock(!lowFx() || !!quest);
   const [t0] = useState(t);
+  if (lowFx() && !quest) return null;
   const lt = t - t0;
   const a = patrol(lt, 70, 160, 22, 3);
   const b = patrol(lt + 2000, 220, 300, 18, 4);

@@ -71,6 +71,26 @@ const AMB = {
       tone(300, at + b * beat, 0.1, { type: 'square', vol: 0.03, slide: 0.7, bus: engine.musicBus });
     }
   },
+  /** двор: порыв ветра, далёкий лай, карканье */
+  yard(at: number, len: number) {
+    if (rnd() < 0.35) noise(at + rnd() * len * 0.5, 1.6, { vol: 0.035, freq: 420, q: 0.4, type: 'lowpass', bus: engine.musicBus });
+    if (rnd() < 0.18) {
+      const t = at + rnd() * len;
+      for (let k = 0; k < 2; k++) tone(330 - k * 20, t + k * 0.22, 0.12, { type: 'sawtooth', vol: 0.025, slide: 0.6, bus: engine.musicBus });
+    }
+    if (rnd() < 0.12) {
+      const t = at + rnd() * len;
+      for (let k = 0; k < 2; k++) noise(t + k * 0.3, 0.18, { vol: 0.04, freq: 1300, q: 3, bus: engine.musicBus });
+    }
+  },
+  /** хата: капли из крана и храп соседа */
+  cell(at: number, len: number, bar: number) {
+    AMB.drips(at, len, 1);
+    if (bar % 3 === 0) {
+      noise(at + len * 0.2, 1.1, { vol: 0.05, freq: 160, q: 1.2, bus: engine.musicBus });
+      noise(at + len * 0.62, 0.7, { vol: 0.035, freq: 260, q: 1.5, bus: engine.musicBus });
+    }
+  },
   drone(at: number, len: number) {
     tone(N(-24), at, len + 0.3, { type: 'sine', vol: 0.06, bus: engine.musicBus, attack: 0.6 });
   },
@@ -78,7 +98,9 @@ const AMB = {
 
 const beatOf = (bpm: number) => 60 / bpm;
 const THEMES: Record<Theme, ThemeDef> = {
-  yard: { bpm: 92, key: 0, chords: MINOR, pattern: [0, 1, 2, 3, 2, 1, 2, 3], pick: 0.22, melody: 'triangle' },
+  yard: { bpm: 92, key: 0, chords: MINOR, pattern: [0, 1, 2, 3, 2, 1, 2, 3], pick: 0.22, melody: 'triangle', amb: (at) => AMB.yard(at, beatOf(92) * 4) },
+  // в хате тише и медленнее, слышно кран и храп
+  cell: { bpm: 84, key: 0, chords: MINOR, pattern: [0, 2, 3, 2], pick: 0.15, melody: 'triangle', amb: (at, b) => AMB.cell(at, beatOf(84) * 4, b) },
   // ночью то же, но медленнее, тише, без мелодии — и сверчки
   night: { bpm: 70, key: -2, chords: MINOR, pattern: [0, 2, 3, 2], pick: 0.14, melody: null, amb: (at) => AMB.crickets(at, beatOf(70) * 4) },
   fight: { bpm: 118, key: -5, chords: MINOR, pattern: [0, 0, 2, 0, 3, 0, 2, 1], pick: 0.18, melody: 'sawtooth', drums: true },

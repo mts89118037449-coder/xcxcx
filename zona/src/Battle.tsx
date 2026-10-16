@@ -6,7 +6,7 @@ import { NPC_RIGS } from './art/rig/npcs.ts';
 import { FightArena } from './art/FightArena.tsx';
 import { itemLabel } from './Perks.tsx';
 import { lookOf, useGame } from './game.tsx';
-import { tg } from './api.ts';
+import { haptic } from './feel.ts';
 import { leagueTier } from '../shared/league.ts';
 import { ShareButton } from './Share.tsx';
 
@@ -33,7 +33,7 @@ export function BattleModal({ onClose }: { onClose(): void }) {
   }, []);
 
   const send = async (body: Record<string, unknown>) => {
-    tg?.HapticFeedback?.impactOccurred('medium');
+    haptic('hit');
     const r = await act<{ rounds: BattleView['rounds']; battle?: BattleView; done?: boolean } & Partial<Final>>('battle', body);
     if (!r) return;
     setAnim(r.rounds.length > 0);
@@ -42,7 +42,7 @@ export function BattleModal({ onClose }: { onClose(): void }) {
     if (r.battle) setView(r.battle);
     if (r.done) {
       setFinal({ win: !!r.win, reward: r.reward ?? {}, used: r.used ?? [] });
-      tg?.HapticFeedback?.notificationOccurred(r.win ? 'success' : 'error');
+      haptic(r.win ? 'success' : 'error');
     }
   };
 

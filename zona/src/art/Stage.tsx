@@ -7,6 +7,32 @@ import { CellScene, Place, WorkScene, YardScene, type InteriorIds } from './Scen
 import type { RigAnim } from './rig/Rig.tsx';
 import { ImageG, PoseG, useNpc, type PoseName } from './sprites.tsx';
 import { YardCats, type CatsQuest } from './Critters.tsx';
+import { idleFor, onWake } from '../feel.ts';
+
+/** Что бормочет герой, когда игрок его бросил. Чёрный юмор — по месту. */
+const IDLE_LINES: Record<Loc, string[]> = {
+  cell: ['Эй. Ты там живой?', 'Срок сам себя не отсидит', 'Считаю трещины в потолке. Сорок две. Вчера было сорок одна', 'Если что, я не скучаю. Я жду', 'Тапни меня, а то Лёха опять начнёт про бывшую', 'Дед говорит, первые десять лет тяжело'],
+  work: ['Смена сама не отработается', 'Мастер смотрит. Делаю вид, что работаю', 'Тут платят мало, зато стабильно мало', 'Норма выработки — как горизонт. Видно, но не дойти'],
+  yard: ['Голубь опять смотрит на меня как на хлеб', 'Гуляю. По кругу. Как жизнь', 'Вышка видит всё. Даже как я скучаю', 'Свежий воздух. Ну, относительно'],
+};
+
+/** Простой: 0 — игрок тут, 1 — отвлёкся (герой смотрит и бормочет), 2 — бросил (герой спит). */
+function useIdle(): number {
+  const [lvl, setLvl] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => {
+      if (document.hidden) return;
+      const ms = idleFor();
+      setLvl(ms > 20000 ? 2 : ms > 4000 ? 1 : 0);
+    }, 1000);
+    const off = onWake(() => setLvl(0));
+    return () => {
+      clearInterval(iv);
+      off();
+    };
+  }, []);
+  return lvl;
+}
 
 type Loc = 'cell' | 'work' | 'yard';
 export type Mood = 'idle' | 'hurt' | 'win' | 'tired' | 'rich' | 'cold';
@@ -68,7 +94,18 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, p
     const t2 = setTimeout(() => setFace(null), pose === 'work' ? 6000 : 3500);
     return () => (clearTimeout(t), clearTimeout(t2));
   }, [animKey, anim, loc]);
-  const walking = loc === 'yard' && !busyPose && (mood === 'idle' || mood === 'win');
+  const idleLvl = useIdle();
+  // реплика на каждый новый «отвлёкся»; держится 4 секунды
+  const [line, setLine] = useState<string | null>(null);
+  useEffect(() => {
+    if (idleLvl !== 1) return setLine(null);
+    const all = IDLE_LINES[loc];
+    setLine(all[Math.floor(Math.random() * all.length)]);
+    const t = setTimeout(() => setLine(null), 4000);
+    return () => clearTimeout(t);
+  }, [idleLvl, loc]);
+  const idleAnim: RigAnim | undefined = busyPose ? undefined : idleLvl === 2 ? 'sleep' : line ? (loc === 'cell' ? 'talk' : 'wave') : undefined;
+  const walking = loc === 'yard' && !busyPose && !idleAnim && (mood === 'idle' || mood === 'win');
 
   const at = PLACE[loc];
   // раненый в хате сидит на полу
@@ -84,9 +121,16 @@ export function Stage({ loc, look, mood, bare, furniture = [], interior, wall, p
   const fig = (
     <Place x={at.x} y={at.y} scale={at.scale} key={rigDriven ? 'fig' : animKey} className={`pose ${rigDriven ? '' : anim}`}>
       <g className={walking ? 'yard-walk' : undefined}>
-        <PoseG name={idle} anim={busyPose ?? moodAnim} look={look} bare={bare} startKey={animKey} sfx={!walking} hold={hold} fx={{ bruise: mood === 'hurt', sweat: face === 'sweat', smile: face === 'smile' || (mood === 'rich' && !face) }} />
+        <PoseG name={idle} anim={busyPose ?? idleAnim ?? moodAnim} look={look} bare={bare} startKey={animKey} sfx={!walking} hold={hold} fx={{ bruise: mood === 'hurt', sweat: face === 'sweat', smile: face === 'smile' || (mood === 'rich' && !face) }} />
       </g>
-      {moodEmoji && !busyPose && (
+      {line && !busyPose && (
+        <g className="idle-line" transform={`translate(0 ${loc === 'cell' ? 40 : 0})`}>
+          <foreignObject x={-70} y={-62} width={180} height={60}>
+            <div className="idle-bubble">{line}</div>
+          </foreignObject>
+        </g>
+      )}
+      {moodEmoji && !busyPose && !line && (
         <g className="mood-bubble" transform={`translate(${loc === 'cell' ? 96 : 92} ${loc === 'cell' && mood === 'hurt' ? 150 : 34})`}>
           <circle r={13} fill="#f2e6c8" stroke="#2a1a10" strokeWidth={1.4} />
           <circle cx={-12} cy={14} r={3.4} fill="#f2e6c8" stroke="#2a1a10" strokeWidth={1.2} />

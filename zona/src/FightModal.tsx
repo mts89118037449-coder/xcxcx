@@ -1,6 +1,6 @@
 import { ModalHead } from './Nav.tsx';
 import { useCallback, useState } from 'react';
-import { tg } from './api.ts';
+import { haptic } from './feel.ts';
 import { play } from './sound.ts';
 import { FightArena, type Fighter } from './art/FightArena.tsx';
 import type { FightLog } from './game.tsx';
@@ -11,7 +11,7 @@ export function FightModal({ fight, me, onClose }: { fight: FightLog; me: Fighte
   const finish = useCallback(() => {
     setDone(true);
     play(fight.replay.win ? 'win' : 'lose');
-    tg?.HapticFeedback?.notificationOccurred(fight.replay.win ? 'success' : 'error');
+    haptic(fight.replay.win ? 'success' : 'error');
   }, [fight]);
   return (
     <div className="modal" onClick={() => done && onClose()}>

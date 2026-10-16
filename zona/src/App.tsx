@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExtern
 import { hideBoot } from './boot.ts';
 import { closeDiscipline, disciplineCase, onDiscipline } from './discipline.ts';
 import type { PlayerView } from '../shared/types.ts';
-import { api, ApiError, tg } from './api.ts';
+import { api, ApiError } from './api.ts';
 import { Face } from './art/sprites.tsx';
 import { DialogBox } from './Dialog.tsx';
 import { EventButton } from './EventsLite.tsx';
@@ -14,7 +14,10 @@ import { isNight } from '../shared/time.ts';
 import { GuideBar } from './Guide.tsx';
 import { UnlockModal, freshUnlocks } from './Unlocks.tsx';
 import type { PlaceId } from '../shared/places.ts';
-import { FxLayer, gainsOf, type FxChip } from './Fx.tsx';
+import { FxLayer, RollNum, gainsOf, type FxChip } from './Fx.tsx';
+import { flyRewards, haptic, markPending } from './feel.ts';
+import { NextHint } from './NextHint.tsx';
+import { flushSync } from 'react-dom';
 import { Bar, GameCtx, fmt, fmtShort, lookOf, timeLeft, useNow, type DialogSpec, type FightLog, type Game, type Place as PlaceT, type Tab } from './game.tsx';
 import { logError, noteFailure } from './errlog.ts';
 import { LiveBanner } from './Live.tsx';
@@ -96,6 +99,22 @@ const TABS: { id: Tab; icon: string; label: string; also?: Tab[] }[] = [
   { id: 'gear', icon: '👤', label: 'Я' },
 ];
 
+/** Заглушка, пока грузится экран: серые силуэты сцены и карточек вместо пустоты. */
+function Skeleton() {
+  return (
+    <div className="skel" aria-hidden>
+      <div className="skel-scene" />
+      <div className="skel-row">
+        <i />
+        <i />
+        <i />
+      </div>
+      <div className="skel-card" />
+      <div className="skel-card short" />
+    </div>
+  );
+}
+
 export function App() {
   const [player, setPlayer] = useState<PlayerView | null>(null);
   const [online, setOnline] = useState(0);
@@ -103,7 +122,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [busy, setBusy] = useState(false);
-  const [toastMsg, setToast] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
+  const [toastMsg, setToast] = useState<{ text: string; kind: 'ok' | 'err'; n: number; id: number } | null>(null);
   const [fight, setFight] = useState<FightLog | null>(null);
   const [visiting, setVisiting] = useState<number | null>(null);
   const [energyOpen, setEnergyOpen] = useState(false);
@@ -150,7 +169,9 @@ export function App() {
         ? PLACE_MUSIC[place]!
         : isNight(Date.now())
           ? 'night'
-          : 'yard';
+          : tab === 'home'
+            ? 'cell'
+            : 'yard';
   useEffect(() => setMusicTheme(musicFor), [musicFor]);
   if (player) setSceneColony(player.colony);
   // этапирование для новичка и приглашение выбрать масть — по одному разу за заход
@@ -193,9 +214,10 @@ export function App() {
     const r = result as { gold?: number } | null;
     play(g.levelUps > 0 ? 'level' : r && typeof r === 'object' && (r.gold ?? 0) > 0 ? 'gold' : 'coin');
     setFx((f) => ({ chips: g.chips, levelUp: g.levelUps > 0, key: f.key + 1 }));
-    tg?.HapticFeedback?.notificationOccurred('success');
+    flyRewards(g.chips);
+    haptic(g.levelUps > 0 ? 'heavy' : 'success');
     clearTimeout(fxTimer.current);
-    fxTimer.current = window.setTimeout(() => setFx((f) => ({ ...f, chips: [], levelUp: false })), 2400 + g.chips.length * 140);
+    fxTimer.current = window.setTimeout(() => setFx((f) => ({ ...f, chips: [], levelUp: false })), 2400 + g.chips.length * 140 + (g.levelUps ? 900 : 0));
   }, []);
   const now = useNow();
 
@@ -218,16 +240,18 @@ export function App() {
   }, [refresh]);
 
   const toast = useCallback((text: string, kind: 'ok' | 'err' = 'ok') => {
-    setToast({ text, kind });
-    tg?.HapticFeedback?.notificationOccurred(kind === 'ok' ? 'success' : 'error');
+    // одинаковые подряд склеиваются в «×N», а не мигают заново
+    setToast((t) => (t && t.text === text && t.kind === kind ? { ...t, n: t.n + 1 } : { text, kind, n: 1, id: Date.now() }));
+    haptic(kind === 'ok' ? 'success' : 'error');
     clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 2600);
+    // длинное читается дольше
+    toastTimer.current = window.setTimeout(() => setToast(null), Math.min(5200, 1800 + text.length * 40));
   }, []);
 
   const act = useCallback(
     async <R,>(type: string, body: Record<string, unknown> = {}): Promise<R | null> => {
       setBusy(true);
-      tg?.HapticFeedback?.impactOccurred('light');
+      const done = markPending();
       try {
         const r = await api.action<R>(type, body);
         setPlayer(r.player);
@@ -242,6 +266,7 @@ export function App() {
         if (e instanceof ApiError && e.message.startsWith('Не хватает энергии')) setEnergyOpen(true);
         return null;
       } finally {
+        done();
         setBusy(false);
       }
     },
@@ -272,9 +297,17 @@ export function App() {
     }
   })();
   const go = (t: Tab) => {
-    setTab(t);
-    setPlace(null);
-    window.scrollTo(0, 0);
+    const swap = () => {
+      setTab(t);
+      setPlace(null);
+      window.scrollTo(0, 0);
+    };
+    // плавная смена экрана (View Transitions), где браузер умеет; иначе — как было
+    const doc = document as Document & { startViewTransition?: (f: () => void) => unknown };
+    if (t !== tab && doc.startViewTransition && !document.documentElement.classList.contains('lowfx')) {
+      document.documentElement.dataset.dir = TABS.findIndex((x) => x.id === t) < TABS.findIndex((x) => x.id === tab) ? 'back' : 'fwd';
+      doc.startViewTransition(() => flushSync(swap));
+    } else swap();
   };
   const game: Game = { p, online, botUsername, now, busy, act, refresh, toast, showFight: setFight, go, visit: setVisiting, openEnergy: () => setEnergyOpen(true), say: setDialog, openShells: () => setShellsOpen(true), openPlace: (pl) => (pl === 'pullups' ? setPullOpen(true) : (setPlace(pl), window.scrollTo(0, 0))), openEvent: (id) => setEventId(id ?? p.event?.id ?? null), openMini: setMini };
   const todos = todo(p, now);
@@ -301,10 +334,10 @@ export function App() {
               )}
             </div>
             <div className="wallet">
-              <span className="coin">{fmtShort(p.money)} ₽</span>
-              <span className="coin" onClick={() => go('zone')}>{fmtShort(p.butts)} 🚬</span>
-              <span className="coin gold" onClick={() => go('shop')}>
-                {fmtShort(p.gold)} 🪙<b className="plus">+</b>
+              <span className="coin" data-wallet="money"><RollNum value={p.money} fmt={fmtShort} /> ₽</span>
+              <span className="coin" data-wallet="butts" onClick={() => go('zone')}><RollNum value={p.butts} fmt={fmtShort} /> 🚬</span>
+              <span className="coin gold" data-wallet="gold" onClick={() => go('shop')}>
+                <RollNum value={p.gold} fmt={fmtShort} /> 🪙<b className="plus">+</b>
               </span>
             </div>
           </div>
@@ -316,18 +349,18 @@ export function App() {
           </button>
         </div>
         <div className="bars">
-          <Bar kind="hp" value={p.hp} max={p.stats.maxHp} label={`❤️ ${fmt(p.hp)}`} />
-          <div onClick={() => setEnergyOpen(true)} style={{ cursor: 'pointer' }}>
+          <div data-wallet="hp"><Bar kind="hp" value={p.hp} max={p.stats.maxHp} label={`❤️ ${fmt(p.hp)}`} /></div>
+          <div data-wallet="en" onClick={() => setEnergyOpen(true)} style={{ cursor: 'pointer' }}>
             <Bar kind="en" value={p.energy} max={p.stats.maxEnergy} label={`⚡ ${p.energy}/${p.stats.maxEnergy}${energyTimer ? ` · ${timeLeft(energyTimer)}` : ''}`} />
           </div>
-          <Bar kind="xp" value={p.xp} max={p.xpNext} label={`⭐ ${Math.floor((p.xp / Math.max(1, p.xpNext)) * 100)}%`} />
+          <div data-wallet="xp"><Bar kind="xp" value={p.xp} max={p.xpNext} label={`⭐ ${Math.floor((p.xp / Math.max(1, p.xpNext)) * 100)}%`} /></div>
         </div>
       </header>
 
-      <main key={`${tab}:${place ?? ''}`} className="screen-in">
+      <main key={`${tab}:${place ?? ''}`} className="screen-in" style={{ viewTransitionName: 'screen' }}>
         {!place && <LiveBanner />}
         {!place && <GuideBar />}
-        <Suspense fallback={null}>
+        <Suspense fallback={<Skeleton />}>
         {place === 'church' && <Church onBack={() => { setPlace(null); setTab('zone'); }} />}
         {place === 'medic' && <Medic onBack={() => { setPlace(null); setTab('zone'); }} />}
         {place === 'escape' && <Escape onBack={() => { setPlace(null); setTab('zone'); }} />}
@@ -355,8 +388,14 @@ export function App() {
       </nav>
 
       <EventButton />
-      <FxLayer key={fx.key} chips={fx.chips} levelUp={fx.levelUp} />
-      {toastMsg && <div className={`toast toast-${toastMsg.kind}`}>{toastMsg.text}</div>}
+      <FxLayer key={fx.key} chips={fx.chips} levelUp={fx.levelUp} look={lookOf(p)} level={p.level} />
+      {toastMsg && (
+        <div key={toastMsg.id} className={`toast toast-${toastMsg.kind} ${toastMsg.text.length > 70 ? 'toast-card' : ''}`}>
+          {toastMsg.text}
+          {toastMsg.n > 1 && <b key={toastMsg.n} className="toast-n">×{toastMsg.n}</b>}
+        </div>
+      )}
+      {!introOn && <NextHint tab={tab} place={place} />}
 
       <Suspense fallback={null}>
       {visiting !== null && <VisitModal id={visiting} onClose={() => setVisiting(null)} />}

@@ -15,6 +15,7 @@ interface TelegramWebApp {
   HapticFeedback?: {
     impactOccurred(style: 'light' | 'medium' | 'heavy'): void;
     notificationOccurred(type: 'error' | 'success' | 'warning'): void;
+    selectionChanged?(): void;
   };
 }
 

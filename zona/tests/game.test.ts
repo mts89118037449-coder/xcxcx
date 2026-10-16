@@ -265,8 +265,16 @@ test('бычки: растут со временем, собираются, ме
   g.growField(p, T0 + 100 * 240_000, fixed(0.5));
   assert.equal(p.field.length, 8, 'не больше максимума');
   const id = p.field[0].id;
-  g.pickButt(p, id);
-  assert.equal(p.butts, 1);
+  p.field[0].pack = false;
+  // в «табачную неделю» бычки идут вдвое — не зависим от того, какая неделя сегодня
+  const saved = g.clock.now;
+  g.clock.now = () => T0;
+  try {
+    g.pickButt(p, id);
+  } finally {
+    g.clock.now = saved;
+  }
+  assert.equal(p.butts, g.weeklyEvent(T0).id === 'tobacco' ? 2 : 1);
   assert.throws(() => g.pickButt(p, id), /подобрали/);
   p.butts = 5;
   const r = g.trade(p, 'money', T0);

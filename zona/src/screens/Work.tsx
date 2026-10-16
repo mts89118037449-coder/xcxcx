@@ -94,7 +94,7 @@ export function Work() {
             <b>{p[s]}</b>
             <small>{STAT_NAMES[s]}</small>
             {p.statPoints > 0 ? (
-              <button className="btn btn-s" disabled={busy} onClick={() => pump('allocate', s)}>+1</button>
+              <button className="btn btn-s" data-hint="alloc" disabled={busy} onClick={() => pump('allocate', s)}>+1</button>
             ) : (
               <button className="btn btn-s btn-dark" disabled={busy || p.money < trainCost(p[s])} onClick={() => pump('train', s)}>
                 <Price amount={trainCost(p[s])} currency="money" />

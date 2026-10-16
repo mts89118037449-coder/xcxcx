@@ -3,11 +3,13 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import './styles.css';
 import { initSound } from './sound.ts';
+import { initFeel } from './feel.ts';
 import { initErrorLog } from './errlog.ts';
 import { ErrorBoundary } from './Crash.tsx';
 
 initErrorLog();
 initSound();
+initFeel();
 
 const tg = window.Telegram?.WebApp;
 tg?.ready();
