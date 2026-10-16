@@ -1,0 +1,164 @@
+import type { PlaceId } from '../shared/places.ts';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import type { FightReplay, Look, PlayerView } from '../shared/types.ts';
+
+export type Place = 'church' | 'medic' | 'escape' | 'pullups' | PlaceId;
+export type Tab = 'home' | 'zone' | 'work' | 'fight' | 'gear' | 'top' | 'shop';
+
+export interface DialogOption {
+  label: string;
+  onPick?: () => unknown;
+  keepOpen?: boolean;
+  disabled?: boolean;
+  /** метка для стрелки обучения */
+  tut?: string;
+}
+
+export interface DialogSpec {
+  who: string; // картинка персонажа: sheet/rival/3, sheet/cast/doctor…
+  name: string;
+  text: string;
+  options: DialogOption[];
+}
+
+export interface FightLog {
+  title: string;
+  replay: FightReplay;
+  enemy: { name: string; look: Look; build?: number; npc?: string };
+  /** кто в левом углу (по умолчанию — сам игрок) */
+  me?: { name: string; look: Look };
+  /** заголовок итога вместо «Победа/Поражение» — для зрителя */
+  verdict?: string;
+  lines: string[]; // итоги: награды, трофеи
+}
+
+export interface Game {
+  p: PlayerView;
+  online: number;
+  botUsername: string;
+  now: number;
+  busy: boolean;
+  act<R = unknown>(type: string, body?: Record<string, unknown>): Promise<R | null>;
+  refresh(): Promise<void>;
+  toast(text: string, kind?: 'ok' | 'err'): void;
+  showFight(f: FightLog): void;
+  go(tab: Tab): void;
+  visit(id: number): void;
+  openEnergy(): void;
+  say(d: DialogSpec): void;
+  openShells(): void;
+  openPlace(place: Place): void;
+  openEvent(id?: string): void;
+  openMini(kind: import('./Minigames.tsx').Mini): void;
+}
+
+export const GameCtx = createContext<Game | null>(null);
+
+export function useGame(): Game {
+  const g = useContext(GameCtx);
+  if (!g) throw new Error('GameCtx');
+  return g;
+}
+
+/** Текущее время, обновляется раз в секунду — для таймеров. */
+export function useNow(): number {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+export function fmt(n: number): string {
+  return Math.floor(n).toLocaleString('ru-RU');
+}
+
+/** Коротко для шапки: 12 400 → 12,4к, 3 500 000 → 3,5М. */
+export function fmtShort(n: number): string {
+  const a = Math.abs(n);
+  const cut = (v: number, s: string) => `${(Math.floor(v * 10) / 10).toLocaleString('ru-RU')}${s}`;
+  if (a >= 1e9) return cut(n / 1e9, 'млрд');
+  if (a >= 1e6) return cut(n / 1e6, 'М');
+  if (a >= 1e4) return cut(n / 1e3, 'к');
+  return fmt(n);
+}
+
+export function timeLeft(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}ч ${m}м`;
+  if (m > 0) return `${m}м ${String(sec).padStart(2, '0')}с`;
+  return `${sec}с`;
+}
+
+export function Bar({ value, max, kind, label }: { value: number; max: number; kind: 'hp' | 'en' | 'xp' | 'boss'; label?: ReactNode }) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  return (
+    <div className={`bar bar-${kind}`}>
+      <div className="bar-fill" style={{ width: `${pct}%` }} />
+      <span className="bar-label">{label ?? `${fmt(value)} / ${fmt(max)}`}</span>
+    </div>
+  );
+}
+
+export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`card ${className}`}>{children}</div>;
+}
+
+export function Price({ amount, currency }: { amount: number; currency: 'money' | 'gold' | 'stars' }) {
+  const icon = currency === 'money' ? '₽' : currency === 'gold' ? '🪙' : '⭐';
+  return (
+    <span className={`price price-${currency}`}>
+      {fmt(amount)} {icon}
+    </span>
+  );
+}
+
+export function BonusList({ b }: { b: { atk?: number; def?: number; hp?: number; crit?: number; energy?: number; money?: number } }) {
+  const parts: string[] = [];
+  if (b.atk) parts.push(`⚔️+${b.atk}`);
+  if (b.def) parts.push(`🛡️+${b.def}`);
+  if (b.hp) parts.push(`❤️+${b.hp}`);
+  if (b.crit) parts.push(`💥+${b.crit}%`);
+  if (b.energy) parts.push(`⚡+${b.energy}`);
+  if (b.money) parts.push(`₽+${b.money}%`);
+  return <span className="bonus">{parts.join('  ')}</span>;
+}
+
+/** Перезапускаемая анимация: play('act-work') → класс и ключ, чтобы пересоздать элемент. */
+export function useAnim(): [string, number, (cls: string) => void] {
+  const [state, setState] = useState({ cls: '', key: 0 });
+  const play = useCallback((cls: string) => setState((s) => ({ cls, key: s.key + 1 })), []);
+  return [state.cls, state.key, play];
+}
+
+/** Настроение героя по его состоянию — видно по позе и пузырю над головой. */
+export type HeroMood = 'idle' | 'hurt' | 'tired' | 'rich' | 'cold';
+export const HERO_MOOD: Record<Exclude<HeroMood, 'idle'>, { emoji: string; text: string }> = {
+  hurt: { emoji: '🤕', text: 'Побит — здоровья мало. Подлечись в санчасти или отдохни' },
+  tired: { emoji: '😴', text: 'Вымотан — энергии почти нет. Перекури, она восстановится' },
+  rich: { emoji: '🤑', text: 'При деньгах — ходит гоголем' },
+  cold: { emoji: '🥶', text: 'Мороз — во дворе зуб на зуб не попадает' },
+};
+export function heroMood(p: PlayerView, temp?: number): HeroMood {
+  if (p.hp < p.stats.maxHp * 0.3) return 'hurt';
+  if (p.energy < p.stats.maxEnergy * 0.15) return 'tired';
+  if (temp != null && temp <= -12) return 'cold';
+  if (p.money >= 5000 + p.level * 1500) return 'rich';
+  return 'idle';
+}
+
+export function lookOf(p: PlayerView): Look {
+  return { equipped: p.equipped, tattoos: p.tattoos, str: p.str, face: p.face, build: p.build, skin: p.skin };
+}
+
+/** Наезд на сокамерника — вызывается и с кнопки, и из диалога во дворе. */
+export function usePvp() {
+  const { act } = useGame();
+  return async () => {
+    await act('pvp');
+  };
+}

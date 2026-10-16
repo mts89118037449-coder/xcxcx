@@ -1,0 +1,140 @@
+import { useEffect, useState } from 'react';
+import { PLACE_INTRO } from '../shared/cutscenes.ts';
+import { LoneCat } from './art/Critters.tsx';
+import { useCatsQuest } from './catQuest.ts';
+import { PumpkinSpot } from './Pumpkin.tsx';
+import { ConcertModal, EnsembleCard } from './Ensemble.tsx';
+import { babble, play as sfx } from './sound.ts';
+import { needFail } from '../shared/events.ts';
+import { PLACES, placeById, type PlaceId } from '../shared/places.ts';
+import { mastById } from '../shared/term.ts';
+import { gotLine } from './EventsLite.tsx';
+import { LocationScene } from './art/Locations.tsx';
+import { Place } from './art/Scenes.tsx';
+import { ImageG, PoseG, useNpc } from './art/sprites.tsx';
+import { fmt, lookOf, timeLeft, useAnim, useGame } from './game.tsx';
+
+interface Got {
+  text: string;
+  money: number;
+  butts: number;
+  gold: number;
+  xp: number;
+  authority: number;
+  energy: number;
+  hp: number;
+  item: string | null;
+  term: number;
+}
+
+/** Место зоны: сцена с хозяином и плитки занятий с откатами. */
+export function PlaceScreen({ id, onBack }: { id: PlaceId; onBack(): void }) {
+  const { p, now, act, busy, toast } = useGame();
+  const pl = placeById.get(id)!;
+  const host = useNpc(pl.who);
+  const [anim, animKey, play] = useAnim();
+  const [res, setRes] = useState<Got | null>(null);
+  const ration = 30 + p.level * 15;
+  const cats = useCatsQuest();
+  const [concert, setConcert] = useState(false);
+  // первый заход — сценка знакомства: хозяин подходит, пара реплик, награда
+  const intro = PLACE_INTRO[id];
+  const [step, setStep] = useState<number | null>(() => (intro && !p.intros?.includes(id) ? 0 : null));
+  const [arrived, setArrived] = useState(step === null);
+  useEffect(() => {
+    if (arrived) return;
+    const t = setTimeout(() => setArrived(true), 1100);
+    return () => clearTimeout(t);
+  }, [arrived]);
+  const line = step !== null && arrived ? intro[step] : null;
+  const next = async () => {
+    if (step === null) return;
+    if (step < intro.length - 1) return setStep(step + 1);
+    setStep(null);
+    const r = await act<{ already: boolean; butts: number; xp: number }>('placeIntro', { place: id });
+    if (r && !r.already) {
+      toast(`🤝 Познакомились: +${r.butts} 🚬 · +${r.xp} опыта`);
+      play('act-cheer');
+    }
+  };
+  const heroAnim = line ? (line.who === 1 ? 'talk' : 'nod') : undefined;
+  useEffect(() => {
+    if (line) babble(line.text, line.who === 1 ? p.name : pl.host);
+  }, [line]);
+  const hostAnim = step !== null ? (!arrived ? 'walk' : line?.who === 0 ? 'talk' : 'idle') : undefined;
+
+  const run = async (actId: string) => {
+    const r = await act<Got>('place', { place: id, act: actId });
+    if (!r) return;
+    setRes(r);
+    play(r.hp < 0 ? 'got-hit' : 'act-cheer');
+    // клуб: зал смеётся над шуткой и хлопает концерту
+    if (id === 'club') sfx(actId === 'kvn' || actId === 'movie' ? 'laugh' : 'applause');
+    if (id === 'club' && actId === 'concert') setConcert(true);
+  };
+
+  return (
+    <>
+      <div className="scene-wrap">
+        <LocationScene place={id}>
+          <Place x={118} y={266} scale={0.92} key={animKey} className={`pose ${anim}`}>
+            <PoseG name="stand" look={lookOf(p)} anim={heroAnim} startKey={step ?? -1} sfx />
+          </Place>
+          {host && (
+            <g className={arrived ? undefined : 'walk-in'}>
+              <Place x={264} y={264} scale={0.9}>
+                <ImageG url={host.url} height={host.height} mirror className="char-breathe" anim={hostAnim} />
+              </Place>
+            </g>
+          )}
+          {id === 'canteen' && <PumpkinSpot id="canteen" x={60} y={262} scale={0.8} />}
+          {id === 'canteen' && <LoneCat id="canteen" x={292} y={256} scale={0.6} color="#b0a090" quest={cats} />}
+        </LocationScene>
+        {step !== null ? (
+          <div className={`ev-bubble place-bubble intro-bubble ${line?.who === 1 ? 'me' : ''}`} key={`i${step}${arrived}`} onClick={next}>
+            <b>{line?.who === 1 ? p.name : pl.host}</b>
+            {line ? line.text : '…'}
+            {line && <button className="btn btn-s intro-next">{step < intro.length - 1 ? 'Дальше ▸' : 'Познакомились ✓'}</button>}
+          </div>
+        ) : (
+          <div className="ev-bubble place-bubble" key={res ? res.text : 'greet'}>
+            <b>{pl.host}</b>
+            {res ? res.text : pl.greet}
+            {res && <small className="place-got">{gotLine(res) || 'без последствий'}</small>}
+          </div>
+        )}
+        <div className="scene-tag">
+          {pl.icon} {pl.name}
+        </div>
+        <button className="place-back" onClick={onBack}>
+          ← На зону
+        </button>
+      </div>
+      {id === 'club' && <EnsembleCard />}
+      {concert && <ConcertModal onClose={() => setConcert(false)} />}
+      <div className="place-acts">
+        {pl.activities.map((a) => {
+          const readyAt = p.placeCd[`${id}.${a.id}`] ?? 0;
+          const wait = readyAt > now;
+          const why = needFail(a.need, p);
+          const c = a.cost ?? {};
+          const money = Math.round((c.money ?? 0) * ration);
+          const poor = p.money < money || p.butts < (c.butts ?? 0) || p.gold < (c.gold ?? 0) || p.energy < (c.energy ?? 0);
+          const price = [money && `${fmt(money)} ₽`, c.butts && `${c.butts} 🚬`, c.gold && `${c.gold} 🪙`, c.energy && `${c.energy} ⚡`].filter(Boolean).join(' · ');
+          const lock = why ? (a.need?.mast ? a.need.mast.map((m) => mastById.get(m)?.emoji).join('') + ' ' + why : why) : '';
+          return (
+            <button key={a.id} className={`place-act ${wait || why ? 'spent' : ''}`} disabled={busy || wait || !!why || poor} onClick={() => run(a.id)}>
+              <span className="place-ico">{a.icon}</span>
+              <b>{a.label}</b>
+              <small>{why ? `🔒 ${lock}` : wait ? `⏳ ${timeLeft(readyAt - now)}` : a.hint}</small>
+              {price && !wait && !why && <i>{price}</i>}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/** Плитки мест для вкладки «Места». */
+export const PLACE_TILES = PLACES;
