@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Flappy Bird</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    html, body {
+      margin: 0; padding: 0; height: 100%; overflow: hidden;
+      background: #4ec0ca;
+      touch-action: none; user-select: none; -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    canvas { display: block; width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+(() => {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+    if (tg.setHeaderColor) tg.setHeaderColor('#4ec0ca');
+  }
+  const haptic = (type) => {
+    try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(type); } catch (e) {}
+  };
+  const playerName = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || 'Игрок';
+
+  // ---- Лучший результат: CloudStorage Telegram, иначе localStorage ----
+  let best = 0;
+  try { best = parseInt(localStorage.getItem('flappy_best') || '0', 10) || 0; } catch (e) {}
+  if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
+    tg.CloudStorage.getItem('best', (err, v) => {
+      if (!err && v) best = Math.max(best, parseInt(v, 10) || 0);
+    });
+  }
+  function saveBest() {
+    try { localStorage.setItem('flappy_best', String(best)); } catch (e) {}
+    if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
+      tg.CloudStorage.setItem('best', String(best));
+    }
+  }
+
+  // ---- Холст: логическая высота фиксирована, ширина подстраивается ----
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const H = 640;
+  let W = 360, scale = 1;
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    scale = vh / H;
+    W = Math.max(280, Math.min(560, vw / scale));
+    canvas.width = Math.round(vw * dpr);
+    canvas.height = Math.round(vh * dpr);
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, ((vw - W * scale) / 2) * dpr, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---- Параметры игры ----
+  const GROUND_H = 90;
+  const GRAVITY = 1500;      // px/с²
+  const FLAP = -430;         // px/с
+  const PIPE_W = 64;
+  const GAP = 160;
+  const PIPE_SPACING = 210;
+  const SPEED = 150;         // px/с
+
+  const STATE = { READY: 0, PLAY: 1, OVER: 2 };
+  let state, bird, pipes, score, groundX, overTime, flashT, sent;
+
+  function reset() {
+    state = STATE.READY;
+    bird = { x: W * 0.3, y: H * 0.42, vy: 0, r: 14, rot: 0, wing: 0 };
+    pipes = [];
+    score = 0;
+    groundX = 0;
+    flashT = 0;
+    sent = false;
+    if (tg && tg.MainButton) tg.MainButton.hide();
+  }
+  reset();
+
+  function spawnPipe(x) {
+    const minTop = 60, maxTop = H - GROUND_H - GAP - 60;
+    pipes.push({ x, top: minTop + Math.random() * (maxTop - minTop), passed: false });
+  }
+
+  function flap() {
+    if (state === STATE.READY) {
+      state = STATE.PLAY;
+      spawnPipe(W + 40);
+    }
+    if (state === STATE.PLAY) {
+      bird.vy = FLAP;
+      haptic('light');
+    } else if (state === STATE.OVER && performance.now() - overTime > 600) {
+      reset();
+    }
+  }
+
+  function gameOver() {
+    if (state === STATE.OVER) return;
+    state = STATE.OVER;
+    overTime = performance.now();
+    flashT = 1;
+    haptic('heavy');
+    if (score > best) { best = score; saveBest(); }
+    if (tg && tg.MainButton && score > 0) {
+      tg.MainButton.setText('Отправить результат: ' + score);
+      tg.MainButton.show();
+    }
+  }
+
+  // Отправка очков боту (работает, если игра открыта кнопкой клавиатуры бота)
+  if (tg && tg.MainButton) {
+    tg.MainButton.onClick(() => {
+      if (sent) return;
+      sent = true;
+      tg.sendData(JSON.stringify({ score, best }));
+    });
+  }
+
+  // ---- Управление ----
+  canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); flap(); });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'Enter') { e.preventDefault(); flap(); }
+  });
+
+  // ---- Обновление ----
+  function update(dt) {
+    bird.wing += dt * (state === STATE.OVER ? 0 : 12);
+    if (state !== STATE.OVER || bird.y < H - GROUND_H - bird.r) {
+      groundX = (groundX - (state === STATE.OVER ? 0 : SPEED * dt)) % 24;
+    }
+
+    if (state === STATE.READY) {
+      bird.y = H * 0.42 + Math.sin(performance.now() / 300) * 8;
+      bird.rot = 0;
+      return;
+    }
+
+    bird.vy += GRAVITY * dt;
+    bird.y += bird.vy * dt;
+    bird.rot = Math.max(-0.45, Math.min(1.4, bird.vy / 600));
+
+    if (bird.y + bird.r >= H - GROUND_H) {
+      bird.y = H - GROUND_H - bird.r;
+      bird.vy = 0;
+      gameOver();
+    }
+    if (bird.y - bird.r < 0) { bird.y = bird.r; bird.vy = 0; }
+
+    if (state === STATE.PLAY) {
+      for (const p of pipes) p.x -= SPEED * dt;
+      if (pipes.length && pipes[0].x + PIPE_W < -10) pipes.shift();
+      const last = pipes[pipes.length - 1];
+      if (last && last.x < W + 40 - PIPE_SPACING) spawnPipe(last.x + PIPE_SPACING);
+
+      for (const p of pipes) {
+        if (!p.passed && p.x + PIPE_W < bird.x) {
+          p.passed = true;
+          score++;
+          haptic('soft');
+        }
+        if (circleRect(bird.x, bird.y, bird.r - 2, p.x, 0, PIPE_W, p.top) ||
+            circleRect(bird.x, bird.y, bird.r - 2, p.x, p.top + GAP, PIPE_W, H)) {
+          gameOver();
+        }
+      }
+    }
+    if (flashT > 0) flashT = Math.max(0, flashT - dt * 3);
+  }
+
+  function circleRect(cx, cy, r, rx, ry, rw, rh) {
+    const nx = Math.max(rx, Math.min(cx, rx + rw));
+    const ny = Math.max(ry, Math.min(cy, ry + rh));
+    const dx = cx - nx, dy = cy - ny;
+    return dx * dx + dy * dy < r * r;
+  }
+
+  // ---- Отрисовка ----
+  const clouds = Array.from({ length: 5 }, (_, i) => ({ x: i * 130, y: 60 + Math.random() * 160, s: 0.7 + Math.random() * 0.6 }));
+  let cloudShift = 0;
+
+  function drawBackground(dt) {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#4ec0ca');
+    g.addColorStop(1, '#bdeef2');
+    ctx.fillStyle = g;
+    ctx.fillRect(-400, 0, W + 800, H);
+
+    if (state !== STATE.OVER) cloudShift += dt * 15;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    for (const c of clouds) {
+      const x = ((c.x - cloudShift * c.s) % (W + 200) + W + 200) % (W + 200) - 100;
+      ctx.beginPath();
+      ctx.arc(x, c.y, 22 * c.s, 0, Math.PI * 2);
+      ctx.arc(x + 24 * c.s, c.y - 10 * c.s, 26 * c.s, 0, Math.PI * 2);
+      ctx.arc(x + 50 * c.s, c.y, 20 * c.s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // город на горизонте
+    ctx.fillStyle = '#a3dfc0';
+    for (let i = -1; i < W / 40 + 1; i++) {
+      const h = 40 + ((i * 37) % 50 + 50) % 50;
+      ctx.fillRect(i * 40, H - GROUND_H - h, 34, h);
+    }
+    ctx.fillStyle = '#7bd389';
+    ctx.beginPath();
+    ctx.moveTo(-10, H - GROUND_H);
+    for (let x = -10; x <= W + 10; x += 30) ctx.quadraticCurveTo(x + 15, H - GROUND_H - 22, x + 30, H - GROUND_H);
+    ctx.fill();
+  }
+
+  function drawPipe(x, y, h, flip) {
+    const lip = 26;
+    const grad = ctx.createLinearGradient(x, 0, x + PIPE_W, 0);
+    grad.addColorStop(0, '#5fb340');
+    grad.addColorStop(0.35, '#9be15d');
+    grad.addColorStop(1, '#3e8a2a');
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = '#2d5e1e';
+    ctx.lineWidth = 3;
+    ctx.fillRect(x, y, PIPE_W, h);
+    ctx.strokeRect(x, y, PIPE_W, h);
+    const ly = flip ? y + h - lip : y;
+    ctx.fillRect(x - 5, ly, PIPE_W + 10, lip);
+    ctx.strokeRect(x - 5, ly, PIPE_W + 10, lip);
+  }
+
+  function drawGround() {
+    const y = H - GROUND_H;
+    ctx.fillStyle = '#ded895';
+    ctx.fillRect(-400, y, W + 800, GROUND_H);
+    ctx.fillStyle = '#73bf2e';
+    ctx.fillRect(-400, y, W + 800, 16);
+    ctx.fillStyle = '#9ce659';
+    for (let x = groundX - 24; x < W + 24; x += 24) {
+      ctx.beginPath();
+      ctx.moveTo(x, y + 16); ctx.lineTo(x + 12, y + 16); ctx.lineTo(x + 24, y); ctx.lineTo(x + 12, y);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#543847';
+    ctx.fillRect(-400, y - 2, W + 800, 3);
+  }
+
+  function drawBird() {
+    ctx.save();
+    ctx.translate(bird.x, bird.y);
+    ctx.rotate(bird.rot);
+    // тело
+    ctx.fillStyle = '#f7d51d';
+    ctx.strokeStyle = '#543847';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 18, 14, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    // живот
+    ctx.fillStyle = '#fbeea5';
+    ctx.beginPath();
+    ctx.ellipse(-2, 6, 11, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // крыло
+    const wy = Math.sin(bird.wing) * 5;
+    ctx.fillStyle = '#fff6c9';
+    ctx.beginPath();
+    ctx.ellipse(-8, 1 + wy, 9, 6, -0.3, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    // глаз
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(7, -5, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(9, -5, 2.6, 0, Math.PI * 2); ctx.fill();
+    // клюв
+    ctx.fillStyle = '#f75c1d';
+    ctx.beginPath();
+    ctx.moveTo(12, 1); ctx.lineTo(25, 4); ctx.lineTo(12, 9); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  function text(str, x, y, size, align = 'center') {
+    ctx.font = `900 ${size}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(4, size / 6);
+    ctx.strokeStyle = '#543847';
+    ctx.strokeText(str, x, y);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(str, x, y);
+  }
+
+  function panel(x, y, w, h) {
+    ctx.fillStyle = '#ded895';
+    ctx.strokeStyle = '#543847';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x, y, w, h, 14) : ctx.rect(x, y, w, h);
+    ctx.fill(); ctx.stroke();
+  }
+
+  function draw(dt) {
+    drawBackground(dt);
+    for (const p of pipes) {
+      drawPipe(p.x, -4, p.top + 4, true);
+      drawPipe(p.x, p.top + GAP, H - GROUND_H - p.top - GAP, false);
+    }
+    drawGround();
+    drawBird();
+
+    if (state === STATE.PLAY) text(String(score), W / 2, 70, 56);
+
+    if (state === STATE.READY) {
+      text('Flappy Bird', W / 2, 120, 44);
+      text('Привет, ' + playerName + '!', W / 2, 175, 22);
+      text('Тапни, чтобы лететь', W / 2, H * 0.58, 24);
+      if (best > 0) text('Рекорд: ' + best, W / 2, H * 0.58 + 40, 20);
+    }
+
+    if (state === STATE.OVER) {
+      text('Игра окончена', W / 2, 150, 38);
+      const pw = Math.min(260, W - 40), px = W / 2 - pw / 2;
+      panel(px, 195, pw, 150);
+      ctx.fillStyle = '#e86101';
+      ctx.font = '800 18px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('ОЧКИ', W / 2, 220);
+      text(String(score), W / 2, 252, 36);
+      ctx.fillStyle = '#e86101';
+      ctx.font = '800 18px system-ui, sans-serif';
+      ctx.fillText('РЕКОРД' + (score > 0 && score === best ? ' — НОВЫЙ!' : ''), W / 2, 290);
+      text(String(best), W / 2, 320, 28);
+      medal(px + 34, 252);
+      if (performance.now() - overTime > 600) text('Тапни, чтобы сыграть ещё', W / 2, 395, 20);
+    }
+
+    if (flashT > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${flashT})`;
+      ctx.fillRect(-400, 0, W + 800, H);
+    }
+  }
+
+  function medal(x, y) {
+    let c = null;
+    if (score >= 40) c = '#e5e4e2';
+    else if (score >= 20) c = '#ffd700';
+    else if (score >= 10) c = '#c0c0c0';
+    else if (score >= 5) c = '#cd7f32';
+    if (!c) return;
+    ctx.fillStyle = c;
+    ctx.strokeStyle = '#543847';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath(); ctx.arc(x - 5, y - 5, 5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // ---- Цикл ----
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    update(dt);
+    draw(dt);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
