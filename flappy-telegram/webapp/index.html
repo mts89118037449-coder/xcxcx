@@ -20,7 +20,9 @@
 <canvas id="game"></canvas>
 <script>
 (() => {
+  // ================= Telegram =================
   const tg = window.Telegram && window.Telegram.WebApp;
+  const inTelegram = !!(tg && tg.initData);
   if (tg) {
     tg.ready();
     tg.expand();
@@ -31,60 +33,165 @@
     try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(type); } catch (e) {}
   };
   const playerName = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || 'Игрок';
+  // Адрес API бота: по умолчанию тот же сервер, либо ?api=https://...
+  const API = (new URLSearchParams(location.search).get('api') || '').replace(/\/$/, '');
 
-  // ---- Лучший результат: CloudStorage Telegram, иначе localStorage ----
-  let best = 0;
-  try { best = parseInt(localStorage.getItem('flappy_best') || '0', 10) || 0; } catch (e) {}
-  if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
-    tg.CloudStorage.getItem('best', (err, v) => {
-      if (!err && v) best = Math.max(best, parseInt(v, 10) || 0);
+  async function apiCall(method, body = {}) {
+    const r = await fetch(API + '/api/' + method, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, initData: tg.initData }),
+    });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || 'Ошибка сервера');
+    return d;
+  }
+
+  // ================= Хранилище =================
+  const store = {
+    get(k, def) { try { const v = localStorage.getItem('flappy_' + k); return v == null ? def : JSON.parse(v); } catch (e) { return def; } },
+    set(k, v) { try { localStorage.setItem('flappy_' + k, JSON.stringify(v)); } catch (e) {} },
+  };
+  const hasCloud = tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9');
+
+  let best = store.get('best', 0);
+  let ownedPaid = store.get('skins', []);
+  let selectedSkin = store.get('skin', 'classic');
+
+  if (hasCloud) {
+    tg.CloudStorage.getItems(['best', 'skin'], (err, v) => {
+      if (err || !v) return;
+      best = Math.max(best, parseInt(v.best, 10) || 0);
+      if (v.skin && SKINS.some((s) => s.id === v.skin)) selectedSkin = previewSkin = v.skin;
     });
   }
   function saveBest() {
-    try { localStorage.setItem('flappy_best', String(best)); } catch (e) {}
-    if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
-      tg.CloudStorage.setItem('best', String(best));
-    }
+    store.set('best', best);
+    if (hasCloud) tg.CloudStorage.setItem('best', String(best));
+  }
+  function saveSkin() {
+    store.set('skin', selectedSkin);
+    if (hasCloud) tg.CloudStorage.setItem('skin', selectedSkin);
   }
 
-  // ---- Холст: логическая высота фиксирована, ширина подстраивается ----
+  // ================= Скины =================
+  // unlock: открывается при рекорде; stars: покупается за Telegram Stars
+  const SKINS = [
+    { id: 'classic', name: 'Классика', X: '#543847', y: '#f7c52b', o: '#fae36d', w: '#fafafa', r: '#f2611c' },
+    { id: 'red',     name: 'Красная',  X: '#543847', y: '#e8452c', o: '#f99a3d', w: '#fafafa', r: '#f7b733', unlock: 5 },
+    { id: 'blue',    name: 'Синяя',    X: '#543847', y: '#3fa7e0', o: '#9ad8f2', w: '#fafafa', r: '#f2611c', unlock: 10 },
+    { id: 'zombie',  name: 'Зомби',    X: '#2f3b22', y: '#6fbf3a', o: '#c3e87a', w: '#e6f5d0', r: '#c94a2a', unlock: 25 },
+    { id: 'pink',    name: 'Фламинго', X: '#543847', y: '#f27fb5', o: '#fbc3dc', w: '#fff0f7', r: '#f2611c', unlock: 50 },
+    { id: 'gold',    name: 'Золотая',  X: '#6b4a00', y: '#e9b10e', o: '#ffe680', w: '#fff6c7', r: '#c97a00', stars: 25 },
+    { id: 'ninja',   name: 'Ниндзя',   X: '#000000', y: '#2d2d38', o: '#4a4a5a', w: '#e8e8e8', r: '#d23a3a', stars: 50 },
+    { id: 'ice',     name: 'Алмазная', X: '#2a4f73', y: '#7fd8f5', o: '#d6f6ff', w: '#ffffff', r: '#6aa9ff', stars: 100 },
+  ];
+  const skinById = (id) => SKINS.find((s) => s.id === id) || SKINS[0];
+  const isOwned = (s) => (!s.unlock && !s.stars) || (s.unlock && best >= s.unlock) || ownedPaid.includes(s.id);
+  if (!isOwned(skinById(selectedSkin))) selectedSkin = 'classic';
+  let previewSkin = selectedSkin;
+
+  // ================= Пиксельный спрайт птицы (17×12, как в оригинале) =================
+  const BODY = [
+    '......XXXXXX.....',
+    '....XXyyyXwwX....',
+    '...XyyyyXwwwwX...',
+    '..XyyyyyXwwwXwX..',
+    '.XyyyyyyXwwwXwX..',
+    '.XyyyyyyyXwwwwX..',
+    '.XyyyyyyyyXXXXXX.',
+    '.XyyyyyyyXrrrrrrX',
+    '..XXXoooXrXXXXXX.',
+    '..XoooooooXrrrrX.',
+    '...XXoooooXXXXX..',
+    '.....XXXXX.......',
+  ];
+  const WING_UP_MID = [
+    '.XXXX..',
+    'XwwwwX.',
+    'XwwwwwX',
+    'XywwwyX',
+    '.XXXXX.',
+  ];
+  const WING_DOWN = [
+    '.XXXXX.',
+    'XywwwyX',
+    'XwwwwwX',
+    '.XwwwX.',
+    '..XXX..',
+  ];
+  const WING_FRAMES = [[WING_UP_MID, 2], [WING_UP_MID, 3], [WING_DOWN, 4], [WING_UP_MID, 3]];
+  const SPRITE_W = 17, SPRITE_H = 12, PX = 2.4;
+
+  function paint(c2, grid, ox, oy, pal) {
+    grid.forEach((row, y) => [...row].forEach((ch, x) => {
+      if (ch === '.') return;
+      c2.fillStyle = pal[ch];
+      c2.fillRect(ox + x, oy + y, 1, 1);
+    }));
+  }
+  const spriteCache = {};
+  function birdSprite(skin, frame) {
+    const key = skin.id + frame;
+    if (!spriteCache[key]) {
+      const c = document.createElement('canvas');
+      c.width = SPRITE_W; c.height = SPRITE_H;
+      const c2 = c.getContext('2d');
+      paint(c2, BODY, 0, 0, skin);
+      const [wing, wy] = WING_FRAMES[frame];
+      paint(c2, wing, 0, wy, skin);
+      spriteCache[key] = c;
+    }
+    return spriteCache[key];
+  }
+
+  // ================= Холст =================
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
   const H = 640;
-  let W = 360, scale = 1;
+  let W = 360, scale = 1, offsetX = 0;
   function resize() {
     const dpr = window.devicePixelRatio || 1;
     const vw = window.innerWidth, vh = window.innerHeight;
     scale = vh / H;
     W = Math.max(280, Math.min(560, vw / scale));
+    offsetX = (vw - W * scale) / 2;
     canvas.width = Math.round(vw * dpr);
     canvas.height = Math.round(vh * dpr);
-    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, ((vw - W * scale) / 2) * dpr, 0);
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, offsetX * dpr, 0);
   }
   window.addEventListener('resize', resize);
   resize();
 
-  // ---- Параметры игры ----
+  // ================= Параметры =================
   const GROUND_H = 90;
-  const GRAVITY = 1500;      // px/с²
-  const FLAP = -430;         // px/с
+  const GRAVITY = 1500;
+  const FLAP = -430;
   const PIPE_W = 64;
   const GAP = 160;
   const PIPE_SPACING = 210;
-  const SPEED = 150;         // px/с
+  const SPEED = 150;
 
-  const STATE = { READY: 0, PLAY: 1, OVER: 2 };
-  let state, bird, pipes, score, groundX, overTime, flashT, sent;
+  // Цена «Продолжить» в Stars растёт с каждой покупкой внутри одной попытки
+  // (та же формула на сервере в bot.js)
+  const CONTINUE_PRICES = [1, 3, 7, 15, 30, 60, 120, 250, 500, 1000, 2500, 5000, 10000];
+  const continuePrice = (n) => CONTINUE_PRICES[Math.min(n, CONTINUE_PRICES.length - 1)];
+
+  const STATE = { READY: 0, PLAY: 1, OVER: 2, RESUME: 3 };
+  let state, bird, pipes, score, groundX, overTime, flashT, runId, continues;
+  let busy = false, toastText = '', toastT = 0;
+
+  function toast(t) { toastText = t; toastT = 2.5; }
 
   function reset() {
     state = STATE.READY;
-    bird = { x: W * 0.3, y: H * 0.42, vy: 0, r: 14, rot: 0, wing: 0 };
+    bird = { x: W * 0.3, y: H * 0.42, vy: 0, r: 13, rot: 0, wing: 0 };
     pipes = [];
     score = 0;
     groundX = 0;
     flashT = 0;
-    sent = false;
-    if (tg && tg.MainButton) tg.MainButton.hide();
+    continues = 0;
+    runId = Math.random().toString(36).slice(2, 10);
   }
   reset();
 
@@ -93,17 +200,16 @@
     pipes.push({ x, top: minTop + Math.random() * (maxTop - minTop), passed: false });
   }
 
+  function start() {
+    if (!isOwned(skinById(previewSkin))) previewSkin = selectedSkin;
+    state = STATE.PLAY;
+    spawnPipe(W + 40);
+    flap();
+  }
+
   function flap() {
-    if (state === STATE.READY) {
-      state = STATE.PLAY;
-      spawnPipe(W + 40);
-    }
-    if (state === STATE.PLAY) {
-      bird.vy = FLAP;
-      haptic('light');
-    } else if (state === STATE.OVER && performance.now() - overTime > 600) {
-      reset();
-    }
+    bird.vy = FLAP;
+    haptic('light');
   }
 
   function gameOver() {
@@ -113,35 +219,104 @@
     flashT = 1;
     haptic('heavy');
     if (score > best) { best = score; saveBest(); }
-    if (tg && tg.MainButton && score > 0) {
-      tg.MainButton.setText('Отправить результат: ' + score);
-      tg.MainButton.show();
+    if (inTelegram && score > 0) apiCall('score', { score }).catch(() => {});
+  }
+
+  // После оплаты: убираем ближайшие трубы и даём продолжить с тем же счётом
+  function resume() {
+    pipes = pipes.filter((p) => p.x > bird.x + 170 || p.x + PIPE_W < bird.x - 60);
+    if (!pipes.some((p) => p.x > bird.x)) spawnPipe(W + 40);
+    bird.y = H * 0.42;
+    bird.vy = 0;
+    bird.rot = 0;
+    flashT = 0;
+    state = STATE.RESUME;
+  }
+
+  // ================= Покупки (Telegram Stars) =================
+  async function purchase(req) {
+    if (busy) return false;
+    if (!inTelegram) {
+      toast('Демо-режим: оплата пропущена');
+      return true;
+    }
+    busy = true;
+    try {
+      const { link } = await apiCall('invoice', req);
+      return await new Promise((res) => tg.openInvoice(link, (status) => res(status === 'paid')));
+    } catch (e) {
+      toast(e.message);
+      return false;
+    } finally {
+      busy = false;
     }
   }
 
-  // Отправка очков боту (работает, если игра открыта кнопкой клавиатуры бота)
-  if (tg && tg.MainButton) {
-    tg.MainButton.onClick(() => {
-      if (sent) return;
-      sent = true;
-      tg.sendData(JSON.stringify({ score, best }));
-    });
+  async function buyContinue() {
+    if (await purchase({ kind: 'continue', runId, n: continues })) {
+      continues++;
+      haptic('medium');
+      resume();
+    }
   }
 
-  // ---- Управление ----
-  canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); flap(); });
+  async function buySkin(skin) {
+    if (await purchase({ kind: 'skin', skin: skin.id })) {
+      if (!ownedPaid.includes(skin.id)) ownedPaid.push(skin.id);
+      store.set('skins', ownedPaid);
+      selectedSkin = previewSkin = skin.id;
+      saveSkin();
+      haptic('medium');
+      toast('Скин «' + skin.name + '» твой!');
+    }
+  }
+
+  function changeSkin(dir) {
+    const i = SKINS.findIndex((s) => s.id === previewSkin);
+    previewSkin = SKINS[(i + dir + SKINS.length) % SKINS.length].id;
+    if (isOwned(skinById(previewSkin))) { selectedSkin = previewSkin; saveSkin(); }
+    haptic('light');
+  }
+
+  if (inTelegram) {
+    apiCall('state').then((d) => {
+      ownedPaid = [...new Set([...ownedPaid, ...(d.skins || [])])];
+      store.set('skins', ownedPaid);
+      if (d.best > best) { best = d.best; saveBest(); }
+    }).catch(() => {});
+  }
+
+  // ================= Управление =================
+  let buttons = [];
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const lx = (e.clientX - offsetX) / scale, ly = e.clientY / scale;
+    for (const b of buttons) {
+      if (lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h) { b.onTap(); return; }
+    }
+    tap();
+  });
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'Enter') { e.preventDefault(); flap(); }
+    if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); tap(); }
+    if (e.code === 'Enter' && state === STATE.OVER) reset();
+    if (state === STATE.READY && e.code === 'ArrowLeft') changeSkin(-1);
+    if (state === STATE.READY && e.code === 'ArrowRight') changeSkin(1);
   });
 
-  // ---- Обновление ----
-  function update(dt) {
-    bird.wing += dt * (state === STATE.OVER ? 0 : 12);
-    if (state !== STATE.OVER || bird.y < H - GROUND_H - bird.r) {
-      groundX = (groundX - (state === STATE.OVER ? 0 : SPEED * dt)) % 24;
-    }
+  function tap() {
+    if (state === STATE.READY) start();
+    else if (state === STATE.PLAY) flap();
+    else if (state === STATE.RESUME) { state = STATE.PLAY; flap(); }
+  }
 
-    if (state === STATE.READY) {
+  // ================= Обновление =================
+  function update(dt) {
+    if (toastT > 0) toastT -= dt;
+    if (flashT > 0) flashT = Math.max(0, flashT - dt * 3);
+    if (state !== STATE.OVER) bird.wing += dt * (state === STATE.PLAY ? 14 : 8);
+    if (state === STATE.READY || state === STATE.PLAY) groundX = (groundX - SPEED * dt) % 24;
+
+    if (state === STATE.READY || state === STATE.RESUME) {
       bird.y = H * 0.42 + Math.sin(performance.now() / 300) * 8;
       bird.rot = 0;
       return;
@@ -149,7 +324,7 @@
 
     bird.vy += GRAVITY * dt;
     bird.y += bird.vy * dt;
-    bird.rot = Math.max(-0.45, Math.min(1.4, bird.vy / 600));
+    bird.rot = Math.max(-0.45, Math.min(1.5, bird.vy / 550));
 
     if (bird.y + bird.r >= H - GROUND_H) {
       bird.y = H - GROUND_H - bird.r;
@@ -161,8 +336,8 @@
     if (state === STATE.PLAY) {
       for (const p of pipes) p.x -= SPEED * dt;
       if (pipes.length && pipes[0].x + PIPE_W < -10) pipes.shift();
-      const last = pipes[pipes.length - 1];
-      if (last && last.x < W + 40 - PIPE_SPACING) spawnPipe(last.x + PIPE_SPACING);
+      const lastPipe = pipes[pipes.length - 1];
+      if (lastPipe && lastPipe.x < W + 40 - PIPE_SPACING) spawnPipe(lastPipe.x + PIPE_SPACING);
 
       for (const p of pipes) {
         if (!p.passed && p.x + PIPE_W < bird.x) {
@@ -176,7 +351,6 @@
         }
       }
     }
-    if (flashT > 0) flashT = Math.max(0, flashT - dt * 3);
   }
 
   function circleRect(cx, cy, r, rx, ry, rw, rh) {
@@ -186,7 +360,7 @@
     return dx * dx + dy * dy < r * r;
   }
 
-  // ---- Отрисовка ----
+  // ================= Отрисовка =================
   const clouds = Array.from({ length: 5 }, (_, i) => ({ x: i * 130, y: 60 + Math.random() * 160, s: 0.7 + Math.random() * 0.6 }));
   let cloudShift = 0;
 
@@ -208,7 +382,6 @@
       ctx.fill();
     }
 
-    // город на горизонте
     ctx.fillStyle = '#a3dfc0';
     for (let i = -1; i < W / 40 + 1; i++) {
       const h = 40 + ((i * 37) % 50 + 50) % 50;
@@ -253,42 +426,17 @@
     ctx.fillRect(-400, y - 2, W + 800, 3);
   }
 
-  function drawBird() {
+  function drawBirdAt(skin, x, y, rot, wing, px) {
+    const frame = Math.floor(wing) % 4;
     ctx.save();
-    ctx.translate(bird.x, bird.y);
-    ctx.rotate(bird.rot);
-    // тело
-    ctx.fillStyle = '#f7d51d';
-    ctx.strokeStyle = '#543847';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 18, 14, 0, 0, Math.PI * 2);
-    ctx.fill(); ctx.stroke();
-    // живот
-    ctx.fillStyle = '#fbeea5';
-    ctx.beginPath();
-    ctx.ellipse(-2, 6, 11, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // крыло
-    const wy = Math.sin(bird.wing) * 5;
-    ctx.fillStyle = '#fff6c9';
-    ctx.beginPath();
-    ctx.ellipse(-8, 1 + wy, 9, 6, -0.3, 0, Math.PI * 2);
-    ctx.fill(); ctx.stroke();
-    // глаз
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(7, -5, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(9, -5, 2.6, 0, Math.PI * 2); ctx.fill();
-    // клюв
-    ctx.fillStyle = '#f75c1d';
-    ctx.beginPath();
-    ctx.moveTo(12, 1); ctx.lineTo(25, 4); ctx.lineTo(12, 9); ctx.closePath();
-    ctx.fill(); ctx.stroke();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(birdSprite(skin, frame), -SPRITE_W * px / 2, -SPRITE_H * px / 2, SPRITE_W * px, SPRITE_H * px);
     ctx.restore();
   }
 
-  function text(str, x, y, size, align = 'center') {
+  function text(str, x, y, size, align = 'center', fill = '#fff') {
     ctx.font = `900 ${size}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
     ctx.textAlign = align;
     ctx.textBaseline = 'middle';
@@ -296,57 +444,49 @@
     ctx.lineWidth = Math.max(4, size / 6);
     ctx.strokeStyle = '#543847';
     ctx.strokeText(str, x, y);
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = fill;
     ctx.fillText(str, x, y);
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
   }
 
   function panel(x, y, w, h) {
     ctx.fillStyle = '#ded895';
     ctx.strokeStyle = '#543847';
     ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(x, y, w, h, 14) : ctx.rect(x, y, w, h);
+    roundRect(x, y, w, h, 14);
     ctx.fill(); ctx.stroke();
   }
 
-  function draw(dt) {
-    drawBackground(dt);
-    for (const p of pipes) {
-      drawPipe(p.x, -4, p.top + 4, true);
-      drawPipe(p.x, p.top + GAP, H - GROUND_H - p.top - GAP, false);
-    }
-    drawGround();
-    drawBird();
+  function button(x, y, w, h, label, color, onTap, size = 22) {
+    buttons.push({ x, y, w, h, onTap });
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    roundRect(x, y + 4, w, h, 12); ctx.fill();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#543847';
+    ctx.lineWidth = 3;
+    roundRect(x, y, w, h, 12); ctx.fill(); ctx.stroke();
+    text(label, x + w / 2, y + h / 2 + 1, size);
+  }
 
-    if (state === STATE.PLAY) text(String(score), W / 2, 70, 56);
-
-    if (state === STATE.READY) {
-      text('Flappy Bird', W / 2, 120, 44);
-      text('Привет, ' + playerName + '!', W / 2, 175, 22);
-      text('Тапни, чтобы лететь', W / 2, H * 0.58, 24);
-      if (best > 0) text('Рекорд: ' + best, W / 2, H * 0.58 + 40, 20);
-    }
-
-    if (state === STATE.OVER) {
-      text('Игра окончена', W / 2, 150, 38);
-      const pw = Math.min(260, W - 40), px = W / 2 - pw / 2;
-      panel(px, 195, pw, 150);
-      ctx.fillStyle = '#e86101';
-      ctx.font = '800 18px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('ОЧКИ', W / 2, 220);
-      text(String(score), W / 2, 252, 36);
-      ctx.fillStyle = '#e86101';
-      ctx.font = '800 18px system-ui, sans-serif';
-      ctx.fillText('РЕКОРД' + (score > 0 && score === best ? ' — НОВЫЙ!' : ''), W / 2, 290);
-      text(String(best), W / 2, 320, 28);
-      medal(px + 34, 252);
-      if (performance.now() - overTime > 600) text('Тапни, чтобы сыграть ещё', W / 2, 395, 20);
-    }
-
-    if (flashT > 0) {
-      ctx.fillStyle = `rgba(255,255,255,${flashT})`;
-      ctx.fillRect(-400, 0, W + 800, H);
+  function drawSkinPicker() {
+    const skin = skinById(previewSkin);
+    const owned = isOwned(skin);
+    const pw = Math.min(300, W - 30), px = W / 2 - pw / 2, py = 395;
+    panel(px, py, pw, 130);
+    button(px + 10, py + 30, 44, 44, '◀', '#f2a33a', () => changeSkin(-1), 20);
+    button(px + pw - 54, py + 30, 44, 44, '▶', '#f2a33a', () => changeSkin(1), 20);
+    drawBirdAt(skin, W / 2, py + 40, 0, bird.wing, 3);
+    text(skin.name, W / 2, py + 82, 20);
+    if (owned) {
+      text(selectedSkin === skin.id ? 'Выбрана' : '', W / 2, py + 110, 16, 'center', '#9be15d');
+    } else if (skin.unlock) {
+      text('🔒 Рекорд ' + skin.unlock + ' очков', W / 2, py + 110, 16, 'center', '#ffd36b');
+    } else {
+      button(W / 2 - 80, py + 96, 160, 30, 'Купить за ' + skin.stars + ' ⭐', '#4c9be8', () => buySkin(skin), 16);
     }
   }
 
@@ -365,10 +505,77 @@
     ctx.beginPath(); ctx.arc(x - 5, y - 5, 5, 0, Math.PI * 2); ctx.fill();
   }
 
-  // ---- Цикл ----
+  function draw(dt) {
+    buttons = [];
+    drawBackground(dt);
+    for (const p of pipes) {
+      drawPipe(p.x, -4, p.top + 4, true);
+      drawPipe(p.x, p.top + GAP, H - GROUND_H - p.top - GAP, false);
+    }
+    drawGround();
+    drawBirdAt(skinById(previewSkin), bird.x, bird.y, bird.rot, bird.wing, PX);
+
+    if (state === STATE.PLAY || state === STATE.RESUME) text(String(score), W / 2, 70, 56);
+
+    if (state === STATE.READY) {
+      text('Flappy Bird', W / 2, 110, 44);
+      text('Привет, ' + playerName + '!', W / 2, 160, 22);
+      text('Тапни, чтобы лететь', W / 2, 335, 24);
+      if (best > 0) text('Рекорд: ' + best, W / 2, 368, 18);
+      drawSkinPicker();
+    }
+
+    if (state === STATE.RESUME) {
+      text('Продолжаем!', W / 2, 160, 36);
+      text('Тапни, чтобы лететь', W / 2, 335, 24);
+    }
+
+    if (state === STATE.OVER) {
+      text('Игра окончена', W / 2, 120, 38);
+      const pw = Math.min(280, W - 40), px = W / 2 - pw / 2;
+      panel(px, 160, pw, 140);
+      ctx.fillStyle = '#e86101';
+      ctx.font = '800 16px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('ОЧКИ', W / 2, 182);
+      text(String(score), W / 2, 212, 34);
+      ctx.fillStyle = '#e86101';
+      ctx.font = '800 16px system-ui, sans-serif';
+      ctx.fillText('РЕКОРД' + (score > 0 && score === best ? ' — НОВЫЙ!' : ''), W / 2, 248);
+      text(String(best), W / 2, 276, 26);
+      medal(px + 36, 212);
+
+      if (performance.now() - overTime > 500) {
+        const price = continuePrice(continues);
+        const label = busy ? 'Оплата…' : '▶ Продолжить · ' + price + ' ⭐';
+        button(px, 322, pw, 58, label, '#f2a33a', buyContinue, 22);
+        if (continues > 0) text('Следующее продолжение будет дороже!', W / 2, 395, 14, 'center', '#ffd36b');
+        button(px + 30, 412, pw - 60, 48, 'Заново', '#5fb340', reset, 22);
+      }
+    }
+
+    if (flashT > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${flashT})`;
+      ctx.fillRect(-400, 0, W + 800, H);
+    }
+
+    if (toastT > 0) {
+      ctx.globalAlpha = Math.min(1, toastT * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      roundRect(20, H - 70, W - 40, 40, 10); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = '700 16px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(toastText, W / 2, H - 50);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ================= Цикл =================
   let last = performance.now();
   function loop(now) {
-    const dt = Math.min(0.033, (now - last) / 1000);
+    const dt = Math.max(0, Math.min(0.033, (now - last) / 1000));
     last = now;
     update(dt);
     draw(dt);
