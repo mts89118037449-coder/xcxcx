@@ -56,6 +56,7 @@ export function docsFromRows(rows) {
     out.push({
       ...p,
       label: r[0],
+      row: r[7] || null,
       '4': { is: r[1] || '', aosr: r[3] || '', rem: r[5] || '' },
       '5': { is: r[2] || '', aosr: r[4] || '', rem: r[6] || '' },
     });
@@ -230,9 +231,10 @@ export class Store {
     this.remarks = data.remarks || [];
     this.fin = normFin(data.fin || {});
     this.setExtra(data.extra);
+    this.checks = data.checks || [];
     this.journal = (data.journal || []).map((j) => ({ ...j, qty: Number(j.qty) || 0 }));
     this.progress = new Map();
-    const list = data.progress && data.progress.length ? data.progress : estimateFromDocs(this.docs);
+    const list = data.progress || [];   // никаких оценок: проценты — из «Выполнения», ручные значения — из листа «Прогресс»
     for (const p of list) this.progress.set(key(String(p.section), Number(p.floor), p.work), { ...p, section: String(p.section), floor: Number(p.floor), value: clampPct(p.value) });
   }
 
@@ -241,11 +243,11 @@ export class Store {
     this.docsRows = SEED_DOCS_ROWS;
     this.docs = docsFromRows(SEED_DOCS_ROWS);
     this.remarks = SEED_REMARKS;
-    this.journal = saved ? saved.journal : SEED_JOURNAL.slice();
+    this.journal = saved ? saved.journal : [];
     this.fin = normFin({ ...SEED_FIN, expenses: [...SEED_FIN.expenses, ...((saved && saved.expenses) || [])] });
     this.fin.partial = true;
     this.progress = new Map();
-    const list = saved ? saved.progress : estimateFromDocs(this.docs);
+    const list = saved ? saved.progress : [];
     for (const p of list) this.progress.set(key(p.section, p.floor, p.work), p);
   }
   // ---------- резервные копии ----------
@@ -320,13 +322,14 @@ export class Store {
     const g = this.volumeGroup(section, floor, work);
     if (g) return Math.round((g.done / g.total) * 100);
     const p = this.progress.get(key(section, floor, work));
-    return p ? p.value : 0;
+    return p ? p.value : null;   // нет данных — не 0 и не оценка
   }
   /** work = 'avg' → среднее по видам работ этажа; иначе конкретный вид (null если не применим) */
   floorValue(section, floor, work = 'avg') {
     const works = this.worksFor(section, floor);
     if (work !== 'avg') return works.includes(work) ? this.get(section, floor, work) : null;
-    return works.length ? works.reduce((a, w) => a + this.get(section, floor, w), 0) / works.length : 0;
+    const vals = works.map((w) => this.get(section, floor, w)).filter((v) => v != null);
+    return vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : null;
   }
   sectionValue(section, work = 'avg') {
     let sum = 0, n = 0;
@@ -335,7 +338,7 @@ export class Store {
       if (v === null) continue;
       sum += v; n++;
     }
-    return n ? sum / n : 0;
+    return n ? sum / n : null;
   }
   remarksFor(section, floor) {
     return this.remarks.filter((r) => String(r.section) === section && floorsInText(r.short + ' ' + r.text).includes(floor));
@@ -418,6 +421,8 @@ export class Store {
       case 'addExpense': return `Счета: ${e.date}, ${e.who}, ${e.note || e.basis || ''} — ${Math.round(e.sum).toLocaleString('ru-RU')} ₽`;
       case 'updateExpense': return `Счета (исправление): ${e.who}, ${e.note || ''} — ${Math.round(e.sum).toLocaleString('ru-RU')} ₽`;
       case 'deleteExpense': return `Счета (удаление): ${op.id}`;
+      case 'setCell': return `${op.label || op.f}: → ${op.value}`;
+      case 'addRow': return `${op.label || 'Новая строка'} (${op.s})`;
     }
     return op.action;
   }
@@ -428,8 +433,27 @@ export class Store {
     if (op.action === 'setProgress') return c.value === op.value;
     if (/Journal$/.test(op.action) && op.entry) return Math.abs((c.qty || 0) - (Number(op.entry.qty) || 0)) < 1e-6;
     if (/Expense$/.test(op.action) && op.entry) return Math.abs((c.sum || 0) - (Number(op.entry.sum) || 0)) < 0.01;
+    if (op.action === 'setCell') {
+      const want = String(op.value).trim(), got = c.value;
+      if (typeof got === 'number') return Math.abs(got - Number(want.replace(/\s/g, '').replace(',', '.'))) < 0.005;
+      return String(got).trim() === want || String(c.display).trim() === want;
+    }
+    if (op.action === 'addRow') return !!c.display;
     return null;
   }
+
+  /** Можно ли писать в таблицу: G — «Glorax_Учёт», V — «Выполнение», U — «VUP CORE» */
+  canEditBook(b) {
+    if (!this.connected) return false;
+    const src = (this.extra.sources || []).find((x) => x.key === b);
+    return b === 'G' ? true : !!(src && src.canEdit);
+  }
+  bookInfo(b) { return (this.extra.sources || []).find((x) => x.key === b) || {}; }
+  /** Записать одно значение в ячейку таблицы (через очередь, с подтверждением снаружи) */
+  setCell(spec, value) {
+    this.commit({ action: 'setCell', b: spec.b, s: spec.s, r: spec.r, f: spec.f, c: spec.c, value, expect: spec.expect, label: spec.label, prop: spec.prop, list: spec.list });
+  }
+  addRow(b, s, values, label) { this.commit({ action: 'addRow', b, s, values, label }); }
 
   /** Сводка данных — чтобы после перезагрузки показать, что поменялось в таблицах */
   digest() {
@@ -478,6 +502,19 @@ export class Store {
       case 'deleteExpense':
         this.fin.expenses = this.fin.expenses.filter((x) => x.id !== op.id);
         break;
+      case 'setCell': {
+        // сразу показать новое значение; точное значение вернёт таблица при следующей загрузке
+        const list = op.list && op.list.split('.').reduce((o, k) => (o ? o[k] : null), this);
+        if (Array.isArray(list) && op.prop) {
+          const rec = list.find((x) => x.row === op.r && (!x.sheet || x.sheet === op.s));
+          if (rec) {
+            if (op.f === 'week') { const iso = Object.keys(rec.weekCols || {}).find((d) => rec.weekCols[d] === op.c); if (iso) { rec.weekly = { ...(rec.weekly || {}), [iso]: Number(op.value) || 0 }; } }
+            else rec[op.prop] = /^(sum|qty|pallets|workers|total|accepted|value)$/.test(op.f) ? Number(String(op.value).replace(',', '.')) : op.value;
+          }
+          if (op.list === 'extra.volumes') this.setExtra(this.extra);
+        }
+        break;
+      }
     }
   }
 

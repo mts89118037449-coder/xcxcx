@@ -124,8 +124,8 @@ function renderKpis() {
   $('#kpis').innerHTML = SECTIONS.map((s) => {
     const p = lastPeople(s);
     return `<div class="kpi"><div class="kpi-h">Секция ${s}</div>
-      <div class="kpi-v">${Math.round(store.sectionValue(s, state.metric))}<small>%</small></div>
-      <div class="bar"><i style="width:${store.sectionValue(s, state.metric)}%"></i></div>
+      <div class="kpi-v">${pct(store.sectionValue(s, state.metric))}</div>
+      <div class="bar"><i style="width:${store.sectionValue(s, state.metric) || 0}%"></i></div>
       <div class="kpi-s">${p ? `${p.n} чел. · ${shortDate(p.d)}` : 'людей нет в журнале'}</div></div>`;
   }).join('');
 }
@@ -135,7 +135,7 @@ function renderSummary() {
   const el = $('#tab-summary');
   const open = store.remarks.filter((r) => store.isOpenRemark(r)).sort((a, b) => ruToIso(a.due).localeCompare(ruToIso(b.due)));
   const today = isoToday();
-  const works = ['Наружные стены', 'Перегородки', 'Кровля'];
+  const works = ['Наружные стены', 'Перегородки', 'Инженерка', 'Кровля'];
   el.innerHTML = `
     <div class="renders" aria-label="Проект — тендерные визуализации">
       ${[1, 2, 3].map((i) => `<button class="rthumb" data-r="${i}"><img src="assets/renders/render-${i}.jpg" alt="Проектная визуализация ${i}" loading="lazy"></button>`).join('')}
@@ -145,8 +145,8 @@ function renderSummary() {
       ${SECTIONS.map((s) => `
         <div class="card">
           <div class="card-h">Секция ${s}</div>
-          <div class="big">${Math.round(store.sectionValue(s, 'avg'))}<small>%</small></div>
-          ${works.map((w) => { const v = store.sectionValue(s, w); return `<div class="row-bar"><span>${w}</span><div class="bar"><i style="width:${v}%"></i></div><b>${Math.round(v)}%</b></div>`; }).join('')}
+          <div class="big">${pct(store.sectionValue(s, 'avg'))}</div>
+          ${works.map((w) => { const v = store.sectionValue(s, w); return `<div class="row-bar"><span>${w}</span><div class="bar"><i style="width:${v || 0}%"></i></div><b>${pct(v)}</b></div>`; }).join('')}
         </div>`).join('')}
     </div>
     ${(() => { const D = store.contractValue('D'), E = store.contractValue('E'); if (!D || !E) return ''; const p = E / D * 100; return `<button class="contract-card" data-goto="money">
@@ -167,24 +167,48 @@ function renderSummary() {
     </div>
     <h3>Открытые поручения <span class="muted">· ${open.length}</span></h3>
     <ul class="remarks">
-      ${open.map((r) => { const iso = ruToIso(r.due); const late = iso && iso < today; return `
-        <li class="${late ? 'late' : ''}"><div><b>${esc(r.short || r.text)}</b>${r.note ? `<div class="muted">${esc(r.note)}</div>` : ''}</div>
-        <div class="r-meta"><span>с. ${esc(r.section)}</span><span>${esc(r.due)}</span>${Number(r.moves) ? `<span title="переносов">↻${esc(r.moves)}</span>` : ''}</div></li>`; }).join('') || '<li class="muted">Нет открытых поручений</li>'}
+      ${open.map(remarkHtml).join('') || '<li class="muted">Нет открытых поручений</li>'}
     </ul>
-    ${(() => { const src = store.extra.sources || []; if (!src.length) return ''; const n = { '1UfElwyFGpqPo93bvn1BSOKSF7ydP2X4kPDyLsYBo5f8': `${store.extra.volumes.length} строк объёмов`, '119zaY3sQ-7JtZ3JF2ILViGlGe6ULJuDf-jHep_O6X8w': `${store.extra.moves.length} движений материала, ${store.extra.worklog.length} записей хода работ, ${store.extra.floorStatus.length} статусов этажей` }; return `<h3>Источники данных</h3><ul class="totals">${src.map((x) => `<li><span>${esc(x.title || x.id)}</span><b class="${x.error ? 'err-t' : ''}">${x.error ? esc(x.error) : esc(n[x.id] || 'счета, авансы, журнал, прогресс')}</b></li>`).join('')}</ul>`; })()}
-    ${[...store.progress.values()].some((p) => /оценка/.test(p.note || '')) && !store.extra.volumes.length ? '<p class="note">Часть процентов — стартовая оценка по листу «Таблица» (есть ИС/АОСР → 100%, есть замечания → 50%). Уточните их на вкладке «Этаж» или в листе «Прогресс».</p>' : ''}
+    ${checksHtml()}
+    ${sourcesHtml()}
   `;
   el.querySelectorAll('.f-cell').forEach((b) => b.onclick = () => { state.section = b.dataset.s; state.floor = +b.dataset.f; setTab('floor'); });
   el.querySelectorAll('[data-r]').forEach((b) => b.onclick = () => { $('#renderImg').src = `assets/renders/render-${b.dataset.r}.jpg`; $('#renderDlg').showModal(); });
   el.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => { state.money = 'contract'; setTab(b.dataset.goto); });
 }
 
+// ---------- Источники и сверка ----------
+function sourcesHtml() {
+  const src = store.extra.sources || [];
+  if (!src.length) return '';
+  const what = { G: 'счета, авансы, поступления, договор, личные расходы, инструмент, журнал, поручения, ИС/АОСР', V: `${store.extra.volumes.length} строк объёмов по этажам`, U: `${store.extra.moves.length} движений материала, ${store.extra.plan.length} строк плана, ${store.extra.worklog.length} — ход работ, ${store.extra.floorStatus.length} статусов этажей` };
+  return `<h3>Откуда данные</h3><ul class="sources">${src.map((x) => `<li><div><b>${esc((x.title || '').trim() || x.id)}</b><div class="muted">${esc(what[x.key] || '')}</div></div>
+    <span class="${x.error ? 'err-t' : x.canEdit ? 'chip-ok' : 'chip-ro'}">${x.error ? esc(x.error) : x.canEdit ? 'чтение и запись' : 'только просмотр'}</span>
+    ${!x.error && !x.canEdit ? `<p class="muted small-note">Чтобы править из приложения, владелец (${esc(x.owner || '—')}) должен дать «Редактор» для ${esc(x.me || 'вашего аккаунта')}.</p>` : ''}</li>`).join('')}</ul>`;
+}
+function checksHtml() {
+  const c = store.checks || [];
+  if (!c.length) return '';
+  const bad = c.filter((x) => !x.ok);
+  return `<h3>Сверка с итогами таблиц ${bad.length ? `<span class="err-t">· ${bad.length} расхожд.</span>` : '<span class="okc">· всё совпадает</span>'}</h3>
+    <ul class="checks">${c.map((x) => `<li class="${x.ok ? 'ok' : 'bad'}"><span>${x.ok ? '✓' : '⚠'}</span><div>${esc(x.name)}<div class="muted">в таблице ${fmtN(x.table)} · в приложении ${fmtN(x.app)}</div></div></li>`).join('')}</ul>`;
+}
+
 // ---------- Этаж ----------
+const BOOK = { G: '«Glorax_Учёт»', V: '«Выполнение»', U: '«VUP CORE»' };
+const pct = (v) => (v == null ? '—' : Math.round(v) + '%');
+/** Понедельник текущей недели (ISO) — колонка недели в «Выполнении» */
+function thisMonday() { const d = new Date(); const k = (d.getDay() + 6) % 7; d.setDate(d.getDate() - k); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
 function renderFloor() {
   const el = $('#tab-floor');
   const s = state.section, f = state.floor;
   const doc = (w) => store.docs.find((d) => d.floor === f && d.work === w);
   const rem = store.remarksFor(s, f);
+  const wk = thisMonday();
+  const fv = store.floorValue(s, f);
+  const works = store.worksFor(s, f);
+  const hasVol = works.some((w) => store.volumeGroup(s, f, w));
   el.innerHTML = `
     <div class="floor-nav">
       <div class="seg small">${SECTIONS.map((x) => `<button data-sec="${x}" class="${x === s ? 'on' : ''}">Секция ${x}</button>`).join('')}</div>
@@ -194,64 +218,107 @@ function renderFloor() {
         <button class="btn ghost small" data-step="1" ${f === ROOF ? 'disabled' : ''} aria-label="Этаж выше">▲</button>
       </div>
     </div>
-    <div class="big floor-big">${Math.round(store.floorValue(s, f))}<small>%</small><span class="muted"> ${floorName(f).toLowerCase()}, секция ${s}</span></div>
-    ${store.floorStatusOf(s, f).map((x) => `<div class="fstatus"><b>${esc(x.status)}</b><span>${x.date ? shortDate(x.date) : ''} · ${esc(x.source || 'VUP CORE')}</span>${x.comment ? `<p>${esc(x.comment)}</p>` : ''}</div>`).join('')}
-    ${store.worksFor(s, f).map((w) => {
+    <div class="big floor-big">${pct(fv)}<span class="muted"> ${floorName(f).toLowerCase()}, секция ${s}</span></div>
+    <p class="hint-line">Значения со значком ✎ можно изменить — изменение запишется в ячейку таблицы.</p>
+    ${store.floorStatusOf(s, f).map((x) => `<div class="fstatus"><b>${ev(esc(x.status), { b: 'U', s: 'Стройка · статусы этажей', r: x.row, f: 'status', raw: x.status, expect: x.status, type: 'text', label: `Статус этажа ${f}, секция ${s}`, prop: 'status', list: 'extra.floorStatus' })}</b><span>${x.date ? shortDate(x.date) : ''} · ${esc(x.source || 'VUP CORE')}</span>${x.comment ? `<p>${esc(x.comment)}</p>` : ''}</div>`).join('')}
+    ${works.map((w) => {
       const v = store.get(s, f, w);
       const d = doc(w);
       const dd = d ? d[s] : null;
-      const docsHtml = dd ? `<div class="docs">
-          <span class="${dd.is ? 'ok' : ''}">ИС: ${esc(dd.is || 'нет')}</span>
-          <span class="${dd.aosr ? 'ok' : ''}">АОСР: ${esc(dd.aosr || 'нет')}</span>
-          ${dd.rem ? `<span class="rem" title="Замечания по АОСР (лист «Таблица»)">Замечания: ${esc(dd.rem)}</span>` : ''}
+      const dspec = (k, val, lbl) => ({ b: 'G', s: 'Таблица', r: d.row, f: `${k}${s}`, raw: val, expect: val, type: 'text', label: `${lbl}: ${d.label}, секция ${s}`, prop: '', list: '' });
+      const docsHtml = dd && d.row ? `<div class="docs">
+          <span class="${dd.is ? 'ok' : ''}">ИС: ${ev(esc(dd.is || 'нет'), dspec('is', dd.is, 'ИС'))}</span>
+          <span class="${dd.aosr ? 'ok' : ''}">АОСР: ${ev(esc(dd.aosr || 'нет'), dspec('aosr', dd.aosr, 'АОСР'))}</span>
+          <span class="rem">Замечания: ${ev(esc(dd.rem || 'нет'), dspec('rem', dd.rem, 'Замечания по АОСР'))}</span>
         </div>` : '';
       const g = store.volumeGroup(s, f, w);
       if (g) return `
       <div class="work vol">
-        <div class="work-h"><b>${esc(w)}</b><span class="val-ro">${v}%</span></div>
-        <div class="bar big-bar"><i style="width:${v}%"></i></div>
-        <table class="voltab"><thead><tr><th>Вид работ</th><th>Объём</th><th>Выполнено</th><th>Остаток</th><th>%</th></tr></thead><tbody>
-          ${g.items.map((it) => `<tr><td>${esc(it.work)}</td><td>${fmtN(it.total)}</td><td>${fmtN(it.done)}</td><td>${fmtN(Math.max(0, it.total - it.done))}</td><td><b>${Math.round(it.done / it.total * 100)}%</b></td></tr>`).join('')}
-        </tbody></table>
-        ${(() => { const wk = {}; for (const it of g.items) for (const [d, x] of Object.entries(it.weekly || {})) wk[d] = (wk[d] || 0) + x; const ks = Object.keys(wk).sort(); return ks.length ? `<div class="weeks">${ks.map((d) => `<span>${shortDate(d)}: <b>${fmtN(wk[d])}</b></span>`).join('')}</div>` : ''; })()}
-        ${g.items.some((it) => it.accepted) ? `<div class="muted small-note">Принято по КС-6а: ${g.items.filter((it) => it.accepted).map((it) => `${esc(it.work.split(',')[0])} — ${fmtN(it.accepted)}`).join('; ')}</div>` : ''}
-        <div class="muted small-note">Из таблицы «Выполнение». Объёмы меняются там — приложение подтянет их само.</div>
+        <div class="work-h"><b>${esc(w)}</b><span class="val-ro">${pct(v)}</span></div>
+        <div class="bar big-bar"><i style="width:${v || 0}%"></i></div>
+        <div class="tablewrap"><table class="voltab"><thead><tr><th>Вид работ</th><th>Объём</th><th>Принято КС-6а</th><th>Неделя с ${shortDate(wk)}</th><th>Выполнено</th></tr></thead><tbody>
+          ${g.items.map((it) => {
+            const vs = (fld, val, lbl, extra = {}) => ev(fmtN(val || 0), { b: 'V', s: it.sheet, r: it.row, f: fld, raw: val || 0, expect: val || '', type: 'number', label: `${it.work}, ${floorName(f).toLowerCase()}, с. ${s}: ${lbl}`, prop: fld, list: 'extra.volumes', ...extra });
+            const col = it.weekCols && it.weekCols[wk];
+            const wv = (it.weekly || {})[wk] || 0;
+            return `<tr><td>${esc(it.work)}</td><td>${vs('total', it.total, 'общий объём')}</td><td>${vs('accepted', it.accepted, 'принято по КС-6а')}</td>
+              <td>${col ? vs('week', wv, `за неделю с ${shortDate(wk)}`, { c: col, prop: '' }) : '<span class="muted">нет колонки</span>'}</td>
+              <td><b>${fmtN(it.done)}</b> <span class="muted">${Math.round(it.done / it.total * 100)}%</span></td></tr>`;
+          }).join('')}
+        </tbody></table></div>
+        <p class="muted small-note">«Выполнено» таблица считает сама из принятого и недельных объёмов — поэтому меняется через них.</p>
         ${docsHtml}
       </div>`;
       return `
-      <div class="work" data-w="${esc(w)}">
-        <div class="work-h"><b>${esc(w)}</b><span class="val"><input type="number" min="0" max="100" step="5" value="${v}" aria-label="${esc(w)}, %">%</span></div>
-        <input type="range" min="0" max="100" step="5" value="${v}" style="--v:${v}%" aria-label="${esc(w)}">
-        <div class="quick">${[0, 25, 50, 75, 100].map((q) => `<button class="chip" data-q="${q}">${q}%</button>`).join('')}</div>
+      <div class="work">
+        <div class="work-h"><b>${esc(w)}</b><span class="val-ro">${pct(v)}</span></div>
+        <p class="muted small-note">Нет строки в таблице «Выполнение» для этого этажа — процент не известен.</p>
         ${docsHtml}
       </div>`;
     }).join('')}
-    ${(() => { const mv = store.movesTo(s, f); return mv.length ? `<h3>Материал на этаж <span class="muted">· VUP CORE</span></h3><ul class="totals">${mv.map((m) => `<li><span>${esc(m.material)}${m.date ? ` <em class="muted">${m.dateExact ? '' : '≈ '}${shortDate(m.date)}</em>` : ''}</span><b class="num">${fmtN(m.pallets)} пал.</b></li>`).join('')}</ul>` : ''; })()}
-    ${(() => { const wl = store.worklogOf(s, f); return wl.length ? `<h3>Ход работ <span class="muted">· VUP CORE</span></h3><ul class="totals">${wl.map((w) => `<li><span>${esc(w.stage)}${w.brigade && !/не уточн/i.test(w.brigade) ? ' · ' + esc(w.brigade) : ''}${w.start ? ' · с ' + shortDate(w.start) : ''}</span><b>${w.workers ? fmtN(w.workers) + ' чел.' : esc(w.status)}</b></li>`).join('')}</ul>` : ''; })()}
+    ${!hasVol && !works.length ? '<p class="muted">По этому этажу нет данных ни в одной таблице.</p>' : ''}
+    ${(() => { const mv = store.movesTo(s, f); return mv.length ? `<h3>Материал на этаж <span class="muted">· VUP CORE</span></h3><ul class="totals">${mv.map((m) => `<li><span>${esc(m.material)}${m.date ? ` <em class="muted">${m.dateExact ? '' : '≈ '}${shortDate(m.date)}</em>` : ''}</span><b class="num">${ev(fmtN(m.pallets) + ' пал.', { b: 'U', s: 'Движение материалов', r: m.row, f: 'pallets', raw: m.pallets, expect: m.pallets, type: 'number', label: `${m.material} → ${m.zone}: паллет`, prop: 'pallets', list: 'extra.moves' })}</b></li>`).join('')}</ul>` : ''; })()}
+    ${(() => { const wl = store.worklogOf(s, f); return wl.length ? `<h3>Ход работ <span class="muted">· VUP CORE</span></h3><ul class="totals">${wl.map((w) => `<li><span>${esc(w.stage)}${w.brigade && !/не уточн/i.test(w.brigade) ? ' · ' + esc(w.brigade) : ''}${w.start ? ' · с ' + shortDate(w.start) : ''}</span><b>${ev((w.workers ? fmtN(w.workers) : '—') + ' чел.', { b: 'U', s: 'Стройка · ход работ', r: w.row, f: 'workers', raw: w.workers || '', expect: w.workers || '', type: 'number', label: `${w.stage}, ${floorName(f).toLowerCase()}: число рабочих`, prop: 'workers', list: 'extra.worklog' })}</b></li>`).join('')}</ul>` : ''; })()}
     <h3>Поручения по этажу</h3>
-    <ul class="remarks">${rem.map((r) => `<li class="${store.isOpenRemark(r) ? 'late' : 'done'}"><div><b>${esc(r.short)}</b><div class="muted">${esc(r.state || r.status)}${r.note ? ' · ' + esc(r.note) : ''}</div></div><div class="r-meta"><span>${esc(r.due)}</span></div></li>`).join('') || '<li class="muted">Нет поручений с упоминанием этого этажа</li>'}</ul>
-    <p class="muted small-note">Изменения сохраняются ${store.connected ? 'в лист «Прогресс» Google Таблицы' : 'пока только на этом устройстве — таблица не подключена'}.</p>
+    <ul class="remarks">${rem.map(remarkHtml).join('') || '<li class="muted">Нет поручений с упоминанием этого этажа</li>'}</ul>
   `;
   el.querySelectorAll('[data-sec]').forEach((b) => b.onclick = () => { state.section = b.dataset.sec; scene.select(state.section, state.floor); renderFloor(); });
   el.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => { state.floor = Math.max(0, Math.min(ROOF, state.floor + +b.dataset.step)); scene.select(state.section, state.floor); renderFloor(); });
   $('#floorSel', el).onchange = (e) => { state.floor = +e.target.value; scene.select(state.section, state.floor); renderFloor(); };
-  el.querySelectorAll('.work[data-w]').forEach((box) => {
-    const w = box.dataset.w;
-    const range = $('input[type=range]', box), num = $('input[type=number]', box);
-    const orig = +range.value;   // значение на момент открытия этажа — для подтверждения «было → стало»
-    const commit = (v) => { range.value = v; num.value = v; range.style.setProperty('--v', v + '%'); save(s, f, w, v, orig); };
-    range.oninput = () => { num.value = range.value; range.style.setProperty('--v', range.value + '%'); preview(s, f, w, +range.value); };
-    range.onchange = () => commit(+range.value);
-    num.onchange = () => commit(Math.max(0, Math.min(100, +num.value || 0)));
-    box.querySelectorAll('[data-q]').forEach((q) => q.onclick = () => commit(+q.dataset.q));
+}
+
+/** Поручение с редактируемыми статусом и датой выполнения */
+function remarkHtml(r) {
+  const spec = (f, raw, type, label, extra = {}) => ({ b: 'G', s: 'Замечания АСГ', r: r.row, f, raw, expect: raw, type, label: `${r.short}: ${label}`, prop: f === 'status' ? 'status' : f === 'done' ? 'done' : '', list: 'remarks', ...extra });
+  return `<li class="${store.isOpenRemark(r) ? 'late' : 'done'}"><div><b>${esc(r.short)}</b>
+    <div class="muted">${r.row ? ev(esc(r.status || 'статус'), spec('status', r.status, 'text', 'статус по протоколу', { options: ['В работе', 'Срыв сроков', 'Выполнено'] })) : esc(r.status)}${r.note ? ' · ' + esc(r.note) : ''}</div></div>
+    <div class="r-meta"><span>срок ${esc(r.due)}</span>${r.row ? `<span>выполнено: ${ev(esc(r.done || '—'), spec('done', ruToIso(r.done) || '', 'date', 'дата выполнения'))}</span>` : ''}</div></li>`;
+}
+
+// ---------- редактирование любого значения ----------
+/** Значение, которое можно изменить: нажатие → окно «было → станет» → запись в ячейку таблицы */
+function ev(display, spec) {
+  if (!spec.r) return display;
+  const can = store.canEditBook(spec.b);
+  return `<button type="button" class="ev ${can ? '' : 'ro'}" data-edit="${esc(JSON.stringify(spec))}" title="${can ? 'Изменить в таблице' : 'Только просмотр'}">${display}<i aria-hidden="true">${can ? '✎' : '🔒'}</i></button>`;
+}
+function editDialog(title, fields, where) {
+  const dlg = $('#editDlg');
+  $('#edTitle').textContent = title;
+  $('#edWhere').textContent = where || '';
+  $('#edFields').innerHTML = fields.map((x, i) => `<label>${esc(x.label)}${x.options
+    ? `<select id="ed${i}">${x.options.map((o) => `<option ${String(o) === String(x.value) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
+    : `<input id="ed${i}" type="${x.type === 'number' ? 'number' : x.type === 'date' ? 'date' : 'text'}" step="any" value="${esc(x.value ?? '')}">`}
+    ${x.was !== undefined ? `<small class="muted">Сейчас в таблице: ${esc(x.was === '' ? 'пусто' : x.was)}</small>` : ''}</label>`).join('');
+  return new Promise((resolve) => {
+    dlg.returnValue = '';
+    dlg.onclose = () => resolve(dlg.returnValue === 'yes' ? fields.map((x, i) => $('#ed' + i).value) : null);
+    dlg.showModal();
+    setTimeout(() => $('#ed0')?.focus(), 50);
   });
 }
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-edit]'); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const spec = JSON.parse(b.dataset.edit);
+  if (!store.canEditBook(spec.b)) {
+    const bi = store.bookInfo(spec.b);
+    toast(store.connected ? `Только просмотр: у ${bi.me || 'вашего аккаунта'} нет прав на запись в ${BOOK[spec.b]}. Попросите владельца (${bi.owner || 'автора таблицы'}) дать доступ «Редактор».` : 'Таблица не подключена — менять нельзя.', true);
+    return;
+  }
+  const res = await editDialog(spec.label, [{ label: 'Новое значение', value: spec.raw ?? '', was: spec.raw ?? '', type: spec.type, options: spec.options }],
+    `Запишется в таблицу ${BOOK[spec.b]}, лист «${spec.s.trim()}», строка ${spec.r}. После записи таблица вернёт значение, и приложение его сверит.`);
+  if (!res) return;
+  const v = res[0];
+  if (String(v) === String(spec.raw ?? '')) { toast('Значение не изменилось'); return; }
+  store.setCell(spec, v);
+});
 
 function preview(s, f, w, v) {
   const p = store.progress.get(`${s}|${f}|${w}`);
   if (p) p.value = v; else store.progress.set(`${s}|${f}|${w}`, { section: s, floor: f, work: w, value: v });
   scene.update(); renderKpis();
-  const big = $('.floor-big'); if (big) big.firstChild.textContent = Math.round(store.floorValue(s, f));
+  const big = $('.floor-big'); if (big) big.firstChild.textContent = pct(store.floorValue(s, f));
 }
 
 const pending = new Map();
@@ -431,13 +498,35 @@ function renderStock() {
     </tbody></table></div>
     <p class="muted small-note">Паллеты, по листу «Движение материалов» (VUP CORE). Отрицательный остаток — подачу записали, а поступление нет: стоит сверить.</p>` : '<p class="muted">Нет движений материала.</p>'}
     ${inv.length ? `<h3>Инвентаризация склада</h3><ul class="totals">${inv.map((x) => `<li><span>${esc(x.material)} <em class="muted">${x.date ? shortDate(x.date) : ''}</em></span><b class="num">${fmtN(x.qty)} ${esc(x.unit)}</b></li>`).join('')}</ul>` : ''}
-    ${dis.length ? `<h3>Расхождения <span class="muted">· требуют сверки</span></h3><ul class="remarks">${dis.map((d) => `<li class="late"><div><b>Секция ${esc(d.section)}, ${d.floor} эт. · ${esc(d.material)}</b><div class="muted">План ${fmtN(d.plan)}, учтено ${fmtN(d.fact)} — не хватает ${fmtN(d.diff)} пал.</div></div><div class="r-meta"><span>${esc(d.status)}</span></div></li>`).join('')}</ul>` : ''}
+    <div class="add-row"><button class="btn" data-add="move-in">+ Материал приехал</button><button class="btn ghost" data-add="move-feed">+ Подача на этаж</button></div>
+    ${dis.length ? `<h3>Расхождения <span class="muted">· требуют сверки</span></h3><ul class="remarks">${dis.map((d) => `<li class="late"><div><b>Секция ${esc(d.section)}, ${d.floor} эт. · ${esc(d.material)}</b><div class="muted">План ${fmtN(d.plan)}, учтено ${fmtN(d.fact)} — не хватает ${fmtN(d.diff)} пал.</div></div><div class="r-meta"><span>${ev(esc(d.status), { b: 'U', s: 'Стройка · контроль расхождений', r: d.row, f: 'status', raw: d.status, expect: d.status, type: 'text', label: `Расхождение ${d.material}, ${d.floor} эт.: статус`, options: ['Требуется сверка', 'Сверено', 'Исправлено'], prop: 'status', list: 'extra.discrepancies' })}</span></div></li>`).join('')}</ul>` : ''}
     ${floors.length ? `<h3>План подачи на этажи</h3>${floors.map((k) => { const [sec, fl] = k.split('|'); const rows = byFloor[k]; return `<div class="planbox"><div class="planh"><b>Секция ${sec} · ${fl} этаж</b>${store.floorStatusOf(sec, +fl).map((x) => `<span class="chip-ok">${esc(x.status)}</span>`).join('')}</div>
-      <table class="voltab"><tbody>${rows.map((p) => `<tr><td>${esc(p.key)}</td><td>план ${fmtN(p.pallets)}</td><td>подано ${fmtN(p.fed)}</td><td><b class="${p.fed < p.pallets ? 'neg' : 'okc'}">${p.fed >= p.pallets ? '✓' : '−' + fmtN(p.pallets - p.fed)}</b></td></tr>`).join('')}</tbody></table></div>`; }).join('')}` : ''}
+      <table class="voltab"><tbody>${rows.map((p) => `<tr><td>${esc(p.key)}</td><td>план ${ev(fmtN(p.pallets), { b: 'U', s: 'Стройка · план', r: p.row, f: 'pallets', raw: p.pallets, expect: p.pallets, type: 'number', label: `План ${p.key}, ${p.zone}: паллет`, prop: 'pallets', list: 'extra.plan' })}</td><td>подано ${fmtN(p.fed)}</td><td><b class="${p.fed < p.pallets ? 'neg' : 'okc'}">${p.fed >= p.pallets ? '✓' : '−' + fmtN(p.pallets - p.fed)}</b></td></tr>`).join('')}</tbody></table></div>`; }).join('')}` : ''}
     <h3>Инструмент <span class="muted">· лист «УЧЁТ ИНСТРУМЕНТА»${tools[0] && tools[0].date ? ', на ' + shortDate(tools[0].date) : ''}</span></h3>
-    <ul class="totals tools">${tools.map((x) => `<li><span>${esc(x.name)}</span><b class="num">${esc(x.qty || '—')}</b></li>`).join('') || '<li class="muted">Нет данных</li>'}</ul>
+    <ul class="totals tools">${tools.map((x) => `<li><span>${ev(esc(x.name), { b: 'G', s: 'УЧЁТ ИНСТРУМЕНТА ', r: x.row, f: 'name', raw: x.name, expect: x.name, type: 'text', label: 'Инструмент: наименование', prop: 'name', list: 'fin.tools' })}</span><b class="num">${ev(esc(x.qty || '—'), { b: 'G', s: 'УЧЁТ ИНСТРУМЕНТА ', r: x.row, f: 'qty', raw: x.qty, expect: x.qty, type: 'text', label: `${x.name}: количество`, prop: 'qty', list: 'fin.tools' })}</b></li>`).join('') || '<li class="muted">Нет данных</li>'}</ul>
+    <button class="btn" data-add="tool">+ Инструмент</button>
   `;
 }
+
+// ---------- добавление строк в таблицы ----------
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-add]'); if (!b) return;
+  const k = b.dataset.add;
+  const today = isoToday();
+  const defs = {
+    tool: { book: 'G', sheet: 'УЧЁТ ИНСТРУМЕНТА ', title: 'Новый инструмент', fields: [['name', 'Наименование', 'text', ''], ['qty', 'Количество', 'text', '']] },
+    personal: { book: 'G', sheet: 'Личные расходы', title: 'Новый личный расход', fields: [['date', 'Дата', 'date', today], ['name', 'Наименование', 'text', ''], ['sum', 'Сумма, ₽', 'number', ''], ['who', 'Плательщик', 'text', ''], ['note', 'Примечание', 'text', '']] },
+    'move-in': { book: 'U', sheet: 'Движение материалов', title: 'Материал приехал на склад', fields: [['date', 'Дата', 'date', today], ['material', 'Материал', 'text', 'СКЦ 190 мм'], ['pallets', 'Паллет', 'number', ''], ['doc', 'Документ (ТТН / сообщение)', 'text', ''], ['comment', 'Комментарий', 'text', '']], fixed: { type: 'Поступление', zone: 'Склад', status: 'Подтверждено' } },
+    'move-feed': { book: 'U', sheet: 'Движение материалов', title: 'Подача материала на этаж', fields: [['date', 'Дата', 'date', today], ['material', 'Материал', 'text', 'СКЦ 190 мм'], ['zone', 'Этаж и секция', 'text', `${state.floor || 1} этаж, секция ${state.section}`], ['pallets', 'Паллет', 'number', ''], ['comment', 'Комментарий', 'text', '']], fixed: { type: 'Подача на этаж', status: 'Подтверждено' } },
+  }[k];
+  if (!defs) return;
+  if (!store.canEditBook(defs.book)) { const bi = store.bookInfo(defs.book); toast(`Только просмотр: нет прав на запись в ${BOOK[defs.book]}. Владелец (${bi.owner || '—'}) должен дать «Редактор».`, true); return; }
+  const res = await editDialog(defs.title, defs.fields.map(([, label, type, value]) => ({ label, type, value })), `Новая строка в таблице ${BOOK[defs.book]}, лист «${defs.sheet.trim()}».`);
+  if (!res) return;
+  const values = { ...(defs.fixed || {}) };
+  defs.fields.forEach(([f], i) => { values[f] = res[i]; });
+  store.addRow(defs.book, defs.sheet, values, defs.title + ': ' + defs.fields.map(([f]) => values[f]).filter(Boolean).slice(0, 3).join(', '));
+});
 
 // ---------- Учёт: расходы, авансы, поставки, поступления ----------
 function bars(rows, max) {
@@ -542,7 +631,7 @@ function renderMoney() {
       <h3>По месяцам</h3>
       ${monthChart(byM, ['Материалы'])}
       <h3>Заявки <span class="muted">· лист «Для РП»</span></h3>
-      <ul class="entries ops">${adv.map((a) => `<li><span class="cat-dot" style="--c:${stColor(a.status)}"></span><div><b>${esc(a.desc || a.type)}</b><div class="muted">№${esc(a.n)} · ${a.date ? shortDate(a.date) : ''} · ${esc(a.status)}</div></div><b class="num">${rub(a.sum)}</b></li>`).join('')}</ul>`;
+      <ul class="entries ops">${adv.map((a) => { const sp = (f, raw, type, lbl, extra = {}) => ({ b: 'G', s: 'Для РП', r: a.row, f, raw, expect: raw, type, label: `Аванс №${a.n}: ${lbl}`, prop: f, list: 'fin.advances', ...extra }); return `<li><span class="cat-dot" style="--c:${stColor(a.status)}"></span><div><b>${esc(a.desc || a.type)}</b><div class="muted">№${esc(a.n)} · ${a.date ? ev(shortDate(a.date), sp('date', a.date, 'date', 'дата платежа')) : ''} · ${ev(esc(a.status), sp('status', a.status, 'text', 'статус', { options: ['Оплачен', 'Утвержден', 'Согласование в 1С', 'Отклонён'] }))}</div></div><b class="num">${ev(rub(a.sum), sp('sum', a.sum, 'number', 'сумма, ₽'))}</b></li>`; }).join('')}</ul>`;
   }
 
   if (state.money === 'sup') {
@@ -585,14 +674,14 @@ function renderMoney() {
       ${bars([['Поступления + авансы', got + adv, 'var(--green)'], ['Расходы (лист «Счета»)', spent, 'var(--red)']], Math.max(got + adv, spent))}
       <p class="muted small-note">Разница: <b>${rub(got + adv - spent)}</b>. Авансы за номинированный материал Глоракс платит поставщикам напрямую.</p>
       <h3>Счета Глоракс <span class="muted">· лист «Оплаты Глоракс»</span></h3>
-      <ul class="entries ops">${inc.map((x) => `<li><span class="cat-dot" style="--c:${/^оплачено/i.test(x.status) ? 'var(--green)' : 'var(--amber)'}"></span><div><b>${esc(x.note || 'Счёт')}</b><div class="muted">${x.date ? shortDate(x.date) : ''} · ${esc(x.status)}</div></div><b class="num">${rub(x.sum)}</b></li>`).join('') || '<li class="muted">Нет счетов</li>'}</ul>`;
+      <ul class="entries ops">${inc.map((x) => { const sp = (f, raw, type, lbl, extra = {}) => ({ b: 'G', s: 'Оплаты Глоракс', r: x.row, f, raw, expect: raw, type, label: `Счёт Глоракс «${x.note || ''}»: ${lbl}`, prop: f, list: 'fin.income', ...extra }); return `<li><span class="cat-dot" style="--c:${/^оплачено/i.test(x.status) ? 'var(--green)' : 'var(--amber)'}"></span><div><b>${esc(x.note || 'Счёт')}</b><div class="muted">${x.date ? shortDate(x.date) + ' · ' : ''}${ev(esc(x.status), sp('status', x.status, 'text', 'статус', { options: ['Оплачено', 'Не оплачено'] }))}</div></div><b class="num">${ev(rub(x.sum), sp('sum', x.sum, 'number', 'сумма, ₽'))}</b></li>`; }).join('') || '<li class="muted">Нет счетов</li>'}</ul>`;
   }
 
   if (state.money === 'contract') {
     const cv = (k) => store.contractValue(k);
     const D = cv('D'), E = cv('E'), B = cv('B');
     const pct = D && E ? (E / D) * 100 : 0;
-    const phys = (store.sectionValue('4') + store.sectionValue('5')) / 2;
+    const phys = ((store.sectionValue('4') || 0) + (store.sectionValue('5') || 0)) / 2;
     const spent = fin.partial && fin.summary ? fin.summary.total : store.expenseTotal();
     const rows = [
       ['Стоимость работ по договору', D], ['Выполнено работ', E], ['Принято по КС-2', B],
@@ -610,7 +699,8 @@ function renderMoney() {
       <div class="hbar"><span>По этажам (стены, перегородки)</span><div class="bar"><i style="width:${phys}%;background:var(--blue)"></i></div><b>${Math.round(phys)}%</b></div>
       <div class="hbar"><span>Расходы к выполненному</span><div class="bar"><i style="width:${E ? Math.min(100, spent / E * 100) : 0}%;background:var(--amber)"></i></div><b>${E ? Math.round(spent / E * 100) : 0}%</b></div>
       <h3>Формула оплаты Глоракс</h3>
-      <ul class="totals">${rows.map(([l, v]) => `<li><span>${esc(l)}</span><b class="num">${rub(v)}</b></li>`).join('')}</ul>
+      <ul class="totals">${fin.contract.map((c) => `<li><span>${esc(c.label.replace(/^[A-ZА-ЯЁ]\s*-\s*/, ''))}</span><b class="num">${c.formula ? `${rub(c.value)} <em class="muted" title="Считается формулой в таблице">ƒ</em>` : ev(rub(c.value), { b: 'G', s: 'Формула оплаты Глоракс ', r: c.row, f: 'value', raw: c.value, expect: c.value, type: 'number', label: c.label.trim(), prop: 'value', list: 'fin.contract' })}</b></li>`).join('')}</ul>
+      <p class="muted small-note">ƒ — значение считает формула таблицы, оно пересчитается само.</p>
       <p class="muted small-note">Лист «Формула оплаты Глоракс». Расходы — лист «Счета»: ${rub(spent)}.</p>` : '<p class="muted">Лист «Формула оплаты Глоракс» не найден.</p>';
   }
 
@@ -628,7 +718,8 @@ function renderMoney() {
       <h3>Кто платил</h3>
       ${bars(top.map(([w, v]) => [w, v, 'var(--blue)']), top[0] ? top[0][1] : 0)}
       <h3>Записи <span class="muted">· лист «Личные расходы»</span></h3>
-      <ul class="entries ops">${list.map((x) => `<li><span class="cat-dot" style="--c:var(--blue)"></span><div><b>${esc(x.name)}</b><div class="muted">${x.date ? (x.approx ? '≈ ' : '') + shortDate(x.date) + ' · ' : ''}${esc(x.who)}${x.note ? ' · ' + esc(x.note) : ''}</div></div><b class="num">${rub(x.sum)}</b></li>`).join('') || '<li class="muted">Нет записей</li>'}</ul>`;
+      <ul class="entries ops">${list.map((x) => `<li><span class="cat-dot" style="--c:var(--blue)"></span><div><b>${ev(esc(x.name), { b: 'G', s: 'Личные расходы', r: x.row, f: 'name', raw: x.name, expect: x.name, type: 'text', label: 'Личный расход: наименование', prop: 'name', list: 'fin.personal' })}</b><div class="muted">${x.date ? (x.approx ? '≈ ' : '') + shortDate(x.date) + ' · ' : ''}${esc(x.who)}${x.note ? ' · ' + esc(x.note) : ''}</div></div><b class="num">${ev(rub(x.sum), { b: 'G', s: 'Личные расходы', r: x.row, f: 'sum', raw: x.sum, expect: x.sum, type: 'number', label: `${x.name}: сумма, ₽`, prop: 'sum', list: 'fin.personal' })}</b></li>`).join('') || '<li class="muted">Нет записей</li>'}</ul>
+      <button class="btn" data-add="personal">+ Личный расход</button>`;
   }
 
   if (state.money === 'tools') {
@@ -671,9 +762,9 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 
 // ---------- 3D-тур: камера и стройка по прокрутке ----------
 function tourSteps() {
-  const s4 = Math.round(store.sectionValue('4')), s5 = Math.round(store.sectionValue('5'));
+  const s4 = Math.round(store.sectionValue('4') || 0), s5 = Math.round(store.sectionValue('5') || 0);
   const open = (s) => store.remarks.filter((r) => String(r.section) === s && store.isOpenRemark(r)).length;
-  const w = (s, k) => Math.round(store.sectionValue(s, k));
+  const w = (s, k) => Math.round(store.sectionValue(s, k) || 0);
   const ppl = (s) => { const d = store.journal.filter((j) => j.type === 'Люди' && j.section === s).map((j) => j.date).sort().pop(); return d ? `${store.peopleOn(d, s)} чел. (${shortDate(d)})` : 'нет данных'; };
   const mats = store.journal.filter((j) => j.type === 'Материал').length + store.fin.nominated.length;
   const cats = store.byCategory();

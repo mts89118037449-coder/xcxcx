@@ -51,6 +51,13 @@ const ROOF = 17;
 
 // Всегда «Glorax_Учёт» по ID: скрипт может быть привязан к другому файлу (clasp создаёт свой контейнер)
 let SS_CACHE_ = null;
+/** Строки диапазона (отображаемые значения) с номером строки листа в r.row */
+function rowsOf_(sh, startRow, ncols) {
+  const n = sh.getLastRow() - startRow + 1;
+  if (n < 1) return [];
+  return sh.getRange(startRow, 1, n, ncols).getDisplayValues().map(function (r, i) { r.row = startRow + i; return r; });
+}
+
 function ss_() { return SS_CACHE_ || (SS_CACHE_ = SpreadsheetApp.openById(SPREADSHEET_ID)); }
 function tz_() { return ss_().getSpreadsheetTimeZone(); }
 
@@ -83,6 +90,8 @@ function doPost(e) {
       case 'deleteJournal': res = deleteJournal_(String(body.id)); break;
       case 'updateJournal': res = updateJournal_(body.entry || {}); break;
       case 'addExpense': res = addExpense_(body.entry || {}); break;
+      case 'setCell': res = setCell_(body); break;
+      case 'addRow': res = addRow_(body); break;
       case 'updateExpense': res = updateExpense_(body.entry || {}, body.expect || {}); break;
       case 'deleteExpense': res = deleteExpense_(String(body.id)); break;
       default: throw new Error('Неизвестное действие: ' + body.action);
@@ -124,7 +133,6 @@ function checkToken_(t) {
 // ---------------------------------------------------------------- setup
 
 function setup() {
-  progressSheet_();
   journalSheet_();
   // триггеры пересоздаются заново — на «Glorax_Учёт», без дублей
   ScriptApp.getProjectTriggers().forEach(function (t) {
@@ -247,12 +255,15 @@ function readAll_() {
     remarks: readRemarks_(),
     fin: readFin_(),
     extra: readExtra_(),
+    checks: safe_(checks_),
     updated: new Date().toISOString(),
   };
 }
 
 function readProgress_() {
-  const sh = progressSheet_();
+  // проценты этажей берутся из «Выполнения»; лист «Прогресс» — только ручные значения, если он есть
+  const sh = ss_().getSheetByName(SHEET_PROGRESS);
+  if (!sh) return [];
   const n = sh.getLastRow() - 1;
   if (n < 1) return [];
   return sh.getRange(2, 1, n, PROGRESS_HEADER.length).getValues()
@@ -299,7 +310,7 @@ function readDocsRows_() {
   if (!sh) return [];
   const last = Math.min(sh.getLastRow(), 80);
   if (last < 3) return [];
-  return sh.getRange(3, 1, last - 2, 7).getDisplayValues().filter(function (r) { return parseRowLabel_(r[0]); });
+  return sh.getRange(3, 1, last - 2, 7).getDisplayValues().map(function (r, i) { r.push(i + 3); return r; }).filter(function (r) { return parseRowLabel_(r[0]); });
 }
 
 function readRemarks_() {
@@ -307,10 +318,10 @@ function readRemarks_() {
   if (!sh) return [];
   const last = sh.getLastRow();
   if (last < 6) return [];
-  return sh.getRange(6, 1, last - 5, 24).getDisplayValues()
+  return rowsOf_(sh, 6, 24)
     .filter(function (r) { return r[4] || r[5]; })
     .map(function (r) {
-      return { n: r[0], text: r[4], short: r[5] || r[4], section: String(r[6]), who: r[7], due: r[16] || r[9], moves: r[17], status: r[19], done: r[20], state: r[22], note: r[23] };
+      return { row: r.row, due1: r[9], n: r[0], text: r[4], short: r[5] || r[4], section: String(r[6]), who: r[7], due: r[16] || r[9], moves: r[17], status: r[19], done: r[20], state: r[22], note: r[23] };
     });
 }
 
@@ -330,11 +341,30 @@ function readExtra_() {
 }
 
 function sourcesInfo_() {
-  const out = [{ id: SPREADSHEET_ID, title: ss_().getName() }];
-  [VOLUMES_ID, VUP_ID].forEach(function (id) {
-    try { out.push({ id: id, title: SpreadsheetApp.openById(id).getName() }); } catch (e) { out.push({ id: id, title: '', error: 'нет доступа' }); }
+  const me = Session.getEffectiveUser().getEmail();
+  return [['G', SPREADSHEET_ID], ['V', VOLUMES_ID], ['U', VUP_ID]].map(function (x) {
+    const out = { key: x[0], id: x[1], title: '', canEdit: false, owner: '' };
+    try { out.title = SpreadsheetApp.openById(x[1]).getName(); } catch (e) { out.error = 'нет доступа'; return out; }
+    out.canEdit = canEdit_(x[1]);
+    try { out.owner = DriveApp.getFileById(x[1]).getOwner().getEmail(); } catch (e) { /* */ }
+    out.me = me;
+    return out;
   });
-  return out;
+}
+
+/** Есть ли у владельца скрипта право записи в таблицу */
+function canEdit_(id) {
+  const cache = CacheService.getScriptCache();
+  const k = 'CE_' + id, c = cache.get(k);
+  if (c) return c === '1';
+  let ok = false;
+  try {
+    const me = Session.getEffectiveUser().getEmail();
+    const f = DriveApp.getFileById(id);
+    ok = f.getOwner().getEmail() === me || f.getEditors().some(function (u) { return u.getEmail() === me; });
+  } catch (e) { ok = false; }
+  cache.put(k, ok ? '1' : '0', 300);
+  return ok;
 }
 
 /** «Выполнение», листы «Секция 4/5»: B этаж, D вид работ, E объём, H выполнено, N принято (КС-6а), O… по неделям */
@@ -348,6 +378,7 @@ function readVolumes_() {
     const head = sh.getRange(2, 1, 1, w).getDisplayValues()[0];
     const weeks = [];
     for (let c = 14; c < w; c++) { const d = ddmmyy_(head[c]); if (d) weeks.push([c, d]); }
+    const weekCols = {}; weeks.forEach(function (wk) { weekCols[wk[1]] = wk[0] + 1; });
     const rows = sh.getRange(3, 1, sh.getLastRow() - 2, w).getDisplayValues();
     let floor = null;
     for (let i = 0; i < rows.length; i++) {
@@ -360,7 +391,7 @@ function readVolumes_() {
       if (!total) continue;
       const weekly = {};
       weeks.forEach(function (wk) { const v = num_(r[wk[0]]); if (v) weekly[wk[1]] = v; });
-      out.push({ section: sec, floor: floor, work: work, total: total, done: num_(r[7]), accepted: num_(r[13]), status: String(r[10]).trim(), due: String(r[9]).trim(), handover: String(r[0]).trim(), contractor: String(r[2]).trim(), weekly: weekly });
+      out.push({ row: i + 3, sheet: 'Секция ' + sec, weekCols: weekCols, section: sec, floor: floor, work: work, total: total, done: num_(r[7]), accepted: num_(r[13]), status: String(r[10]).trim(), due: String(r[9]).trim(), handover: String(r[0]).trim(), contractor: String(r[2]).trim(), weekly: weekly });
     }
   });
   return out;
@@ -370,12 +401,12 @@ function readVolumes_() {
 function readMoves_() {
   const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Движение материалов');
   if (!sh || sh.getLastRow() < 2) return [];
-  return sh.getRange(2, 1, sh.getLastRow() - 1, 14).getDisplayValues()
+  return rowsOf_(sh, 2, 14)
     .filter(function (r) { return r[0] || r[4]; })
     .map(function (r) {
       const zone = String(r[5]);
       const fm = zone.match(/(\d+)\s*этаж/i), sm = zone.match(/секци[яи]\s*(\d)/i);
-      return { id: r[0], date: pickDate_(r[2]) || pickDate_(r[8]) || pickDate_(r[11]), dateExact: !!pickDate_(r[2]), type: r[3], material: r[4], zone: zone,
+      return { row: r.row, rawDate: r[2], id: r[0], date: pickDate_(r[2]) || pickDate_(r[8]) || pickDate_(r[11]), dateExact: !!pickDate_(r[2]), type: r[3], material: r[4], zone: zone,
         floor: fm ? +fm[1] : null, section: sm ? sm[1] : '', pallets: num_(r[6]), doc: r[8], status: r[9], comment: String(r[13]).slice(0, 300) };
     });
 }
@@ -384,29 +415,29 @@ function readMoves_() {
 function readWorklog_() {
   const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Стройка · ход работ');
   if (!sh || sh.getLastRow() < 2) return [];
-  return sh.getRange(2, 1, sh.getLastRow() - 1, 14).getDisplayValues()
+  return rowsOf_(sh, 2, 14)
     .filter(function (r) { return r[0]; })
-    .map(function (r) { return { id: r[0], section: String(r[2]), floor: parseFloor_(r[3]), brigade: r[4], stage: r[5], start: pickDate_(r[6]) || pickDate_(r[13]), end: pickDate_(r[7]), status: r[8], workers: num_(r[9]), shifts: num_(r[10]), volume: num_(r[11]), unit: r[12], source: r[13] }; });
+    .map(function (r) { return { row: r.row, id: r[0], section: String(r[2]), floor: parseFloor_(r[3]), brigade: r[4], stage: r[5], start: pickDate_(r[6]) || pickDate_(r[13]), end: pickDate_(r[7]), status: r[8], workers: num_(r[9]), shifts: num_(r[10]), volume: num_(r[11]), unit: r[12], source: r[13] }; });
 }
 
 /** «VUP CORE»: Стройка · статусы этажей */
 function readFloorStatus_() {
   const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Стройка · статусы этажей');
   if (!sh || sh.getLastRow() < 2) return [];
-  return sh.getRange(2, 1, sh.getLastRow() - 1, 6).getDisplayValues()
+  return rowsOf_(sh, 2, 6)
     .filter(function (r) { return r[0] && r[1]; })
-    .map(function (r) { return { section: String(r[0]), floor: parseFloor_(r[1]), status: r[2], date: pickDate_(r[3]), source: r[4], comment: r[5] }; });
+    .map(function (r) { return { row: r.row, section: String(r[0]), floor: parseFloor_(r[1]), status: r[2], date: pickDate_(r[3]), source: r[4], comment: r[5] }; });
 }
 
 /** «VUP CORE»: Стройка · план — потребность материала по этажам, паллет */
 function readPlan_() {
   const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Стройка · план');
   if (!sh || sh.getLastRow() < 2) return [];
-  return sh.getRange(2, 1, sh.getLastRow() - 1, 8).getDisplayValues()
+  return rowsOf_(sh, 2, 8)
     .filter(function (r) { return r[0] && r[3]; })
     .map(function (r) {
       const zone = String(r[2]); const fm = zone.match(/(\d+)\s*этаж/i), sm = zone.match(/секци[яи]\s*(\d)/i);
-      return { id: r[0], date: pickDate_(r[1]), zone: zone, floor: fm ? +fm[1] : null, section: sm ? sm[1] : '', material: r[3], pallets: num_(r[4]), source: r[5], rule: r[6], comment: r[7] };
+      return { row: r.row, id: r[0], date: pickDate_(r[1]), zone: zone, floor: fm ? +fm[1] : null, section: sm ? sm[1] : '', material: r[3], pallets: num_(r[4]), source: r[5], rule: r[6], comment: r[7] };
     });
 }
 
@@ -414,9 +445,9 @@ function readPlan_() {
 function readDiscrepancies_() {
   const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Стройка · контроль расхождений');
   if (!sh || sh.getLastRow() < 2) return [];
-  return sh.getRange(2, 1, sh.getLastRow() - 1, 9).getDisplayValues()
+  return rowsOf_(sh, 2, 9)
     .filter(function (r) { return r[0] && r[2]; })
-    .map(function (r) { return { section: String(r[0]), floor: parseFloor_(r[1]), material: r[2], plan: num_(r[3]), fact: num_(r[4]), diff: num_(r[5]), status: r[6], date: pickDate_(r[7]), note: r[8] }; });
+    .map(function (r) { return { row: r.row, section: String(r[0]), floor: parseFloor_(r[1]), material: r[2], plan: num_(r[3]), fact: num_(r[4]), diff: num_(r[5]), status: r[6], date: pickDate_(r[7]), note: r[8] }; });
 }
 
 /** «VUP CORE»: Стройка · инвентаризация склада */
@@ -426,6 +457,125 @@ function readInventory_() {
   return sh.getRange(2, 1, sh.getLastRow() - 1, 9).getDisplayValues()
     .filter(function (r) { return r[2]; })
     .map(function (r) { return { id: r[0], date: pickDate_(r[1]), material: r[2], unit: r[3], qty: num_(r[4]), source: r[5], comment: r[6], calc: num_(r[7]), status: r[8] }; });
+}
+
+// ---------------------------------------------------------------- запись в любую разрешённую ячейку
+
+const BOOKS = { G: SPREADSHEET_ID, V: VOLUMES_ID, U: VUP_ID };
+/** Какие поля каких листов можно менять из приложения (номер колонки). Остальное — только чтение. */
+const EDITABLE = {
+  'G|Счета': { date: 3, cat: 4, who: 5, basis: 6, note: 7, sum: 8 },
+  'G|Журнал': { date: 1, section: 2, type: 3, name: 4, qty: 5, unit: 6, note: 7 },
+  'G|Для РП': { date: 4, sum: 6, status: 7, desc: 8 },
+  'G|Оплаты Глоракс': { status: 3, date: 4, note: 5, sum: 6 },
+  'G|Личные расходы': { date: 1, name: 2, sum: 3, who: 4, note: 5 },
+  'G|УЧЁТ ИНСТРУМЕНТА ': { name: 2, qty: 3 },
+  'G|Формула оплаты Глоракс ': { value: 2 },
+  'G|Замечания АСГ': { due1: 10, due2: 11, due3: 12, due4: 13, due5: 14, due6: 15, due7: 16, status: 20, done: 21, note: 24 },
+  'G|Таблица': { is4: 2, is5: 3, aosr4: 4, aosr5: 5, rem4: 6, rem5: 7 },
+  'V|Секция 4': { total: 5, accepted: 14, week: 0 },
+  'V|Секция 5': { total: 5, accepted: 14, week: 0 },
+  'U|Движение материалов': { date: 3, type: 4, material: 5, zone: 6, pallets: 7, doc: 9, status: 10, comment: 14 },
+  'U|Стройка · ход работ': { section: 3, floor: 4, brigade: 5, stage: 6, start: 7, end: 8, status: 9, workers: 10 },
+  'U|Стройка · статусы этажей': { section: 1, floor: 2, status: 3, date: 4, source: 5, comment: 6 },
+  'U|Стройка · план': { pallets: 5, comment: 8 },
+  'U|Стройка · контроль расхождений': { status: 7, note: 9 },
+};
+const DATE_FIELDS = /^(date|done|start|end|due\d)$/;
+const NUM_FIELDS = /^(sum|qty|pallets|workers|total|accepted|week|value)$/;
+
+function cellValue_(field, v) {
+  if (v === '' || v == null) return '';
+  if (DATE_FIELDS.test(field)) { const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : String(v); }
+  if (NUM_FIELDS.test(field)) { const n = num_(v); if (isNaN(n)) throw new Error('Нужно число'); return n; }
+  return String(v);
+}
+function sheetFor_(b, s) {
+  const id = BOOKS[b]; if (!id) throw new Error('Неизвестная таблица');
+  if (b !== 'G' && !canEdit_(id)) throw new Error('Нет прав на запись в эту таблицу — нужен доступ «Редактор»');
+  const sh = SpreadsheetApp.openById(id).getSheetByName(s);
+  if (!sh) throw new Error('Нет листа «' + s + '»');
+  return sh;
+}
+
+/** {b, s, r, f, c?, value, expect} → запись в ячейку с проверками: поле разрешено, не формула, не изменилось в таблице */
+function setCell_(q) {
+  const map = EDITABLE[q.b + '|' + q.s];
+  if (!map || !(q.f in map)) throw new Error('Это поле не редактируется из приложения');
+  let col = map[q.f];
+  const sh = sheetFor_(q.b, q.s);
+  if (q.f === 'week') {
+    col = Number(q.c);
+    if (!(col >= 15) || !ddmmyy_(sh.getRange(2, col).getDisplayValue())) throw new Error('Неверная неделя');
+  }
+  const row = Number(q.r);
+  if (!(row >= 2)) throw new Error('Неверная строка');
+  const cell = sh.getRange(row, col);
+  if (cell.getFormula()) throw new Error('В ячейке формула — значение считается из других ячеек, его нельзя поменять напрямую');
+  const before = cell.getDisplayValue();
+  if (q.expect != null && !same_(before, q.expect)) throw new Error('Ячейку уже изменили в таблице: сейчас «' + before + '». Обновите приложение и повторите');
+  cell.setValue(cellValue_(q.f, q.value));
+  if (DATE_FIELDS.test(q.f) && cell.getValue() instanceof Date) cell.setNumberFormat('dd.MM.yyyy');
+  SpreadsheetApp.flush();
+  return { sheet: q.s, row: row, cell: cell.getA1Notation(), before: before, check: { display: cell.getDisplayValue(), value: cell.getValue() instanceof Date ? toIsoDate_(cell.getValue()) : cell.getValue() } };
+}
+
+/** {b, s, values:{поле: значение}} → новая строка в конце списка */
+function addRow_(q) {
+  const map = EDITABLE[q.b + '|' + q.s];
+  if (!map) throw new Error('В этот лист нельзя добавлять строки из приложения');
+  const sh = sheetFor_(q.b, q.s);
+  let last = sh.getLastRow();
+  // первая пустая строка после последней заполненной в колонке A/B (листы бывают с предзаполненными категориями)
+  const vals = sh.getRange(1, 1, last, 2).getDisplayValues();
+  while (last > 1 && !vals[last - 1][0] && !vals[last - 1][1]) last--;
+  const row = last + 1;
+  const width = Math.max.apply(null, Object.keys(map).map(function (k) { return map[k]; }).concat([1]));
+  const line = sh.getRange(row, 1, 1, width).getValues()[0];
+  Object.keys(q.values || {}).forEach(function (k) { if (map[k]) line[map[k] - 1] = cellValue_(k, q.values[k]); });
+  if (q.b === 'U' && !line[0]) line[0] = 'APP-' + Utilities.formatDate(new Date(), tz_(), 'yyyyMMdd-HHmmss');
+  sh.getRange(row, 1, 1, width).setValues([line]);
+  SpreadsheetApp.flush();
+  return { sheet: q.s, row: row, check: { display: sh.getRange(row, 1, 1, width).getDisplayValues()[0].join(' | ') } };
+}
+function norm_(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); }
+/** «Значение не изменилось»: числа сравниваются как числа, даты как даты, остальное как текст */
+function same_(a, b) {
+  const A = norm_(a), B = norm_(b);
+  if (A === B) return true;
+  const na = Number(A.replace(/[\s₽%]/g, '').replace(',', '.')), nb = Number(B.replace(/[\s₽%]/g, '').replace(',', '.'));
+  if (A !== '' && B !== '' && !isNaN(na) && !isNaN(nb)) return Math.abs(na - nb) < 0.005;
+  const da = pickDate_(A), db = pickDate_(B);
+  return !!da && da === db;
+}
+
+// ---------------------------------------------------------------- сверка: итоги таблиц против того, что видит приложение
+
+function checks_() {
+  const out = [];
+  try {
+    const sh = ss_().getSheetByName(SHEET_EXPENSES);
+    const total = num_(sh.getRange('H1').getValue());
+    const sum = readExpenses_().reduce(function (a, e) { return a + e.sum; }, 0);
+    out.push({ name: '«Счета»: итог в ячейке H1 и сумма всех строк', table: total, app: Math.round(sum * 100) / 100 });
+  } catch (e) { /* */ }
+  try {
+    const book = SpreadsheetApp.openById(VOLUMES_ID);
+    const vols = readVolumes_();
+    ['4', '5'].forEach(function (sec) {
+      const sh = book.getSheetByName('Секция ' + sec); if (!sh) return;
+      const rows = sh.getRange(3, 1, sh.getLastRow() - 2, 9).getDisplayValues();
+      let inTotals = false;
+      rows.forEach(function (r) {
+        if (/итого по секции/i.test(r[0])) { inTotals = true; return; }
+        if (!inTotals || !r[3] || /руб/i.test(r[3])) return;
+        const work = String(r[3]).trim();
+        const app = vols.filter(function (v) { return v.section === sec && v.work === work; }).reduce(function (a, v) { return a + v.done; }, 0);
+        out.push({ name: '«Выполнение», секция ' + sec + ': ' + work + ' — выполнено (строка «Итого») и сумма этажей', table: num_(r[7]), app: Math.round(app * 100) / 100 });
+      });
+    });
+  } catch (e) { /* */ }
+  return out.map(function (c) { c.ok = Math.abs((c.table || 0) - (c.app || 0)) < 0.011; return c; });
 }
 
 /** «02.11.26» / «02.11.2026» → ISO (для шапки недель; будущие даты допустимы) */
@@ -481,11 +631,11 @@ function readPersonal_() {
   const sh = ss_().getSheetByName(SHEET_PERSONAL);
   if (!sh || sh.getLastRow() < 3) return [];
   let prev = '';
-  return sh.getRange(3, 1, sh.getLastRow() - 2, 5).getDisplayValues()
+  return rowsOf_(sh, 3, 5)
     .filter(function (r) { return num_(r[2]); })
     .map(function (r) {
       const d = pickDate_(r[0]); const approx = !d && !!prev; const date = d || prev; prev = date;
-      return { date: date, approx: approx, name: String(r[1]).trim(), sum: num_(r[2]), who: String(r[3]).trim(), note: String(r[4]).trim() };
+      return { row: r.row, date: date, approx: approx, name: String(r[1]).trim(), sum: num_(r[2]), who: String(r[3]).trim(), note: String(r[4]).trim() };
     });
 }
 
@@ -494,20 +644,22 @@ function readTools_() {
   const sh = ss_().getSheetByName(SHEET_TOOLS);
   if (!sh || sh.getLastRow() < 3) return [];
   const date = pickDate_(sh.getRange(1, 2).getDisplayValue());
-  return sh.getRange(3, 1, sh.getLastRow() - 2, 3).getDisplayValues()
+  return rowsOf_(sh, 3, 3)
     .filter(function (r) { return String(r[1]).trim(); })
-    .map(function (r) { return { n: r[0], name: String(r[1]).trim(), qty: String(r[2]).trim(), date: date }; });
+    .map(function (r) { return { row: r.row, n: r[0], name: String(r[1]).trim(), qty: String(r[2]).trim(), date: date }; });
 }
 
 /** «Формула оплаты Глоракс»: пары «подпись — значение» (подписи в колонке C, значения в B; справа — доп. значение в D) */
 function readContract_() {
   const sh = ss_().getSheetByName(SHEET_CONTRACT);
   if (!sh) return [];
-  const v = sh.getRange(1, 1, Math.min(sh.getLastRow(), 40), 5).getDisplayValues();
+  const n = Math.min(sh.getLastRow(), 40);
+  const v = sh.getRange(1, 1, n, 5).getDisplayValues();
+  const f = sh.getRange(1, 1, n, 5).getFormulas();
   const out = [];
-  v.forEach(function (r) {
+  v.forEach(function (r, i) {
     const label = String(r[2] || '').trim();
-    if (label && num_(r[1]) && !/^\d/.test(label)) out.push({ label: label, value: num_(r[1]), extra: num_(r[3]) || null });
+    if (label && num_(r[1]) && !/^\d/.test(label)) out.push({ row: i + 1, label: label, value: num_(r[1]), formula: !!f[i][1], extra: num_(r[3]) || null });
   });
   return out;
 }
@@ -516,18 +668,18 @@ function readContract_() {
 function readAdvances_() {
   const sh = ss_().getSheetByName(SHEET_ADVANCES);
   if (!sh || sh.getLastRow() < 3) return [];
-  return sh.getRange(3, 1, sh.getLastRow() - 2, 8).getDisplayValues()
+  return rowsOf_(sh, 3, 8)
     .filter(function (r) { return /^\d+$/.test(String(r[0]).trim()) && num_(r[5]); })
-    .map(function (r) { return { n: r[0], type: String(r[2]).replace('Аванс за ', '').replace(/^н/, 'Н'), date: pickDate_(r[3]), sum: num_(r[5]), status: r[6], desc: r[7] }; });
+    .map(function (r) { return { row: r.row, n: r[0], type: String(r[2]).replace('Аванс за ', '').replace(/^н/, 'Н'), date: pickDate_(r[3]), sum: num_(r[5]), status: r[6], desc: r[7] }; });
 }
 
 /** «Оплаты Глоракс»: с 4-й строки. A №, B дата счёта, C статус, D дата платежа, E примечание, F сумма */
 function readIncome_() {
   const sh = ss_().getSheetByName(SHEET_INCOME);
   if (!sh || sh.getLastRow() < 4) return [];
-  return sh.getRange(4, 1, sh.getLastRow() - 3, 6).getDisplayValues()
+  return rowsOf_(sh, 4, 6)
     .filter(function (r) { return num_(r[5]); })
-    .map(function (r) { return { n: r[0], date: findDate_(r[3]) || findDate_(String(r[1]).replace(/\//g, '.')), status: r[2], note: r[4], sum: num_(r[5]) }; });
+    .map(function (r) { return { row: r.row, n: r[0], date: findDate_(r[3]) || findDate_(String(r[1]).replace(/\//g, '.')), status: r[2], note: r[4], sum: num_(r[5]) }; });
 }
 
 /** «Номинированные материалы»: заголовок в 5-й строке, материалы — колонки J и правее */

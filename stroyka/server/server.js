@@ -92,8 +92,8 @@ async function seedDb() {
   const { SEED_FIN } = await import('../js/seed-fin.js');
   const { docsFromRows, estimateFromDocs } = await import('../js/data.js');
   return normalize({
-    progress: estimateFromDocs(docsFromRows(SEED_DOCS_ROWS)),
-    journal: SEED_JOURNAL, docsRows: SEED_DOCS_ROWS, remarks: SEED_REMARKS,
+    progress: [],            // никаких оценок: проценты приходят только из таблицы «Выполнение»
+    journal: [], docsRows: SEED_DOCS_ROWS, remarks: SEED_REMARKS,
     fin: { ...SEED_FIN, partial: true },
   });
 }
