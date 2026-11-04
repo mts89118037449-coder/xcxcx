@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Стройка 3D — секции 4 и 5</title>
+<meta name="description" content="3D-визуализация хода строительства МКД (секции 4 и 5, 16 этажей) с синхронизацией с Google Таблицами: прогресс по этажам, люди и поставки материалов по датам.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 21V9l5-3v15M9 21V3l11 4v14M2 21h20M12 8h2M12 11h2M12 14h2M16 9h1M16 12h1M16 15h1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </div>
+    <div>
+      <h1>Ход строительства</h1>
+      <p class="sub">МКД · секции 4 и 5 · 16 этажей</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <span class="pill" id="status" title="">—</span>
+    <button class="btn ghost" id="btnReload" title="Перечитать таблицу">⟳ Обновить</button>
+    <button class="btn ghost" id="btnTheme" title="Светлая / тёмная тема">Тема</button>
+    <button class="btn" id="btnSettings">Таблица…</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="stage" id="stage" aria-label="3D-модель корпуса">
+    <div class="stage-ui">
+      <div class="seg" id="metric" role="tablist" aria-label="Что показывать">
+        <button data-m="avg" class="on">Все работы</button>
+        <button data-m="Наружные стены">Наружные стены</button>
+        <button data-m="Перегородки">Перегородки</button>
+      </div>
+      <button class="btn ghost small" id="btnView">Вид по умолчанию</button>
+    </div>
+    <div class="legend">
+      <span><i class="sw sw-green"></i>выполнено</span>
+      <span><i class="sw sw-full"></i>100%</span>
+      <span><i class="sw sw-shell"></i>не начато</span>
+      <span><i class="sw sw-red"></i>открытые замечания</span>
+      <span class="hint">Клик по этажу — редактирование · колесо — масштаб</span>
+    </div>
+    <div class="stage-kpis" id="kpis"></div>
+  </section>
+
+  <aside class="side">
+    <nav class="tabs" role="tablist">
+      <button data-tab="summary" class="on">Сводка</button>
+      <button data-tab="floor">Этаж</button>
+      <button data-tab="calendar">Календарь</button>
+    </nav>
+    <div class="tab" id="tab-summary"></div>
+    <div class="tab" id="tab-floor" hidden></div>
+    <div class="tab" id="tab-calendar" hidden></div>
+  </aside>
+</main>
+
+<dialog id="settings">
+  <form method="dialog" class="dlg">
+    <h2>Подключение к Google Таблице</h2>
+    <p class="muted">Чтобы приложение читало и записывало данные в таблицу «Glorax_Учёт», в ней нужно один раз установить скрипт из <code>stroyka/apps-script/Code.gs</code>. Без подключения работает демо-режим: данные снимка таблицы, правки хранятся только в этом браузере.</p>
+    <ol class="steps">
+      <li>Таблица → <b>Расширения → Apps Script</b>, вставьте код из <code>Code.gs</code>, сохраните.</li>
+      <li>Запустите функцию <code>setup</code> (создаст листы «Прогресс» и «Журнал»).</li>
+      <li><b>Начать развертывание → Веб-приложение</b>: «Запуск от имени: я», «Доступ: все». Скопируйте URL.</li>
+      <li>Вставьте URL ниже. Если в свойствах скрипта задан <code>TOKEN</code> — укажите его.</li>
+    </ol>
+    <label>URL веб-приложения<input id="cfgUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
+    <label>Токен (необязательно)<input id="cfgToken" type="text" autocomplete="off"></label>
+    <div class="dlg-actions">
+      <button class="btn ghost" value="cancel">Отмена</button>
+      <button class="btn ghost" id="btnDemoReset" value="cancel" type="button">Сбросить демо</button>
+      <button class="btn" id="btnSave" value="ok">Подключить</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
