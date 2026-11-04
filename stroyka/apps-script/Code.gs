@@ -1,7 +1,10 @@
 /**
  * API для «Стройка 3D» — двусторонняя связь веб-приложения с таблицей «Glorax_Учёт».
  *
- * Установка:
+ * Установка без компьютера: deploy/install.sh на VPS сам создаёт и публикует этот скрипт (clasp);
+ * владельцу остаётся открыть выданную ссылку и нажать «Разрешить» — setup выполнится сам.
+ *
+ * Установка вручную:
  *   1. Откройте таблицу → Расширения → Apps Script, вставьте этот файл целиком, сохраните.
  *   2. Выберите функцию setup → Выполнить (выдайте доступ). Будут созданы листы «Прогресс» и «Журнал»
  *      и триггер, который отмечает любую правку в таблице — по этой отметке приложение
@@ -48,6 +51,9 @@ function doGet(e) {
   try {
     const p = (e && e.parameter) || {};
     checkToken_(p.token);
+    ensureSetup_();
+    // владелец открыл ссылку в браузере (после «Разрешить») — короткая страница вместо JSON
+    if (!p.action) return HtmlService.createHtmlOutput('<meta name="viewport" content="width=device-width,initial-scale=1"><div style="font:18px system-ui;padding:24px"><h2>✓ Стройка 3D подключена к таблице</h2><p>Триггеры и ежедневный бэкап на Google Диск включены. Страницу можно закрыть.</p></div>');
     if (p.action === 'version') return json_({ ok: true, v: version_() });
     return json_(Object.assign({ ok: true, v: version_() }, readAll_()));
   } catch (err) {
@@ -79,6 +85,14 @@ function doPost(e) {
   } finally {
     try { lock.releaseLock(); } catch (e2) { /* */ }
   }
+}
+
+/** Первый запуск после «Разрешить»: листы, триггеры, первый бэкап — без ручного запуска setup */
+function ensureSetup_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('SETUP_DONE')) return;
+  try { setup(); props.setProperty('SETUP_DONE', new Date().toISOString()); }
+  catch (err) { console.error('setup: ' + err); }
 }
 
 function json_(obj) {

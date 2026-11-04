@@ -251,8 +251,8 @@ async function handleApi(req, res, url) {
           if (p.action !== 'version' && data.ok) { writeJsonAtomic(MIRROR_FILE, data); mirrorAt = new Date(); }
           return send(res, 200, data);
         } catch {
-          const m = readJson(MIRROR_FILE, null);
-          if (!m) return send(res, 502, { ok: false, error: 'Google недоступен, копии ещё нет' });
+          // копии таблицы ещё нет (скрипт ждёт «Разрешить») — отдаём снимок из db.json
+          const m = readJson(MIRROR_FILE, null) || { ...db, ok: true };
           return send(res, 200, p.action === 'version' ? { ok: true, v: m.v } : { ...m, ok: true, stale: true, staleAt: mirrorAt && mirrorAt.toISOString() });
         }
       }
