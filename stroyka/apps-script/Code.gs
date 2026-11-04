@@ -19,6 +19,12 @@
  * Остальные листы не трогает.
  */
 
+// Таблица «Glorax_Учёт» — скрипт работает и встроенным в таблицу, и отдельным файлом на Диске
+const SPREADSHEET_ID = '1H-0BjSxyU60e4O7LVViPMi1bJYX9quiKk1TFKsuHJlo';
+// Папка «Стройка 3D — бэкапы» на Google Диске владельца
+const BACKUP_FOLDER_ID = '1V9zW5kvqI9pC3eICf2vJ3-lg2JaHg-te';
+const BACKUP_KEEP_DAYS = 60;
+
 const SHEET_PROGRESS = 'Прогресс';
 const SHEET_JOURNAL = 'Журнал';
 const SHEET_DOCS = 'Таблица';
@@ -33,7 +39,7 @@ const JOURNAL_HEADER = ['Дата', 'Секция', 'Тип', 'Наименов�
 const SECTIONS = ['4', '5'];
 const ROOF = 17;
 
-function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
+function ss_() { return SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(SPREADSHEET_ID); }
 function tz_() { return ss_().getSpreadsheetTimeZone(); }
 
 // ---------------------------------------------------------------- HTTP
@@ -93,7 +99,34 @@ function setup() {
   const have = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
   if (have.indexOf('onSheetEdit') < 0) ScriptApp.newTrigger('onSheetEdit').forSpreadsheet(ss_()).onEdit().create();
   if (have.indexOf('onSheetChange') < 0) ScriptApp.newTrigger('onSheetChange').forSpreadsheet(ss_()).onChange().create();
+  // ежедневный бэкап на Google Диск в 03:00
+  if (have.indexOf('backupToDrive') < 0) ScriptApp.newTrigger('backupToDrive').timeBased().everyDays(1).atHour(3).create();
   stamp_();
+  backupToDrive();
+}
+
+/**
+ * Бэкап на Google Диск: полная копия таблицы + JSON всех данных приложения.
+ * Запускается триггером каждый день; можно запустить вручную. Копии старше BACKUP_KEEP_DAYS — в корзину.
+ */
+function backupToDrive() {
+  const folder = backupFolder_();
+  const tz = tz_();
+  const stamp = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  DriveApp.getFileById(ss_().getId()).makeCopy('Glorax_Учёт — бэкап ' + stamp, folder);
+  const data = { format: 'stroyka-backup', version: 1, exportedAt: new Date().toISOString(), source: 'apps-script', data: readAll_() };
+  folder.createFile('stroyka-backup-' + stamp.replace(/[ :]/g, '-') + '.json', JSON.stringify(data), 'application/json');
+  const limit = Date.now() - BACKUP_KEEP_DAYS * 864e5;
+  const it = folder.getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    if (f.getDateCreated().getTime() < limit && /бэкап|stroyka-backup/.test(f.getName())) f.setTrashed(true);
+  }
+}
+function backupFolder_() {
+  try { return DriveApp.getFolderById(BACKUP_FOLDER_ID); } catch (e) { /* папку удалили — создадим заново */ }
+  const it = DriveApp.getFoldersByName('Стройка 3D — бэкапы');
+  return it.hasNext() ? it.next() : DriveApp.createFolder('Стройка 3D — бэкапы');
 }
 
 /** Триггер: правка ячеек вручную */

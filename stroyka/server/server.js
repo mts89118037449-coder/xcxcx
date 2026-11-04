@@ -5,9 +5,10 @@
  * Раздаёт приложение и отдаёт API /api — тот же протокол, что у Apps Script (apps-script/Code.gs),
  * поэтому приложение работает с ним без изменений.
  *
- * Режимы (переменная MODE):
- *   standalone — данные хранятся на этом сервере (data/db.json). Google не нужен.
- *   proxy      — запросы идут в Google-таблицу (GOOGLE_API_URL), сервер держит её копию.
+ * Источник данных — Google-таблица. Режимы (переменная MODE):
+ *   proxy      — (по умолчанию) все чтения и записи идут в Google-таблицу (GOOGLE_API_URL),
+ *                сервер только передаёт запросы и держит её копию.
+ *   standalone — аварийный режим, если Google заблокирован: данные на этом сервере (data/db.json).
  *                Если Google недоступен, чтение идёт из копии (приложение покажет «копия сервера»),
  *                а запись — ошибкой «нет связи»: правки ждут в очереди на устройствах.
  * В обоих режимах при заданном GOOGLE_API_URL сервер каждые MIRROR_MINUTES снимает копию таблицы.
@@ -33,7 +34,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const env = (k, d) => (process.env[k] ?? d);
 const PORT = Number(env('PORT', 8080));
 const HOST = env('HOST', '0.0.0.0');
-const MODE = env('MODE', 'standalone');
+const MODE = env('MODE', env('GOOGLE_API_URL', '') ? 'proxy' : 'standalone');
 const GOOGLE = env('GOOGLE_API_URL', '');
 const GOOGLE_TOKEN = env('GOOGLE_TOKEN', '');
 const TOKEN = env('API_TOKEN', '');
