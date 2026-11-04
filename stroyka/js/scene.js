@@ -7,6 +7,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SECTIONS, FLOORS, ROOF, floorName } from './data.js';
 
 // Размеры в метрах (башня-секция с почти квадратным планом)
@@ -111,6 +116,10 @@ export class BuildingScene {
     this.buildSections();
     this.buildCrane();
     this.buildNight();
+    this.buildSiteDetails();
+    this.setupComposer();
+    let hq = !this.mobile; try { const v = localStorage.getItem('stroyka.hq'); if (v != null) hq = v === '1'; } catch { /* */ }
+    this.hq = hq;
     this.setTheme();
 
     this.raycaster = new THREE.Raycaster();
@@ -174,6 +183,7 @@ export class BuildingScene {
     for (const m of this.lampHeads || []) m.material.emissiveIntensity = 3 * sstep(0.25, 0.8, night);
     if (this.stars) this.stars.material.opacity = sstep(0.4, 1, night);
     this.dayFactor = day;
+    if (this.bloom) { this.bloom.strength = 0.18 + 0.7 * (1 - day); this.bloom.threshold = day > 0.5 ? 0.92 : 0.7; }
     if (this.floors && this.floors.size) this.updateWindows();
     const dt0 = new Date(), md = (dt0.getMonth() + 1) * 100 + dt0.getDate();
     const polar = md >= 1202 || md <= 111;                 // полярная ночь в Мурманске ≈ 2 декабря — 11 января
@@ -181,6 +191,52 @@ export class BuildingScene {
       : alt < -6 ? `Сейчас в Мурманске темно${polar ? ' — полярная ночь' : ''}, горят прожекторы`
       : alt < 0 ? 'Сейчас в Мурманске сумерки' : alt < 6 ? 'Сейчас в Мурманске солнце у горизонта' : 'Сейчас в Мурманске день';
     this.sunInfo = { alt, az, text: `${t}. Солнце ${alt >= 0 ? '+' : ''}${alt.toFixed(1)}° над горизонтом.` };
+  }
+
+  /** Постобработка: мягкие тени в углах (GTAO) и свечение огней (bloom) */
+  setupComposer() {
+    const w = this.container.clientWidth || 800, h = this.container.clientHeight || 600;
+    const c = (this.composer = new EffectComposer(this.renderer));
+    c.addPass(new RenderPass(this.scene, this.camera));
+    this.gtao = new GTAOPass(this.scene, this.camera, w, h);
+    this.gtao.updateGtaoMaterial({ radius: 2.2, distanceExponent: 1.6, thickness: 2.5, scale: 1.6, samples: 12 });
+    this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+    this.gtao.blendIntensity = 0.85;
+    c.addPass(this.gtao);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.35, 0.5, 0.86);
+    c.addPass(this.bloom);
+    c.addPass(new OutputPass());
+  }
+  setQuality(hq) { this.hq = hq; try { localStorage.setItem('stroyka.hq', hq ? '1' : '0'); } catch { /* */ } }
+
+  /** Подробности стройплощадки: строительная сетка на этажах в работе, мачтовый подъёмник */
+  buildSiteDetails() {
+    const netTex = makeNetTexture();
+    for (const o of this.floors.values()) {
+      if (o.isRoof) continue;
+      const nets = [];
+      for (const zs of [1, -1]) {
+        const t = netTex.clone(); t.needsUpdate = true;
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(1, H - SLAB - 0.05), new THREE.MeshStandardMaterial({ map: t, transparent: true, alphaTest: 0.05, side: THREE.DoubleSide, roughness: 0.9, depthWrite: false }));
+        m.geometry.translate(0.5, 0, 0);
+        m.position.set(0, SLAB + (H - SLAB) / 2, zs * (D / 2 + 0.45));
+        m.visible = false;
+        o.group.add(m); nets.push(m);
+      }
+      o.nets = nets;
+    }
+    // мачтовый подъёмник у секции 4
+    const mast = new THREE.Group();
+    const steel = new THREE.MeshStandardMaterial({ color: 0x8a939c, roughness: 0.5, metalness: 0.6 });
+    const hgt = ROOF * H + 4;
+    const m1 = new THREE.Mesh(new THREE.BoxGeometry(0.9, hgt, 0.9), steel); m1.position.y = hgt / 2; m1.castShadow = true; mast.add(m1);
+    const lat = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.9, hgt, 0.9, 1, Math.round(hgt / 1.5), 1)), new THREE.LineBasicMaterial({ color: 0x3f464d }));
+    lat.position.y = hgt / 2; mast.add(lat);
+    const cage = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.4, 1.6), new THREE.MeshStandardMaterial({ color: 0xf2c200, roughness: 0.5, metalness: 0.3 }));
+    cage.position.set(0, 9 * H + 1.2, 1.3); cage.castShadow = true; mast.add(cage);
+    this.hoistCage = cage;
+    mast.position.set(-21 + 6, 0, 5 + D / 2 + 1.8);
+    this.scene.add(mast);
   }
 
   /** Прожекторы стройплощадки, фонари вдоль дороги, звёзды, падающий снег */
@@ -637,12 +693,13 @@ export class BuildingScene {
         } else {
           if (!m.map || m.map.userData.key !== key) {
             const t = this.tex[key];
-            m.map = t.map.clone(); m.roughnessMap = t.rough.clone(); m.metalnessMap = t.metal.clone();
-            for (const x of [m.map, m.roughnessMap, m.metalnessMap]) x.needsUpdate = true;
+            m.map = t.map.clone(); m.roughnessMap = t.rough.clone(); m.metalnessMap = t.metal.clone(); m.normalMap = t.normal.clone();
+            m.normalScale = new THREE.Vector2(0.7, 0.7);
+            for (const x of [m.map, m.roughnessMap, m.metalnessMap, m.normalMap]) x.needsUpdate = true;
             m.map.userData.key = key; m.roughness = 1; m.metalness = 1;
           }
           const rep = Math.max(1, Math.round(width / MOD));
-          for (const x of [m.map, m.roughnessMap, m.metalnessMap]) x.repeat.set(rep, 1);
+          for (const x of [m.map, m.roughnessMap, m.metalnessMap, m.normalMap]) x.repeat.set(rep, 1);
           m.color.set(0xffffff);
         }
         m.needsUpdate = true;
@@ -656,6 +713,11 @@ export class BuildingScene {
       const open = this.store.remarksFor(s, f).filter((r) => this.store.isOpenRemark(r));
       o.marker.visible = !project && open.length > 0;
       o.bar.visible = this.view === 'fact' && !o.isRoof && p > 0.001;
+      if (o.nets) for (const n of o.nets) {
+        const on = this.view === 'fact' && p > 0.001 && p < 0.999;
+        n.visible = on;
+        if (on) { const start = -L / 2 + (L - 0.06) * p; n.position.x = start; n.scale.x = L / 2 - start; n.material.map.repeat.set(Math.max(1, n.scale.x / 1.5), 2); }
+      }
       o.bar.scale.x = Math.max(0.001, (L - 0.06) * p);
     }
     this.updatePilasters();
@@ -778,6 +840,7 @@ export class BuildingScene {
     if (wasPortrait !== this.camera.aspect < 1 && !this.touring) this.resetView();
     this.renderer.setSize(w, h);
     this.labels.setSize(w, h);
+    if (this.composer) this.composer.setSize(w, h);
   }
 
   loop() {
@@ -812,7 +875,8 @@ export class BuildingScene {
       a.needsUpdate = true;
     }
     if (!this.touring) this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    if (this.hoistCage) this.hoistCage.position.y = 1.2 + (Math.sin(now / 14000) * 0.5 + 0.5) * (12 * H);
+    if (this.hq && this.composer) this.composer.render(dt); else this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
   }
 }
@@ -846,10 +910,42 @@ function makeFacadeTextures(p, lobby) {
     return t;
   };
   const map = draw(p.wall, p.pier, p.glass2, p.glass, p.frame);
+  const normal = makeNormalFromNoise(128, 1.8);
   map.colorSpace = THREE.SRGBColorSpace;
   const rough = draw('#e6e6e6', '#d0d0d0', '#121212', '#121212', '#7a7a7a');   // стена матовая, стекло гладкое
   const metal = draw('#000000', '#000000', '#9a9a9a', '#9a9a9a', '#404040');   // отражение неба в стёклах
-  return { map, rough, metal };
+  return { map, rough, metal, normal };
+}
+
+/** Карта нормалей из шума — рельеф штукатурки/облицовки, чтобы фасад не был плоским */
+function makeNormalFromNoise(n, strength) {
+  const h = new Float32Array(n * n);
+  for (let i = 0; i < n * n; i++) h[i] = Math.random();
+  for (let pass = 0; pass < 2; pass++) for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const k = y * n + x; h[k] = (h[k] * 2 + h[y * n + ((x + 1) % n)] + h[((y + 1) % n) * n + x]) / 4;
+  }
+  // швы панелей облицовки: по краям модуля и межэтажный пояс
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (x === 21 || x === 106 || y === 117) h[y * n + x] -= 0.9;
+  const c = document.createElement('canvas'); c.width = c.height = n;
+  const g = c.getContext('2d'); const img = g.createImageData(n, n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const dx = (h[y * n + ((x + 1) % n)] - h[y * n + ((x - 1 + n) % n)]) * strength;
+    const dy = (h[((y + 1) % n) * n + x] - h[((y - 1 + n) % n) * n + x]) * strength;
+    const len = Math.hypot(dx, dy, 1), i = (y * n + x) * 4;
+    img.data[i] = (-dx / len * 0.5 + 0.5) * 255; img.data[i + 1] = (-dy / len * 0.5 + 0.5) * 255; img.data[i + 2] = (1 / len * 0.5 + 0.5) * 255; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; return t;
+}
+
+function makeNetTexture() {
+  // зелёная фасадная сетка: ромбическое плетение с полупрозрачностью
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(46,125,72,0.55)'; g.fillRect(0, 0, 64, 64);
+  g.strokeStyle = 'rgba(30,90,50,0.9)'; g.lineWidth = 2;
+  for (let i = -64; i < 128; i += 8) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 64, 64); g.stroke(); g.beginPath(); g.moveTo(i + 64, 0); g.lineTo(i, 64); g.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
 }
 
 const rndWin = mulberry32(5);

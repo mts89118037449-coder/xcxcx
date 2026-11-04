@@ -157,6 +157,7 @@ export class Store {
     this.extra = { volumes: [], moves: [], worklog: [], floorStatus: [], plan: [], discrepancies: [], inventory: [], sources: [] };
     this.vol = new Map();
     this.version = null;
+    this.log = LS.get('stroyka.synclog', []);   // журнал синхронизации: записи в таблицу и изменения из таблиц
     this.flushing = false;
     this.syncError = '';
   }
@@ -187,7 +188,12 @@ export class Store {
         const r = await fetch(u.toString(), { redirect: 'follow' });
         const data = await r.json();
         if (!data.ok) throw new Error(data.error || 'Ошибка Apps Script');
+        const before = this.progress.size ? this.digest() : null;
         this.apply(data);
+        if (before) {
+          const ch = this.diffDigest(before, this.digest());
+          if (ch.length) { this.addLog({ dir: 'in', status: 'ok', text: 'Из таблиц: ' + ch.join('; ') }); this.emit({ type: 'incoming', text: ch.join('; ') }); }
+        }
         this.stale = data.stale ? (data.staleAt || 'да') : null;
         this.cacheSave(data);
         this.version = data.v || this.version;
@@ -395,6 +401,58 @@ export class Store {
     return data;
   }
 
+  addLog(item) {
+    this.log.unshift({ at: new Date().toISOString(), ...item });
+    this.log = this.log.slice(0, 60);
+    LS.set('stroyka.synclog', this.log);
+    this.emit('log');
+  }
+  /** Человеческое описание операции (для подтверждения и журнала) */
+  describe(op) {
+    const e = op.entry || {};
+    switch (op.action) {
+      case 'setProgress': return `Прогресс: секция ${op.section}, ${floorName(op.floor).toLowerCase()}, ${op.work.toLowerCase()} → ${op.value}%`;
+      case 'addJournal': return `Журнал: ${e.date}, секция ${e.section}, ${e.name} — ${e.qty} ${e.unit || ''}`;
+      case 'updateJournal': return `Журнал (исправление): ${e.date}, ${e.name} — ${e.qty} ${e.unit || ''}`;
+      case 'deleteJournal': { const j = this.journal.find((x) => x.id === op.id) || op.prev || {}; return `Журнал (удаление): ${j.date || ''} ${j.name || op.id}`; }
+      case 'addExpense': return `Счета: ${e.date}, ${e.who}, ${e.note || e.basis || ''} — ${Math.round(e.sum).toLocaleString('ru-RU')} ₽`;
+      case 'updateExpense': return `Счета (исправление): ${e.who}, ${e.note || ''} — ${Math.round(e.sum).toLocaleString('ru-RU')} ₽`;
+      case 'deleteExpense': return `Счета (удаление): ${op.id}`;
+    }
+    return op.action;
+  }
+  /** Сверка: таблица вернула то, что мы записали? */
+  verify(op, res) {
+    const c = res && res.check;
+    if (!c) return null;
+    if (op.action === 'setProgress') return c.value === op.value;
+    if (/Journal$/.test(op.action) && op.entry) return Math.abs((c.qty || 0) - (Number(op.entry.qty) || 0)) < 1e-6;
+    if (/Expense$/.test(op.action) && op.entry) return Math.abs((c.sum || 0) - (Number(op.entry.sum) || 0)) < 0.01;
+    return null;
+  }
+
+  /** Сводка данных — чтобы после перезагрузки показать, что поменялось в таблицах */
+  digest() {
+    return {
+      prog: new Map([...this.progress].map(([k, p]) => [k, p.value])),
+      j: new Set(this.journal.map((j) => `${j.id}|${j.date}|${j.qty}|${j.name}`)),
+      ex: this.fin.expenses.length, exSum: Math.round(this.fin.expenses.reduce((a, e) => a + e.sum, 0)),
+      vol: Math.round(this.extra.volumes.reduce((a, v) => a + (v.done || 0), 0) * 100) / 100,
+      mv: this.extra.moves.length, wl: this.extra.worklog.length, plan: this.extra.plan.length, st: this.extra.floorStatus.length,
+    };
+  }
+  diffDigest(a, b) {
+    const out = [];
+    let pc = 0; for (const [k, v] of b.prog) if (a.prog.get(k) !== v) pc++;
+    if (pc) out.push(`«Прогресс»: ${pc} изм.`);
+    let ja = 0, jd = 0; for (const x of b.j) if (!a.j.has(x)) ja++; for (const x of a.j) if (!b.j.has(x)) jd++;
+    if (ja || jd) out.push(`«Журнал»: ${ja ? '+' + ja : ''}${ja && jd ? ' / ' : ''}${jd ? '−' + jd : ''}`);
+    if (a.ex !== b.ex || a.exSum !== b.exSum) out.push(`«Счета»: ${a.ex}→${b.ex} операций, ${(b.exSum - a.exSum).toLocaleString('ru-RU')} ₽`);
+    if (a.vol !== b.vol) out.push(`«Выполнение»: выполнено ${b.vol > a.vol ? '+' : ''}${(Math.round((b.vol - a.vol) * 100) / 100).toLocaleString('ru-RU')}`);
+    if (a.mv !== b.mv || a.wl !== b.wl || a.plan !== b.plan || a.st !== b.st) out.push(`VUP CORE: движений ${a.mv}→${b.mv}, ход работ ${a.wl}→${b.wl}, план ${a.plan}→${b.plan}, статусы ${a.st}→${b.st}`);
+    return out;
+  }
+
   /** Применить операцию к локальным данным (и до отправки, и поверх свежей загрузки) */
   applyLocal(op) {
     const e = op.entry;
@@ -431,6 +489,7 @@ export class Store {
     if (!this.connected) { this.saveDemo(); this.emit('saved-local'); return; }
     this.queue.push(op);
     LS.set('stroyka.queue', this.queue);
+    this.addLog({ dir: 'out', status: 'queued', text: this.describe(op) });
     this.flush();
   }
 
@@ -445,9 +504,13 @@ export class Store {
           if (res.v) this.version = res.v;
           if (res.id && op.entry && res.id !== op.entry.id) this.applyLocal({ action: op.action.replace('add', 'update'), entry: { ...op.entry, id: res.id } });
           this.syncError = '';
-          this.emit('saved');
+          const ok = this.verify(op, res);
+          const where = res.sheet ? `лист «${res.sheet}»${res.row ? ', строка ' + res.row : ''}` : '';
+          this.addLog({ dir: 'out', status: ok === false ? 'mismatch' : 'ok', text: this.describe(op), where, verified: ok });
+          this.emit({ type: 'saved', where, verified: ok });
         } catch (err) {
           if (err.network) { this.syncError = err.message; this.retryLater(); break; }
+          this.addLog({ dir: 'out', status: 'error', text: this.describe(op), where: err.message });
           this.emit({ type: 'rejected', message: err.message }); // таблица отклонила — не блокируем очередь
         }
         this.queue.shift();

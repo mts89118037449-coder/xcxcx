@@ -88,7 +88,9 @@ function doPost(e) {
       default: throw new Error('Неизвестное действие: ' + body.action);
     }
     SpreadsheetApp.flush();
-    return json_(Object.assign({ ok: true, v: stamp_() }, res || {}));
+    stamp_();
+    CacheService.getScriptCache().remove('EXTV');
+    return json_(Object.assign({ ok: true, v: version_() }, res || {}));
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message || err) });
   } finally {
@@ -170,8 +172,21 @@ function stamp_() {
   PropertiesService.getScriptProperties().setProperty('V', v);
   return v;
 }
+/**
+ * Версия данных = отметка правок «Glorax_Учёт» + время последнего изменения «Выполнения» и «VUP CORE».
+ * Так приложение замечает правки во всех трёх таблицах (в чужих таблицах наши триггеры не работают).
+ */
 function version_() {
-  return PropertiesService.getScriptProperties().getProperty('V') || stamp_();
+  const own = PropertiesService.getScriptProperties().getProperty('V') || stamp_();
+  const cache = CacheService.getScriptCache();
+  let ext = cache.get('EXTV');
+  if (!ext) {
+    ext = [SPREADSHEET_ID, VOLUMES_ID, VUP_ID].map(function (id) {
+      try { return String(DriveApp.getFileById(id).getLastUpdated().getTime()); } catch (e) { return '0'; }
+    }).join('.');
+    cache.put('EXTV', ext, 15);
+  }
+  return own + '.' + ext;
 }
 
 function progressSheet_() {
@@ -546,7 +561,8 @@ function addExpense_(e) {
   const d = p.length === 3 ? new Date(p[0], p[1] - 1, p[2]) : new Date();
   sh.getRange(row, 1, 1, 8).setValues([[maxN + 1, '', d, String(e.cat || 'Прочее'), String(e.who || ''), String(e.basis || ''), String(e.note || '') + ' [app:' + String(e.id || Utilities.getUuid().slice(0, 8)) + ']', sum]]);
   sh.getRange(row, 3).setNumberFormat('dd.MM.yyyy');
-  return { row: row };
+  SpreadsheetApp.flush();
+  return { sheet: SHEET_EXPENSES, row: row, check: { sum: num_(sh.getRange(row, 8).getValue()) } };
 }
 
 /** Найти строку расхода: по метке [app:id] или по номеру строки 'r123' */
@@ -573,7 +589,8 @@ function updateExpense_(e, expect) {
   const mark = String(cur[6]).match(/\s*\[app:[\w-]+\]/);
   sh.getRange(row, 3, 1, 6).setValues([[p.length === 3 ? new Date(p[0], p[1] - 1, p[2]) : cur[2], String(e.cat || cur[3]), String(e.who || ''), String(e.basis || ''), String(e.note || '') + (mark ? mark[0] : ''), num_(e.sum)]]);
   sh.getRange(row, 3).setNumberFormat('dd.MM.yyyy');
-  return { row: row };
+  SpreadsheetApp.flush();
+  return { sheet: SHEET_EXPENSES, row: row, check: { sum: num_(sh.getRange(row, 8).getValue()) } };
 }
 
 /** Удаляет только строки, добавленные из приложения */
@@ -582,7 +599,7 @@ function deleteExpense_(id) {
   if (/^r\d+$/.test(id)) throw new Error('Строки, внесённые в таблице вручную, удаляйте в самой таблице');
   const row = findExpenseRow_(sh, id);
   if (row) sh.deleteRow(row);
-  return { deleted: row ? 1 : 0 };
+  return { deleted: row ? 1 : 0, sheet: SHEET_EXPENSES, row: row };
 }
 
 function num_(v) {
@@ -656,11 +673,13 @@ function setProgress_(section, floor, work, value) {
     if (String(vals[i][0]).replace(/\D/g, '') === section && parseFloor_(vals[i][1]) === floor && String(vals[i][2]).trim() === work) {
       sh.getRange(i + 2, 4, 1, 3).setValues([[v, now, '']]);
       sh.getRange(i + 2, 5).setNumberFormat('dd.MM.yyyy HH:mm');
-      return { row: i + 2 };
+      SpreadsheetApp.flush();
+      return { sheet: SHEET_PROGRESS, row: i + 2, check: { value: pct_(sh.getRange(i + 2, 4).getValue()) } };
     }
   }
   sh.appendRow([section, floorLabel_(floor), work, v, now, '']);
-  return { row: sh.getLastRow() };
+  SpreadsheetApp.flush();
+  return { sheet: SHEET_PROGRESS, row: sh.getLastRow(), check: { value: pct_(sh.getRange(sh.getLastRow(), 4).getValue()) } };
 }
 
 function addJournal_(e) {
@@ -670,7 +689,8 @@ function addJournal_(e) {
   const d = new Date(p[0], p[1] - 1, p[2]);
   const id = String(e.id || ('j' + Utilities.getUuid().slice(0, 8)));
   sh.appendRow([d, String(e.section || 'Общее'), e.type === 'Люди' ? 'Люди' : 'Материал', String(e.name || ''), Number(e.qty) || 0, String(e.unit || ''), String(e.note || ''), id]);
-  return { id: id };
+  SpreadsheetApp.flush();
+  return { id: id, sheet: SHEET_JOURNAL, row: sh.getLastRow(), check: journalCheck_(sh, sh.getLastRow()) };
 }
 
 function updateJournal_(e) {
@@ -681,10 +701,16 @@ function updateJournal_(e) {
     if (String(ids[i][0]) === String(e.id)) {
       const p = String(e.date).split('-').map(Number);
       sh.getRange(i + 2, 1, 1, 7).setValues([[new Date(p[0], p[1] - 1, p[2]), String(e.section || 'Общее'), e.type === 'Люди' ? 'Люди' : 'Материал', String(e.name || ''), Number(e.qty) || 0, String(e.unit || ''), String(e.note || '')]]);
-      return { row: i + 2 };
+      SpreadsheetApp.flush();
+      return { sheet: SHEET_JOURNAL, row: i + 2, check: journalCheck_(sh, i + 2) };
     }
   }
   return addJournal_(e); // строку удалили в таблице — создаём заново
+}
+
+function journalCheck_(sh, row) {
+  const r = sh.getRange(row, 1, 1, 8).getValues()[0];
+  return { date: toIsoDate_(r[0]), name: String(r[3]), qty: Number(String(r[4]).replace(',', '.')) || 0, id: String(r[7]) };
 }
 
 function deleteJournal_(id) {
@@ -693,7 +719,7 @@ function deleteJournal_(id) {
   if (n < 1) return { deleted: 0 };
   const ids = sh.getRange(2, 8, n, 1).getValues();
   for (let i = ids.length - 1; i >= 0; i--) {
-    if (String(ids[i][0]) === id) { sh.deleteRow(i + 2); return { deleted: 1 }; }
+    if (String(ids[i][0]) === id) { sh.deleteRow(i + 2); return { deleted: 1, sheet: SHEET_JOURNAL, row: i + 2 }; }
   }
   return { deleted: 0 };
 }

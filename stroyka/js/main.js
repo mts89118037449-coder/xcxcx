@@ -65,6 +65,12 @@ function updateViewLabel() {
   const sun = scene.sunInfo;
   $('#sunNote').textContent = sun ? sun.text : '';
 }
+$('#qualityMode').onclick = (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  for (const x of $('#qualityMode').children) x.classList.toggle('on', x === b);
+  scene.setQuality(b.dataset.q === 'hq');
+};
+for (const x of $('#qualityMode').children) x.classList.toggle('on', (x.dataset.q === 'hq') === scene.hq);
 $('#timeMode').onclick = (e) => {
   const b = e.target.closest('button'); if (!b) return;
   for (const x of $('#timeMode').children) x.classList.toggle('on', x === b);
@@ -131,6 +137,10 @@ function renderSummary() {
   const today = isoToday();
   const works = ['Наружные стены', 'Перегородки', 'Кровля'];
   el.innerHTML = `
+    <div class="renders" aria-label="Проект — тендерные визуализации">
+      ${[1, 2, 3].map((i) => `<button class="rthumb" data-r="${i}"><img src="assets/renders/render-${i}.jpg" alt="Проектная визуализация ${i}" loading="lazy"></button>`).join('')}
+      <span class="rcap">Проект — как будет выглядеть</span>
+    </div>
     <div class="cards">
       ${SECTIONS.map((s) => `
         <div class="card">
@@ -165,6 +175,7 @@ function renderSummary() {
     ${[...store.progress.values()].some((p) => /оценка/.test(p.note || '')) && !store.extra.volumes.length ? '<p class="note">Часть процентов — стартовая оценка по листу «Таблица» (есть ИС/АОСР → 100%, есть замечания → 50%). Уточните их на вкладке «Этаж» или в листе «Прогресс».</p>' : ''}
   `;
   el.querySelectorAll('.f-cell').forEach((b) => b.onclick = () => { state.section = b.dataset.s; state.floor = +b.dataset.f; setTab('floor'); });
+  el.querySelectorAll('[data-r]').forEach((b) => b.onclick = () => { $('#renderImg').src = `assets/renders/render-${b.dataset.r}.jpg`; $('#renderDlg').showModal(); });
   el.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => { state.money = 'contract'; setTab(b.dataset.goto); });
 }
 
@@ -227,7 +238,8 @@ function renderFloor() {
   el.querySelectorAll('.work[data-w]').forEach((box) => {
     const w = box.dataset.w;
     const range = $('input[type=range]', box), num = $('input[type=number]', box);
-    const commit = (v) => { range.value = v; num.value = v; range.style.setProperty('--v', v + '%'); save(s, f, w, v); };
+    const orig = +range.value;   // значение на момент открытия этажа — для подтверждения «было → стало»
+    const commit = (v) => { range.value = v; num.value = v; range.style.setProperty('--v', v + '%'); save(s, f, w, v, orig); };
     range.oninput = () => { num.value = range.value; range.style.setProperty('--v', range.value + '%'); preview(s, f, w, +range.value); };
     range.onchange = () => commit(+range.value);
     num.onchange = () => commit(Math.max(0, Math.min(100, +num.value || 0)));
@@ -243,13 +255,19 @@ function preview(s, f, w, v) {
 }
 
 const pending = new Map();
-function save(s, f, w, v) {
+const original = new Map();
+function save(s, f, w, v, orig) {
   const k = `${s}|${f}|${w}`;
+  if (!original.has(k)) original.set(k, orig ?? store.get(s, f, w));
   clearTimeout(pending.get(k));
-  pending.set(k, setTimeout(async () => {
-    store.setProgress(s, f, w, v);
-  }, 350));
   preview(s, f, w, v);
+  pending.set(k, setTimeout(async () => {
+    const old = original.get(k); original.delete(k);
+    if (old === v) return;
+    const yes = await ask([`Секция ${s}, ${floorName(f).toLowerCase()} — ${w.toLowerCase()}: ${old}% → ${v}%`], store.connected ? 'Лист «Прогресс» таблицы «Glorax_Учёт».' : '');
+    if (yes) store.setProgress(s, f, w, v);
+    else { preview(s, f, w, old); renderFloor(); toast('Изменение отменено'); }
+  }, 450));
 }
 
 // ---------- Календарь ----------
@@ -351,7 +369,8 @@ function renderCalendar() {
   });
   el.querySelectorAll('.c-cell[data-d]').forEach((b) => b.onclick = () => { state.day = b.dataset.d; renderCalendar(); });
   el.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
-    if (!confirm('Удалить запись?')) return;
+    const j = store.journal.find((x) => x.id === b.dataset.del);
+    if (!(await ask([`Удалить из «Журнала»: ${j ? `${j.date}, ${j.name} — ${j.qty} ${j.unit}` : b.dataset.del}`]))) return;
     store.deleteJournal(b.dataset.del);
   });
 
@@ -376,10 +395,11 @@ function renderCalendar() {
     form.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
   $('[data-cancel]', form).onclick = () => renderCalendar();
-  form.onsubmit = (e) => {
+  form.onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
     const entry = { date: fd.get('date'), section: fd.get('section'), type, name: fd.get('name') || (type === 'Люди' ? 'Рабочие' : 'Материал'), qty: fd.get('qty'), unit: fd.get('unit'), note: fd.get('note') };
+    if (!(await ask([`${editId ? 'Исправить' : 'Добавить'} в «Журнал»: ${entry.date}, секция ${entry.section}, ${entry.name} — ${entry.qty} ${entry.unit}`], store.connected ? 'Лист «Журнал» таблицы «Glorax_Учёт».' : ''))) return;
     state.day = entry.date;
     const [ey, em] = entry.date.split('-').map(Number);
     state.month = { y: ey, m: em - 1 };
@@ -629,17 +649,18 @@ function renderMoney() {
   const q = $('#expQ', el);
   if (q) q.oninput = debounce(() => { state.expQuery = q.value; state.expLimit = 40; renderMoney(); const nq = $('#expQ'); nq.focus(); nq.setSelectionRange(nq.value.length, nq.value.length); }, 250);
   const more = $('#expMore', el); if (more) more.onclick = () => { state.expLimit += 40; renderMoney(); };
-  el.querySelectorAll('[data-delx]').forEach((b) => b.onclick = () => { if (confirm('Удалить расход из листа «Счета»?')) store.deleteExpense(b.dataset.delx); });
+  el.querySelectorAll('[data-delx]').forEach((b) => b.onclick = async () => { const x = store.fin.expenses.find((e) => e.id === b.dataset.delx); if (await ask([`Удалить расход: ${x ? `${x.who}, ${x.note || ''} — ${rub(x.sum)}` : ''}`], 'Строка будет удалена из листа «Счета».')) store.deleteExpense(b.dataset.delx); });
   el.querySelectorAll('[data-edx]').forEach((b) => b.onclick = () => { state.expEdit = b.dataset.edx; renderMoney(); $('#expForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   const xc = $('#expCancel', el); if (xc) xc.onclick = () => { state.expEdit = null; renderMoney(); };
   const sa = $('#supAdd', el); if (sa) sa.onclick = () => { setTab('calendar'); const t = document.querySelector('#addType [data-t="Материал"]'); if (t) t.click(); document.querySelector('#addForm')?.scrollIntoView({ behavior: 'smooth' }); };
   const f = $('#expForm', el);
   const ed = state.expEdit && store.fin.expenses.find((x) => x.id === state.expEdit);
   if (f && ed) { f.date.value = ed.date || isoToday(); f.cat.value = ed.cat; f.who.value = ed.who || ''; f.basis.value = ed.basis || ''; f.note.value = ed.note || ''; f.sum.value = ed.sum; }
-  if (f) f.onsubmit = (e) => {
+  if (f) f.onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(f);
     const x = { date: fd.get('date'), cat: fd.get('cat'), who: fd.get('who'), basis: fd.get('basis'), note: fd.get('note'), sum: fd.get('sum') };
+    if (!(await ask([`${ed ? 'Исправить' : 'Добавить'} расход: ${x.date}, ${x.cat}, ${x.who}${x.note ? ', ' + x.note : ''} — ${rub(+x.sum || 0)}${ed ? ` (было ${rub(ed.sum)})` : ''}`], store.connected ? `Лист «Счета»${ed && ed.row ? ', строка ' + ed.row : ''} таблицы «Glorax_Учёт».` : ''))) return;
     if (ed) store.updateExpense({ ...ed, ...x }); else store.addExpense(x);
     state.expEdit = null;
     renderMoney();
@@ -778,6 +799,41 @@ $('#bkFile').onchange = async (e) => {
   e.target.value = '';
 };
 
+// ---------- подтверждение записи ----------
+function ask(lines, where) {
+  let skipUntil = 0; try { skipUntil = +localStorage.getItem('stroyka.noask') || 0; } catch { /* */ }
+  if (Date.now() < skipUntil) return Promise.resolve(true);
+  const dlg = $('#confirmDlg');
+  $('#cfTitle').textContent = store.connected ? 'Записать в Google-таблицу?' : 'Сохранить на этом устройстве?';
+  $('#cfList').innerHTML = lines.map((l) => `<li>${esc(l)}</li>`).join('');
+  $('#cfWhere').textContent = where || (store.connected ? 'Изменение сразу уйдёт в таблицу «Glorax_Учёт». После записи таблица вернёт строку, и приложение её сверит.' : 'Таблица не подключена — изменение останется на устройстве.');
+  $('#cfSkip').checked = false;
+  return new Promise((resolve) => {
+    dlg.returnValue = '';
+    dlg.onclose = () => {
+      const yes = dlg.returnValue === 'yes';
+      if (yes && $('#cfSkip').checked) { try { localStorage.setItem('stroyka.noask', String(Date.now() + 10 * 60000)); } catch { /* */ } }
+      resolve(yes);
+    };
+    dlg.showModal();
+  });
+}
+
+// ---------- журнал синхронизации ----------
+function renderSync() {
+  const st = { ok: '✓', queued: '…', error: '✖', mismatch: '⚠' };
+  $('#syncState').textContent = store.connected
+    ? `Приложение проверяет таблицы каждые 10 секунд. ${store.queue.length ? `В очереди на запись: ${store.queue.length}.` : 'Очередь пуста — всё записано.'}${store.loadedAt ? ' Данные загружены в ' + store.loadedAt.toLocaleTimeString('ru-RU') + '.' : ''}`
+    : 'Таблица не подключена.';
+  $('#syncList').innerHTML = store.log.map((x) => `<li class="sl-${x.status} sl-${x.dir}">
+    <span class="sl-ico">${x.dir === 'in' ? '⬇' : '⬆'}${st[x.status] || ''}</span>
+    <div><b>${esc(x.text)}</b><div class="muted">${new Date(x.at).toLocaleString('ru-RU')}${x.where ? ' · ' + esc(x.where) : ''}${x.verified === true ? ' · проверено в таблице' : x.verified === false ? ' · ТАБЛИЦА ВЕРНУЛА ДРУГОЕ ЗНАЧЕНИЕ' : ''}</div></div></li>`).join('') || '<li class="muted">Пока ничего не записывалось</li>';
+}
+$('#status').style.cursor = 'pointer';
+$('#status').title = 'Журнал синхронизации';
+$('#status').onclick = () => { renderSync(); $('#syncDlg').showModal(); };
+$('#syncCheck').onclick = async () => { await store.load(); renderSync(); toast('Таблицы перечитаны'); };
+
 let toastT;
 function toast(msg, bad) {
   const t = $('#toast');
@@ -793,7 +849,9 @@ document.addEventListener('focusout', () => setTimeout(() => { if (renderPending
 store.on((what) => {
   if (what === 'status') { renderStatus(); renderBanner(); }
   if (what === 'sync') renderStatus();
-  if (what === 'saved') { renderStatus(); toast('✓ Записано в таблицу'); }
+  if (what && what.type === 'saved') { renderStatus(); toast(`✓ Записано в таблицу${what.where ? ': ' + what.where : ''}${what.verified ? ' · проверено' : what.verified === false ? ' · ⚠ таблица вернула другое значение' : ''}`, what.verified === false); }
+  if (what && what.type === 'incoming') toast('⬇ Обновлено из таблиц: ' + what.text);
+  if (what === 'log' && $('#syncDlg').open) renderSync();
   if (what === 'saved-local') toast('Сохранено на устройстве · таблица не подключена');
   if (what && what.type === 'rejected') toast('Таблица не приняла изменение: ' + what.message, true);
   if (what === 'data') {

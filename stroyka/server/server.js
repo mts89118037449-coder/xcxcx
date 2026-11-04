@@ -221,7 +221,7 @@ async function mirror() {
 
 // ------------------------------------------------------------------ HTTP
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webp': 'image/webp', '.gs': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8' };
-const PUBLIC = ['index.html', 'sw.js', 'css', 'js', 'vendor', 'apps-script', 'README.md'];
+const PUBLIC = ['index.html', 'sw.js', 'css', 'js', 'vendor', 'assets', 'apps-script', 'README.md'];
 
 function send(res, code, obj, headers = {}) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*', ...headers });

@@ -399,3 +399,25 @@ body.touring .floor-tag { opacity: 0; }
 .planh { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; font-size: 13px; }
 .chip-ok { font-size: 11px; padding: 1px 8px; border-radius: 99px; background: var(--green-weak); color: var(--green-full); border: 1px solid var(--green); }
 .tools li { font-size: 13px; }
+
+/* ---------- подтверждение и журнал синхронизации ---------- */
+.cf-list { margin: 0; padding-left: 18px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.cf-skip { flex-direction: row !important; align-items: center; gap: 8px !important; font-size: 12.5px; }
+.sync-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 55vh; overflow-y: auto; }
+.sync-list li { display: flex; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; border-left: 3px solid var(--line); }
+.sync-list li > div { min-width: 0; }
+.sync-list li.sl-ok { border-left-color: var(--green); }
+.sync-list li.sl-queued { border-left-color: var(--amber); }
+.sync-list li.sl-error, .sync-list li.sl-mismatch { border-left-color: var(--red); }
+.sync-list li.sl-in { border-left-color: var(--blue); }
+.sl-ico { font-size: 13px; white-space: nowrap; }
+#status:hover { filter: brightness(.97); }
+
+.renders { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 12px; position: relative; }
+.rthumb { padding: 0; border: 0; border-radius: 8px; overflow: hidden; cursor: zoom-in; aspect-ratio: 16 / 9; background: var(--panel-2); }
+.rthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rcap { grid-column: 1 / -1; font-size: 11.5px; color: var(--muted); }
+.render-dlg { max-width: min(960px, calc(100% - 24px)); }
+.render-dlg form { display: flex; flex-direction: column; gap: 10px; padding: 10px; }
+.render-dlg img { width: 100%; height: auto; border-radius: 8px; }
+.render-dlg .btn { align-self: flex-end; }

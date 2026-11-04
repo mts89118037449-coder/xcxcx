@@ -61,6 +61,11 @@
           <button data-t="day">День</button>
         </div>
         <p class="vp-note" id="sunNote"></p></div>
+      <div class="vp-group"><div class="vp-h">Качество картинки</div>
+        <div class="seg small" id="qualityMode">
+          <button data-q="hq">Высокое — тени и свечение</button>
+          <button data-q="fast">Быстрое</button>
+        </div></div>
       <button class="btn small vp-close" id="vpClose">Готово</button>
     </div>
     <div class="hint-tap" id="hintTap" hidden>Нажмите на этаж — откроются его объёмы и материалы</div>
@@ -127,6 +132,33 @@
   <div class="tour-progress"><i id="tourBar"></i></div>
   <div class="tour-steps" id="tourSteps"></div>
 </div>
+
+<dialog id="confirmDlg">
+  <form method="dialog" class="dlg">
+    <h2 id="cfTitle">Записать в Google-таблицу?</h2>
+    <ul class="cf-list" id="cfList"></ul>
+    <p class="muted" id="cfWhere"></p>
+    <label class="cf-skip"><input type="checkbox" id="cfSkip"> Не спрашивать 10 минут на этом устройстве</label>
+    <div class="dlg-actions">
+      <button class="btn ghost" value="no">Отмена</button>
+      <button class="btn" value="yes" id="cfYes">Записать</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="syncDlg">
+  <form method="dialog" class="dlg">
+    <h2>Синхронизация с таблицами</h2>
+    <p class="muted" id="syncState"></p>
+    <ul class="sync-list" id="syncList"></ul>
+    <div class="dlg-actions">
+      <button class="btn ghost" type="button" id="syncCheck">Проверить таблицы сейчас</button>
+      <button class="btn" value="ok">Закрыть</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="renderDlg" class="render-dlg"><form method="dialog"><img id="renderImg" alt="Проектная визуализация"><button class="btn" value="ok">Закрыть</button></form></dialog>
 
 <div class="toast" id="toast" role="status"></div>
 
