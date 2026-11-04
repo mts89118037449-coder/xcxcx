@@ -218,7 +218,7 @@ function checksHtml() {
 }
 
 // ---------- Этаж ----------
-const BOOK = { G: '«Glorax_Учёт»', V: '«Выполнение»', U: '«VUP CORE»' };
+const BOOK = new Proxy({}, { get: (_, k) => `«${(store.bookInfo(k).title || { G: 'таблица объекта', V: 'объёмы', U: 'VUP CORE' }[k] || '').trim()}»` });
 const pct = (v) => (v == null ? '—' : Math.round(v) + '%');
 /** Понедельник текущей недели (ISO) — колонка недели в «Выполнении» */
 function thisMonday() { const d = new Date(); const k = (d.getDay() + 6) % 7; d.setDate(d.getDate() - k); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
@@ -239,7 +239,7 @@ function cat(id, icon, title, summary, body, tone = '') {
 function floorHtml() {
   const s = state.section, f = state.floor;
   const fl = floorName(f).toLowerCase();
-  const doc = (w) => store.docs.find((d) => d.floor === f && d.work === w);
+  const doc = (w) => store.docs.find((d) => d.floor === f && d.work === w && d[s]);
   const wk = thisMonday();
   const fv = store.floorValue(s, f);
   const works = store.worksFor(s, f);
@@ -272,7 +272,7 @@ function floorHtml() {
   // 2. Замечания: поручения АСГ с упоминанием этажа + замечания по АОСР из листа «Таблица»
   const rem = store.remarksFor(s, f);
   const openRem = rem.filter((r) => store.isOpenRemark(r));
-  const dspec = (d, k, val, lbl) => ({ b: 'G', s: 'Таблица', r: d.row, f: 'cell', c: d[s].cols[k], raw: val, expect: val, type: 'text', label: `${lbl}: ${d.label}, ${T.partL} ${s}`, prop: '', list: 'docsRows' });
+  const dspec = (d, k, val, lbl) => ({ b: 'G', s: d.sheet || 'Таблица', r: d.row, f: 'cell', c: d[s].cols[k], raw: val, expect: val, type: 'text', label: `${lbl}: ${d.label}, ${T.partL} ${s}`, prop: '', list: 'docsRows' });
   const docRows = works.map((w) => ({ w, d: doc(w) })).filter((x) => x.d && x.d[s] && x.d.row);
   const aosrRem = docRows.filter((x) => x.d[s].cols.rem);
   const aosrOpen = aosrRem.filter((x) => x.d[s].rem).length;
@@ -281,6 +281,8 @@ function floorHtml() {
     ${aosrRem.length ? `<div class="kv-list">${aosrRem.map((x) => `<div class="kv"><span>По АОСР · ${esc(x.w.toLowerCase())}</span>${ev(esc(x.d[s].rem || 'нет'), dspec(x.d, 'rem', x.d[s].rem, 'Замечания по АОСР'))}</div>`).join('')}</div>` : ''}
     ${rem.length > openRem.length ? `<details class="done-list"><summary>Выполненные · ${rem.length - openRem.length}</summary><ul class="remarks">${rem.filter((r) => !store.isOpenRemark(r)).map((r) => remarkHtml(r)).join('')}</ul></details>` : ''}` : '';
   const remN = openRem.length + aosrOpen;
+  const canAddRem = store.objInfo && store.objInfo.mode === 'book';
+  const remBodyFull = (remBody || (canAddRem ? '<p class="muted small-note">Замечаний нет.</p>' : '')) + (canAddRem ? '<div class="add-row"><button class="btn small" data-add="remark">+ Замечание</button></div>' : '');
 
   // 3. Документы ИС / АОСР
   const isN = docRows.filter((x) => x.d[s].is).length, aoN = docRows.filter((x) => x.d[s].aosr).length;
@@ -316,7 +318,7 @@ function floorHtml() {
     <div class="big floor-big">${fv == null ? '<span class="nodata">нет данных</span>' : pct(fv)}<span class="muted"> ${fl}, ${T.partL} ${esc(s)}</span></div>
     <div class="cats">
       ${cat('works', '▥', 'Работы', worksSum, works.length ? workHtml : '')}
-      ${cat('remarks', '!', 'Замечания', remN ? `<span class="err-t">${remN} открыт.</span>` : (rem.length || aosrRem.length) ? 'открытых нет' : 'нет', remBody, remN ? 'warn' : '')}
+      ${cat('remarks', '!', 'Замечания', remN ? `<span class="err-t">${remN} открыт.</span>` : (rem.length || aosrRem.length) ? 'открытых нет' : 'нет', remBodyFull, remN ? 'warn' : '')}
       ${cat('docs', '▤', 'Документы', docRows.length ? `ИС ${isN}/${docRows.length} · АОСР ${aoN}/${docRows.length}` : 'нет строки в «Таблице»', docsBody)}
       ${cat('mat', '▣', 'Материал', mv.length ? `${mv.length} подач · ${fmtN(pal)} пал.` : 'нет', mvBody)}
       ${cat('people', '👷', 'Люди и бригады', wl.length ? `${wl.length} бригад${ppl ? ' · ' + fmtN(ppl) + ' чел.' : ''}` : 'нет', wlBody)}
@@ -394,7 +396,7 @@ function remarkHtml(r, links = false) {
   const sec = SECTIONS.includes(String(r.section)) ? String(r.section) : null;
   const fls = links && sec ? floorsInText(r.short + ' ' + r.text) : [];
   const go = fls.length ? `<span class="r-go">${fls.slice(0, 6).map((f) => `<button type="button" class="chip-go" data-floor="${esc(sec)}|${f}" title="Открыть">${T.partShort}${esc(sec)} · ${esc(floorShort(f))}${LAYOUT === 'stack' ? ' эт.' : ''} ›</button>`).join('')}${fls.length > 6 ? '…' : ''}</span>` : '';
-  const spec = (f, raw, type, label, extra = {}) => ({ b: 'G', s: 'Замечания АСГ', r: r.row, f, raw, expect: raw, type, label: `${r.short}: ${label}`, prop: f === 'status' ? 'status' : f === 'done' ? 'done' : '', list: 'remarks', ...extra });
+  const spec = (f, raw, type, label, extra = {}) => ({ b: 'G', s: r.sheet || 'Замечания АСГ', r: r.row, f, raw, expect: raw, type, label: `${r.short}: ${label}`, prop: f === 'status' ? 'status' : f === 'done' ? 'done' : '', list: 'remarks', ...extra });
   return `<li class="${store.isOpenRemark(r) ? 'late' : 'done'}"><div><b>${esc(r.short)}</b>
     <div class="muted">${r.row ? ev(esc(r.status || 'статус'), spec('status', r.status, 'text', 'статус по протоколу', { options: ['В работе', 'Срыв сроков', 'Выполнено'] })) : esc(r.status)}${r.note ? ' · ' + esc(r.note) : ''}</div>${go}</div>
     <div class="r-meta"><span>срок ${esc(r.due)}</span>${r.row ? `<span>выполнено: ${ev(esc(r.done || '—'), spec('done', ruToIso(r.done) || '', 'date', 'дата выполнения'))}</span>` : ''}</div></li>`;
@@ -456,7 +458,7 @@ function save(s, f, w, v, orig) {
   pending.set(k, setTimeout(async () => {
     const old = original.get(k); original.delete(k);
     if (old === v) return;
-    const yes = await ask([`${T.part} ${s}, ${floorName(f).toLowerCase()} — ${w.toLowerCase()}: ${old}% → ${v}%`], store.connected ? 'Лист «Прогресс» таблицы «Glorax_Учёт».' : '');
+    const yes = await ask([`${T.part} ${s}, ${floorName(f).toLowerCase()} — ${w.toLowerCase()}: ${old}% → ${v}%`], store.connected ? `Лист «Прогресс» таблицы ${BOOK.G}.` : '');
     if (yes) store.setProgress(s, f, w, v);
     else { preview(s, f, w, old); renderFloor(); toast('Изменение отменено'); }
   }, 450));
@@ -590,7 +592,7 @@ function renderCalendar() {
     e.preventDefault();
     const fd = new FormData(form);
     const entry = { date: fd.get('date'), section: fd.get('section'), type, name: fd.get('name') || (type === 'Люди' ? 'Рабочие' : 'Материал'), qty: fd.get('qty'), unit: fd.get('unit'), note: fd.get('note') };
-    if (!(await ask([`${editId ? 'Исправить' : 'Добавить'} в «Журнал»: ${entry.date}, ${T.partL} ${entry.section}, ${entry.name} — ${entry.qty} ${entry.unit}`], store.connected ? 'Лист «Журнал» таблицы «Glorax_Учёт».' : ''))) return;
+    if (!(await ask([`${editId ? 'Исправить' : 'Добавить'} в «Журнал»: ${entry.date}, ${T.partL} ${entry.section}, ${entry.name} — ${entry.qty} ${entry.unit}`], store.connected ? `Лист «Журнал» таблицы ${BOOK.G}.` : ''))) return;
     state.day = entry.date;
     const [ey, em] = entry.date.split('-').map(Number);
     state.month = { y: ey, m: em - 1 };
@@ -638,6 +640,7 @@ document.addEventListener('click', async (e) => {
   const k = b.dataset.add;
   const today = isoToday();
   const defs = {
+    remark: { book: 'G', sheet: 'Замечания', title: `Замечание: ${T.partL} ${state.section}, ${floorName(state.floor).toLowerCase()}`, fixed: { date: today, section: state.section, level: LAYOUT === 'stack' ? (state.floor === 0 ? 'Подвал' : state.floor === ROOF ? 'Кровля' : String(state.floor)) : floorName(state.floor), status: 'В работе' }, fields: [['text', 'Замечание', 'text', ''], ['who', 'Ответственный', 'text', ''], ['due', 'Срок', 'date', '']] },
     tool: { book: 'G', sheet: 'УЧЁТ ИНСТРУМЕНТА ', title: 'Новый инструмент', fields: [['name', 'Наименование', 'text', ''], ['qty', 'Количество', 'text', '']] },
     personal: { book: 'G', sheet: 'Личные расходы', title: 'Новый личный расход', fields: [['date', 'Дата', 'date', today], ['name', 'Наименование', 'text', ''], ['sum', 'Сумма, ₽', 'number', ''], ['who', 'Плательщик', 'text', ''], ['note', 'Примечание', 'text', '']] },
     'move-in': { book: 'U', sheet: 'Движение материалов', title: 'Материал приехал на склад', fields: [['date', 'Дата', 'date', today], ['material', 'Материал', 'text', 'СКЦ 190 мм'], ['pallets', 'Паллет', 'number', ''], ['doc', 'Документ (ТТН / сообщение)', 'text', ''], ['comment', 'Комментарий', 'text', '']], fixed: { type: 'Поступление', zone: 'Склад', status: 'Подтверждено' } },
@@ -669,7 +672,10 @@ function monthChart(byMonth, cats) {
 
 function renderMoney() {
   const el = $('#tab-money');
-  const views = [['contract', 'Договор'], ['exp', 'Расходы'], ['adv', 'Авансы'], ['sup', 'Поставки'], ['inc', 'Поступления'], ['pers', 'Личные']];
+  // разделы — только те, для которых в таблице объекта есть листы и данные
+  const has = { contract: store.fin.contract.length, exp: true, adv: store.fin.advances.length, sup: true, inc: store.fin.income.length, pers: store.fin.personal.length };
+  const views = [['contract', 'Договор'], ['exp', 'Расходы'], ['adv', 'Авансы'], ['sup', 'Поставки'], ['inc', 'Поступления'], ['pers', 'Личные']].filter(([k]) => has[k]);
+  if (!views.some(([k]) => k === state.money)) state.money = views[0][0];
   const head = `<div class="money-seg" role="tablist">${views.map(([k, t]) => `<button data-mv="${k}" class="chip ${state.money === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   let body = '';
   const fin = store.fin;
@@ -875,7 +881,7 @@ function renderMoney() {
     e.preventDefault();
     const fd = new FormData(f);
     const x = { date: fd.get('date'), cat: fd.get('cat'), who: fd.get('who'), basis: fd.get('basis'), note: fd.get('note'), sum: fd.get('sum') };
-    if (!(await ask([`${ed ? 'Исправить' : 'Добавить'} расход: ${x.date}, ${x.cat}, ${x.who}${x.note ? ', ' + x.note : ''} — ${rub(+x.sum || 0)}${ed ? ` (было ${rub(ed.sum)})` : ''}`], store.connected ? `Лист «Счета»${ed && ed.row ? ', строка ' + ed.row : ''} таблицы «Glorax_Учёт».` : ''))) return;
+    if (!(await ask([`${ed ? 'Исправить' : 'Добавить'} расход: ${x.date}, ${x.cat}, ${x.who}${x.note ? ', ' + x.note : ''} — ${rub(+x.sum || 0)}${ed ? ` (было ${rub(ed.sum)})` : ''}`], store.connected ? `Лист «${store.expSheet}»${ed && ed.row ? ', строка ' + ed.row : ''} таблицы ${BOOK.G}.` : ''))) return;
     if (ed) store.updateExpense({ ...ed, ...x }); else store.addExpense(x);
     state.expEdit = null;
     renderMoney();
@@ -949,7 +955,7 @@ function renderBanner() {
     el = document.createElement('div');
     el.id = 'connectBanner';
     el.className = 'banner';
-    el.innerHTML = '<span>Данные вашей таблицы «Glorax_Учёт» на 04.11.2026. Чтобы они обновлялись онлайн, а правки записывались обратно в таблицу, подключите её — это один раз и около 3 минут.</span><button class="btn small" id="bannerBtn">Подключить</button>';
+    el.innerHTML = '<span>Таблица не подключена — показан пример данных. Подключите Google-таблицу объекта, чтобы данные шли онлайн и правки записывались обратно (один раз, около 3 минут).</span><button class="btn small" id="bannerBtn">Подключить</button>';
     document.querySelector('.top').after(el);
     $('#bannerBtn').onclick = () => $('#btnSettings').click();
   }
@@ -1021,7 +1027,7 @@ function ask(lines, where) {
   const dlg = $('#confirmDlg');
   $('#cfTitle').textContent = store.connected ? 'Записать в Google-таблицу?' : 'Сохранить на этом устройстве?';
   $('#cfList').innerHTML = lines.map((l) => `<li>${esc(l)}</li>`).join('');
-  $('#cfWhere').textContent = where || (store.connected ? 'Изменение сразу уйдёт в таблицу «Glorax_Учёт». После записи таблица вернёт строку, и приложение её сверит.' : 'Таблица не подключена — изменение останется на устройстве.');
+  $('#cfWhere').textContent = where || (store.connected ? `Изменение сразу уйдёт в таблицу ${BOOK.G}. После записи таблица вернёт строку, и приложение её сверит.` : 'Таблица не подключена — изменение останется на устройстве.');
   $('#cfSkip').checked = false;
   return new Promise((resolve) => {
     dlg.returnValue = '';

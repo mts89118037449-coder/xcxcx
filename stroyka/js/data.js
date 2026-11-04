@@ -208,6 +208,17 @@ export function docsColumns(head) {
   }
   return cols;
 }
+/** Лист «Документы» самостоятельного объекта (строка = часть × уровень × вид работ) → тот же вид, что docsFromRows */
+export function docsFromList(list) {
+  const out = [];
+  for (const x of list || []) {
+    const floor = fromKey(x.level);
+    if (floor === null) continue;
+    const work = workGroup(x.work, floor) || x.work;
+    out.push({ floor, work, label: `${x.work}`, row: x.row, sheet: x.sheet, [String(x.section)]: { is: x.is || '', aosr: x.aosr || '', rem: x.rem || '', cols: { is: 4, aosr: 5, rem: 6 } } });
+  }
+  return out;
+}
 /** Строки листа «Таблица» → документы по этажам: { floor, work, row, [секция]: { is, aosr, rem, cols } } */
 export function docsFromRows(rows, head) {
   const cols = docsColumns(head);
@@ -406,13 +417,11 @@ export class Store {
     if (data.extra && configure(data.extra.structure)) this.structureChanged = true;
     this.docsRows = data.docsRows || [];
     this.docsHead = data.docsHead || null;
-    this.docs = docsFromRows(this.docsRows, this.docsHead);
-    this.remarks = data.remarks || [];
+    this.docs = data.docsList ? docsFromList(data.docsList) : docsFromRows(this.docsRows, this.docsHead);
+    this.remarks = (data.remarks || []).map((r) => (r.level !== undefined ? { ...r, floor: fromKey(r.level) } : r));
+    this.objInfo = data.object || null;
+    this.expSheet = data.object && data.object.mode === 'book' ? 'Расходы' : 'Счета';
     this.fin = normFin(data.fin || {});
-    if (this.obj && data.extra) {   // другой объект: поручения, ИС/АОСР и данные VUP CORE относятся к основному МКД
-      data = { ...data, remarks: [], docsRows: [], docsHead: null, extra: { ...data.extra, moves: [], worklog: [], floorStatus: [], plan: [], discrepancies: [], inventory: [] } };
-      this.docsRows = []; this.docs = []; this.remarks = [];
-    }
     mapFloors(data.extra);
     this.setExtra(data.extra);
     this.checks = data.checks || [];
@@ -527,7 +536,8 @@ export class Store {
     return n ? sum / n : null;
   }
   remarksFor(section, floor) {
-    return this.remarks.filter((r) => String(r.section) === section && floorsInText(r.short + ' ' + r.text).includes(floor));
+    // у самостоятельного объекта уровень замечания указан явно; у Glorax — ищется в тексте («6 эт.»)
+    return this.remarks.filter((r) => String(r.section) === section && (r.floor !== undefined ? r.floor === floor : floorsInText(r.short + ' ' + r.text).includes(floor)));
   }
   isOpenRemark(r) { return !/выполнено/i.test(r.status || '') && !r.done; }
   /** Журнал + записи из «VUP CORE» (только чтение): поставки/подачи материала и рабочие по ходу работ */
