@@ -100,7 +100,7 @@ if [ -d /run/systemd/system ]; then
 else
   # без systemd (контейнер): фоновый процесс
   pkill -u stroyka -f "server/server.js" 2>/dev/null || true
-  (cd "$APP" && set -a && . ./.env && set +a && nohup runuser -u stroyka -- "$NODE" server/server.js >> "$APP/data/server.log" 2>&1 &)
+  (cd "$APP" && set -a && . ./.env && set +a && exec nohup runuser -u stroyka -- "$NODE" server/server.js) >> "$APP/data/server.log" 2>&1 < /dev/null &
 fi
 for i in $(seq 1 30); do curl -fs "http://127.0.0.1:$PORT/healthz" >/dev/null && break; sleep 1; done
 curl -fs "http://127.0.0.1:$PORT/healthz" >/dev/null || die "Сервер не запустился: stroyka logs"
@@ -116,7 +116,7 @@ sed -e "s|server_name stroyka.example.ru;|server_name $SERVER_NAME;|" -e "s|127.
 ln -sf /etc/nginx/sites-available/stroyka /etc/nginx/sites-enabled/stroyka
 [ -z "${DOMAIN:-}" ] && rm -f /etc/nginx/sites-enabled/default
 nginx -t -q
-if [ -d /run/systemd/system ]; then systemctl enable -q nginx; systemctl reload nginx || systemctl restart nginx; else nginx -s reload 2>/dev/null || nginx; fi
+if [ -d /run/systemd/system ]; then systemctl enable -q nginx; systemctl reload nginx || systemctl restart nginx; else nginx -s reload 2>/dev/null || nginx </dev/null >/dev/null 2>&1; fi
 command -v ufw >/dev/null && ufw status | grep -q active && ufw allow 'Nginx Full' >/dev/null || true
 
 if [ -n "${DOMAIN:-}" ]; then
