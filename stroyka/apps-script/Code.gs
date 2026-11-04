@@ -42,7 +42,9 @@ const JOURNAL_HEADER = ['Дата', 'Секция', 'Тип', 'Наименов�
 const SECTIONS = ['4', '5'];
 const ROOF = 17;
 
-function ss_() { return SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(SPREADSHEET_ID); }
+// Всегда «Glorax_Учёт» по ID: скрипт может быть привязан к другому файлу (clasp создаёт свой контейнер)
+let SS_CACHE_ = null;
+function ss_() { return SS_CACHE_ || (SS_CACHE_ = SpreadsheetApp.openById(SPREADSHEET_ID)); }
 function tz_() { return ss_().getSpreadsheetTimeZone(); }
 
 // ---------------------------------------------------------------- HTTP
@@ -90,9 +92,15 @@ function doPost(e) {
 /** Первый запуск после «Разрешить»: листы, триггеры, первый бэкап — без ручного запуска setup */
 function ensureSetup_() {
   const props = PropertiesService.getScriptProperties();
-  if (props.getProperty('SETUP_DONE')) return;
-  try { setup(); props.setProperty('SETUP_DONE', new Date().toISOString()); }
-  catch (err) { console.error('setup: ' + err); }
+  if (props.getProperty('SETUP_FOR') === SPREADSHEET_ID) return;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return;           // setup уже идёт в другом запросе
+  try {
+    if (props.getProperty('SETUP_FOR') === SPREADSHEET_ID) return;
+    setup();
+    props.setProperty('SETUP_FOR', SPREADSHEET_ID);
+  } catch (err) { console.error('setup: ' + err); }
+  finally { lock.releaseLock(); }
 }
 
 function json_(obj) {
@@ -109,12 +117,14 @@ function checkToken_(t) {
 function setup() {
   progressSheet_();
   journalSheet_();
-  // триггеры «при изменении»: любая правка в таблице меняет отметку версии
-  const have = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
-  if (have.indexOf('onSheetEdit') < 0) ScriptApp.newTrigger('onSheetEdit').forSpreadsheet(ss_()).onEdit().create();
-  if (have.indexOf('onSheetChange') < 0) ScriptApp.newTrigger('onSheetChange').forSpreadsheet(ss_()).onChange().create();
+  // триггеры пересоздаются заново — на «Glorax_Учёт», без дублей
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (['onSheetEdit', 'onSheetChange', 'backupToDrive'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('onSheetEdit').forSpreadsheet(SPREADSHEET_ID).onEdit().create();
+  ScriptApp.newTrigger('onSheetChange').forSpreadsheet(SPREADSHEET_ID).onChange().create();
   // ежедневный бэкап на Google Диск в 03:00
-  if (have.indexOf('backupToDrive') < 0) ScriptApp.newTrigger('backupToDrive').timeBased().everyDays(1).atHour(3).create();
+  ScriptApp.newTrigger('backupToDrive').timeBased().everyDays(1).atHour(3).inTimezone('Europe/Moscow').create();
   stamp_();
   backupToDrive();
 }
