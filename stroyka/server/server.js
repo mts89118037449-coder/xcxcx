@@ -44,6 +44,7 @@ const KEEP = Number(env('BACKUP_KEEP', 400));
 const MIRROR_MIN = Number(env('MIRROR_MINUTES', 5));
 const DB_FILE = path.join(DATA, 'db.json');
 const MIRROR_FILE = path.join(DATA, 'google-mirror.json');
+const mirrorFile = (obj) => (obj ? path.join(DATA, `google-mirror-${obj}.json`) : MIRROR_FILE);
 
 fs.mkdirSync(BACKUPS, { recursive: true });
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -248,12 +249,15 @@ async function handleApi(req, res, url) {
       checkToken(p.token);
       if (MODE === 'proxy' && GOOGLE) {
         try {
-          const data = await googleFetch(p.action === 'version' ? { action: 'version' } : { action: 'all' });
-          if (p.action !== 'version' && data.ok) { writeJsonAtomic(MIRROR_FILE, data); mirrorAt = new Date(); }
+          const obj = /^[\w-]{20,80}$/.test(p.obj || '') ? p.obj : '';   // выбранный объект (таблица объёмов)
+          const q = { action: p.action === 'version' ? 'version' : 'all', ...(obj ? { obj } : {}) };
+          const data = await googleFetch(q);
+          if (p.action !== 'version' && data.ok) { writeJsonAtomic(mirrorFile(obj), data); if (!obj) mirrorAt = new Date(); }
           return send(res, 200, data);
         } catch {
           // копии таблицы ещё нет (скрипт ждёт «Разрешить») — отдаём снимок из db.json
-          const m = readJson(MIRROR_FILE, null) || { ...db, ok: true };
+          const obj = /^[\w-]{20,80}$/.test(p.obj || '') ? p.obj : '';
+          const m = readJson(mirrorFile(obj), null) || { ...db, ok: true };
           return send(res, 200, p.action === 'version' ? { ok: true, v: m.v } : { ...m, ok: true, stale: true, staleAt: mirrorAt && mirrorAt.toISOString() });
         }
       }

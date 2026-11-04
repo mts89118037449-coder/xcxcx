@@ -311,6 +311,7 @@ export function materialKey(name) {
 export class Store {
   constructor() {
     const cfg = LS.get('stroyka.cfg', {});
+    this.obj = LS.get('stroyka.obj', '');   // выбранный объект — ID его таблицы объёмов ('' — по умолчанию)
     const qs = new URLSearchParams(location.search);
     this.url = qs.get('api') || cfg.url || API_URL || '';
     this.token = qs.get('token') || cfg.token || API_TOKEN || '';
@@ -336,6 +337,12 @@ export class Store {
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   emit(what) { for (const fn of this.listeners) fn(what); }
 
+  /** Переключить объект: другая таблица объёмов, своя структура и 3D */
+  setObject(id) { this.obj = id || ''; LS.set('stroyka.obj', this.obj); }
+  get objects() { return (this.extra && this.extra.objects) || []; }
+  /** Создать таблицу нового объекта по шаблону (на Google Диске владельца) и вернуть её ID */
+  async newObject(spec) { return this.post({ action: 'newObject', ...spec }); }
+
   saveConfig(url, token) {
     this.url = (url || '').trim();
     this.token = (token || '').trim();
@@ -348,12 +355,13 @@ export class Store {
     // первый показ — сразу из копии на устройстве, пока идёт запрос к таблице
     if (this.connected && !this.progress.size) {
       const c = this.cacheLoad();
-      if (c) { this.apply(c.data); for (const op of this.queue) this.applyLocal(op); this.emit('data'); }
+      if (c) { this.apply(c.data); for (const op of this.queue) if ((op.obj || '') === (this.obj || '')) this.applyLocal(op); this.emit('data'); }
     }
     try {
       if (this.connected) {
         const u = new URL(this.url);
         u.searchParams.set('action', 'all');
+        if (this.obj) u.searchParams.set('obj', this.obj);
         if (this.token) u.searchParams.set('token', this.token);
         const r = await fetch(u.toString(), { redirect: 'follow' });
         const data = await r.json();
@@ -367,7 +375,7 @@ export class Store {
         this.stale = data.stale ? (data.staleAt || 'да') : null;
         this.cacheSave(data);
         this.version = data.v || this.version;
-        for (const op of this.queue) this.applyLocal(op); // неотправленные правки не теряются
+        for (const op of this.queue) if ((op.obj || '') === (this.obj || '')) this.applyLocal(op); // неотправленные правки не теряются
         this.status = 'ok';
         this.startLiveSync();
         this.flush();
@@ -385,7 +393,7 @@ export class Store {
       const c = this.connected && this.cacheLoad();
       if (c && !this.progress.size) {
         this.apply(c.data);
-        for (const op of this.queue) this.applyLocal(op);
+        for (const op of this.queue) if ((op.obj || '') === (this.obj || '')) this.applyLocal(op);
         this.cachedAt = c.at;
         this.error += ' · показана копия на устройстве от ' + new Date(c.at).toLocaleString('ru-RU');
         this.startLiveSync();
@@ -401,6 +409,10 @@ export class Store {
     this.docs = docsFromRows(this.docsRows, this.docsHead);
     this.remarks = data.remarks || [];
     this.fin = normFin(data.fin || {});
+    if (this.obj && data.extra) {   // другой объект: поручения, ИС/АОСР и данные VUP CORE относятся к основному МКД
+      data = { ...data, remarks: [], docsRows: [], docsHead: null, extra: { ...data.extra, moves: [], worklog: [], floorStatus: [], plan: [], discrepancies: [], inventory: [] } };
+      this.docsRows = []; this.docs = []; this.remarks = [];
+    }
     mapFloors(data.extra);
     this.setExtra(data.extra);
     this.checks = data.checks || [];
@@ -424,11 +436,11 @@ export class Store {
   }
   // ---------- резервные копии ----------
   cacheSave(data) {
-    try { localStorage.setItem('stroyka.cache', JSON.stringify({ at: Date.now(), src: this.url, data })); } catch { /* нет места — не критично */ }
+    try { localStorage.setItem('stroyka.cache', JSON.stringify({ at: Date.now(), src: this.url + '#' + (this.obj || ''), data })); } catch { /* нет места — не критично */ }
   }
   cacheLoad() {
     const c = LS.get('stroyka.cache', null);
-    return c && c.src === this.url ? c : null;
+    return c && c.src === this.url + '#' + (this.obj || '') ? c : null;
   }
   /** Полная копия данных приложения (формат понимают сервер и кнопка «Восстановить») */
   snapshot() {
@@ -468,7 +480,7 @@ export class Store {
   /** Данные других таблиц: «Выполнение» (объёмы) и «VUP CORE» (материалы, ход работ, статусы этажей) */
   setExtra(x) {
     const e = x || {};
-    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null };
+    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '' };
     this.vol = new Map();
     if (PROFILE.type !== 'mkd') setWorks([...new Set(this.extra.volumes.map((v) => workGroup(v.work, v.floor)).filter(Boolean))]);
     for (const v of this.extra.volumes) {
@@ -568,7 +580,7 @@ export class Store {
       r = await fetch(this.url, {
         method: 'POST',
         // text/plain — «простой» запрос без CORS-preflight, Apps Script его принимает
-        body: JSON.stringify({ ...payload, ...(payload.action === 'setProgress' ? { floor: toKey(payload.floor) } : {}), token: this.token }),
+        body: JSON.stringify({ obj: this.obj || '', ...payload, ...(payload.action === 'setProgress' ? { floor: toKey(payload.floor) } : {}), token: this.token }),
         redirect: 'follow',
       });
     } catch (e) { const err = new Error('Нет связи с таблицей'); err.network = true; throw err; }
@@ -700,6 +712,7 @@ export class Store {
   /** Записать операцию: локально сразу, в таблицу — через очередь */
   commit(op) {
     op.at = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    op.obj = this.obj || '';   // правка уйдёт в таблицу того объекта, где её сделали
     this.applyLocal(op);
     this.emit('data');
     if (!this.connected) { this.saveDemo(); this.emit('saved-local'); return; }
@@ -745,6 +758,7 @@ export class Store {
     try {
       const u = new URL(this.url);
       u.searchParams.set('action', 'version');
+      if (this.obj) u.searchParams.set('obj', this.obj);
       if (this.token) u.searchParams.set('token', this.token);
       const data = await (await fetch(u.toString(), { redirect: 'follow' })).json();
       if (data.ok && data.v && data.v !== this.version) await this.load(true);

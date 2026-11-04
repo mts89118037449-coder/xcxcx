@@ -19,10 +19,10 @@
     <div class="logo" aria-hidden="true">
       <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 21V9l5-3v15M9 21V3l11 4v14M2 21h20M12 8h2M12 11h2M12 14h2M16 9h1M16 12h1M16 15h1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
     </div>
-    <div>
-      <h1>Ход строительства</h1>
+    <button class="obj-pick" id="btnObj" type="button" title="Объект: переключить или создать новый">
+      <h1>Ход строительства <span class="obj-chev" aria-hidden="true">▾</span></h1>
       <p class="sub">МКД · секции 4 и 5 · 16 этажей</p>
-    </div>
+    </button>
   </div>
   <div class="top-actions">
     <span class="pill" id="status" title="">—</span>
@@ -167,6 +167,29 @@
       <button class="btn ghost" type="button" id="syncCheck">Проверить таблицы сейчас</button>
       <button class="btn" value="ok">Закрыть</button>
     </div>
+  </form>
+</dialog>
+
+<dialog id="objDlg">
+  <form method="dialog" class="dlg">
+    <h2>Объекты</h2>
+    <p class="muted">Каждый объект — своя таблица объёмов (части, уровни, виды работ). Список хранится в листе «Объекты» таблицы «Glorax_Учёт»: туда можно вписать ссылку на любую таблицу того же вида.</p>
+    <ul class="obj-list" id="objList"></ul>
+    <details class="obj-new" id="objNew">
+      <summary class="btn">+ Новый объект из шаблона</summary>
+      <div class="ed-fields">
+        <label>Название<input id="noName" placeholder="ЖК Север · отделка квартир" maxlength="80"></label>
+        <div class="seg small" id="noKind">
+          <button type="button" data-k="mkd" class="on">МКД</button><button type="button" data-k="flat">Квартиры</button><button type="button" data-k="office">Офис</button><button type="button" data-k="industrial">Цех / склад</button>
+        </div>
+        <label><span id="noPartsL">Секции</span><input id="noParts" placeholder="4, 5"></label>
+        <label><span id="noLevelsL">Этажей</span><input id="noLevels" placeholder="16"></label>
+        <label>Виды работ <small class="muted">— по одному в строке, единица через запятую</small><textarea id="noWorks" rows="6"></textarea></label>
+        <p class="muted small-note">Будет создана Google-таблица на вашем Диске (рядом с «Glorax_Учёт»): лист на каждую часть, строки «уровень × вид работ», формулы «Выполнено» и «Итого», недели по понедельникам, лист «Проект». Останется вписать объёмы.</p>
+        <button class="btn" type="button" id="noCreate">Создать таблицу и открыть объект</button>
+      </div>
+    </details>
+    <div class="dlg-actions"><button class="btn ghost" value="ok">Закрыть</button></div>
   </form>
 </dialog>
 

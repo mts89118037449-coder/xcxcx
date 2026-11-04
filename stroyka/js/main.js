@@ -41,6 +41,7 @@ $('#btnTheme').onclick = () => {
 const listParts = () => (SECTIONS.length > 1 ? `${T.partsL} ${SECTIONS.slice(0, -1).join(', ')} и ${SECTIONS[SECTIONS.length - 1]}` : `${T.partL} ${SECTIONS[0]}`);
 $('.sub').textContent = `${T.object} · ${listParts()} · ${LAYOUT === 'stack' ? TOP + ' этажей' : `${T.levels}: ${FLOORS.length}`}`;
 document.title = `Стройка 3D — ${T.object}`;
+if (PROFILE.name) $('#btnObj h1').firstChild.textContent = PROFILE.name + ' ';
 { const tb = document.querySelector('.tabs [data-tab="floor"] span'); if (tb) tb.textContent = T.level; }
 // «Что показать»: для МКД — укрупнённые группы, для других объектов — виды работ из таблицы
 function renderMetricButtons() {
@@ -166,6 +167,7 @@ function renderSummary() {
         <div class="card">
           <div class="card-h">${T.part} ${s}</div>
           <div class="big">${pct(store.sectionValue(s, 'avg'))}</div>
+          ${store.sectionValue(s, 'avg') == null ? `<p class="muted small-note">Объёмов пока нет: впишите «Общий объём» (столбец E) в лист «${esc(T.part)} ${esc(s)}»${store.obj ? ` — <a href="https://docs.google.com/spreadsheets/d/${esc(store.obj)}/edit" target="_blank" rel="noopener">открыть таблицу ↗</a>` : ''}.</p>` : ''}
           ${works.map((w) => { const v = store.sectionValue(s, w); return `<div class="row-bar"><span>${w}</span><div class="bar"><i style="width:${v || 0}%"></i></div><b>${pct(v)}</b></div>`; }).join('')}
         </div>`).join('')}
     </div>
@@ -1081,3 +1083,58 @@ store.load();
 // офлайн-режим: приложение откроется и без связи (последняя копия данных на устройстве)
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
 window.__stroyka = { store, scene, state };
+
+// ---------- объекты: переключение и новый объект из шаблона ----------
+const KIND_TPL = {
+  mkd: { parts: 'Секции', partsPh: '4, 5', levels: 'Этажей (число)', levelsPh: '16', works: ['Газоблок наруж., м³', 'Внутр. СКЦ, м²', 'Внутр. ГБ, м²', 'Инженерка, м²'] },
+  flat: { parts: 'Квартиры (номера)', partsPh: '12, 15, 27', levels: 'Помещения', levelsPh: 'Кухня, Санузел, Комната 1, Коридор', works: ['Штукатурка стен, м²', 'Стяжка пола, м²', 'Плитка, м²', 'Электрика, т.', 'Сантехника, шт', 'Чистовая отделка, м²'] },
+  office: { parts: 'Помещения / этажи', partsPh: '1, 2', levels: 'Зоны', levelsPh: 'Open space, Переговорная, Санузел, Кухня', works: ['Перегородки ГКЛ, м²', 'Потолки, м²', 'Электрика, т.', 'Слаботочка, т.', 'Покраска, м²', 'Полы, м²'] },
+  industrial: { parts: 'Цеха / корпуса', partsPh: '1', levels: 'Пролёты / зоны', levelsPh: 'Оси 1–3, Оси 3–5, Оси 5–7, АБК', works: ['Фундаменты, м³', 'Монтаж каркаса, т', 'Кровля, м²', 'Стеновые панели, м²', 'Полы, м²'] },
+};
+let noKind = 'mkd';
+function setKind(k) {
+  noKind = k;
+  const t = KIND_TPL[k];
+  for (const b of $('#noKind').children) b.classList.toggle('on', b.dataset.k === k);
+  $('#noPartsL').textContent = t.parts; $('#noParts').placeholder = t.partsPh;
+  $('#noLevelsL').textContent = t.levels; $('#noLevels').placeholder = t.levelsPh;
+  $('#noWorks').value = t.works.join('\n');
+}
+$('#noKind').onclick = (e) => { const b = e.target.closest('button'); if (b) setKind(b.dataset.k); };
+function renderObjects() {
+  const list = store.objects.length ? store.objects : [{ id: '', name: 'Выполнение', note: 'по умолчанию' }];
+  const cur = store.obj || (list[0] && list[0].id);
+  $('#objList').innerHTML = list.map((o) => `<li class="${o.id === cur ? 'on' : ''}">
+    <button type="button" class="obj-item" data-obj="${esc(o.id)}"><b>${esc(o.name)}</b><span class="muted">${esc([o.type, o.note].filter(Boolean).join(' · '))}</span></button>
+    <a class="btn ghost small" href="https://docs.google.com/spreadsheets/d/${esc(o.id)}/edit" target="_blank" rel="noopener" title="Открыть таблицу">↗</a></li>`).join('');
+  $('#objList').querySelectorAll('[data-obj]').forEach((b) => b.onclick = () => {
+    const id = b.dataset.obj === (list[0] && list[0].id) ? '' : b.dataset.obj;
+    if (id === (store.obj || '')) { $('#objDlg').close(); return; }
+    store.setObject(id); location.reload();
+  });
+}
+$('#btnObj').onclick = () => {
+  if (!store.connected) { toast('Сначала подключите таблицу («Таблица…»)', true); return; }
+  renderObjects(); setKind(noKind); $('#objDlg').showModal();
+};
+const splitList = (v) => String(v || '').split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
+$('#noCreate').onclick = async () => {
+  const name = $('#noName').value.trim() || ({ mkd: 'Новый МКД', flat: 'Ремонт квартир', office: 'Офис', industrial: 'Цех' })[noKind];
+  const parts = splitList($('#noParts').value || $('#noParts').placeholder);
+  const lv = $('#noLevels').value.trim() || $('#noLevels').placeholder;
+  const levels = noKind === 'mkd' ? Number(lv) || 16 : splitList(lv);
+  const works = $('#noWorks').value.split('\n').map((x) => x.trim()).filter(Boolean);
+  const t = KIND_TPL[noKind];
+  const yes = await ask([`Новая таблица «Стройка · ${name}»`, `${t.parts}: ${parts.join(', ')}`, `${t.levels}: ${Array.isArray(levels) ? levels.join(', ') : levels}`, `Виды работ: ${works.length}`], 'Таблица появится на вашем Google Диске и в листе «Объекты».');
+  if (!yes) return;
+  const btn = $('#noCreate'); btn.disabled = true; btn.textContent = 'Создаю таблицу…';
+  try {
+    const res = await store.newObject({ name, kind: noKind, parts, levels, works });
+    toast('✓ Таблица создана — открываю объект');
+    store.setObject(res.id);
+    setTimeout(() => location.reload(), 600);
+  } catch (e) {
+    toast('Не удалось создать: ' + e.message, true);
+    btn.disabled = false; btn.textContent = 'Создать таблицу и открыть объект';
+  }
+};
