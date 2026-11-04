@@ -24,7 +24,12 @@ REPO="mts89118037449-coder/xcxcx"
 BRANCH="${BRANCH:-ccr-daed372c-kxhkyu}"
 DIR=/opt/stroyka
 APP="$DIR/stroyka"
-PORT="${PORT:-8080}"
+# Порты подбираются так, чтобы не мешать тому, что уже работает на сервере (VPN/VLESS, панели и т.п.)
+busy() { ss -Hltn "sport = :$1" 2>/dev/null | grep -q LISTEN; }
+first_free() { for p in "$@"; do busy "$p" || { echo "$p"; return; }; done; echo ""; }
+if [ -f /opt/stroyka/stroyka/.env ]; then PORT="${PORT:-$(grep '^PORT=' /opt/stroyka/stroyka/.env | cut -d= -f2)}"; fi
+PORT="${PORT:-$(first_free 8080 18080 18081 18082 28080)}"
+[ -n "$PORT" ] || { echo "Нет свободного внутреннего порта, задайте PORT=…"; exit 1; }
 LOGIN="${LOGIN:-prorab}"
 
 say() { printf '\n\033[1;32m▶ %s\033[0m\n' "$*"; }
@@ -33,9 +38,10 @@ die() { printf '\n\033[1;31m✖ %s\033[0m\n' "$*" >&2; exit 1; }
 command -v apt-get >/dev/null || die "Нужен Ubuntu или Debian (apt)"
 export DEBIAN_FRONTEND=noninteractive
 
+NGINX_WAS=$(command -v nginx || true)   # nginx уже стоял (например, для VPN) — его сайты не трогаем
 say "Пакеты: git, nginx, curl"
 apt-get update -qq
-apt-get install -y -qq git nginx apache2-utils curl ca-certificates xz-utils >/dev/null
+apt-get install -y -qq git nginx apache2-utils curl ca-certificates xz-utils iproute2 >/dev/null
 [ -n "${DOMAIN:-}" ] && apt-get install -y -qq certbot python3-certbot-nginx >/dev/null
 
 say "Node.js 18+"
@@ -118,21 +124,39 @@ if [ ! -f /etc/nginx/stroyka.htpasswd ] || [ -n "${PASSWORD:-}" ]; then
   htpasswd -bc /etc/nginx/stroyka.htpasswd "$LOGIN" "$NEWPASS" >/dev/null 2>&1
 fi
 SERVER_NAME="${DOMAIN:-_}"
-sed -e "s|server_name stroyka.example.ru;|server_name $SERVER_NAME;|" -e "s|127.0.0.1:8080|127.0.0.1:$PORT|" "$APP/deploy/nginx.conf" > /etc/nginx/sites-available/stroyka
-ln -sf /etc/nginx/sites-available/stroyka /etc/nginx/sites-enabled/stroyka
-[ -z "${DOMAIN:-}" ] && rm -f /etc/nginx/sites-enabled/default
-nginx -t -q
-if [ -d /run/systemd/system ]; then systemctl enable -q nginx; systemctl reload nginx || systemctl restart nginx; else nginx -s reload 2>/dev/null || nginx </dev/null >/dev/null 2>&1; fi
-command -v ufw >/dev/null && ufw status | grep -q active && ufw allow 'Nginx Full' >/dev/null || true
+# Внешний порт сайта: при повторном запуске — прежний; иначе 80, если он свободен, иначе первый свободный
+SITE_CONF=/etc/nginx/sites-available/stroyka
+WEB_PORT="${WEB_PORT:-}"
+[ -z "$WEB_PORT" ] && [ -f "$SITE_CONF" ] && WEB_PORT=$(grep -m1 -oE 'listen [0-9]+' "$SITE_CONF" | awk '{print $2}')
+if [ -z "$WEB_PORT" ]; then
+  if [ -z "$NGINX_WAS" ] && [ -z "${DOMAIN:-}" ]; then
+    rm -f /etc/nginx/sites-enabled/default      # nginx поставили мы — его пустой сайт по умолчанию не нужен
+    nginx -s stop 2>/dev/null || systemctl stop nginx 2>/dev/null || true
+  fi
+  WEB_PORT=$(first_free 80 8088 8880 8000 9080 10080)
+fi
+[ -n "$WEB_PORT" ] || die "Нет свободного порта для сайта, задайте WEB_PORT=…"
+DEF=""; [ -z "${DOMAIN:-}" ] && DEF=" default_server"   # без домена сайт открывается по IP:порт
+sed -e "s|listen 80;|listen $WEB_PORT$DEF;|" -e "s|server_name stroyka.example.ru;|server_name $SERVER_NAME;|" -e "s|127.0.0.1:8080|127.0.0.1:$PORT|" "$APP/deploy/nginx.conf" > "$SITE_CONF"
+ln -sf "$SITE_CONF" /etc/nginx/sites-enabled/stroyka
+if ! nginx -t -q 2>/dev/null; then
+  sed -i "s| default_server;|;|" "$SITE_CONF"   # «default_server» уже занят другим сайтом
+  nginx -t -q || { rm -f /etc/nginx/sites-enabled/stroyka; die "Конфигурация nginx не прошла проверку — сайт stroyka отключён, остальное не тронуто"; }
+fi
+if [ -d /run/systemd/system ]; then systemctl enable -q nginx; systemctl reload nginx 2>/dev/null || systemctl restart nginx; else nginx -s reload 2>/dev/null || nginx </dev/null >/dev/null 2>&1; fi
+command -v ufw >/dev/null && ufw status | grep -q active && ufw allow "$WEB_PORT/tcp" >/dev/null || true
 
-if [ -n "${DOMAIN:-}" ]; then
+if [ -n "${DOMAIN:-}" ] && busy 443 && ! ss -Hltnp "sport = :443" 2>/dev/null | grep -q nginx; then
+  echo "⚠ Порт 443 занят другой программой (VPN/VLESS) — HTTPS не выпускаю, чтобы её не сломать. Сайт работает по http на порту $WEB_PORT."
+  SITE="http://$DOMAIN$( [ "$WEB_PORT" = 80 ] || echo ":$WEB_PORT")"
+elif [ -n "${DOMAIN:-}" ]; then
   say "HTTPS для $DOMAIN"
   if [ -n "${EMAIL:-}" ]; then CB_MAIL=(-m "$EMAIL"); else CB_MAIL=(--register-unsafely-without-email); fi
   certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect "${CB_MAIL[@]}" \
     || echo "⚠ Сертификат не выпущен: проверьте, что A-запись $DOMAIN указывает на этот сервер, и повторите команду"
   SITE="https://$DOMAIN"
 else
-  SITE="http://$(curl -fs4 --max-time 5 https://ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')"
+  SITE="http://$(curl -fs4 --max-time 5 https://ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')$( [ "$WEB_PORT" = 80 ] || echo ":$WEB_PORT")"
 fi
 
 # ───────────────────────── Google-таблица: скрипт создаётся и публикуется с VPS ─────────────────────────
@@ -218,6 +242,7 @@ cat <<EOF
 
 ────────────────────────────────────────────────────────
  ✅ Стройка 3D запущена:  $SITE
+    Порт сайта: $WEB_PORT (если не открывается — откройте этот порт в панели провайдера VPS)
     Логин: $LOGIN${NEWPASS:+   Пароль: $NEWPASS}
     Режим: $MODE_NOW $( [ "$MODE_NOW" = proxy ] && echo '(данные — Google-таблица)' || echo '(ссылки на таблицу нет — добавьте GOOGLE_API_URL и повторите команду)')
 
