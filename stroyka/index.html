@@ -19,9 +19,10 @@
     <div class="logo" aria-hidden="true">
       <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 21V9l5-3v15M9 21V3l11 4v14M2 21h20M12 8h2M12 11h2M12 14h2M16 9h1M16 12h1M16 15h1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
     </div>
-    <button class="obj-pick" id="btnObj" type="button" title="Объект: переключить или создать новый">
-      <h1>Ход строительства <span class="obj-chev" aria-hidden="true">▾</span></h1>
-      <p class="sub">МКД · секции 4 и 5 · 16 этажей</p>
+    <button class="obj-pick" id="btnObj" type="button" title="Сменить объект или создать новый">
+      <span class="obj-cap">Объект</span>
+      <h1><span id="objName">Ход строительства</span> <span class="obj-chev" aria-hidden="true">▾</span></h1>
+      <p class="sub">—</p>
     </button>
   </div>
   <div class="top-actions">
@@ -35,24 +36,24 @@
 <main class="layout">
   <section class="stage" id="stage" aria-label="3D-модель корпуса">
     <div class="stage-ui">
-      <button class="btn small view-btn" id="btnViewPanel" aria-haspopup="true" aria-expanded="false"><span id="viewLabel">Факт · все работы</span> ▾</button>
+      <button class="btn small view-btn" id="btnViewPanel" aria-haspopup="true" aria-expanded="false"><span id="viewLabel">Вид: как сейчас</span> ▾</button>
       <button class="btn ghost small" id="btnView" title="Вернуть вид по умолчанию" aria-label="Вид по умолчанию">⌂</button>
       <button class="btn ghost small" id="btnTour" title="3D-тур по прокрутке">▶ Тур</button>
       <button class="btn ghost small only-mobile" id="btnExpand" title="Развернуть 3D" aria-label="Развернуть 3D">⤢</button>
     </div>
     <div class="view-panel" id="viewPanel" hidden>
-      <div class="vp-group"><div class="vp-h">Что показать</div>
+      <div class="vp-group"><div class="vp-h">Какие работы</div>
         <div class="seg small" id="metric" role="tablist">
           <button data-m="avg" class="on">Все работы</button>
           <button data-m="Наружные стены">Наружные стены</button>
           <button data-m="Перегородки">Перегородки</button>
           <button data-m="Инженерка">Инженерка</button>
         </div></div>
-      <div class="vp-group"><div class="vp-h">Как показать</div>
+      <div class="vp-group"><div class="vp-h">Вид модели</div>
         <div class="seg small" id="viewMode">
-          <button data-v="fact" class="on">Факт</button>
-          <button data-v="progress">Прогресс</button>
-          <button data-v="project">Проект</button>
+          <button data-v="fact" class="on">Как сейчас</button>
+          <button data-v="progress">Проценты цветом</button>
+          <button data-v="project">Как будет</button>
         </div>
         <p class="vp-note" id="viewNote">Готовое — как на проекте, остальное — каркас. Зелёная полоса — процент этажа.</p></div>
       <div class="vp-group"><div class="vp-h">Время и погода</div>
@@ -172,11 +173,11 @@
 
 <dialog id="objDlg">
   <form method="dialog" class="dlg">
-    <h2>Объекты</h2>
-    <p class="muted">Каждый объект — своя самостоятельная Google-таблица: объёмы, люди и поставки, расходы, замечания, документы. Список — в отдельной таблице «Стройка · объекты» (папка «Стройка 3D» на Диске): туда можно вписать ссылку на любую копию шаблона.</p>
+    <h2>Ваши объекты</h2>
+    <p class="muted">Нажмите на объект, чтобы открыть его. У каждого объекта своя Google-таблица (↗ — открыть её).</p>
     <ul class="obj-list" id="objList"></ul>
     <details class="obj-new" id="objNew">
-      <summary class="btn">+ Новый объект из шаблона</summary>
+      <summary class="btn">+ Новый объект</summary>
       <div class="ed-fields">
         <label>Название<input id="noName" placeholder="ЖК Север · отделка квартир" maxlength="80"></label>
         <div class="seg small" id="noKind">

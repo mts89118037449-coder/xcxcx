@@ -38,10 +38,18 @@ $('#btnTheme').onclick = () => {
 };
 
 // подпись проекта — по структуре из таблиц
+/** Название объекта в шапке: из реестра, из листа «Проект» или из таблицы */
+function setObjName() {
+  const o = store.objInfo;
+  $('#objName').textContent = (o && o.name) || PROFILE.name || T.object || 'Объект';
+}
 const listParts = () => (SECTIONS.length > 1 ? `${T.partsL} ${SECTIONS.slice(0, -1).join(', ')} и ${SECTIONS[SECTIONS.length - 1]}` : `${T.partL} ${SECTIONS[0]}`);
 $('.sub').textContent = `${T.object} · ${listParts()} · ${LAYOUT === 'stack' ? TOP + ' этажей' : `${T.levels}: ${FLOORS.length}`}`;
 document.title = `Стройка 3D — ${T.object}`;
-if (PROFILE.name) $('#btnObj h1').firstChild.textContent = PROFILE.name + ' ';
+setObjName();
+// высота шапки — чтобы закреплённое 3D на телефоне вставало сразу под ней
+const syncTopH = () => document.documentElement.style.setProperty('--toph', $('.top').offsetHeight + 'px');
+syncTopH(); addEventListener('resize', syncTopH);
 { const tb = document.querySelector('.tabs [data-tab="floor"] span'); if (tb) tb.textContent = T.level; }
 // «Что показать»: для МКД — укрупнённые группы, для других объектов — виды работ из таблицы
 function renderMetricButtons() {
@@ -73,9 +81,9 @@ $('#vpClose').onclick = () => openVP(false);
 document.addEventListener('click', (e) => { if (!vp.hidden && !vp.contains(e.target) && e.target !== $('#btnViewPanel')) openVP(false); });
 function updateViewLabel() {
   const m = state.metric === 'avg' ? 'все работы' : state.metric.toLowerCase();
-  const v = { fact: 'Факт', progress: 'Прогресс', project: 'Проект' }[scene.view];
-  $('#viewLabel').textContent = `${v} · ${m}`;
-  $('#viewNote').textContent = { fact: (LAYOUT === 'stack' ? 'Готовое — как на проекте, остальное — каркас.' : 'Заполнение — процент работ.') + ` Зелёная полоса — процент: ${T.levelL}.`, progress: `${T.levels} заливаются зелёным по проценту выполнения.`, project: 'Как будет выглядеть после завершения.' }[scene.view];
+  const v = { fact: 'как сейчас', progress: 'проценты цветом', project: 'как будет' }[scene.view];
+  $('#viewLabel').textContent = state.metric === 'avg' ? `Вид: ${v}` : `${v} · ${m}`;
+  $('#viewNote').textContent = { fact: (LAYOUT === 'stack' ? 'Готовые части выглядят как на проекте, остальное — каркас.' : 'Каждое помещение заполняется по проценту работ.') + ' Зелёная полоса показывает, сколько сделано.', progress: 'Чем больше сделано, тем больше зелёного.', project: 'Как объект будет выглядеть после завершения.' }[scene.view];
   const sun = scene.sunInfo;
   $('#sunNote').textContent = sun ? sun.text : '';
 }
@@ -157,7 +165,12 @@ function renderSummary() {
   const today = isoToday();
   const works = PROFILE.type === 'mkd' ? ['Наружные стены', 'Перегородки', 'Инженерка', 'Кровля'] : WORKS.slice(0, 5);
   const fcols = SECTIONS.length === 2 && LAYOUT === 'stack' ? '' : `grid-template-columns: ${LAYOUT === 'stack' ? '22px' : 'minmax(64px, auto)'} repeat(${SECTIONS.length}, minmax(0, 1fr))`;
+  const on = store.objects.length;
   el.innerHTML = `
+    <div class="obj-card">
+      <div><span class="muted">Объект</span><b>${esc((store.objInfo && store.objInfo.name) || PROFILE.name || T.object)}</b><span class="muted">${esc(listParts())}</span></div>
+      <div class="obj-card-a"><button class="btn ghost small" data-objdlg="list">Сменить${on > 1 ? ` (${on})` : ''}</button><button class="btn small" data-objdlg="new">+ Новый объект</button></div>
+    </div>
     ${PROFILE.type !== 'mkd' ? '' : `<div class="renders" aria-label="Проект — тендерные визуализации">
       ${[1, 2, 3].map((i) => `<button class="rthumb" data-r="${i}"><img src="assets/renders/render-${i}.jpg" alt="Проектная визуализация ${i}" loading="lazy"></button>`).join('')}
       <span class="rcap">Проект — как будет выглядеть</span>
@@ -196,6 +209,7 @@ function renderSummary() {
   `;
   el.querySelectorAll('.f-cell').forEach((b) => b.onclick = () => openFloor(b.dataset.s, +b.dataset.f));
   el.querySelectorAll('[data-r]').forEach((b) => b.onclick = () => { $('#renderImg').src = `assets/renders/render-${b.dataset.r}.jpg`; $('#renderDlg').showModal(); });
+  el.querySelectorAll('[data-objdlg]').forEach((b) => b.onclick = () => openObjects(b.dataset.objdlg === 'new'));
   el.querySelectorAll('[data-floor]').forEach((b) => b.onclick = () => { const [sec, fl] = b.dataset.floor.split('|'); openFloor(sec, +fl, 'remarks'); });
   el.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => { state.money = 'contract'; setTab(b.dataset.goto); });
 }
@@ -205,16 +219,18 @@ function sourcesHtml() {
   const src = store.extra.sources || [];
   if (!src.length) return '';
   const what = { G: 'счета, авансы, поступления, договор, личные расходы, инструмент, журнал, поручения, ИС/АОСР', V: `${store.extra.volumes.length} строк объёмов по этажам`, U: `${store.extra.moves.length} движений материала, ${store.extra.plan.length} строк плана, ${store.extra.worklog.length} — ход работ, ${store.extra.floorStatus.length} статусов этажей` };
-  return `<h3>Откуда данные</h3><ul class="sources">${src.map((x) => `<li><div><b>${esc((x.title || '').trim() || x.id)}</b><div class="muted">${esc(what[x.key] || '')}</div></div>
+  return `<details class="fold"><summary>Откуда данные · ${src.length} табл.</summary><ul class="sources">${src.map((x) => `<li><div><b>${esc((x.title || '').trim() || x.id)}</b><div class="muted">${esc(what[x.key] || '')}</div></div>
     <span class="${x.error ? 'err-t' : x.canEdit ? 'chip-ok' : 'chip-ro'}">${x.error ? esc(x.error) : x.canEdit ? 'чтение и запись' : 'только просмотр'}</span>
-    ${!x.error && !x.canEdit ? `<p class="muted small-note">Чтобы править из приложения, владелец (${esc(x.owner || '—')}) должен дать «Редактор» для ${esc(x.me || 'вашего аккаунта')}.</p>` : ''}</li>`).join('')}</ul>`;
+    ${!x.error && !x.canEdit ? `<p class="muted small-note">Чтобы править из приложения, владелец (${esc(x.owner || '—')}) должен дать «Редактор» для ${esc(x.me || 'вашего аккаунта')}.</p>` : ''}</li>`).join('')}</ul></details>`;
 }
 function checksHtml() {
   const c = store.checks || [];
   if (!c.length) return '';
   const bad = c.filter((x) => !x.ok);
-  return `<h3>Сверка с итогами таблиц ${bad.length ? `<span class="err-t">· ${bad.length} расхожд.</span>` : '<span class="okc">· всё совпадает</span>'}</h3>
-    <ul class="checks">${c.map((x) => `<li class="${x.ok ? 'ok' : 'bad'}"><span>${x.ok ? '✓' : '⚠'}</span><div>${esc(x.name)}<div class="muted">в таблице ${fmtN(x.table)} · в приложении ${fmtN(x.app)}</div></div></li>`).join('')}</ul>`;
+  const row = (x) => `<li class="${x.ok ? 'ok' : 'bad'}"><span>${x.ok ? '✓' : '⚠'}</span><div>${esc(x.name)}<div class="muted">в таблице ${fmtN(x.table)} · в приложении ${fmtN(x.app)}</div></div></li>`;
+  // всё сходится — одна строка; расхождения — видны сразу
+  return `${bad.length ? `<h3><span class="err-t">⚠ Не сходится с итогами таблицы: ${bad.length}</span></h3><ul class="checks">${bad.map(row).join('')}</ul>` : ''}
+    <details class="fold"><summary>${bad.length ? 'Все проверки' : '✓ Цифры сходятся с итогами таблицы'} · ${c.length}</summary><ul class="checks">${c.map((x) => `<li class="${x.ok ? 'ok' : 'bad'}"><span>${x.ok ? '✓' : '⚠'}</span><div>${esc(x.name)}<div class="muted">в таблице ${fmtN(x.table)} · в приложении ${fmtN(x.app)}</div></div></li>`).join('')}</ul></details>`;
 }
 
 // ---------- Этаж ----------
@@ -1076,7 +1092,7 @@ store.on((what) => {
   if (what === 'saved-local') toast('Сохранено на устройстве · таблица не подключена');
   if (what && what.type === 'rejected') toast('Таблица не приняла изменение: ' + what.message, true);
   if (what === 'data' && store.structureChanged) { location.reload(); return; }   // в таблицах другие секции/этажность — перестроить 3D
-  if (what === 'data') renderMetricButtons();
+  if (what === 'data') { renderMetricButtons(); setObjName(); }
   if (what === 'data') {
     scene.update();
     if (typing()) { renderPending = true; renderKpis(); } else render();
@@ -1119,10 +1135,14 @@ function renderObjects() {
     store.setObject(id); location.reload();
   });
 }
-$('#btnObj').onclick = () => {
-  if (!store.connected) { toast('Сначала подключите таблицу («Таблица…»)', true); return; }
-  renderObjects(); setKind(noKind); $('#objDlg').showModal();
-};
+function openObjects(newOne) {
+  if (!store.connected) { toast('Сначала подключите таблицу (⚙ вверху справа)', true); return; }
+  renderObjects(); setKind(noKind);
+  $('#objNew').open = !!newOne;
+  $('#objDlg').showModal();
+  if (newOne) setTimeout(() => $('#noName').focus(), 60);
+}
+$('#btnObj').onclick = () => openObjects(false);
 const splitList = (v) => String(v || '').split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
 $('#noCreate').onclick = async () => {
   const name = $('#noName').value.trim() || ({ mkd: 'Новый МКД', flat: 'Ремонт квартир', office: 'Офис', industrial: 'Цех' })[noKind];

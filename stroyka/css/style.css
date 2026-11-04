@@ -502,3 +502,27 @@ body.sheet-open .tabs { visibility: hidden; }
 .obj-new > summary::-webkit-details-marker { display: none; }
 .obj-new .ed-fields { margin-top: 12px; }
 .obj-new textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+.obj-cap { display: block; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); line-height: 1.1; }
+.obj-pick h1 { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
+#objName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.obj-pick { border: 1px solid var(--line); padding: 4px 10px; margin: 0; background: var(--panel); }
+.obj-chev { color: var(--ink); font-size: .8em; flex: none; }
+.obj-card { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; margin: 10px 0; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); }
+.obj-card > div:first-child { display: flex; flex-direction: column; min-width: 0; }
+.obj-card b { font-size: 16px; }
+.obj-card .muted { font-size: 12px; }
+.obj-card-a { display: flex; gap: 6px; }
+details.fold { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--r); padding: 0 12px; background: var(--panel-2); }
+details.fold > summary { cursor: pointer; padding: 12px 0; font-size: 13.5px; color: var(--muted); list-style: none; }
+details.fold > summary::before { content: '› '; display: inline-block; transition: transform .15s; }
+details.fold[open] > summary::before { transform: rotate(90deg); }
+details.fold > ul { margin-bottom: 12px; }
+@media (max-width: 900px) {
+  .top { position: sticky; top: 0; z-index: 7; background: var(--panel); }
+  .stage { top: var(--toph, 52px); }
+  .obj-pick { flex: 1; }
+  .brand { flex: 1; }
+}
+@media (max-width: 600px) {
+  #status { max-width: 28px; padding-left: 8px; padding-right: 8px; color: transparent; }   /* на телефоне — только цветная точка; подробности по нажатию */
+}
