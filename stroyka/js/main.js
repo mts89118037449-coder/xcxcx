@@ -37,20 +37,47 @@ $('#btnTheme').onclick = () => {
 
 // ---------- 3D ----------
 const scene = new BuildingScene($('#stage'), store);
-scene.onSelect = (s, f) => { state.section = s; state.floor = f; setTab('floor'); };
+scene.onSelect = (s, f) => {
+  state.section = s; state.floor = f; setTab('floor');
+  $('#hintTap').hidden = true; try { localStorage.setItem('stroyka.tapped', '1'); } catch { /* */ }
+  if (matchMedia('(max-width: 900px)').matches) document.querySelector('.side').scrollIntoView({ behavior: 'smooth' });
+};
 
 $('#metric').onclick = (e) => {
   const b = e.target.closest('button'); if (!b) return;
   state.metric = b.dataset.m;
   for (const x of $('#metric').children) x.classList.toggle('on', x === b);
-  scene.setMetric(state.metric);
+  scene.setMetric(state.metric); updateViewLabel();
   renderKpis(); if (state.tab === 'summary') renderSummary();
 };
 $('#btnView').onclick = () => scene.resetView();
+// ---------- панель «Вид» ----------
+const vp = $('#viewPanel');
+const openVP = (on) => { vp.hidden = !on; $('#btnViewPanel').setAttribute('aria-expanded', String(on)); };
+$('#btnViewPanel').onclick = (e) => { e.stopPropagation(); openVP(vp.hidden); };
+$('#vpClose').onclick = () => openVP(false);
+document.addEventListener('click', (e) => { if (!vp.hidden && !vp.contains(e.target) && e.target !== $('#btnViewPanel')) openVP(false); });
+function updateViewLabel() {
+  const m = { avg: 'все работы', 'Наружные стены': 'наружные стены', 'Перегородки': 'перегородки', 'Инженерка': 'инженерка' }[state.metric];
+  const v = { fact: 'Факт', progress: 'Прогресс', project: 'Проект' }[scene.view];
+  $('#viewLabel').textContent = `${v} · ${m}`;
+  $('#viewNote').textContent = { fact: 'Готовое — как на проекте, остальное — каркас. Зелёная полоса — процент этажа.', progress: 'Этажи заливаются зелёным по проценту выполнения.', project: 'Как будет выглядеть после завершения.' }[scene.view];
+  const sun = scene.sunInfo;
+  $('#sunNote').textContent = sun ? sun.text : '';
+}
+$('#timeMode').onclick = (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  for (const x of $('#timeMode').children) x.classList.toggle('on', x === b);
+  scene.setTime(b.dataset.t); updateViewLabel();
+};
+setInterval(() => { if (scene.timeMode === 'now') { scene.setTime('now'); updateViewLabel(); } }, 10 * 60 * 1000);
+// подсказка «нажмите на этаж» — пока человек ни разу не открыл этаж
+let tapped = false; try { tapped = !!localStorage.getItem('stroyka.tapped'); } catch { /* */ }
+if (!tapped) $('#hintTap').hidden = false;
 $('#viewMode').onclick = (e) => {
   const b = e.target.closest('button'); if (!b) return;
   for (const x of $('#viewMode').children) x.classList.toggle('on', x === b);
-  scene.setView(b.dataset.v);
+  scene.setView(b.dataset.v); updateViewLabel();
   document.body.classList.toggle('project-view', b.dataset.v === 'project');
   const L = {
     fact: '<span><i class="sw sw-facade"></i>готово</span><span><i class="sw sw-strip"></i>полоса — % этажа</span><span><i class="sw sw-shell"></i>каркас, не начато</span><span><i class="sw sw-red"></i>открытые замечания</span>',
@@ -77,6 +104,7 @@ function render() {
   if (state.tab === 'floor') renderFloor();
   if (state.tab === 'calendar') renderCalendar();
   if (state.tab === 'money') renderMoney();
+  if (state.tab === 'stock') renderStock();
 }
 
 // ---------- KPI поверх сцены ----------
@@ -360,6 +388,37 @@ function renderCalendar() {
   };
 }
 
+// ---------- Склад: материал, план подачи, расхождения, инструмент ----------
+function renderStock() {
+  const el = $('#tab-stock');
+  const st = store.stock();
+  const pv = store.planVsFact();
+  const dis = store.extra.discrepancies;
+  const inv = store.extra.inventory;
+  const tools = store.fin.tools;
+  const byFloor = {};
+  for (const p of pv) { const k = `${p.section}|${p.floor}`; (byFloor[k] ||= []).push(p); }
+  const floors = Object.keys(byFloor).sort((a, b) => { const [s1, f1] = a.split('|'), [s2, f2] = b.split('|'); return s1.localeCompare(s2) || f2 - f1; });
+  el.innerHTML = `
+    <div class="kpis3">
+      <div><span>Материал на складе</span><b>${fmtN(st.reduce((a, r) => a + Math.max(0, r.left), 0))} пал.</b></div>
+      <div><span>Расхождений</span><b>${dis.length}</b></div>
+      <div><span>Инструмент</span><b>${tools.length} поз.</b></div>
+    </div>
+    <h3>Материал на складе <span class="muted">· поступило − подано на этажи</span></h3>
+    ${st.length ? `<div class="tablewrap"><table class="voltab stock"><thead><tr><th>Материал</th><th>Поступило</th><th>Подано</th><th>Остаток</th></tr></thead><tbody>
+      ${st.map((r) => `<tr><td title="${esc(r.names.join(' · '))}">${esc(r.material)}</td><td>${fmtN(r.in)}</td><td>${fmtN(r.out)}</td><td><b class="${r.left < 0 ? 'neg' : ''}">${fmtN(r.left)}</b></td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="muted small-note">Паллеты, по листу «Движение материалов» (VUP CORE). Отрицательный остаток — подачу записали, а поступление нет: стоит сверить.</p>` : '<p class="muted">Нет движений материала.</p>'}
+    ${inv.length ? `<h3>Инвентаризация склада</h3><ul class="totals">${inv.map((x) => `<li><span>${esc(x.material)} <em class="muted">${x.date ? shortDate(x.date) : ''}</em></span><b class="num">${fmtN(x.qty)} ${esc(x.unit)}</b></li>`).join('')}</ul>` : ''}
+    ${dis.length ? `<h3>Расхождения <span class="muted">· требуют сверки</span></h3><ul class="remarks">${dis.map((d) => `<li class="late"><div><b>Секция ${esc(d.section)}, ${d.floor} эт. · ${esc(d.material)}</b><div class="muted">План ${fmtN(d.plan)}, учтено ${fmtN(d.fact)} — не хватает ${fmtN(d.diff)} пал.</div></div><div class="r-meta"><span>${esc(d.status)}</span></div></li>`).join('')}</ul>` : ''}
+    ${floors.length ? `<h3>План подачи на этажи</h3>${floors.map((k) => { const [sec, fl] = k.split('|'); const rows = byFloor[k]; return `<div class="planbox"><div class="planh"><b>Секция ${sec} · ${fl} этаж</b>${store.floorStatusOf(sec, +fl).map((x) => `<span class="chip-ok">${esc(x.status)}</span>`).join('')}</div>
+      <table class="voltab"><tbody>${rows.map((p) => `<tr><td>${esc(p.key)}</td><td>план ${fmtN(p.pallets)}</td><td>подано ${fmtN(p.fed)}</td><td><b class="${p.fed < p.pallets ? 'neg' : 'okc'}">${p.fed >= p.pallets ? '✓' : '−' + fmtN(p.pallets - p.fed)}</b></td></tr>`).join('')}</tbody></table></div>`; }).join('')}` : ''}
+    <h3>Инструмент <span class="muted">· лист «УЧЁТ ИНСТРУМЕНТА»${tools[0] && tools[0].date ? ', на ' + shortDate(tools[0].date) : ''}</span></h3>
+    <ul class="totals tools">${tools.map((x) => `<li><span>${esc(x.name)}</span><b class="num">${esc(x.qty || '—')}</b></li>`).join('') || '<li class="muted">Нет данных</li>'}</ul>
+  `;
+}
+
 // ---------- Учёт: расходы, авансы, поставки, поступления ----------
 function bars(rows, max) {
   return rows.map(([label, v, color, extra]) => `<div class="hbar"><span title="${esc(label)}">${esc(label)}</span><div class="bar"><i style="width:${max ? (v / max) * 100 : 0}%;background:${color || 'var(--green)'}"></i></div><b>${rubShort(v)}</b>${extra ? `<em>${extra}</em>` : ''}</div>`).join('');
@@ -377,7 +436,7 @@ function monthChart(byMonth, cats) {
 
 function renderMoney() {
   const el = $('#tab-money');
-  const views = [['contract', 'Договор'], ['exp', 'Расходы'], ['adv', 'Авансы'], ['sup', 'Поставки'], ['inc', 'Поступления'], ['pers', 'Личные'], ['tools', 'Инструмент']];
+  const views = [['contract', 'Договор'], ['exp', 'Расходы'], ['adv', 'Авансы'], ['sup', 'Поставки'], ['inc', 'Поступления'], ['pers', 'Личные']];
   const head = `<div class="money-seg" role="tablist">${views.map(([k, t]) => `<button data-mv="${k}" class="chip ${state.money === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   let body = '';
   const fin = store.fin;
@@ -632,6 +691,7 @@ $('#tour').addEventListener('scroll', () => {
 }, { passive: true });
 $('#tourClose').onclick = closeTour;
 $('#btnTour').onclick = openTour;
+updateViewLabel();
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('touring')) closeTour(); });
 
 // ---------- мобильный вид: 3D закреплено сверху, прокрутка страницы вращает модель ----------

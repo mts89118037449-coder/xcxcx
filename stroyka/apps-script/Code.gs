@@ -307,6 +307,9 @@ function readExtra_() {
     moves: safe_(readMoves_),
     worklog: safe_(readWorklog_),
     floorStatus: safe_(readFloorStatus_),
+    plan: safe_(readPlan_),
+    discrepancies: safe_(readDiscrepancies_),
+    inventory: safe_(readInventory_),
     sources: safe_(sourcesInfo_),
   };
 }
@@ -378,6 +381,36 @@ function readFloorStatus_() {
   return sh.getRange(2, 1, sh.getLastRow() - 1, 6).getDisplayValues()
     .filter(function (r) { return r[0] && r[1]; })
     .map(function (r) { return { section: String(r[0]), floor: parseFloor_(r[1]), status: r[2], date: pickDate_(r[3]), source: r[4], comment: r[5] }; });
+}
+
+/** «VUP CORE»: Стройка · план — потребность материала по этажам, паллет */
+function readPlan_() {
+  const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Стройка · план');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 8).getDisplayValues()
+    .filter(function (r) { return r[0] && r[3]; })
+    .map(function (r) {
+      const zone = String(r[2]); const fm = zone.match(/(\d+)\s*этаж/i), sm = zone.match(/секци[яи]\s*(\d)/i);
+      return { id: r[0], date: pickDate_(r[1]), zone: zone, floor: fm ? +fm[1] : null, section: sm ? sm[1] : '', material: r[3], pallets: num_(r[4]), source: r[5], rule: r[6], comment: r[7] };
+    });
+}
+
+/** «VUP CORE»: Стройка · контроль расхождений */
+function readDiscrepancies_() {
+  const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Стройка · контроль расхождений');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 9).getDisplayValues()
+    .filter(function (r) { return r[0] && r[2]; })
+    .map(function (r) { return { section: String(r[0]), floor: parseFloor_(r[1]), material: r[2], plan: num_(r[3]), fact: num_(r[4]), diff: num_(r[5]), status: r[6], date: pickDate_(r[7]), note: r[8] }; });
+}
+
+/** «VUP CORE»: Стройка · инвентаризация склада */
+function readInventory_() {
+  const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Стройка · инвентаризация склада');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 9).getDisplayValues()
+    .filter(function (r) { return r[2]; })
+    .map(function (r) { return { id: r[0], date: pickDate_(r[1]), material: r[2], unit: r[3], qty: num_(r[4]), source: r[5], comment: r[6], calc: num_(r[7]), status: r[8] }; });
 }
 
 /** «02.11.26» / «02.11.2026» → ISO (для шапки недель; будущие даты допустимы) */

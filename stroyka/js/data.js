@@ -127,6 +127,17 @@ const LS = {
 
 const key = (s, f, w) => `${s}|${f}|${w}`;
 
+/** «СКЦ 160 мм / ПОЛИГРАН 160 ПГ C50», «ПОЛИГРАН 160» → «СКЦ 160»; «Газобетон 100 мм · КСМ» → «Газобетон 100» */
+export function materialKey(name) {
+  const s = String(name || '').toLowerCase();
+  const size = (s.match(/(\d{2,3})\s*(?:мм|пг|\b)/) || [])[1];
+  if (/скц|полигран|камень/.test(s)) return `СКЦ ${size || ''}`.trim() + (/полнотел/.test(s) ? ' полнотелый' : /пустотел/.test(s) ? ' пустотелый' : '');
+  if (/газобет|газобл|\bгб\b/.test(s)) return `Газобетон ${size || ''}`.trim();
+  if (/клей/.test(s)) return 'Клей';
+  if (/цпс|пескобет|смесь/.test(s)) return 'ЦПС';
+  return String(name || '').trim();
+}
+
 export class Store {
   constructor() {
     const cfg = LS.get('stroyka.cfg', {});
@@ -143,7 +154,7 @@ export class Store {
     this.loadedAt = null;
     this.listeners = new Set();
     this.queue = LS.get('stroyka.queue', []);
-    this.extra = { volumes: [], moves: [], worklog: [], floorStatus: [], sources: [] };
+    this.extra = { volumes: [], moves: [], worklog: [], floorStatus: [], plan: [], discrepancies: [], inventory: [], sources: [] };
     this.vol = new Map();
     this.version = null;
     this.flushing = false;
@@ -277,7 +288,7 @@ export class Store {
   /** Данные других таблиц: «Выполнение» (объёмы) и «VUP CORE» (материалы, ход работ, статусы этажей) */
   setExtra(x) {
     const e = x || {};
-    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], sources: e.sources || [] };
+    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [] };
     this.vol = new Map();
     for (const v of this.extra.volumes) {
       const g = workGroup(v.work, Number(v.floor));
@@ -342,6 +353,24 @@ export class Store {
   journalOn(date) { return this.allJournal().filter((j) => j.date === date); }
   peopleOn(date, section) {
     return this.allJournal().filter((j) => j.date === date && j.type === 'Люди' && (!section || j.section === section)).reduce((a, j) => a + j.qty, 0);
+  }
+  /** Склад по VUP CORE: поступления минус подачи на этажи, по материалам (паллеты) */
+  stock() {
+    const rows = {};
+    for (const m of this.extra.moves) {
+      const k = materialKey(m.material);
+      const r = (rows[k] ||= { material: k, names: new Set(), in: 0, out: 0 });
+      r.names.add(m.material);
+      if (/подач/i.test(m.type)) r.out += m.pallets || 0; else if (/поступ|приход|приём|прием/i.test(m.type)) r.in += m.pallets || 0;
+    }
+    return Object.values(rows).map((r) => ({ ...r, names: [...r.names], left: r.in - r.out })).sort((a, b) => a.material.localeCompare(b.material, 'ru'));
+  }
+  /** План подачи на этажи (VUP CORE «Стройка · план») против фактических подач */
+  planVsFact() {
+    return this.extra.plan.map((p) => {
+      const fed = this.extra.moves.filter((m) => /подач/i.test(m.type) && m.section === p.section && m.floor === p.floor && materialKey(m.material) === materialKey(p.material)).reduce((a, m) => a + (m.pallets || 0), 0);
+      return { ...p, key: materialKey(p.material), fed };
+    });
   }
   floorStatusOf(section, floor) { return this.extra.floorStatus.filter((x) => String(x.section) === section && Number(x.floor) === floor); }
   movesTo(section, floor) { return this.extra.moves.filter((m) => m.section === section && m.floor === floor); }

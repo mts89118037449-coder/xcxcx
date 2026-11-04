@@ -27,6 +27,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; max-width: 100%; overflow-x: clip; }
 body {
   background: var(--bg); color: var(--ink);
@@ -372,3 +373,29 @@ body.touring .floor-tag { opacity: 0; }
 .fstatus p { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
 .src { font-size: 10.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; white-space: nowrap; align-self: center; }
 .err-t { color: var(--red); }
+
+/* ---------- панель «Вид» над 3D ---------- */
+.view-btn { max-width: 62vw; overflow: hidden; text-overflow: ellipsis; }
+.view-panel { position: absolute; top: 52px; left: 12px; z-index: 8; width: min(380px, calc(100% - 24px)); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.18); padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.vp-group { display: flex; flex-direction: column; gap: 6px; }
+.vp-h { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+.view-panel .seg { box-shadow: none; flex-wrap: wrap; }
+.view-panel .seg button { font-size: 13px; padding: 6px 10px; }
+.vp-note { margin: 0; font-size: 12px; color: var(--muted); }
+.vp-close { align-self: flex-end; }
+.hint-tap { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); z-index: 4; background: rgba(17,24,39,.82); color: #fff; font-size: 12.5px; padding: 6px 12px; border-radius: 99px; pointer-events: none; white-space: nowrap; }
+@media (max-width: 900px) {
+  .stage-ui { overflow: visible; flex-wrap: nowrap; }
+  .view-panel { top: 46px; left: 8px; width: calc(100% - 16px); max-height: calc(100% - 56px); overflow-y: auto; }
+  .hint-tap { top: auto; bottom: 46px; font-size: 11.5px; }
+}
+
+/* ---------- склад ---------- */
+.tablewrap { overflow-x: auto; }
+.stock td:first-child { max-width: 160px; }
+.neg { color: var(--red); }
+.okc { color: var(--green-full); }
+.planbox { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-top: 8px; }
+.planh { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; font-size: 13px; }
+.chip-ok { font-size: 11px; padding: 1px 8px; border-radius: 99px; background: var(--green-weak); color: var(--green-full); border: 1px solid var(--green); }
+.tools li { font-size: 13px; }

@@ -35,21 +35,35 @@
 <main class="layout">
   <section class="stage" id="stage" aria-label="3D-модель корпуса">
     <div class="stage-ui">
-      <div class="seg" id="metric" role="tablist" aria-label="Что показывать">
-        <button data-m="avg" class="on">Все работы</button>
-        <button data-m="Наружные стены">Наружные стены</button>
-        <button data-m="Перегородки">Перегородки</button>
-        <button data-m="Инженерка">Инженерка</button>
-      </div>
-      <div class="seg" id="viewMode" aria-label="Режим отображения">
-        <button data-v="fact" class="on">Факт</button>
-        <button data-v="progress">Прогресс</button>
-        <button data-v="project">Проект</button>
-      </div>
-      <button class="btn ghost small" id="btnView" title="Вид по умолчанию">⌂ Вид</button>
-      <button class="btn small" id="btnTour">▶ 3D-тур</button>
-      <button class="btn ghost small only-mobile" id="btnExpand" title="Развернуть 3D">⤢</button>
+      <button class="btn small view-btn" id="btnViewPanel" aria-haspopup="true" aria-expanded="false"><span id="viewLabel">Факт · все работы</span> ▾</button>
+      <button class="btn ghost small" id="btnView" title="Вернуть вид по умолчанию" aria-label="Вид по умолчанию">⌂</button>
+      <button class="btn ghost small" id="btnTour" title="3D-тур по прокрутке">▶ Тур</button>
+      <button class="btn ghost small only-mobile" id="btnExpand" title="Развернуть 3D" aria-label="Развернуть 3D">⤢</button>
     </div>
+    <div class="view-panel" id="viewPanel" hidden>
+      <div class="vp-group"><div class="vp-h">Что показать</div>
+        <div class="seg small" id="metric" role="tablist">
+          <button data-m="avg" class="on">Все работы</button>
+          <button data-m="Наружные стены">Наружные стены</button>
+          <button data-m="Перегородки">Перегородки</button>
+          <button data-m="Инженерка">Инженерка</button>
+        </div></div>
+      <div class="vp-group"><div class="vp-h">Как показать</div>
+        <div class="seg small" id="viewMode">
+          <button data-v="fact" class="on">Факт</button>
+          <button data-v="progress">Прогресс</button>
+          <button data-v="project">Проект</button>
+        </div>
+        <p class="vp-note" id="viewNote">Готовое — как на проекте, остальное — каркас. Зелёная полоса — процент этажа.</p></div>
+      <div class="vp-group"><div class="vp-h">Время и погода</div>
+        <div class="seg small" id="timeMode">
+          <button data-t="now" class="on">Сейчас в Мурманске</button>
+          <button data-t="day">День</button>
+        </div>
+        <p class="vp-note" id="sunNote"></p></div>
+      <button class="btn small vp-close" id="vpClose">Готово</button>
+    </div>
+    <div class="hint-tap" id="hintTap" hidden>Нажмите на этаж — откроются его объёмы и материалы</div>
     <div class="legend" id="legend">
       <span><i class="sw sw-facade"></i>готово</span>
       <span><i class="sw sw-strip"></i>полоса — % этажа</span>
@@ -62,15 +76,16 @@
 
   <aside class="side">
     <nav class="tabs" role="tablist">
-      <button data-tab="summary" class="on"><i aria-hidden="true">▦</i><span>Сводка</span></button>
+      <button data-tab="summary" class="on"><i aria-hidden="true">▦</i><span>Обзор</span></button>
       <button data-tab="floor"><i aria-hidden="true">≡</i><span>Этаж</span></button>
       <button data-tab="calendar"><i aria-hidden="true">▤</i><span>Календарь</span></button>
-      <button data-tab="money"><i aria-hidden="true">₽</i><span>Учёт</span></button>
-      <button data-tab="tour" class="tab-tour"><i aria-hidden="true">◎</i><span>3D-тур</span></button>
+      <button data-tab="stock"><i aria-hidden="true">▣</i><span>Склад</span></button>
+      <button data-tab="money"><i aria-hidden="true">₽</i><span>Финансы</span></button>
     </nav>
     <div class="tab" id="tab-summary"></div>
     <div class="tab" id="tab-floor" hidden></div>
     <div class="tab" id="tab-calendar" hidden></div>
+    <div class="tab" id="tab-stock" hidden></div>
     <div class="tab" id="tab-money" hidden></div>
   </aside>
 </main>
