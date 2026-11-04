@@ -49,7 +49,7 @@ fs.mkdirSync(BACKUPS, { recursive: true });
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 // ------------------------------------------------------------------ хранилище
-const EMPTY = () => ({ v: String(Date.now()), progress: [], journal: [], docsRows: [], remarks: [], fin: { expenses: [], advances: [], income: [], nominated: [] } });
+const EMPTY = () => ({ v: String(Date.now()), progress: [], journal: [], docsRows: [], remarks: [], fin: { expenses: [], advances: [], income: [], nominated: [], personal: [], tools: [], contract: [] } });
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -78,7 +78,7 @@ function normalize(x) {
   const out = EMPTY();
   for (const k of ['progress', 'journal', 'docsRows', 'remarks']) if (Array.isArray(d[k])) out[k] = d[k];
   const f = d.fin || {};
-  for (const k of ['expenses', 'advances', 'income', 'nominated']) if (Array.isArray(f[k])) out.fin[k] = f[k];
+  for (const k of ['expenses', 'advances', 'income', 'nominated', 'personal', 'tools', 'contract']) if (Array.isArray(f[k])) out.fin[k] = f[k];
   if (f.summary) { out.fin.summary = f.summary; out.fin.partial = !!f.partial; }
   out.fin.expenses = out.fin.expenses.map((e) => ({ ...e, id: e.id || 'r' + (e.row || crypto.randomUUID().slice(0, 8)) }));
   out.journal = out.journal.map((j) => ({ ...j, id: j.id || 'j' + crypto.randomUUID().slice(0, 8) }));

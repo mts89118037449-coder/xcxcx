@@ -36,6 +36,9 @@ const SHEET_EXPENSES = 'Счета';
 const SHEET_ADVANCES = 'Для РП';
 const SHEET_INCOME = 'Оплаты Глоракс';
 const SHEET_NOMINATED = 'Номинированные материалы';
+const SHEET_PERSONAL = 'Личные расходы';
+const SHEET_TOOLS = 'УЧЁТ ИНСТРУМЕНТА ';
+const SHEET_CONTRACT = 'Формула оплаты Глоракс ';
 
 const PROGRESS_HEADER = ['Секция', 'Этаж', 'Вид работ', 'Процент', 'Обновлено', 'Примечание'];
 const JOURNAL_HEADER = ['Дата', 'Секция', 'Тип', 'Наименование', 'Количество', 'Ед.', 'Примечание', 'ID'];
@@ -294,7 +297,10 @@ function readRemarks_() {
 // ---------------------------------------------------------------- финансы
 
 function readFin_() {
-  return { expenses: safe_(readExpenses_), advances: safe_(readAdvances_), income: safe_(readIncome_), nominated: safe_(readNominated_) };
+  return {
+    expenses: safe_(readExpenses_), advances: safe_(readAdvances_), income: safe_(readIncome_), nominated: safe_(readNominated_),
+    personal: safe_(readPersonal_), tools: safe_(readTools_), contract: safe_(readContract_),
+  };
 }
 function safe_(fn) { try { return fn(); } catch (e) { return []; } }
 
@@ -306,18 +312,60 @@ function readExpenses_() {
   const disp = sh.getRange(5, 1, n, 8).getDisplayValues();
   const raw = sh.getRange(5, 8, n, 1).getValues();
   const out = [];
+  let prevDate = '';
   disp.forEach(function (r, i) {
     const sum = num_(raw[i][0]);
     if (!sum) return;
     const mark = String(r[6] || '').match(/\[app:([\w-]+)\]/);
+    // дата: «Дата платежа» → «Дата счёта» → лучшая дата из основания/примечания → дата строки выше
+    let date = pickDate_(r[2]) || pickDate_(r[1]) || pickDate_(r[5] + ' ' + r[6]);
+    const approx = !date && !!prevDate;
+    if (!date) date = prevDate;
+    prevDate = date || prevDate;
     out.push({
       id: mark ? mark[1] : 'r' + (i + 5), app: !!mark,
       n: r[0], row: i + 5,
-      date: findDate_(r[2]) || findDate_(r[1]) || findDate_(r[5]) || findDate_(r[6]),
+      date: date, approx: approx,
       cat: String(r[3] || 'Прочее').trim(), who: String(r[4] || '').trim(),
       basis: String(r[5] || '').replace(/\s+/g, ' ').slice(0, 160), note: String(r[6] || '').replace(/\s*\[app:[\w-]+\]/, '').replace(/\s+/g, ' ').slice(0, 120),
       sum: sum,
     });
+  });
+  return out;
+}
+
+/** «Личные расходы»: с 3-й строки. A дата, B наименование, C сумма, D плательщик, E примечание */
+function readPersonal_() {
+  const sh = ss_().getSheetByName(SHEET_PERSONAL);
+  if (!sh || sh.getLastRow() < 3) return [];
+  let prev = '';
+  return sh.getRange(3, 1, sh.getLastRow() - 2, 5).getDisplayValues()
+    .filter(function (r) { return num_(r[2]); })
+    .map(function (r) {
+      const d = pickDate_(r[0]); const approx = !d && !!prev; const date = d || prev; prev = date;
+      return { date: date, approx: approx, name: String(r[1]).trim(), sum: num_(r[2]), who: String(r[3]).trim(), note: String(r[4]).trim() };
+    });
+}
+
+/** «УЧЁТ ИНСТРУМЕНТА»: дата остатков в B1, со 3-й строки: A №, B наименование, C количество */
+function readTools_() {
+  const sh = ss_().getSheetByName(SHEET_TOOLS);
+  if (!sh || sh.getLastRow() < 3) return [];
+  const date = pickDate_(sh.getRange(1, 2).getDisplayValue());
+  return sh.getRange(3, 1, sh.getLastRow() - 2, 3).getDisplayValues()
+    .filter(function (r) { return String(r[1]).trim(); })
+    .map(function (r) { return { n: r[0], name: String(r[1]).trim(), qty: String(r[2]).trim(), date: date }; });
+}
+
+/** «Формула оплаты Глоракс»: пары «подпись — значение» (подписи в колонке C, значения в B; справа — доп. значение в D) */
+function readContract_() {
+  const sh = ss_().getSheetByName(SHEET_CONTRACT);
+  if (!sh) return [];
+  const v = sh.getRange(1, 1, Math.min(sh.getLastRow(), 40), 5).getDisplayValues();
+  const out = [];
+  v.forEach(function (r) {
+    const label = String(r[2] || '').trim();
+    if (label && num_(r[1]) && !/^\d/.test(label)) out.push({ label: label, value: num_(r[1]), extra: num_(r[3]) || null });
   });
   return out;
 }
@@ -328,7 +376,7 @@ function readAdvances_() {
   if (!sh || sh.getLastRow() < 3) return [];
   return sh.getRange(3, 1, sh.getLastRow() - 2, 8).getDisplayValues()
     .filter(function (r) { return /^\d+$/.test(String(r[0]).trim()) && num_(r[5]); })
-    .map(function (r) { return { n: r[0], type: String(r[2]).replace('Аванс за ', '').replace(/^н/, 'Н'), date: findDate_(r[3]), sum: num_(r[5]), status: r[6], desc: r[7] }; });
+    .map(function (r) { return { n: r[0], type: String(r[2]).replace('Аванс за ', '').replace(/^н/, 'Н'), date: pickDate_(r[3]), sum: num_(r[5]), status: r[6], desc: r[7] }; });
 }
 
 /** «Оплаты Глоракс»: с 4-й строки. A №, B дата счёта, C статус, D дата платежа, E примечание, F сумма */
@@ -416,6 +464,40 @@ function num_(v) {
   return isNaN(n) ? 0 : n;
 }
 const RU_M_ = ['январ', 'феврал', 'март', 'апрел', 'ма', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр', 'декабр'];
+/**
+ * Все даты в тексте: «17.04.2026», «2026-04-17», «от 4 июля 2026», ««19» мая», «22 мая», «18.05.202» (опечатка года).
+ * Без года (или с обрезанным годом) — текущий год. Возвращает лучшую: самую позднюю правдоподобную;
+ * дата из будущего (опечатка «2027») сдвигается на год назад.
+ */
+function pickDate_(text) {
+  if (text instanceof Date) return Utilities.formatDate(text, tz_(), 'yyyy-MM-dd');
+  const s = String(text || '').toLowerCase();
+  if (!s.trim()) return '';
+  const now = new Date();
+  const Y = now.getFullYear();
+  const max = Utilities.formatDate(new Date(now.getTime() + 31 * 864e5), tz_(), 'yyyy-MM-dd');
+  const iso = function (y, m, d) { return (m >= 1 && m <= 12 && d >= 1 && d <= 31) ? y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2) : ''; };
+  const c = [];
+  let m;
+  const re1 = /(\d{4})-(\d{2})-(\d{2})/g;
+  while ((m = re1.exec(s))) c.push(iso(+m[1], +m[2], +m[3]));
+  const re2 = /(?:^|[^\d№\/])(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})(?!\d)/g;
+  while ((m = re2.exec(s))) c.push(iso(m[3].length === 4 ? +m[3] : Y, +m[2], +m[1]));
+  const re3 = /(?:^|[^\d№\/.,])(\d{1,2})\.(\d{1,2})(?![\d.\/])/g;      // 28.04 — без года
+  while ((m = re3.exec(s))) c.push(iso(Y, +m[2], +m[1]));
+  const re4 = /«?(\d{1,2})»?\s+([а-я]+)(?:\s+(\d{4}))?/g;
+  while ((m = re4.exec(s))) {
+    for (let i = 0; i < RU_M_.length; i++) {
+      const x = RU_M_[i];
+      if (m[2].indexOf(x) === 0 && (x !== 'ма' || m[2] === 'мая' || m[2] === 'май')) { c.push(iso(m[3] ? +m[3] : Y, i + 1, +m[1])); break; }
+    }
+  }
+  const ok = c.filter(function (d) { return d && d >= '2025-01-01' && d <= max; }).sort();
+  if (ok.length) return ok[ok.length - 1];
+  const fut = c.filter(function (d) { return d && d > max; }).map(function (d) { return (+d.slice(0, 4) - 1) + d.slice(4); }).filter(function (d) { return d <= max; }).sort();
+  return fut.length ? fut[fut.length - 1] : '';
+}
+
 function findDate_(text) {
   if (text instanceof Date) return Utilities.formatDate(text, tz_(), 'yyyy-MM-dd');
   const s = String(text || '');

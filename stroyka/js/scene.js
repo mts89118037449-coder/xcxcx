@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { Sky } from 'three/addons/objects/Sky.js';
 import { SECTIONS, FLOORS, ROOF, floorName } from './data.js';
 
 // Размеры в метрах (башня-секция с почти квадратным планом)
@@ -45,7 +46,7 @@ export class BuildingScene {
     this.container = container;
     this.store = store;
     this.metric = 'avg';
-    this.view = 'progress'; // progress | project
+    this.view = 'fact'; // fact (готовое — как в проекте, остальное каркас) | progress (зелёная заливка) | project
     this.floors = new Map();
     this.hovered = null;
     this.selected = null;
@@ -68,11 +69,14 @@ export class BuildingScene {
     container.appendChild(this.labels.domElement);
 
     const scene = (this.scene = new THREE.Scene());
-    const pmrem = new THREE.PMREMGenerator(r);
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.45;
+    this.pmrem = new THREE.PMREMGenerator(r);
+    this.mobile = matchMedia('(max-width: 900px)').matches;
+    // физическое небо: фон + отражения в стёклах
+    this.sky = new Sky();
+    this.sky.scale.setScalar(4000);
+    scene.add(this.sky);
 
-    this.camera = new THREE.PerspectiveCamera(35, w / h, 1, 3000);
+    this.camera = new THREE.PerspectiveCamera(35, w / h, 1, 6000);
     this.controls = new OrbitControls(this.camera, r.domElement);
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI * 0.49;
@@ -86,14 +90,14 @@ export class BuildingScene {
     const sun = (this.sun = new THREE.DirectionalLight(0xffe6c4, 2.0));
     sun.position.set(-110, 95, 70);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(this.mobile ? 1024 : 2048, this.mobile ? 1024 : 2048);
     Object.assign(sun.shadow.camera, { left: -110, right: 110, top: 110, bottom: -60, near: 10, far: 500 });
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.02;
     scene.add(sun);
 
     this.tex = {};
-    for (const k of Object.keys(PAL)) this.tex[k] = makeFacadeTexture(PAL[k], k === 'lobby');
+    for (const k of Object.keys(PAL)) this.tex[k] = makeFacadeTextures(PAL[k], k === 'lobby');
 
     this.buildLandscape();
     this.buildSections();
@@ -119,11 +123,28 @@ export class BuildingScene {
 
   setTheme() {
     const dark = this.isDark();
-    this.scene.background = makeSkyTexture(dark);
-    const fog = dark ? 0x1c2229 : 0xdfe6e8;
-    this.scene.fog = new THREE.Fog(fog, 280, 900);
-    this.sun.intensity = dark ? 1.1 : 2.0;
-    this.hemi.intensity = dark ? 0.5 : 0.9;
+    // день: солнце повыше, тёплый свет; тёмная тема — вечерние сумерки
+    const elev = dark ? 2.5 : 18, azim = 215;
+    const u = this.sky.material.uniforms;
+    u.turbidity.value = dark ? 6 : 1.6; u.rayleigh.value = dark ? 2.8 : 2.2;
+    u.mieCoefficient.value = 0.005; u.mieDirectionalG.value = 0.8;
+    const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - elev), THREE.MathUtils.degToRad(azim));
+    u.sunPosition.value.copy(sunDir);
+    this.sun.position.copy(sunDir).multiplyScalar(160);
+    this.sun.color.set(dark ? 0xffb27a : 0xfff0dc);
+    this.sun.intensity = dark ? 1.0 : 2.3;
+    this.hemi.intensity = dark ? 0.35 : 0.8;
+    this.renderer.toneMappingExposure = dark ? 0.55 : 0.6;
+    // окружение для отражений — из того же неба
+    const envScene = new THREE.Scene();
+    const skyCopy = new Sky(); skyCopy.scale.setScalar(4000); skyCopy.material.uniforms = THREE.UniformsUtils.clone(u);
+    envScene.add(skyCopy);
+    if (this.envRT) this.envRT.dispose();
+    this.envRT = this.pmrem.fromScene(envScene, 0, 1, 5000);
+    this.scene.environment = this.envRT.texture;
+    this.scene.environmentIntensity = dark ? 0.5 : 0.8;
+    this.scene.background = null;
+    this.scene.fog = new THREE.Fog(dark ? 0x3a3340 : 0xb9cde0, 380, 1600);
   }
 
   /** На узких (портретных) экранах камера отходит дальше, чтобы обе секции влезли */
@@ -139,7 +160,7 @@ export class BuildingScene {
   // ------------------------------------------------------------ окружение
   buildLandscape() {
     const s = this.scene;
-    const grass = new THREE.Mesh(new THREE.CircleGeometry(600, 64), new THREE.MeshStandardMaterial({ color: 0x7c9a5a, roughness: 1 }));
+    const grass = new THREE.Mesh(new THREE.CircleGeometry(600, 64), new THREE.MeshStandardMaterial({ color: 0xffffff, map: makeGrassTexture(), roughness: 1 }));
     grass.rotation.x = -Math.PI / 2;
     grass.receiveShadow = true;
     s.add(grass);
@@ -155,6 +176,19 @@ export class BuildingScene {
     // двор и мощение вокруг башен
     flat(90, 58, 0xc9c3b6, 0, 0, 0.02);
     for (const sec of SECTIONS) { const [x, , z] = SECTION_POS[sec]; flat(L + 8, D + 8, 0xb5aea1, x, z, 0.04); }
+    // забор стройплощадки (профлист) — виден, пока идёт стройка
+    this.fence = new THREE.Group();
+    const fenceTex = makeFenceTexture();
+    const fenceMat = new THREE.MeshStandardMaterial({ map: fenceTex, roughness: 0.6, metalness: 0.3 });
+    const seg = (w, x, z, rot) => {
+      const t = fenceTex.clone(); t.needsUpdate = true; t.repeat.set(w / 4, 1);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 2.2, 0.08), fenceMat.clone());
+      m.material.map = t; m.position.set(x, 1.1, z); m.rotation.y = rot || 0; m.castShadow = true; m.receiveShadow = true;
+      this.fence.add(m);
+    };
+    seg(92, 0, -29); seg(58, -46, 0, Math.PI / 2); seg(58, 46, 0, Math.PI / 2);
+    seg(38, -27, 29); seg(38, 27, 29);           // спереди — въезд посередине
+    s.add(this.fence);
     // газоны во дворе
     flat(18, 14, 0x86a862, -18, -16, 0.05);
     flat(18, 14, 0x86a862, 18, 16, 0.05);
@@ -324,6 +358,13 @@ export class BuildingScene {
         marker.visible = false;
         g.add(marker);
 
+        // зелёная полоса на торце перекрытия — процент этажа в режиме «Факт»
+        const bar = new THREE.Mesh(fillGeo, new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x16a34a, emissiveIntensity: 0.9, roughness: 0.4 }));
+        bar.scale.set(0.001, 0.2, 0.14);
+        bar.position.set(-L / 2, 0.01, D / 2 + 0.07);
+        bar.visible = false;
+        g.add(bar);
+
         if (s === '5' && (f % 2 === 0 || f === ROOF || f === 1)) {
           const el = document.createElement('div');
           el.className = 'floor-tag';
@@ -333,8 +374,22 @@ export class BuildingScene {
           g.add(label);
         }
 
-        this.floors.set(`${s}|${f}`, { section: s, floor: f, group: g, fill, front, side, slab, cols, hit, marker, shell, edges, innerH, isRoof });
+        this.floors.set(`${s}|${f}`, { section: s, floor: f, group: g, fill, front, side, slab, cols, hit, marker, shell, edges, innerH, isRoof, bar });
       }
+
+      // объёмные пилоны фасада (как на проекте): по краям оконных модулей, на всех четырёх сторонах
+      const pil = [];
+      const NX = Math.round(L / MOD), NZ = 6;
+      for (let f = 0; f < ROOF; f++) {
+        for (let i = 0; i <= NX; i++) for (const zs of [1, -1]) pil.push({ f, side: 'x', x: -L / 2 + i * (L / NX), z: zs * (D / 2 + 0.13) });
+        for (let j = 1; j < NZ; j++) for (const xs of [-1, 1]) pil.push({ f, side: xs < 0 ? 'left' : 'right', x: xs * (L / 2 + 0.13), z: -D / 2 + j * (D / NZ) });
+      }
+      const pilGeo = new THREE.BoxGeometry(0.55, H - SLAB, 0.3);
+      const pilMesh = new THREE.InstancedMesh(pilGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.75 }), pil.length);
+      pilMesh.castShadow = true; pilMesh.receiveShadow = true;
+      pilMesh.userData.items = pil;
+      sec.add(pilMesh);
+      this[`pil${s}`] = pilMesh;
 
       // оборудование на кровле (выходы, вентшахты) — видно в режиме «Проект» и при готовой кровле
       const roofKit = new THREE.Group();
@@ -442,8 +497,8 @@ export class BuildingScene {
 
   /** Палитра фасада для этажа */
   palette(f, done) {
-    if (this.view === 'project') return f === 0 ? 'lobby' : f >= 16 ? 'copper' : 'project';
-    return done ? 'full' : 'progress';
+    if (this.view === 'progress') return done ? 'full' : 'progress';
+    return f === 0 ? 'lobby' : f >= 16 ? 'copper' : 'project';
   }
 
   update() {
@@ -464,8 +519,14 @@ export class BuildingScene {
           m.map = null;
           m.color.set(project ? C.copper : p >= 0.999 ? PAL.full.wall : PAL.progress.wall);
         } else {
-          if (!m.map || m.map.userData.key !== key) { m.map = this.tex[key].clone(); m.map.userData.key = key; m.map.needsUpdate = true; }
-          m.map.repeat.set(Math.max(1, Math.round(width / MOD)), 1);
+          if (!m.map || m.map.userData.key !== key) {
+            const t = this.tex[key];
+            m.map = t.map.clone(); m.roughnessMap = t.rough.clone(); m.metalnessMap = t.metal.clone();
+            for (const x of [m.map, m.roughnessMap, m.metalnessMap]) x.needsUpdate = true;
+            m.map.userData.key = key; m.roughness = 1; m.metalness = 1;
+          }
+          const rep = Math.max(1, Math.round(width / MOD));
+          for (const x of [m.map, m.roughnessMap, m.metalnessMap]) x.repeat.set(rep, 1);
           m.color.set(0xffffff);
         }
         m.needsUpdate = true;
@@ -480,21 +541,46 @@ export class BuildingScene {
       o.slab.material.needsUpdate = true;
       const open = this.store.remarksFor(s, f).filter((r) => this.store.isOpenRemark(r));
       o.marker.visible = !project && open.length > 0;
+      o.bar.visible = this.view === 'fact' && !o.isRoof && p > 0.001;
+      o.bar.scale.x = Math.max(0.001, (L - 0.06) * p);
     }
+    this.updatePilasters();
     for (const s of SECTIONS) {
       const roofDone = this.store.floorValue(s, ROOF, 'avg') >= 100;
       this[`roof${s}`].visible = (project || roofDone) && (this.growth == null || this.growth >= 0.95);
       const pct = Math.round(this.store.sectionValue(s, this.metric));
       this[`tag${s}`].querySelector('[data-pct]').textContent = project ? 'проект' : `${pct}%`;
     }
+    this.fence.visible = !project;
     this.paintHighlight();
+  }
+
+  /** Пилоны видны там, где фасад готов (в «Факте» и «Проекте»), цвет — по этажу */
+  updatePilasters() {
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), side = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
+    const col = { project: new THREE.Color(PAL.project.pier), copper: new THREE.Color(PAL.copper.pier), lobby: new THREE.Color(PAL.lobby.pier) };
+    for (const s of SECTIONS) {
+      const mesh = this[`pil${s}`];
+      mesh.userData.items.forEach((it, i) => {
+        const o = this.floors.get(`${s}|${it.f}`);
+        const len = o.target || 0;
+        const on = this.view !== 'progress' && (it.side === 'x' ? it.x <= -L / 2 + len + 0.05 && len > 0.05 : it.side === 'left' ? len > 0.05 : o.p >= 0.999);
+        const y = it.f * H + SLAB + (H - SLAB) / 2;
+        m4.compose(new THREE.Vector3(it.x, y, it.z), it.side === 'x' ? q : side, on ? new THREE.Vector3(1, 1, 1) : new THREE.Vector3(0, 0, 0));
+        mesh.setMatrixAt(i, m4);
+        mesh.setColorAt(i, it.f === 0 ? col.lobby : it.f >= 16 ? col.copper : col.project);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }
   }
 
   paintHighlight() {
     for (const [k, o] of this.floors) {
       const sel = this.selected && k === `${this.selected.section}|${this.selected.floor}`;
       const hov = this.hovered && k === `${this.hovered.section}|${this.hovered.floor}`;
-      const base = this.view === 'project' ? (o.floor >= 16 ? C.copper : 0xf1ebe0) : C.concrete;
+      const finished = this.view === 'project' || (this.view === 'fact' && o.p >= 0.999);
+      const base = finished ? (o.floor >= 16 ? C.copper : 0xf1ebe0) : C.concrete;
       o.slab.material.color.set(sel ? C.select : hov ? C.hover : base);
       o.slab.material.emissive.set(sel ? C.select : hov ? C.hover : 0x000000);
       o.slab.material.emissiveIntensity = sel || hov ? 0.45 : 0;
@@ -570,6 +656,7 @@ export class BuildingScene {
       const cur = o.fill.scale.x;
       const next = cur + (o.target - cur) * k;
       o.fill.scale.x = Math.abs(o.target - next) < 0.002 ? o.target : next;
+      o.fill.visible = o.fill.scale.x > 0.02;   // у пустого этажа не видно торцов заливки
       // окна на фронтальной грани растягиваются вместе с заливкой — держим шаг модуля
       if (o.front.map && !o.isRoof) o.front.map.repeat.x = Math.max(1, Math.round(o.fill.scale.x / MOD));
     }
@@ -581,41 +668,70 @@ export class BuildingScene {
 }
 
 // Фасадный модуль 3 × 3 м: простенок-пилон, окно в пол с импостом, межэтажный пояс.
-function makeFacadeTexture(p, lobby) {
-  // пилоны на обоих краях модуля → при повторе получаются широкие сплошные вертикали
+// Три текстуры одной раскладки: цвет, шероховатость и «металличность» — стёкла гладкие и отражают небо.
+function makeFacadeTextures(p, lobby) {
+  const draw = (wall, pier, glassTop, glassBottom, frame) => {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = wall; g.fillRect(0, 0, 128, 128);
+    g.fillStyle = pier; g.fillRect(0, 0, 22, 128); g.fillRect(106, 0, 22, 128);
+    g.fillStyle = wall; g.fillRect(22, 118, 84, 10);
+    const [x, y, w, h] = lobby ? [24, 6, 80, 110] : [30, 6, 68, 108];
+    if (glassTop === glassBottom) g.fillStyle = glassTop;
+    else { const grd = g.createLinearGradient(0, y, 0, y + h); grd.addColorStop(0, glassTop); grd.addColorStop(1, glassBottom); g.fillStyle = grd; }
+    g.fillRect(x, y, w, h);
+    g.fillStyle = frame;
+    g.fillRect(x - 3, y - 3, w + 6, 3); g.fillRect(x - 3, y + h, w + 6, 4);
+    g.fillRect(x - 3, y, 3, h); g.fillRect(x + w, y, 3, h);
+    g.fillRect(x + w / 2 - 1.5, y, 3, h);
+    if (!lobby) g.fillRect(x, y + h * 0.62, w, 3);
+    // лёгкая неоднородность штукатурки/облицовки
+    const img = g.getImageData(0, 0, 128, 128);
+    for (let i = 0; i < img.data.length; i += 4) { const n = (Math.random() - 0.5) * 6; img.data[i] += n; img.data[i + 1] += n; img.data[i + 2] += n; }
+    g.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    return t;
+  };
+  const map = draw(p.wall, p.pier, p.glass2, p.glass, p.frame);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const rough = draw('#e6e6e6', '#d0d0d0', '#121212', '#121212', '#7a7a7a');   // стена матовая, стекло гладкое
+  const metal = draw('#000000', '#000000', '#9a9a9a', '#9a9a9a', '#404040');   // отражение неба в стёклах
+  return { map, rough, metal };
+}
+
+function makeGrassTexture() {
   const c = document.createElement('canvas');
-  c.width = 128; c.height = 128;
+  c.width = c.height = 256;
   const g = c.getContext('2d');
-  g.fillStyle = p.wall;
-  g.fillRect(0, 0, 128, 128);
-  // вертикальный пилон по краю модуля (как на проекте — фасад «в полоску»)
-  g.fillStyle = p.pier;
-  g.fillRect(0, 0, 22, 128);
-  g.fillRect(106, 0, 22, 128);
-  // межэтажный пояс
-  g.fillStyle = p.wall;
-  g.fillRect(22, 118, 84, 10);
-  // окно
-  const [x, y, w, h] = lobby ? [24, 6, 80, 110] : [30, 6, 68, 108];
-  const grd = g.createLinearGradient(0, y, 0, y + h);
-  grd.addColorStop(0, p.glass2);
-  grd.addColorStop(1, p.glass);
-  g.fillStyle = grd;
-  g.fillRect(x, y, w, h);
-  g.fillStyle = p.frame;
-  g.fillRect(x - 3, y - 3, w + 6, 3);
-  g.fillRect(x - 3, y + h, w + 6, 4);
-  g.fillRect(x - 3, y, 3, h);
-  g.fillRect(x + w, y, 3, h);
-  g.fillRect(x + w / 2 - 1.5, y, 3, h);          // импост
-  if (!lobby) g.fillRect(x, y + h * 0.62, w, 3);  // фрамуга
-  // отражение неба
-  g.fillStyle = 'rgba(255,255,255,0.10)';
-  g.beginPath(); g.moveTo(x, y + h * 0.5); g.lineTo(x + w * 0.45, y); g.lineTo(x + w * 0.7, y); g.lineTo(x, y + h * 0.85); g.fill();
+  g.fillStyle = '#7d9b58'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 2600; i++) {
+    const v = Math.random();
+    g.fillStyle = v < 0.5 ? 'rgba(96,128,64,0.35)' : v < 0.85 ? 'rgba(140,166,96,0.3)' : 'rgba(170,160,110,0.25)';
+    const r = 1 + Math.random() * 5;
+    g.beginPath(); g.arc(Math.random() * 256, Math.random() * 256, r, 0, 6.28); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(70, 70);
+  t.anisotropy = 8;
+  return t;
+}
+
+function makeFenceTexture() {
+  // профлист стройплощадки: сине-серые волны + полоса с подписью-«баннером»
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 64;
+  const g = c.getContext('2d');
+  for (let x = 0; x < 128; x += 8) { g.fillStyle = x % 16 ? '#5b7a99' : '#4b6886'; g.fillRect(x, 0, 8, 64); }
+  g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(0, 22, 128, 14);
+  g.fillStyle = '#2f4a66'; g.font = 'bold 10px sans-serif'; g.fillText('СТРОИТЕЛЬНАЯ ПЛОЩАДКА', 4, 33);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
-  t.anisotropy = 8;
   return t;
 }
 

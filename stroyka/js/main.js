@@ -15,7 +15,7 @@ const state = {
   metric: 'avg',
   month: (() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; })(),
   day: isoToday(),
-  money: 'exp',
+  money: 'contract',
   expCat: 'all',
   expQuery: '',
   expLimit: 40,
@@ -26,6 +26,7 @@ const rubShort = (n) => n >= 1e6 ? (n / 1e6).toLocaleString('ru-RU', { maximumFr
 
 // ---------- тема ----------
 try { const t = localStorage.getItem('stroyka.theme'); if (t) document.documentElement.dataset.theme = t; } catch { /* */ }
+$('#btnTheme2').onclick = () => $('#btnTheme').click();
 $('#btnTheme').onclick = () => {
   const cur = document.documentElement.dataset.theme;
   const dark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
@@ -51,6 +52,12 @@ $('#viewMode').onclick = (e) => {
   for (const x of $('#viewMode').children) x.classList.toggle('on', x === b);
   scene.setView(b.dataset.v);
   document.body.classList.toggle('project-view', b.dataset.v === 'project');
+  const L = {
+    fact: '<span><i class="sw sw-facade"></i>готово</span><span><i class="sw sw-strip"></i>полоса — % этажа</span><span><i class="sw sw-shell"></i>каркас, не начато</span><span><i class="sw sw-red"></i>открытые замечания</span>',
+    progress: '<span><i class="sw sw-green"></i>выполнено</span><span><i class="sw sw-full"></i>100%</span><span><i class="sw sw-shell"></i>не начато</span><span><i class="sw sw-red"></i>открытые замечания</span>',
+    project: '<span><i class="sw sw-facade"></i>проектный вид после завершения</span>',
+  }[b.dataset.v];
+  $('#legend').innerHTML = L + '<span class="hint">Клик по этажу — редактирование · колесо — масштаб</span>';
 };
 
 // ---------- вкладки ----------
@@ -104,6 +111,9 @@ function renderSummary() {
           ${works.map((w) => { const v = store.sectionValue(s, w); return `<div class="row-bar"><span>${w}</span><div class="bar"><i style="width:${v}%"></i></div><b>${Math.round(v)}%</b></div>`; }).join('')}
         </div>`).join('')}
     </div>
+    ${(() => { const D = store.contractValue('D'), E = store.contractValue('E'); if (!D || !E) return ''; const p = E / D * 100; return `<button class="contract-card" data-goto="money">
+      <span>Выполнено по договору</span><b>${p.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%</b>
+      <div class="bar"><i style="width:${p}%"></i></div><em>${rubShort(E)} из ${rubShort(D)} ₽</em></button>`; })()}
     <h3>Фасад по этажам <span class="muted">· ${state.metric === 'avg' ? 'все работы' : state.metric.toLowerCase()}</span></h3>
     <div class="facade" role="grid">
       ${[...FLOORS].reverse().map((f) => `
@@ -126,6 +136,7 @@ function renderSummary() {
     ${[...store.progress.values()].some((p) => /оценка/.test(p.note || '')) ? '<p class="note">Часть процентов — стартовая оценка по листу «Таблица» (есть ИС/АОСР → 100%, есть замечания → 50%). Уточните их на вкладке «Этаж» или в листе «Прогресс».</p>' : ''}
   `;
   el.querySelectorAll('.f-cell').forEach((b) => b.onclick = () => { state.section = b.dataset.s; state.floor = +b.dataset.f; setTab('floor'); });
+  el.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => { state.money = 'contract'; setTab(b.dataset.goto); });
 }
 
 // ---------- Этаж ----------
@@ -348,8 +359,8 @@ function monthChart(byMonth, cats) {
 
 function renderMoney() {
   const el = $('#tab-money');
-  const views = [['exp', 'Расходы'], ['adv', 'Авансы'], ['sup', 'Поставки'], ['inc', 'Поступления']];
-  const head = `<div class="seg small money-seg">${views.map(([k, t]) => `<button data-mv="${k}" class="${state.money === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+  const views = [['contract', 'Договор'], ['exp', 'Расходы'], ['adv', 'Авансы'], ['sup', 'Поставки'], ['inc', 'Поступления'], ['pers', 'Личные'], ['tools', 'Инструмент']];
+  const head = `<div class="money-seg" role="tablist">${views.map(([k, t]) => `<button data-mv="${k}" class="chip ${state.money === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   let body = '';
   const fin = store.fin;
 
@@ -404,7 +415,7 @@ function renderMoney() {
       </div>
       <ul class="entries ops">${list.slice(0, state.expLimit).map((e) => `<li>
         <span class="cat-dot" style="--c:${CAT_COLORS[e.cat] || '#888'}"></span>
-        <div><b>${esc(e.note || e.basis || e.cat)}</b><div class="muted">${e.date ? shortDate(e.date) + ' · ' : ''}${esc(e.who || '')}</div></div>
+        <div><b>${esc(e.note || e.basis || e.cat)}</b><div class="muted">${e.date ? (e.approx ? '≈ ' : '') + shortDate(e.date) + ' · ' : ''}${esc(e.who || '')}</div></div>
         <b class="num">${rub(e.sum)}</b><button class="x ed" data-edx="${esc(e.id)}" aria-label="Изменить">✎</button>${e.local || e.app ? `<button class="x" data-delx="${esc(e.id)}" aria-label="Удалить">×</button>` : ''}</li>`).join('') || '<li class="muted">Ничего не найдено</li>'}</ul>
       ${list.length > state.expLimit ? `<button class="btn ghost more" id="expMore">Показать ещё ${Math.min(40, list.length - state.expLimit)}</button>` : ''}
       ${fin.partial ? '<p class="note">Итоги и категории посчитаны по всем 355 операциям листа «Счета». Список и график пока показывают только август: полный реестр загрузится, когда таблица будет подключена онлайн (кнопка «Таблица»).</p>' : ''}`;
@@ -478,6 +489,61 @@ function renderMoney() {
       <p class="muted small-note">Разница: <b>${rub(got + adv - spent)}</b>. Авансы за номинированный материал Глоракс платит поставщикам напрямую.</p>
       <h3>Счета Глоракс <span class="muted">· лист «Оплаты Глоракс»</span></h3>
       <ul class="entries ops">${inc.map((x) => `<li><span class="cat-dot" style="--c:${/^оплачено/i.test(x.status) ? 'var(--green)' : 'var(--amber)'}"></span><div><b>${esc(x.note || 'Счёт')}</b><div class="muted">${x.date ? shortDate(x.date) : ''} · ${esc(x.status)}</div></div><b class="num">${rub(x.sum)}</b></li>`).join('') || '<li class="muted">Нет счетов</li>'}</ul>`;
+  }
+
+  if (state.money === 'contract') {
+    const cv = (k) => store.contractValue(k);
+    const D = cv('D'), E = cv('E'), B = cv('B');
+    const pct = D && E ? (E / D) * 100 : 0;
+    const phys = (store.sectionValue('4') + store.sectionValue('5')) / 2;
+    const spent = fin.partial && fin.summary ? fin.summary.total : store.expenseTotal();
+    const rows = [
+      ['Стоимость работ по договору', D], ['Выполнено работ', E], ['Принято по КС-2', B],
+      ['Остаток незачтённого аванса', cv('C')], ['Сумма к оплате (А = B·(1 − C/(D − E)))', cv('A')], ['Всего к оплате', cv('всего к оплате')],
+      ['Обеспечительное удержание СМР', cv('удерж')], ['Зачёт номинированных материалов', cv('зачёт')], ['Компенсация', cv('компенс')],
+    ].filter(([, v]) => v != null);
+    body = fin.contract.length ? `
+      <div class="kpis3">
+        <div><span>Договор</span><b>${rubShort(D || 0)}</b></div>
+        <div><span>Выполнено</span><b>${pct.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%</b></div>
+        <div><span>Остаток работ</span><b>${rubShort((D || 0) - (E || 0))}</b></div>
+      </div>
+      <h3>Выполнение</h3>
+      <div class="hbar"><span>По деньгам (E / D)</span><div class="bar"><i style="width:${pct}%"></i></div><b>${Math.round(pct)}%</b></div>
+      <div class="hbar"><span>По этажам (стены, перегородки)</span><div class="bar"><i style="width:${phys}%;background:var(--blue)"></i></div><b>${Math.round(phys)}%</b></div>
+      <div class="hbar"><span>Расходы к выполненному</span><div class="bar"><i style="width:${E ? Math.min(100, spent / E * 100) : 0}%;background:var(--amber)"></i></div><b>${E ? Math.round(spent / E * 100) : 0}%</b></div>
+      <h3>Формула оплаты Глоракс</h3>
+      <ul class="totals">${rows.map(([l, v]) => `<li><span>${esc(l)}</span><b class="num">${rub(v)}</b></li>`).join('')}</ul>
+      <p class="muted small-note">Лист «Формула оплаты Глоракс». Расходы — лист «Счета»: ${rub(spent)}.</p>` : '<p class="muted">Лист «Формула оплаты Глоракс» не найден.</p>';
+  }
+
+  if (state.money === 'pers') {
+    const list = fin.personal.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const byWho = {};
+    for (const x of list) byWho[x.who || '—'] = (byWho[x.who || '—'] || 0) + x.sum;
+    const top = Object.entries(byWho).sort((a, b) => b[1] - a[1]);
+    body = `
+      <div class="kpis3">
+        <div><span>Записей</span><b>${list.length}</b></div>
+        <div><span>Сумма</span><b>${rubShort(store.expenseTotal(list))}</b></div>
+        <div><span>Плательщиков</span><b>${top.length}</b></div>
+      </div>
+      <h3>Кто платил</h3>
+      ${bars(top.map(([w, v]) => [w, v, 'var(--blue)']), top[0] ? top[0][1] : 0)}
+      <h3>Записи <span class="muted">· лист «Личные расходы»</span></h3>
+      <ul class="entries ops">${list.map((x) => `<li><span class="cat-dot" style="--c:var(--blue)"></span><div><b>${esc(x.name)}</b><div class="muted">${x.date ? (x.approx ? '≈ ' : '') + shortDate(x.date) + ' · ' : ''}${esc(x.who)}${x.note ? ' · ' + esc(x.note) : ''}</div></div><b class="num">${rub(x.sum)}</b></li>`).join('') || '<li class="muted">Нет записей</li>'}</ul>`;
+  }
+
+  if (state.money === 'tools') {
+    const t = fin.tools;
+    body = `
+      <div class="kpis3">
+        <div><span>Позиций</span><b>${t.length}</b></div>
+        <div><span>Остатки на</span><b>${t[0] && t[0].date ? shortDate(t[0].date) : '—'}</b></div>
+        <div><span>Лист</span><b>Инструмент</b></div>
+      </div>
+      <h3>Остатки инструмента</h3>
+      <ul class="totals">${t.map((x) => `<li><span>${esc(x.name)}</span><b class="num">${esc(x.qty || '—')}</b></li>`).join('') || '<li class="muted">Нет данных</li>'}</ul>`;
   }
 
   el.innerHTML = head + body;

@@ -27,7 +27,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
+html, body { margin: 0; height: 100%; max-width: 100%; overflow-x: clip; }
 body {
   background: var(--bg); color: var(--ink);
   font: 14px/1.45 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -92,6 +92,8 @@ button { font: inherit; color: inherit; }
 .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
 .sw-green { background: var(--green); } .sw-full { background: var(--green-full); }
 .sw-shell { background: #d7d3ca; border: 1px solid #b8b3a9; } .sw-red { background: var(--red); }
+.sw-facade { background: linear-gradient(90deg, #f3ede3 0 30%, #2e3a46 30% 70%, #f3ede3 70%); border: 1px solid #c9bfae; }
+.sw-strip { background: #22c55e; height: 4px; vertical-align: 2px; }
 
 .stage-kpis { position: absolute; top: 56px; left: 12px; display: flex; flex-direction: column; gap: 8px; z-index: 3; }
 .kpi { background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; width: 150px; box-shadow: var(--shadow); }
@@ -199,7 +201,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.bad { background: var(--red); color: #fff; }
 
-.project-view .legend, .project-view #metric { opacity: .35; pointer-events: none; }
+.project-view #metric { opacity: .35; pointer-events: none; }
 .stage-ui .btn.ghost { background: var(--panel); box-shadow: var(--shadow); }
 
 .tabs button i { font-style: normal; display: none; }
@@ -208,8 +210,14 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); }
 .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* ---------- учёт ---------- */
-.money-seg { margin-top: 12px; display: flex; width: 100%; }
-.money-seg button { flex: 1; }
+.money-seg { margin-top: 12px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.money-seg::-webkit-scrollbar { display: none; }
+.money-seg .chip { flex: none; padding: 5px 12px; font-size: 12.5px; font-weight: 600; }
+.contract-card { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: baseline; width: 100%; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); cursor: pointer; text-align: left; }
+.contract-card span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.contract-card b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.contract-card .bar { grid-column: 1 / -1; }
+.contract-card em { grid-column: 1 / -1; font-style: normal; font-size: 12px; color: var(--muted); }
 .kpis3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
 .kpis3 > div { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; min-width: 0; }
 .kpis3 span { display: block; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -323,3 +331,30 @@ body.touring .floor-tag { opacity: 0; }
 .backup-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .backup-actions .btn { font-size: 12px; padding: 6px 10px; }
 .file-btn { cursor: pointer; display: inline-flex; align-items: center; }
+
+.show-sm { display: none; }
+.dlg-row { display: flex; gap: 8px; }
+@media (max-width: 600px) {
+  .show-sm { display: inline; }
+  .dlg-row.show-sm { display: flex; }
+  .top { padding: 6px 10px; }
+  .brand { min-width: 0; gap: 8px; }
+  .brand > div:last-child { min-width: 0; }
+  .top h1 { overflow: hidden; text-overflow: ellipsis; }
+  .top-actions { flex: none; }
+  #status { max-width: 118px; font-size: 11px; padding: 3px 8px; }
+  #btnReload, #btnSettings { padding: 6px 10px; font-size: 15px; line-height: 1; }
+  .cards { grid-template-columns: 1fr 1fr; }
+  .card { padding: 10px; }
+  .row-bar { grid-template-columns: minmax(0, 1fr) 36px 30px; }
+  .kpis3 { gap: 6px; }
+  .kpis3 > div { padding: 8px; }
+  .f-row { grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr); gap: 4px; }
+  .remarks li { flex-direction: column; gap: 4px; }
+  .r-meta { flex-direction: row; gap: 10px; align-items: center; }
+  .cal { gap: 2px; }
+  .c-cell { min-height: 46px; border-radius: 5px; }
+  .grid2 { grid-template-columns: 1fr; }
+  .floor-nav { flex-direction: column; align-items: stretch; }
+  .stepper select { flex: 1; }
+}

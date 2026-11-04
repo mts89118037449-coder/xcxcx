@@ -27,8 +27,8 @@
   <div class="top-actions">
     <span class="pill" id="status" title="">—</span>
     <button class="btn ghost" id="btnReload" title="Перечитать таблицу">⟳<span class="hide-sm"> Обновить</span></button>
-    <button class="btn ghost" id="btnTheme" title="Светлая / тёмная тема">Тема</button>
-    <button class="btn" id="btnSettings">Таблица<span class="hide-sm">…</span></button>
+    <button class="btn ghost hide-sm" id="btnTheme" title="Светлая / тёмная тема">Тема</button>
+    <button class="btn" id="btnSettings" aria-label="Настройки и бэкап"><span class="show-sm">⚙</span><span class="hide-sm">Таблица…</span></button>
   </div>
 </header>
 
@@ -41,17 +41,18 @@
         <button data-m="Перегородки">Перегородки</button>
       </div>
       <div class="seg" id="viewMode" aria-label="Режим отображения">
-        <button data-v="progress" class="on">Прогресс</button>
+        <button data-v="fact" class="on">Факт</button>
+        <button data-v="progress">Прогресс</button>
         <button data-v="project">Проект</button>
       </div>
       <button class="btn ghost small" id="btnView" title="Вид по умолчанию">⌂ Вид</button>
       <button class="btn small" id="btnTour">▶ 3D-тур</button>
       <button class="btn ghost small only-mobile" id="btnExpand" title="Развернуть 3D">⤢</button>
     </div>
-    <div class="legend">
-      <span><i class="sw sw-green"></i>выполнено</span>
-      <span><i class="sw sw-full"></i>100%</span>
-      <span><i class="sw sw-shell"></i>не начато</span>
+    <div class="legend" id="legend">
+      <span><i class="sw sw-facade"></i>готово</span>
+      <span><i class="sw sw-strip"></i>полоса — % этажа</span>
+      <span><i class="sw sw-shell"></i>каркас, не начато</span>
       <span><i class="sw sw-red"></i>открытые замечания</span>
       <span class="hint">Клик по этажу — редактирование · колесо — масштаб</span>
     </div>
@@ -85,6 +86,7 @@
     </ol>
     <label>URL веб-приложения<input id="cfgUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
     <label>Токен (необязательно)<input id="cfgToken" type="text" autocomplete="off"></label>
+    <div class="dlg-row show-sm"><button class="btn ghost" type="button" id="btnTheme2">◐ Светлая / тёмная тема</button></div>
     <fieldset class="backup">
       <legend>Резервная копия данных</legend>
       <p class="muted">Скачайте копию, чтобы данные не зависели от одного сервера. На каждом устройстве автоматически хранится последняя загруженная версия: если сервер станет недоступен, приложение покажет её.</p>

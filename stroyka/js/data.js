@@ -129,7 +129,7 @@ export class Store {
     this.journal = [];
     this.docs = [];
     this.remarks = [];
-    this.fin = { expenses: [], advances: [], income: [], nominated: [], summary: null, partial: false };
+    this.fin = { expenses: [], advances: [], income: [], nominated: [], personal: [], tools: [], contract: [], summary: null, partial: false };
     this.status = 'idle'; // idle | loading | ok | error | demo
     this.error = '';
     this.loadedAt = null;
@@ -153,6 +153,11 @@ export class Store {
   // ---------- чтение ----------
   async load(silent = false) {
     if (!silent) { this.status = 'loading'; this.emit('status'); }
+    // первый показ — сразу из копии на устройстве, пока идёт запрос к таблице
+    if (this.connected && !this.progress.size) {
+      const c = this.cacheLoad();
+      if (c) { this.apply(c.data); for (const op of this.queue) this.applyLocal(op); this.emit('data'); }
+    }
     try {
       if (this.connected) {
         const u = new URL(this.url);
@@ -227,7 +232,7 @@ export class Store {
   snapshot() {
     return {
       progress: [...this.progress.values()], journal: this.journal, docsRows: this.docsRows || [], remarks: this.remarks,
-      fin: { expenses: this.fin.expenses, advances: this.fin.advances, income: this.fin.income, nominated: this.fin.nominated, summary: this.fin.summary, partial: this.fin.partial },
+      fin: { expenses: this.fin.expenses, advances: this.fin.advances, income: this.fin.income, nominated: this.fin.nominated, personal: this.fin.personal, tools: this.fin.tools, contract: this.fin.contract, summary: this.fin.summary, partial: this.fin.partial },
     };
   }
   exportBackup() {
@@ -409,12 +414,24 @@ export function normFin(f) {
     advances: (f.advances || []).map((a) => ({ ...a, sum: money(a.sum) })),
     income: (f.income || []).map((a) => ({ ...a, sum: money(a.sum) })),
     nominated: f.nominated || [],
+    personal: (f.personal || []).map((a) => ({ ...a, sum: money(a.sum) })),
+    tools: f.tools || [],
+    contract: f.contract || [],
     summary: f.summary || null,
     partial: !!f.partial,
   };
 }
 
 Object.assign(Store.prototype, {
+  /** Значение из «Формулы оплаты» по первой букве/началу подписи: 'D', 'E', 'B', 'С', 'А', 'удерж', 'Зачёт', 'Компенс' */
+  contractValue(key) {
+    const k = key.toLowerCase();
+    const row = this.fin.contract.find((c) => {
+      const l = c.label.toLowerCase().replace(/^[\s]+/, '');
+      return k.length === 1 ? (l[0] === k || l[0] === ({ a: 'а', c: 'с' })[k]) && /^.\s*-/.test(l) : l.includes(k);
+    });
+    return row ? row.value : null;
+  },
   expensesOn(date) { return this.fin.expenses.filter((e) => e.date === date); },
   expenseTotal(list = this.fin.expenses) { return list.reduce((a, e) => a + e.sum, 0); },
   /** Итоги по категориям: из сводки листа «Счета» (снимок) или из строк */
