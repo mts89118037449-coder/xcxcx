@@ -411,7 +411,7 @@ function readVolumes_() {
       if (!total) continue;
       const weekly = {};
       weeks.forEach(function (wk) { const v = num_(r[wk[0]]); if (v) weekly[wk[1]] = v; });
-      out.push({ row: i + 3, sheet: sh.getName(), weekCols: weekCols, section: sec, floor: floor, work: work, total: total, done: num_(r[7]), accepted: num_(r[13]), status: String(r[10]).trim(), due: String(r[9]).trim(), handover: String(r[0]).trim(), contractor: String(r[2]).trim(), weekly: weekly });
+      out.push({ row: i + 3, sheet: sh.getName(), weekCols: weekCols, section: sec, floor: floor, work: work, total: total, cost: num_(r[12]) || (num_(r[11]) * total) || 0, done: num_(r[7]), accepted: num_(r[13]), status: String(r[10]).trim(), due: String(r[9]).trim(), handover: String(r[0]).trim(), contractor: String(r[2]).trim(), weekly: weekly });
     }
   });
   return out;
@@ -457,6 +457,20 @@ function readProject_() {
   return out;
 }
 
+/** Лист «Разделы» (необязательный): A — слово из названия работы, B — раздел. «кабель → Электрика», «ВК → Вода и канализация» */
+function readWorkMap_() {
+  const book = MODE === 'book' ? ss_() : SpreadsheetApp.openById(CUR_V);
+  const sh = book.getSheetByName('Разделы');
+  if (!sh || sh.getLastRow() < 2) return [];
+  const out = [];
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getDisplayValues();
+  for (let i = 0; i < rows.length; i++) {   // до первой пустой строки — ниже может быть справка
+    const m = String(rows[i][0]).trim(), sec = String(rows[i][1]).trim();
+    if (!m) break;
+    if (sec) out.push({ match: m, section: sec });
+  }
+  return out;
+}
 /** Структура проекта — из таблицы, не из кода: части (листы) и упорядоченный список уровней каждой (столбец B) */
 function structure_(vols) {
   const prj = readProject_();
@@ -491,7 +505,7 @@ function structure_(vols) {
     const nums = p.levels.filter(function (l) { return typeof l.key === 'number' && l.key !== ROOF; }).map(function (l) { return l.key; });
     p.floors = nums.length ? Math.max.apply(null, nums) : 0;
   });
-  return { sections: parts, roofKey: ROOF, project: { type: prj.type || '', name: prj.name || '', part: prj.part || word || 'Секция', level: prj.level || levelWord || 'Этаж' } };
+  return { sections: parts, roofKey: ROOF, workMap: safe_(readWorkMap_), project: { type: prj.type || '', name: prj.name || '', part: prj.part || word || 'Секция', level: prj.level || levelWord || 'Этаж' } };
 }
 
 /** «VUP CORE»: Движение материалов */
@@ -1105,10 +1119,10 @@ function readDocsBook_() {
 
 /** Шаблоны видов работ по типу объекта (их можно поменять в созданной таблице) */
 const OBJECT_TEMPLATES = {
-  mkd:        { type: 'МКД', part: 'Секция', level: 'Этаж', works: ['Газоблок наруж., м³', 'Внутр. СКЦ, м²', 'Внутр. ГБ, м²', 'Инженерка, м²'] },
-  flat:       { type: 'Ремонт квартир', part: 'Квартира', level: 'Помещение', works: ['Штукатурка стен, м²', 'Стяжка пола, м²', 'Плитка, м²', 'Электрика, т.', 'Сантехника, шт', 'Чистовая отделка, м²'] },
-  office:     { type: 'Офис', part: 'Помещение', level: 'Зона', works: ['Перегородки ГКЛ, м²', 'Потолки, м²', 'Электрика, т.', 'Слаботочка, т.', 'Покраска, м²', 'Полы, м²'] },
-  industrial: { type: 'Промышленный', part: 'Цех', level: 'Пролёт', works: ['Фундаменты, м³', 'Монтаж каркаса, т', 'Кровля, м²', 'Стеновые панели, м²', 'Полы, м²'] },
+  mkd:        { type: 'МКД', part: 'Секция', level: 'Этаж', works: ['Монолит перекрытий, м³', 'Кладка наружных стен, м³', 'Перегородки, м²', 'Фасад: утепление и облицовка, м²', 'Окна, шт', 'Электрика, т.', 'Водоснабжение и канализация, т.', 'Отопление и вентиляция, т.', 'Слаботочные системы, т.', 'Пожарная сигнализация, т.', 'Отделка МОП, м²'] },
+  flat:       { type: 'Ремонт квартир', part: 'Квартира', level: 'Помещение', works: ['Перегородки, м²', 'Электрика, т.', 'Водоснабжение и канализация, т.', 'Слаботочка, т.', 'Штукатурка стен, м²', 'Стяжка пола, м²', 'Плитка, м²', 'Чистовая отделка, м²', 'Двери, шт'] },
+  office:     { type: 'Офис', part: 'Помещение', level: 'Зона', works: ['Перегородки ГКЛ, м²', 'Электрика, т.', 'Слаботочка и СКС, т.', 'Вентиляция и кондиционирование, т.', 'Пожарная сигнализация, т.', 'Потолки, м²', 'Покраска, м²', 'Полы, м²', 'Двери, шт'] },
+  industrial: { type: 'Промышленный', part: 'Цех', level: 'Пролёт', works: ['Фундаменты, м³', 'Монтаж каркаса, т', 'Кровля, м²', 'Фасад: сэндвич-панели, м²', 'Ворота и окна, шт', 'Электрика, т.', 'Водоснабжение и канализация, т.', 'Отопление и вентиляция, т.', 'Пожарная безопасность, т.', 'Полы, м²', 'Благоустройство, м²'] },
 };
 function weekDates_(n) {
   const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7 * 4);   // 4 недели назад, понедельник
@@ -1208,6 +1222,12 @@ function newObject_(q) {
   parts.forEach(function (p) { levels.forEach(function (l) { works.forEach(function (w) { if (drows.length < 3000) drows.push([p, l, w, '', '', '']); }); }); });
   if (drows.length) dc.getRange(2, 1, drows.length, 6).setValues(drows);
   dc.setColumnWidth(3, 220);
+  // Разделы: какие работы к какому разделу (приложение и само узнаёт электрику, воду, связь, фасады, отделку…)
+  const sec = book.insertSheet('Разделы');
+  headRow_(sec, ['Слово в названии работы', 'Раздел']);
+  sec.getRange(2, 1, 6, 2).setValues([['кабель', 'Электрика'], ['ВК', 'Вода и канализация'], ['ОВ', 'Отопление и вентиляция'], ['СКС', 'Связь и слаботочка'], ['вентфасад', 'Фасад'], ['МОП', 'Отделка']]);
+  sec.getRange(9, 1).setValue('Необязательно: без этого листа разделы определяются автоматически. Строка выше пустой строки переопределяет автоматику.');
+  sec.setColumnWidth(1, 240); sec.setColumnWidth(2, 220);
   // Как заполнять
   const help = book.insertSheet('Как заполнять');
   help.getRange(1, 1, 9, 1).setValues([

@@ -123,7 +123,7 @@ export function configure(structure) {
   return changed;
 }
 /** Виды работ проекта (не МКД) — из строк объёмов, в порядке таблицы */
-export function setWorks(list) { if (PROFILE.type !== 'mkd') WORKS = list; }
+export function setWorks(list) { WORKS = sortWorks(list); }
 
 /** Ключ уровня из таблицы → номер в приложении (null — такого уровня нет в структуре) */
 export function fromKey(f) {
@@ -160,14 +160,45 @@ export function worksForFloor(f) {
 export function cleanWork(work) {
   return String(work || '').replace(/\s*,\s*(м²|м2|м³|м3|кв\.?\s*м|куб\.?\s*м|шт|п\.?\s*м|м\.?\s*п|пог\.?\s*м|т|кг|компл)\.?\s*$/i, '').replace(/\s+/g, ' ').trim();
 }
-/** Вид работ из «Выполнения» → группа работ приложения. Для МКД — укрупнённые группы, иначе — как в таблице. */
+// Разделы работ: любой вид работ из таблицы попадает в раздел по ключевым словам (или по листу «Разделы» объекта).
+// Порядок важен: «Штукатурка фасада» — Фасад, а не Отделка; «Внутр. СКЦ» — Перегородки.
+const W = (s) => new RegExp(s, 'i');
+const NB = '(?![а-яёa-z])', NA = '(?:^|[^а-яёa-z])';
+export const WORK_SECTIONS = [
+  ['Каркас', W(`фундам|монолит|бетон|каркас|металлоконстр|армир|колонн|перекрыт|ростверк|сва[яиё]|земляны|котлован`)],
+  ['Наружные стены', W(`наруж|кирпич|кладка\\s+(наружн|стен)`)],
+  ['Фасад', W(`фасад|утепл|облицов|навесн|клинкер|сайдинг`)],
+  ['Окна и двери', W(`${NA}окн|окон|витраж|двер|остеклен|пвх${NB}`)],
+  ['Кровля', W(`кровл|кровел|водосток|парапет`)],
+  ['Перегородки', W(`перегород|гкл|гипсокарт|пгп|внутр\\.?\\s*(скц|гб|стен|кладк|газоб|кирпич)|${NA}скц|${NA}гб${NB}`)],
+  ['Электрика', W(`электр|${NA}эом|${NA}эм${NB}|кабел|освещ|${NA}щит|розет|выключат|заземл|молниезащ`)],
+  ['Вода и канализация', W(`водо|${NA}вк${NB}|канализ|сантех|${NA}хвс|${NA}гвс|стояк|унитаз|ванн|смесител|дренаж`)],
+  ['Отопление и вентиляция', W(`отопл|${NA}ов${NB}|вентил|кондиц|${NA}итп|радиатор|теплоснаб|тепловой\\s+узел|дымоход|газоснаб`)],
+  ['Связь и слаботочка', W(`слаботоч|связ|интернет|домофон|${NA}скуд|видеонабл|телевид|${NA}сс${NB}|${NA}скс|диспетчер|антенн`)],
+  ['Пожарная безопасность', W(`пожар|${NA}апс|соуэ|дымоудал|спринкл|огнезащ|противопож`)],
+  ['Лифты', W(`лифт|эскалат`)],
+  ['Отделка', W(`отделк|штукатур|шпатл|покраск|окраск|${NA}обо[иея]|плитк|стяжк|${NA}пол(ы|а|ов)?${NB}|потол|ламинат|керамогран|малярн|наливн|линолеум|паркет|чистов|черновая`)],
+  ['Инженерка', W(`инженер`)],
+  ['Благоустройство', W(`благоустр|озелен|асфальт|бордюр|мощен|${NA}маф${NB}|тротуар|газон|ограждени`)],
+];
+let WORK_MAP = [];   // из листа «Разделы» объекта: [{ match: 'кабель', section: 'Электрика' }]
+export function setWorkMap(list) { WORK_MAP = (list || []).map((x) => ({ match: String(x.match || '').toLowerCase().trim(), section: String(x.section || '').trim() })).filter((x) => x.match && x.section); }
+/** Вид работ из таблицы → раздел приложения. Ничего не теряется: не распознанное — отдельным разделом под своим именем. */
 export function workGroup(work, floor) {
-  if (PROFILE.type !== 'mkd') return cleanWork(work) || null;
-  if (floor === ROOF) return 'Кровля';
-  if (/наруж|кирпич/i.test(work)) return 'Наружные стены';
-  if (/внутр/i.test(work)) return 'Перегородки';
-  if (/инженер/i.test(work)) return 'Инженерка';
-  return null;
+  const w = String(work || '').toLowerCase();
+  if (!w.trim()) return null;
+  const own = WORK_MAP.find((x) => w.includes(x.match));
+  if (own) return own.section;
+  if (LAYOUT === 'stack' && floor === ROOF) return 'Кровля';
+  const hit = WORK_SECTIONS.find(([, re]) => re.test(w));
+  return hit ? hit[0] : cleanWork(work) || null;
+}
+/** Единица измерения из названия: «Кабель, м» → «м» */
+export function workUnit(work) { const m = String(work || '').match(/,\s*([^,]+?)\.?\s*$/); return m ? m[1].toLowerCase().replace(/\s+/g, '') : ''; }
+/** Порядок разделов: как в справочнике, затем свои */
+export function sortWorks(list) {
+  const order = WORK_SECTIONS.map(([n]) => n);
+  return [...new Set(list)].sort((a, b) => { const i = order.indexOf(a), j = order.indexOf(b); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j) || a.localeCompare(b, 'ru'); });
 }
 
 /** «5 этаж наружные стены» → { floor: 5, work: 'Наружные стены' } */
@@ -302,6 +333,15 @@ const LS = {
 };
 
 const key = (s, f, w) => `${s}|${f}|${w}`;
+/** Процент раздела: по стоимости строк, если есть; при одной единице измерения — по объёму; иначе среднее строк (метры кабеля и штуки розеток не складываются) */
+function groupPct(g) {
+  const items = g.items;
+  const p = (it) => Math.min(1, (it.done || 0) / it.total) * 100;
+  if (items.every((it) => it.cost > 0)) return items.reduce((a, it) => a + p(it) * it.cost, 0) / items.reduce((a, it) => a + it.cost, 0);
+  const units = new Set(items.map((it) => workUnit(it.work)));
+  if (units.size <= 1) return (g.done / g.total) * 100;
+  return items.reduce((a, it) => a + p(it), 0) / items.length;
+}
 /** Ключи уровней из таблиц → номера уровней приложения (один раз, при загрузке) */
 function mapFloors(e) {
   if (!e) return;
@@ -491,17 +531,20 @@ export class Store {
     const e = x || {};
     this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '' };
     this.vol = new Map();
-    if (PROFILE.type !== 'mkd') setWorks([...new Set(this.extra.volumes.map((v) => workGroup(v.work, v.floor)).filter(Boolean))]);
+    setWorkMap(e.structure && e.structure.workMap);
+    const groups = this.extra.volumes.filter((v) => v.total > 0 && v.floor != null).map((v) => workGroup(v.work, Number(v.floor))).filter(Boolean);
+    if (groups.length) setWorks(groups); else if (PROFILE.type === 'mkd') setWorks(MKD_WORKS);
     for (const v of this.extra.volumes) {
       if (v.floor === null || v.floor === undefined) continue;
       const g = workGroup(v.work, Number(v.floor));
       if (!g || !(v.total > 0)) continue;
       const k = `${v.section}|${Number(v.floor)}`;
       const fl = this.vol.get(k) || {};
-      const grp = (fl[g] ||= { total: 0, done: 0, items: [] });
-      grp.total += v.total; grp.done += Math.min(v.done || 0, v.total); grp.items.push(v);
+      const grp = (fl[g] ||= { total: 0, done: 0, cost: 0, items: [] });
+      grp.total += v.total; grp.done += Math.min(v.done || 0, v.total); grp.cost += v.cost || 0; grp.items.push(v);
       this.vol.set(k, fl);
     }
+    for (const fl of this.vol.values()) for (const g of Object.values(fl)) g.pct = groupPct(g);
   }
   volumeGroup(section, floor, work) { const fl = this.vol.get(`${section}|${floor}`); return fl ? fl[work] || null : null; }
   /** Виды работ этажа: по таблице «Выполнение», если в ней есть этот этаж, иначе стандартный набор */
@@ -515,7 +558,7 @@ export class Store {
   // ---------- вычисления ----------
   get(section, floor, work) {
     const g = this.volumeGroup(section, floor, work);
-    if (g) return Math.round((g.done / g.total) * 100);
+    if (g) return Math.round(g.pct);
     const p = this.progress.get(key(section, floor, work));
     return p ? p.value : null;   // нет данных — не 0 и не оценка
   }
@@ -523,8 +566,12 @@ export class Store {
   floorValue(section, floor, work = 'avg') {
     const works = this.worksFor(section, floor);
     if (work !== 'avg') return works.includes(work) ? this.get(section, floor, work) : null;
-    const vals = works.map((w) => this.get(section, floor, w)).filter((v) => v != null);
-    return vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : null;
+    // разделы весят по стоимости, если она есть в таблице у всех; иначе — поровну
+    const rows = works.map((w) => ({ v: this.get(section, floor, w), c: (this.volumeGroup(section, floor, w) || {}).cost || 0 })).filter((x) => x.v != null);
+    if (!rows.length) return null;
+    const byCost = rows.every((x) => x.c > 0);
+    const wsum = rows.reduce((a, x) => a + (byCost ? x.c : 1), 0);
+    return rows.reduce((a, x) => a + x.v * (byCost ? x.c : 1), 0) / wsum;
   }
   sectionValue(section, work = 'avg') {
     let sum = 0, n = 0;

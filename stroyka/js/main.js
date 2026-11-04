@@ -53,7 +53,7 @@ syncTopH(); addEventListener('resize', syncTopH);
 { const tb = document.querySelector('.tabs [data-tab="floor"] span'); if (tb) tb.textContent = T.level; }
 // «Что показать»: для МКД — укрупнённые группы, для других объектов — виды работ из таблицы
 function renderMetricButtons() {
-  const list = PROFILE.type === 'mkd' ? ['Наружные стены', 'Перегородки', 'Инженерка'] : WORKS.slice(0, 6);
+  const list = WORKS;   // разделы, которые есть в таблице объекта
   $('#metric').innerHTML = `<button data-m="avg" class="${state.metric === 'avg' ? 'on' : ''}">Все работы</button>` + list.map((w) => `<button data-m="${esc(w)}" class="${state.metric === w ? 'on' : ''}">${esc(w)}</button>`).join('');
 }
 renderMetricButtons();
@@ -165,7 +165,7 @@ function renderSummary() {
   const el = $('#tab-summary');
   const open = store.remarks.filter((r) => store.isOpenRemark(r)).sort((a, b) => ruToIso(a.due).localeCompare(ruToIso(b.due)));
   const today = isoToday();
-  const works = PROFILE.type === 'mkd' ? ['Наружные стены', 'Перегородки', 'Инженерка', 'Кровля'] : WORKS.slice(0, 5);
+  const works = WORKS;
   const fcols = SECTIONS.length === 2 && LAYOUT === 'stack' ? '' : `grid-template-columns: ${LAYOUT === 'stack' ? '22px' : 'minmax(64px, auto)'} repeat(${SECTIONS.length}, minmax(0, 1fr))`;
   const on = store.objects.length;
   el.innerHTML = `
@@ -1112,10 +1112,10 @@ window.__stroyka = { store, scene, state };
 
 // ---------- объекты: переключение и новый объект из шаблона ----------
 const KIND_TPL = {
-  mkd: { parts: 'Секции', partsPh: '4, 5', levels: 'Этажей (число)', levelsPh: '16', works: ['Газоблок наруж., м³', 'Внутр. СКЦ, м²', 'Внутр. ГБ, м²', 'Инженерка, м²'] },
-  flat: { parts: 'Квартиры (номера)', partsPh: '12, 15, 27', levels: 'Помещения', levelsPh: 'Кухня, Санузел, Комната 1, Коридор', works: ['Штукатурка стен, м²', 'Стяжка пола, м²', 'Плитка, м²', 'Электрика, т.', 'Сантехника, шт', 'Чистовая отделка, м²'] },
-  office: { parts: 'Помещения / этажи', partsPh: '1, 2', levels: 'Зоны', levelsPh: 'Open space, Переговорная, Санузел, Кухня', works: ['Перегородки ГКЛ, м²', 'Потолки, м²', 'Электрика, т.', 'Слаботочка, т.', 'Покраска, м²', 'Полы, м²'] },
-  industrial: { parts: 'Цеха / корпуса', partsPh: '1', levels: 'Пролёты / зоны', levelsPh: 'Оси 1–3, Оси 3–5, Оси 5–7, АБК', works: ['Фундаменты, м³', 'Монтаж каркаса, т', 'Кровля, м²', 'Стеновые панели, м²', 'Полы, м²'] },
+  mkd: { parts: 'Секции', partsPh: '4, 5', levels: 'Этажей (число)', levelsPh: '16', works: ['Монолит перекрытий, м³', 'Кладка наружных стен, м³', 'Перегородки, м²', 'Фасад: утепление и облицовка, м²', 'Окна, шт', 'Электрика, т.', 'Водоснабжение и канализация, т.', 'Отопление и вентиляция, т.', 'Слаботочные системы, т.', 'Пожарная сигнализация, т.', 'Отделка МОП, м²'] },
+  flat: { parts: 'Квартиры (номера)', partsPh: '12, 15, 27', levels: 'Помещения', levelsPh: 'Кухня, Санузел, Комната 1, Коридор', works: ['Перегородки, м²', 'Электрика, т.', 'Водоснабжение и канализация, т.', 'Слаботочка, т.', 'Штукатурка стен, м²', 'Стяжка пола, м²', 'Плитка, м²', 'Чистовая отделка, м²', 'Двери, шт'] },
+  office: { parts: 'Помещения / этажи', partsPh: '1, 2', levels: 'Зоны', levelsPh: 'Open space, Переговорная, Санузел, Кухня', works: ['Перегородки ГКЛ, м²', 'Электрика, т.', 'Слаботочка и СКС, т.', 'Вентиляция и кондиционирование, т.', 'Пожарная сигнализация, т.', 'Потолки, м²', 'Покраска, м²', 'Полы, м²', 'Двери, шт'] },
+  industrial: { parts: 'Цеха / корпуса', partsPh: '1', levels: 'Пролёты / зоны', levelsPh: 'Оси 1–3, Оси 3–5, Оси 5–7, АБК', works: ['Фундаменты, м³', 'Монтаж каркаса, т', 'Кровля, м²', 'Фасад: сэндвич-панели, м²', 'Ворота и окна, шт', 'Электрика, т.', 'Водоснабжение и канализация, т.', 'Отопление и вентиляция, т.', 'Пожарная безопасность, т.', 'Полы, м²', 'Благоустройство, м²'] },
 };
 let noKind = 'mkd';
 function setKind(k) {
