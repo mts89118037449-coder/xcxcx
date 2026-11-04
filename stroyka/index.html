@@ -79,7 +79,7 @@
 <dialog id="settings">
   <form method="dialog" class="dlg">
     <h2>Подключение к Google Таблице</h2>
-    <p class="muted">Чтобы приложение читало и записывало данные в таблицу «Glorax_Учёт», в ней нужно один раз установить скрипт из <code>stroyka/apps-script/Code.gs</code>. Без подключения работает демо-режим: данные снимка таблицы, правки хранятся только в этом браузере.</p>
+    <p class="muted">Приложение уже показывает данные вашей таблицы «Glorax_Учёт» на 04.11.2026. Чтобы они шли онлайн и правки (проценты, люди, поставки, расходы) записывались обратно в таблицу, в неё нужно один раз добавить скрипт из <code>stroyka/apps-script/Code.gs</code>. Сделать это может только владелец таблицы, из своего Google-аккаунта.</p>
     <ol class="steps">
       <li>Таблица → <b>Расширения → Apps Script</b>, вставьте код из <code>Code.gs</code>, сохраните.</li>
       <li>Запустите функцию <code>setup</code> (создаст листы «Прогресс» и «Журнал»).</li>
@@ -90,7 +90,7 @@
     <label>Токен (необязательно)<input id="cfgToken" type="text" autocomplete="off"></label>
     <div class="dlg-actions">
       <button class="btn ghost" value="cancel">Отмена</button>
-      <button class="btn ghost" id="btnDemoReset" value="cancel" type="button">Сбросить демо</button>
+      <button class="btn ghost" id="btnDemoReset" value="cancel" type="button">Удалить локальные правки</button>
       <button class="btn" id="btnSave" value="ok">Подключить</button>
     </div>
   </form>

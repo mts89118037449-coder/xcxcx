@@ -123,7 +123,7 @@ function renderSummary() {
         <li class="${late ? 'late' : ''}"><div><b>${esc(r.short || r.text)}</b>${r.note ? `<div class="muted">${esc(r.note)}</div>` : ''}</div>
         <div class="r-meta"><span>с. ${esc(r.section)}</span><span>${esc(r.due)}</span>${Number(r.moves) ? `<span title="переносов">↻${esc(r.moves)}</span>` : ''}</div></li>`; }).join('') || '<li class="muted">Нет открытых поручений</li>'}
     </ul>
-    ${store.status === 'demo' ? '<p class="note">Демо-режим: проценты — стартовая оценка по листу «Таблица» (есть ИС/АОСР → 100%, есть замечания → 50%). Поправьте их на вкладке «Этаж» или подключите таблицу.</p>' : ''}
+    ${[...store.progress.values()].some((p) => /оценка/.test(p.note || '')) ? '<p class="note">Часть процентов — стартовая оценка по листу «Таблица» (есть ИС/АОСР → 100%, есть замечания → 50%). Уточните их на вкладке «Этаж» или в листе «Прогресс».</p>' : ''}
   `;
   el.querySelectorAll('.f-cell').forEach((b) => b.onclick = () => { state.section = b.dataset.s; state.floor = +b.dataset.f; setTab('floor'); });
 }
@@ -162,7 +162,7 @@ function renderFloor() {
     }).join('')}
     <h3>Поручения по этажу</h3>
     <ul class="remarks">${rem.map((r) => `<li class="${store.isOpenRemark(r) ? 'late' : 'done'}"><div><b>${esc(r.short)}</b><div class="muted">${esc(r.state || r.status)}${r.note ? ' · ' + esc(r.note) : ''}</div></div><div class="r-meta"><span>${esc(r.due)}</span></div></li>`).join('') || '<li class="muted">Нет поручений с упоминанием этого этажа</li>'}</ul>
-    <p class="muted small-note">Изменения сохраняются ${store.connected ? 'в лист «Прогресс» Google Таблицы' : 'в этом браузере (демо-режим)'}.</p>
+    <p class="muted small-note">Изменения сохраняются ${store.connected ? 'в лист «Прогресс» Google Таблицы' : 'пока только на этом устройстве — таблица не подключена'}.</p>
   `;
   el.querySelectorAll('[data-sec]').forEach((b) => b.onclick = () => { state.section = b.dataset.sec; scene.select(state.section, state.floor); renderFloor(); });
   el.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => { state.floor = Math.max(0, Math.min(ROOF, state.floor + +b.dataset.step)); scene.select(state.section, state.floor); renderFloor(); });
@@ -190,7 +190,7 @@ function save(s, f, w, v) {
   const k = `${s}|${f}|${w}`;
   clearTimeout(pending.get(k));
   pending.set(k, setTimeout(async () => {
-    try { await store.setProgress(s, f, w, v); toast(store.connected ? 'Сохранено в таблицу' : 'Сохранено (демо)'); }
+    try { await store.setProgress(s, f, w, v); toast(store.connected ? 'Сохранено в таблицу' : 'Сохранено на устройстве · таблица не подключена'); }
     catch (e) { toast('Не удалось сохранить: ' + e.message, true); }
   }, 350));
   preview(s, f, w, v);
@@ -316,7 +316,7 @@ function renderCalendar() {
     state.day = entry.date;
     const [ey, em] = entry.date.split('-').map(Number);
     state.month = { y: ey, m: em - 1 };
-    try { await store.addJournal(entry); toast(store.connected ? 'Записано в лист «Журнал»' : 'Записано (демо)'); }
+    try { await store.addJournal(entry); toast(store.connected ? 'Записано в лист «Журнал»' : 'Сохранено на устройстве · таблица не подключена'); }
     catch (err) { toast('Ошибка: ' + err.message, true); }
   };
 }
@@ -365,7 +365,7 @@ function renderMoney() {
       </div>
       <h3>По категориям</h3>
       ${bars(Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([c, v]) => [c, v, CAT_COLORS[c], total ? Math.round((v / total) * 100) + '%' : '']), maxCat)}
-      <h3>По месяцам ${fin.partial ? '<span class="muted">· в демо только август</span>' : ''}</h3>
+      <h3>По месяцам ${fin.partial ? '<span class="muted">· пока только август</span>' : ''}</h3>
       ${monthChart(store.byMonth(), EXPENSE_CATS)}
       <div class="legend-row">${EXPENSE_CATS.map((c) => `<span><i style="background:${CAT_COLORS[c]}"></i>${c}</span>`).join('')}</div>
       <h3>Крупнейшие получатели</h3>
@@ -383,7 +383,7 @@ function renderMoney() {
           <label>Основание<input name="basis" placeholder="Оплата по счету № … от …"></label>
           <label>Примечание<input name="note" placeholder="Арматура"></label>
           <label>Сумма, ₽<input name="sum" type="number" step="0.01" min="0" required></label>
-          <button class="btn" type="submit">Записать ${store.connected ? 'в лист «Счета»' : '(демо)'}</button>
+          <button class="btn" type="submit">Записать ${store.connected ? 'в лист «Счета»' : 'на устройство'}</button>
         </form>
       </details>
 
@@ -397,7 +397,7 @@ function renderMoney() {
         <div><b>${esc(e.note || e.basis || e.cat)}</b><div class="muted">${e.date ? shortDate(e.date) + ' · ' : ''}${esc(e.who || '')}</div></div>
         <b class="num">${rub(e.sum)}</b>${e.local ? `<button class="x" data-delx="${esc(e.id)}" aria-label="Удалить">×</button>` : ''}</li>`).join('') || '<li class="muted">Ничего не найдено</li>'}</ul>
       ${list.length > state.expLimit ? `<button class="btn ghost more" id="expMore">Показать ещё ${Math.min(40, list.length - state.expLimit)}</button>` : ''}
-      ${fin.partial ? '<p class="note">Демо: итоги и категории — по всем 355 операциям листа «Счета», а список и график — только часть за август. После подключения таблицы загрузятся все строки.</p>' : ''}`;
+      ${fin.partial ? '<p class="note">Итоги и категории посчитаны по всем 355 операциям листа «Счета». Список и график пока показывают только август: полный реестр загрузится, когда таблица будет подключена онлайн (кнопка «Таблица»).</p>' : ''}`;
   }
 
   if (state.money === 'adv') {
@@ -484,7 +484,7 @@ function renderMoney() {
     const fd = new FormData(f);
     try {
       await store.addExpense({ date: fd.get('date'), cat: fd.get('cat'), who: fd.get('who'), basis: fd.get('basis'), note: fd.get('note'), sum: fd.get('sum') });
-      toast(store.connected ? 'Записано в лист «Счета»' : 'Записано (демо)');
+      toast(store.connected ? 'Записано в лист «Счета»' : 'Сохранено на устройстве · таблица не подключена');
     } catch (err) { toast('Ошибка: ' + err.message, true); }
   };
 }
@@ -548,9 +548,22 @@ $('#btnExpand').onclick = () => { document.body.classList.toggle('stage-big'); s
 function shortDate(iso) { const [, m, d] = iso.split('-').map(Number); return `${d} ${MONTHS_GEN[m - 1]}`; }
 
 // ---------- статус, настройки ----------
+function renderBanner() {
+  let el = $('#connectBanner');
+  if (store.connected) { el?.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'connectBanner';
+    el.className = 'banner';
+    el.innerHTML = '<span>Данные вашей таблицы «Glorax_Учёт» на 04.11.2026. Чтобы они обновлялись онлайн, а правки записывались обратно в таблицу, подключите её — это один раз и около 3 минут.</span><button class="btn small" id="bannerBtn">Подключить</button>';
+    document.querySelector('.top').after(el);
+    $('#bannerBtn').onclick = () => $('#btnSettings').click();
+  }
+}
+
 function renderStatus() {
   const el = $('#status');
-  const map = { loading: ['Загрузка…', ''], ok: ['Google Таблица', 'ok'], demo: ['Демо-режим', 'warn'], error: ['Ошибка связи', 'err'], idle: ['—', ''] };
+  const map = { loading: ['Загрузка…', ''], ok: ['Онлайн · таблица', 'ok'], demo: ['Таблица не подключена', 'warn'], error: ['Ошибка связи', 'err'], idle: ['—', ''] };
   const [t, cls] = map[store.status] || map.idle;
   el.textContent = t;
   el.className = 'pill ' + cls;
@@ -560,7 +573,7 @@ function renderStatus() {
 $('#btnReload').onclick = () => store.load();
 $('#btnSettings').onclick = () => { $('#cfgUrl').value = store.url; $('#cfgToken').value = store.token; $('#settings').showModal(); };
 $('#btnSave').onclick = () => { store.saveConfig($('#cfgUrl').value, $('#cfgToken').value); store.load(); };
-$('#btnDemoReset').onclick = () => { if (confirm('Сбросить локальные правки демо-режима?')) { store.resetDemo(); $('#settings').close(); toast('Демо сброшено'); } };
+$('#btnDemoReset').onclick = () => { if (confirm('Удалить правки, сохранённые на этом устройстве?')) { store.resetDemo(); $('#settings').close(); toast('Локальные правки удалены'); } };
 
 let toastT;
 function toast(msg, bad) {
@@ -570,7 +583,7 @@ function toast(msg, bad) {
 }
 
 store.on((what) => {
-  if (what === 'status') renderStatus();
+  if (what === 'status') { renderStatus(); renderBanner(); }
   if (what === 'data') { scene.update(); render(); }
 });
 

@@ -1,6 +1,7 @@
 // Модель данных и синхронизация с Google Sheets через Apps Script (см. apps-script/Code.gs).
 import { SEED_DOCS_ROWS, SEED_REMARKS, SEED_JOURNAL } from './seed.js';
 import { SEED_FIN } from './seed-fin.js';
+import { API_URL, API_TOKEN } from './config.js';
 
 export const SECTIONS = ['4', '5'];
 export const FLOORS = Array.from({ length: 18 }, (_, i) => i); // 0 = подвал, 1..16, 17 = кровля
@@ -122,8 +123,8 @@ export class Store {
   constructor() {
     const cfg = LS.get('stroyka.cfg', {});
     const qs = new URLSearchParams(location.search);
-    this.url = qs.get('api') || cfg.url || '';
-    this.token = qs.get('token') || cfg.token || '';
+    this.url = qs.get('api') || cfg.url || API_URL || '';
+    this.token = qs.get('token') || cfg.token || API_TOKEN || '';
     this.progress = new Map();
     this.journal = [];
     this.docs = [];
@@ -286,7 +287,7 @@ export function normFin(f) {
 Object.assign(Store.prototype, {
   expensesOn(date) { return this.fin.expenses.filter((e) => e.date === date); },
   expenseTotal(list = this.fin.expenses) { return list.reduce((a, e) => a + e.sum, 0); },
-  /** Итоги по категориям: из сводки листа «Счета» (демо) или из строк */
+  /** Итоги по категориям: из сводки листа «Счета» (снимок) или из строк */
   byCategory() {
     if (this.fin.summary && this.fin.partial) return this.fin.summary.cats;
     const r = {};

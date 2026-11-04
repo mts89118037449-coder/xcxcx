@@ -307,3 +307,8 @@ body.touring .floor-tag { opacity: 0; }
   .top h1 { font-size: 14px; }
   #btnTheme { display: none; }
 }
+
+.banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; background: #fff6dd; color: #5c4300; border-bottom: 1px solid #f0dca0; font-size: 13px; }
+:root[data-theme="dark"] .banner { background: #2e2715; color: #f3dc9a; border-color: #4a3d1c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .banner { background: #2e2715; color: #f3dc9a; border-color: #4a3d1c; } }
+@media (max-width: 900px) { .banner { padding: 6px 12px; font-size: 12px; } }
