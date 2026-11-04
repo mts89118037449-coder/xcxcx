@@ -13,7 +13,35 @@
 
 Если задан `GOOGLE_API_URL`, сервер в обоих режимах снимает копию таблицы (по умолчанию раз в 5 минут) и после каждой правки.
 
-## Установка (Ubuntu 22.04 / 24.04, вариант с Docker)
+## Установка одной командой
+
+На чистом VPS с Ubuntu 22.04/24.04 или Debian 11/12, от root или через sudo. Подставьте свой GitHub-токен (право чтения репозитория), домен и ссылку `…/exec` скрипта таблицы:
+
+```bash
+T=ghp_ВАШ_ТОКЕН; sudo GH_TOKEN=$T DOMAIN=stroyka.example.ru GOOGLE_API_URL='https://script.google.com/macros/s/…/exec' bash -c "$(curl -fsSL -H "Authorization: token $T" https://raw.githubusercontent.com/mts89118037449-coder/xcxcx/ccr-daed372c-kxhkyu/stroyka/deploy/install.sh)"
+```
+
+Что делает скрипт:
+- ставит Node.js 18+ (из apt, с nodejs.org или с зеркала npmmirror), nginx и certbot;
+- скачивает код в `/opt/stroyka` (токен на диске не сохраняется);
+- запускает службу `stroyka` (systemd, автозапуск, перезапуск при сбое);
+- закрывает сайт логином и паролем (пароль генерируется и печатается в конце);
+- выпускает HTTPS-сертификат для домена;
+- печатает адрес, логин и пароль.
+
+Без `DOMAIN` сайт будет по `http://IP-сервера`. Без `GOOGLE_API_URL` приложение работает на снимке таблицы; ссылку можно добавить позже, повторив команду с ней.
+
+Повторный запуск той же командой — это обновление: данные, бэкапы, `.env` и пароль сохраняются. Если GitHub недоступен, укажите зеркало: `REPO_URL=https://gitlab.com/…/xcxcx.git`.
+
+После установки:
+
+```bash
+stroyka status          # состояние
+stroyka logs            # журнал
+stroyka backup | list | restore <файл> | pull
+```
+
+## Установка вручную (Ubuntu 22.04 / 24.04, вариант с Docker)
 
 ```bash
 # 1. Пакеты
