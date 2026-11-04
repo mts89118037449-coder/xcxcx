@@ -12,6 +12,7 @@
 #   GOOGLE_API_URL  ссылка …/exec скрипта таблицы — источник данных (режим proxy)
 #   LOGIN/PASSWORD  вход на сайт; пароль по умолчанию генерируется и печатается в конце
 #   BRANCH          ветка (по умолчанию ccr-daed372c-kxhkyu)
+#   REPO_URL        другой адрес репозитория (зеркало GitLab/свой git), если GitHub недоступен
 # Повторный запуск той же командой = обновление: данные и .env сохраняются.
 set -euo pipefail
 
@@ -52,8 +53,8 @@ echo "node $(node -v) → $NODE"
 
 say "Код приложения → $DIR"
 id stroyka >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin -d "$DIR" stroyka
-URL="https://github.com/$REPO.git"
-AUTH_URL="$URL"; [ -n "${GH_TOKEN:-}" ] && AUTH_URL="https://x-access-token:${GH_TOKEN}@github.com/$REPO.git"
+URL="${REPO_URL:-https://github.com/$REPO.git}"   # REPO_URL — зеркало, если GitHub недоступен
+AUTH_URL="$URL"; [ -n "${GH_TOKEN:-}" ] && [ -z "${REPO_URL:-}" ] && AUTH_URL="https://x-access-token:${GH_TOKEN}@github.com/$REPO.git"
 git config --global --add safe.directory "$DIR" 2>/dev/null || true
 if [ -d "$DIR/.git" ]; then
   git -C "$DIR" fetch -q "$AUTH_URL" "$BRANCH" && git -C "$DIR" checkout -q -B "$BRANCH" FETCH_HEAD
