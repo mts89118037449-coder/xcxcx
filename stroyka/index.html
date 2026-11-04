@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Стройка 3D — секции 4 и 5</title>
-<meta name="description" content="3D-визуализация хода строительства МКД (секции 4 и 5, 16 этажей) с синхронизацией с Google Таблицами: прогресс по этажам, люди и поставки материалов по датам.">
+<title>Стройка 3D</title>
+<meta name="description" content="3D-визуализация хода строительства МКД с синхронизацией с Google Таблицами: прогресс по этажам, люди и поставки материалов по датам.">
 <link rel="stylesheet" href="css/style.css">
 <script type="importmap">
 { "imports": {
@@ -171,6 +171,11 @@
 </dialog>
 
 <dialog id="renderDlg" class="render-dlg"><form method="dialog"><img id="renderImg" alt="Проектная визуализация"><button class="btn" value="ok">Закрыть</button></form></dialog>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-labelledby="sheetTitle">
+  <div class="sheet-grip" id="sheetGrip"><i aria-hidden="true"></i><b id="sheetTitle">Этаж</b><button class="btn ghost small" id="sheetClose" aria-label="Закрыть">✕</button></div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
 
 <div class="toast" id="toast" role="status"></div>
 

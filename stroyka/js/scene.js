@@ -12,7 +12,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { SECTIONS, FLOORS, ROOF, floorName } from './data.js';
+import { SECTIONS, FLOORS, ROOF, TOP, floorName } from './data.js';
 
 // Размеры в метрах (башня-секция с почти квадратным планом)
 const L = 24;        // ширина фасада (вдоль X)
@@ -24,7 +24,16 @@ const MOD = 3.0;     // шаг оконного модуля по фасаду
 const ROOF_H = 1.6;  // парапет кровли
 
 // Положение секций — «шахматкой», как на проектных видах
-const SECTION_POS = { '4': [-21, 0, 5], '5': [21, 0, -5] };
+// Раскладка секций по их числу в таблице: в ряд через 42 м, со сдвигом «ёлочкой» (для 2 секций — как на ГП)
+const SECTION_POS = {};
+let SPAN = 90;   // ширина двора
+function layout() {
+  const n = SECTIONS.length;
+  SECTIONS.forEach((s, i) => { SECTION_POS[s] = [(i - (n - 1) / 2) * 42, 0, i % 2 ? -5 : 5]; });
+  SPAN = n * 42 + 6;
+}
+const HK = () => ROOF / 17;   // масштаб по высоте относительно 16-этажного корпуса
+const LAST = () => SECTIONS[SECTIONS.length - 1];
 
 const C = {
   concrete: 0xbdb9b0,
@@ -48,6 +57,7 @@ const PAL = {
 
 export class BuildingScene {
   constructor(container, store) {
+    layout();
     this.container = container;
     this.store = store;
     this.metric = 'avg';
@@ -274,7 +284,7 @@ export class BuildingScene {
     const cage = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.4, 1.6), new THREE.MeshStandardMaterial({ color: 0xf2c200, roughness: 0.5, metalness: 0.3 }));
     cage.position.set(0, 9 * H + 1.2, 1.3); cage.castShadow = true; mast.add(cage);
     this.hoistCage = cage;
-    mast.position.set(-21 + 6, 0, 5 + D / 2 + 1.8);
+    { const [mx, , mz] = SECTION_POS[SECTIONS[0]]; mast.position.set(mx + 6, 0, mz + D / 2 + 1.8); }
     this.scene.add(mast);
   }
 
@@ -326,11 +336,12 @@ export class BuildingScene {
   }
 
   /** На узких (портретных) экранах камера отходит дальше, чтобы обе секции влезли */
-  fit() { const a = this.camera.aspect || 1.6; return Math.max(1, Math.min(2.6, 1.3 / a)); }
+  fit() { const a = this.camera.aspect || 1.6; return Math.max(1, Math.min(2.6, 1.3 / a)) * Math.max(1, SPAN / 90, HK() * 0.9); }
 
   resetView(animate = false) {
     const k = this.fit();
-    const pos = new THREE.Vector3(-48 * k, 24 + 22 * k, 158 * k), tg = new THREE.Vector3(0, 24, 0);
+    const hc = 24 * HK();
+    const pos = new THREE.Vector3(-48 * k, hc + 22 * k, 158 * k), tg = new THREE.Vector3(0, hc, 0);
     if (this.selBox) this.selBox.visible = false;
     if (animate) return this.flyTo(pos, tg);
     this.camera.position.copy(pos);
@@ -359,12 +370,12 @@ export class BuildingScene {
   /** Взять в фокус секцию целиком */
   focusSection(section) {
     const sec = this.floors.get(`${section}|0`).group.parent;
-    const tg = new THREE.Vector3(sec.position.x, 24, sec.position.z);
+    const tg = new THREE.Vector3(sec.position.x, 24 * HK(), sec.position.z);
     const dir = this.camera.position.clone().sub(this.controls.target); dir.y = 0;
     if (dir.lengthSq() < 1) dir.set(-0.3, 0, 1);
     dir.normalize();
     const dist = 100 * this.fit();
-    const pos = tg.clone().addScaledVector(dir, dist); pos.y = 24 + dist * 0.3;
+    const pos = tg.clone().addScaledVector(dir, dist); pos.y = 24 * HK() + dist * 0.3;
     this.flyTo(pos, tg);
     if (this.selBox) this.selBox.visible = false;
   }
@@ -396,7 +407,7 @@ export class BuildingScene {
       return m;
     };
     // двор и мощение вокруг башен
-    flat(90, 58, this.winter ? 0xdfe4ea : 0xc9c3b6, 0, 0, 0.02);
+    flat(SPAN, 58, this.winter ? 0xdfe4ea : 0xc9c3b6, 0, 0, 0.02);
     for (const sec of SECTIONS) { const [x, , z] = SECTION_POS[sec]; flat(L + 8, D + 8, 0xb5aea1, x, z, 0.04); }
     // забор стройплощадки (профлист) — виден, пока идёт стройка
     this.fence = new THREE.Group();
@@ -408,8 +419,9 @@ export class BuildingScene {
       m.material.map = t; m.position.set(x, 1.1, z); m.rotation.y = rot || 0; m.castShadow = true; m.receiveShadow = true;
       this.fence.add(m);
     };
-    seg(92, 0, -29); seg(58, -46, 0, Math.PI / 2); seg(58, 46, 0, Math.PI / 2);
-    seg(38, -27, 29); seg(38, 27, 29);           // спереди — въезд посередине
+    const fw = SPAN + 2, half = fw / 2, side = (fw - 16) / 2;
+    seg(fw, 0, -29); seg(58, -half, 0, Math.PI / 2); seg(58, half, 0, Math.PI / 2);
+    seg(side, -(8 + side / 2), 29); seg(side, 8 + side / 2, 29);           // спереди — въезд посередине
     s.add(this.fence);
     // газоны во дворе
     flat(18, 14, this.winter ? 0xf1f4f8 : 0x86a862, -18, -16, 0.05);
@@ -582,9 +594,10 @@ export class BuildingScene {
         hit.userData = { section: s, floor: f };
         g.add(hit);
 
-        const marker = new THREE.Mesh(new THREE.BoxGeometry(0.6, fh - SLAB - 0.3, 0.6), new THREE.MeshStandardMaterial({ color: C.red, emissive: C.red, emissiveIntensity: 0.5 }));
+        const marker = new THREE.Mesh(new THREE.BoxGeometry(1.1, fh - SLAB - 0.3, 1.1), new THREE.MeshStandardMaterial({ color: C.red, emissive: C.red, emissiveIntensity: 0.5 }));
         marker.position.set(-L / 2 - 0.5, SLAB + (fh - SLAB) / 2, D / 2 + 0.5);
         marker.visible = false;
+        marker.userData = { section: s, floor: f, cat: 'remarks' };
         g.add(marker);
 
         // зелёная полоса на торце перекрытия — процент этажа в режиме «Факт»
@@ -594,7 +607,7 @@ export class BuildingScene {
         bar.visible = false;
         g.add(bar);
 
-        if (s === '5' && (f % 2 === 0 || f === ROOF || f === 1)) {
+        if (s === LAST() && (f % 2 === 0 || f === ROOF || f === 1)) {
           const el = document.createElement('div');
           el.className = 'floor-tag';
           el.textContent = f === 0 ? 'П' : f === ROOF ? 'К' : String(f);
@@ -718,13 +731,14 @@ export class BuildingScene {
   /** p ∈ [0..1] — положение прокрутки тура: камера летит по ключевым точкам, здание растёт */
   tour(p) {
     const ease = (t) => t * t * (3 - 2 * t);
+    const hk = HK(), p0 = SECTION_POS[SECTIONS[0]], p1 = SECTION_POS[LAST()];
     const K = [
-      { t: 0.00, az: -70, el: 6, dist: 260, tg: [0, 18, 0] },
-      { t: 0.22, az: -35, el: 16, dist: 175, tg: [0, 24, 0] },
-      { t: 0.45, az: -38, el: 12, dist: 95, tg: [-21, 26, 5] },
-      { t: 0.68, az: 28, el: 14, dist: 95, tg: [21, 26, -5] },
-      { t: 0.86, az: 70, el: 30, dist: 170, tg: [0, 22, 0] },
-      { t: 1.00, az: 140, el: 58, dist: 210, tg: [0, 10, 0] },
+      { t: 0.00, az: -70, el: 6, dist: 260, tg: [0, 18 * hk, 0] },
+      { t: 0.22, az: -35, el: 16, dist: 175, tg: [0, 24 * hk, 0] },
+      { t: 0.45, az: -38, el: 12, dist: 95, tg: [p0[0], 26 * hk, p0[2]] },
+      { t: 0.68, az: 28, el: 14, dist: 95, tg: [p1[0], 26 * hk, p1[2]] },
+      { t: 0.86, az: 70, el: 30, dist: 170, tg: [0, 22 * hk, 0] },
+      { t: 1.00, az: 140, el: 58, dist: 210, tg: [0, 10 * hk, 0] },
     ];
     let i = 0;
     while (i < K.length - 2 && p > K[i + 1].t) i++;
@@ -755,7 +769,7 @@ export class BuildingScene {
   /** Палитра фасада для этажа */
   palette(f, done) {
     if (this.view === 'progress') return done ? 'full' : 'progress';
-    return f === 0 ? 'lobby' : f >= 16 ? 'copper' : 'project';
+    return f === 0 ? 'lobby' : f >= TOP ? 'copper' : 'project';
   }
 
   update() {
@@ -914,7 +928,7 @@ export class BuildingScene {
     el.addEventListener('pointerup', (e) => {
       if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
       const hit = this.pick(e);
-      if (hit) { this.tooltip.style.opacity = 0; this.hovered = null; this.select(hit.section, hit.floor); this.onSelect(hit.section, hit.floor); }
+      if (hit) { this.tooltip.style.opacity = 0; this.hovered = null; this.select(hit.section, hit.floor); this.onSelect(hit.section, hit.floor, hit.cat); }
     });
   }
 
@@ -922,8 +936,12 @@ export class BuildingScene {
     const r = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hits = this.raycaster.intersectObjects([...this.floors.values()].map((o) => o.hit), false);
-    return hits.length ? hits[0].object.userData : null;
+    const fl = [...this.floors.values()];
+    const hits = this.raycaster.intersectObjects([...fl.map((o) => o.hit), ...fl.filter((o) => o.marker.visible).map((o) => o.marker)], false);
+    if (!hits.length) return null;
+    // красный маркер замечаний — открыть этаж сразу на «Замечаниях»
+    const m = hits.find((h) => h.object.userData.cat && h.distance - hits[0].distance < 3);
+    return (m || hits[0]).object.userData;
   }
 
   resize() {

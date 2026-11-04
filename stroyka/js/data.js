@@ -3,9 +3,32 @@ import { SEED_DOCS_ROWS, SEED_REMARKS, SEED_JOURNAL } from './seed.js';
 import { SEED_FIN } from './seed-fin.js';
 import { API_URL, API_TOKEN } from './config.js';
 
-export const SECTIONS = ['4', '5'];
-export const FLOORS = Array.from({ length: 18 }, (_, i) => i); // 0 = подвал, 1..16, 17 = кровля
-export const ROOF = 17;
+// Структура проекта (секции и этажность) приходит из таблиц: листы «Секция …» в «Выполнении».
+// Значения «живые» (export let): модули видят текущую структуру. По умолчанию — до первой загрузки.
+export let SECTIONS = ['4', '5'];
+export let TOP = 16;                 // верхний жилой этаж
+export let ROOF = 17;                // ключ кровли в приложении = TOP + 1
+export let FLOORS = [];              // 0 = подвал, 1..TOP, ROOF = кровля
+export const ROOF_KEY = 999;         // так кровлю передаёт таблица (не зависит от этажности)
+function setStructure(secs, top) {
+  SECTIONS = secs.length ? secs : ['1'];
+  TOP = Math.max(1, Math.min(60, top | 0 || 16));
+  ROOF = TOP + 1;
+  FLOORS = Array.from({ length: TOP + 2 }, (_, i) => i);
+}
+setStructure(SECTIONS, TOP);
+try { const st = JSON.parse(localStorage.getItem('stroyka.structure') || 'null'); if (st && st.sections) setStructure(st.sections, st.top); } catch { /* */ }
+/** Применить структуру из таблиц; true — если она поменялась (нужно перестроить 3D) */
+export function configure(structure) {
+  if (!structure || !Array.isArray(structure.sections) || !structure.sections.length) return false;
+  const secs = structure.sections.map((x) => String(x.id)).sort((a, b) => a.localeCompare(b, 'ru', { numeric: true }));
+  const top = Math.max(...structure.sections.map((x) => Number(x.floors) || 0)) || TOP;
+  const changed = secs.join('|') !== SECTIONS.join('|') || top !== TOP;
+  setStructure(secs, top);
+  try { localStorage.setItem('stroyka.structure', JSON.stringify({ sections: secs, top })); } catch { /* */ }
+  return changed;
+}
+const fromKey = (f) => (Number(f) === ROOF_KEY ? ROOF : Number(f));
 
 export function floorName(f) {
   if (f === 0) return 'Подвал';
@@ -47,19 +70,36 @@ export function parseRowLabel(label) {
   return { floor, work };
 }
 
-/** Строки листа «Таблица» → документы по этажам */
-export function docsFromRows(rows) {
+const DEFAULT_DOCS_HEAD = [['', 'ИС', '', 'АОСР', '', 'Замечания по АОСР', ''], ['', 'С4', 'С5', 'С4', 'С5', 'С4', 'С5']];
+/** Шапка листа «Таблица» (строки 1–2) → какие колонки чьи: [{ c (1-based), kind: is|aosr|rem, section }] */
+export function docsColumns(head) {
+  const h = head && head.length >= 2 ? head : DEFAULT_DOCS_HEAD;
+  const cols = [];
+  let block = '';
+  for (let i = 1; i < h[1].length; i++) {
+    if (String(h[0][i] || '').trim()) block = String(h[0][i]).toLowerCase();
+    const sec = String(h[1][i] || '').trim().replace(/^(секци[яи]|с|c)\s*/i, '');
+    if (!sec) continue;
+    const kind = /замеч/.test(block) ? 'rem' : /аоср/.test(block) ? 'aosr' : /^\s*ис(?![а-яё])|исполн/.test(block) ? 'is' : null;
+    if (kind) cols.push({ c: i + 1, kind, section: sec });
+  }
+  return cols;
+}
+/** Строки листа «Таблица» → документы по этажам: { floor, work, row, [секция]: { is, aosr, rem, cols } } */
+export function docsFromRows(rows, head) {
+  const cols = docsColumns(head);
   const out = [];
   for (const r of rows) {
     const p = parseRowLabel(r[0]);
     if (!p) continue;
-    out.push({
-      ...p,
-      label: r[0],
-      row: r[7] || null,
-      '4': { is: r[1] || '', aosr: r[3] || '', rem: r[5] || '' },
-      '5': { is: r[2] || '', aosr: r[4] || '', rem: r[6] || '' },
-    });
+    const last = r[r.length - 1];
+    const d = { ...p, label: r[0], row: typeof last === 'number' ? last : null };
+    for (const x of cols) {
+      const o = (d[x.section] ||= { is: '', aosr: '', rem: '', cols: {} });
+      o[x.kind] = r[x.c - 1] || '';
+      o.cols[x.kind] = x.c;
+    }
+    out.push(d);
   }
   return out;
 }
@@ -69,7 +109,7 @@ export function estimateFromDocs(docs) {
   const list = [];
   for (const s of SECTIONS) for (const f of FLOORS) for (const w of worksForFloor(f)) {
     const d = docs.find((x) => x.floor === f && x.work === w);
-    const v = d ? (d[s].is || d[s].aosr ? 100 : d[s].rem ? 50 : 0) : 0;
+    const v = d && d[s] ? (d[s].is || d[s].aosr ? 100 : d[s].rem ? 50 : 0) : 0;
     list.push({ section: s, floor: f, work: w, value: v, updated: '', note: 'оценка по листу «Таблица»' });
   }
   return list;
@@ -79,14 +119,14 @@ export function estimateFromDocs(docs) {
 export function floorsInText(text) {
   const s = String(text || '');
   const res = new Set();
-  const re = /(\d{1,2})\s*(?:[–\-—]|по)\s*(\d{1,2})\s*(?:эт|этаж)|(\d{1,2})\s*(?:эт\.|этаж|эт\b)|этаж[а-я]*\s*(\d{1,2})/gi;
+  const re = /(\d{1,2})\s*(?:[–\-—]|по)\s*(\d{1,2})\s*(?:эт|этаж)|(\d{1,2})\s*(?:эт\.|этаж|эт(?![а-яё]))|этаж[а-я]*\s*(\d{1,2})/gi;
   let m;
   while ((m = re.exec(s))) {
     if (m[1] && m[2]) { for (let i = +m[1]; i <= +m[2]; i++) res.add(i); }
     else if (m[3]) res.add(+m[3]);
     else if (m[4]) res.add(+m[4]);
   }
-  return [...res].filter((f) => f >= 1 && f <= 16);
+  return [...res].filter((f) => f >= 1 && f <= TOP);
 }
 
 export function ruToIso(d) {
@@ -133,7 +173,7 @@ export function materialKey(name) {
   const s = String(name || '').toLowerCase();
   const size = (s.match(/(\d{2,3})\s*(?:мм|пг|\b)/) || [])[1];
   if (/скц|полигран|камень/.test(s)) return `СКЦ ${size || ''}`.trim() + (/полнотел/.test(s) ? ' полнотелый' : /пустотел/.test(s) ? ' пустотелый' : '');
-  if (/газобет|газобл|\bгб\b/.test(s)) return `Газобетон ${size || ''}`.trim();
+  if (/газобет|газобл|(?<![а-яё])гб(?![а-яё])/.test(s)) return `Газобетон ${size || ''}`.trim();
   if (/клей/.test(s)) return 'Клей';
   if (/цпс|пескобет|смесь/.test(s)) return 'ЦПС';
   return String(name || '').trim();
@@ -226,8 +266,10 @@ export class Store {
   }
 
   apply(data) {
+    if (data.extra && configure(data.extra.structure)) this.structureChanged = true;
     this.docsRows = data.docsRows || [];
-    this.docs = docsFromRows(this.docsRows);
+    this.docsHead = data.docsHead || null;
+    this.docs = docsFromRows(this.docsRows, this.docsHead);
     this.remarks = data.remarks || [];
     this.fin = normFin(data.fin || {});
     this.setExtra(data.extra);
@@ -235,13 +277,13 @@ export class Store {
     this.journal = (data.journal || []).map((j) => ({ ...j, qty: Number(j.qty) || 0 }));
     this.progress = new Map();
     const list = data.progress || [];   // никаких оценок: проценты — из «Выполнения», ручные значения — из листа «Прогресс»
-    for (const p of list) this.progress.set(key(String(p.section), Number(p.floor), p.work), { ...p, section: String(p.section), floor: Number(p.floor), value: clampPct(p.value) });
+    for (const p of list) { const f = fromKey(p.floor); this.progress.set(key(String(p.section), f, p.work), { ...p, section: String(p.section), floor: f, value: clampPct(p.value) }); }
   }
 
   loadDemo() {
     const saved = LS.get('stroyka.demo', null);
     this.docsRows = SEED_DOCS_ROWS;
-    this.docs = docsFromRows(SEED_DOCS_ROWS);
+    this.docs = docsFromRows(SEED_DOCS_ROWS, null);
     this.remarks = SEED_REMARKS;
     this.journal = saved ? saved.journal : [];
     this.fin = normFin({ ...SEED_FIN, expenses: [...SEED_FIN.expenses, ...((saved && saved.expenses) || [])] });
@@ -262,7 +304,7 @@ export class Store {
   snapshot() {
     return {
       extra: this.extra,
-      progress: [...this.progress.values()], journal: this.journal, docsRows: this.docsRows || [], remarks: this.remarks,
+      progress: [...this.progress.values()], journal: this.journal, docsRows: this.docsRows || [], docsHead: this.docsHead || null, remarks: this.remarks,
       fin: { expenses: this.fin.expenses, advances: this.fin.advances, income: this.fin.income, nominated: this.fin.nominated, personal: this.fin.personal, tools: this.fin.tools, contract: this.fin.contract, summary: this.fin.summary, partial: this.fin.partial },
     };
   }
@@ -296,7 +338,8 @@ export class Store {
   /** Данные других таблиц: «Выполнение» (объёмы) и «VUP CORE» (материалы, ход работ, статусы этажей) */
   setExtra(x) {
     const e = x || {};
-    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [] };
+    for (const k of ['volumes', 'floorStatus', 'worklog', 'moves', 'plan']) for (const v of e[k] || []) if (v && v.floor != null && Number(v.floor) === ROOF_KEY) v.floor = ROOF;
+    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null };
     this.vol = new Map();
     for (const v of this.extra.volumes) {
       const g = workGroup(v.work, Number(v.floor));
@@ -394,7 +437,7 @@ export class Store {
       r = await fetch(this.url, {
         method: 'POST',
         // text/plain — «простой» запрос без CORS-preflight, Apps Script его принимает
-        body: JSON.stringify({ ...payload, token: this.token }),
+        body: JSON.stringify({ ...payload, ...(payload.action === 'setProgress' && payload.floor === ROOF ? { floor: ROOF_KEY } : {}), token: this.token }),
         redirect: 'follow',
       });
     } catch (e) { const err = new Error('Нет связи с таблицей'); err.network = true; throw err; }
@@ -504,6 +547,11 @@ export class Store {
         break;
       case 'setCell': {
         // сразу показать новое значение; точное значение вернёт таблица при следующей загрузке
+        if (op.f === 'cell' && op.list === 'docsRows') {
+          const r = (this.docsRows || []).find((x) => x[x.length - 1] === op.r);
+          if (r) { r[op.c - 1] = op.value; this.docs = docsFromRows(this.docsRows, this.docsHead); }
+          break;
+        }
         const list = op.list && op.list.split('.').reduce((o, k) => (o ? o[k] : null), this);
         if (Array.isArray(list) && op.prop) {
           const rec = list.find((x) => x.row === op.r && (!x.sheet || x.sheet === op.s));

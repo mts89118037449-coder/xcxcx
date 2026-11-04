@@ -445,3 +445,43 @@ body.touring .floor-tag { opacity: 0; }
 .section-tag { pointer-events: auto; cursor: pointer; transition: transform .15s; }
 .section-tag:hover { transform: scale(1.06); }
 .nodata { font-size: 18px; color: var(--muted); font-weight: 600; letter-spacing: 0; }
+
+/* ---------- этаж: категории ---------- */
+.cats { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.cat { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
+.cat.warn { border-left: 3px solid var(--red); }
+.cat-h { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 26px auto 1fr 16px; align-items: center; gap: 8px; padding: 12px; cursor: pointer; font-size: 14px; color: var(--ink); }
+.cat-h:focus-visible, .sub-h:focus-visible { outline: 2px solid #3b82f6; outline-offset: -2px; }
+.cat-h:hover { background: var(--panel); }
+.cat-i { font-style: normal; text-align: center; color: var(--muted); }
+.cat-s { text-align: right; color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-chev { font-style: normal; color: var(--muted); font-size: 18px; transition: transform .15s; text-align: center; }
+.cat.open > .cat-h .cat-chev, .sub-cat.open > .sub-h .cat-chev { transform: rotate(90deg); }
+.cat.empty .cat-h { cursor: default; opacity: .55; grid-template-columns: 26px auto 1fr; }
+.cat.empty .cat-h:hover { background: none; }
+.cat-b { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.sub-cat { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.sub-h { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: minmax(0, 1.2fr) 1fr 44px 14px; gap: 8px; align-items: center; padding: 10px; cursor: pointer; font-size: 13px; color: var(--ink); }
+.sub-h .bar { margin: 0; }
+.sub-b { padding: 0 10px 10px; }
+.doctab { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.doctab th, .doctab td { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+.doctab td.ok .ev { color: var(--green-full); }
+.kv-list { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.kv { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.done-list summary { cursor: pointer; color: var(--muted); font-size: 12.5px; padding: 4px 0; }
+.r-go { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.chip-go { all: unset; cursor: pointer; font-size: 11px; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); }
+.chip-go:hover { border-color: #3b82f6; }
+
+/* ---------- нижняя шторка этажа (телефон) ---------- */
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; max-height: 56vh; max-height: 56svh; display: flex; flex-direction: column;
+  background: var(--panel); border-radius: 16px 16px 0 0; box-shadow: 0 -10px 40px rgba(0,0,0,.22); transform: translateY(100%); transition: transform .22s ease-out; }
+.sheet.up { transform: translateY(0); }
+.sheet-grip { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; padding: 14px 12px 8px 16px; position: relative; touch-action: none; cursor: grab; border-bottom: 1px solid var(--line); }
+.sheet-grip > i { position: absolute; top: 5px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: var(--line); }
+.sheet-grip b { font-size: 15px; }
+.sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 6px 16px calc(16px + env(safe-area-inset-bottom)); }
+.sheet-body .floor-big { font-size: 26px; }
+body.sheet-open .tabs { visibility: hidden; }
+@media (min-width: 901px) { .sheet { display: none; } }

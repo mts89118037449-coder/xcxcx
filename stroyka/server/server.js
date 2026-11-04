@@ -135,7 +135,7 @@ function apply(body) {
   switch (body.action) {
     case 'setProgress': {
       const s = String(body.section), f = Number(body.floor), w = String(body.work);
-      if (!['4', '5'].includes(s) || !(f >= 0 && f <= 17)) throw new Error('Неверная секция или этаж');
+      if (!s || !(f >= 0 && (f <= 200 || f === 999))) throw new Error('Неверная секция или этаж');
       const row = db.progress.find((p) => String(p.section) === s && Number(p.floor) === f && p.work === w);
       if (row) Object.assign(row, { value: clampPct(body.value), updated: nowStr(), note: '' });
       else db.progress.push({ section: s, floor: f, work: w, value: clampPct(body.value), updated: nowStr(), note: '' });

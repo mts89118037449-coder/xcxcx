@@ -46,8 +46,8 @@ const SHEET_CONTRACT = 'Формула оплаты Глоракс ';
 
 const PROGRESS_HEADER = ['Секция', 'Этаж', 'Вид работ', 'Процент', 'Обновлено', 'Примечание'];
 const JOURNAL_HEADER = ['Дата', 'Секция', 'Тип', 'Наименование', 'Количество', 'Ед.', 'Примечание', 'ID'];
-const SECTIONS = ['4', '5'];
-const ROOF = 17;
+// Кровля — отдельный ключ, чтобы не совпадать с этажом при любой этажности; приложение само ставит её над последним этажом
+const ROOF = 999;
 
 // Всегда «Glorax_Учёт» по ID: скрипт может быть привязан к другому файлу (clasp создаёт свой контейнер)
 let SS_CACHE_ = null;
@@ -203,25 +203,7 @@ function progressSheet_() {
   sh = ss_().insertSheet(SHEET_PROGRESS);
   sh.getRange(1, 1, 1, PROGRESS_HEADER.length).setValues([PROGRESS_HEADER]).setFontWeight('bold').setBackground('#e3f3e8');
   sh.setFrozenRows(1);
-  // стартовые значения — оценка по листу «Таблица»
-  const docs = readDocsRows_();
-  const rows = [];
-  SECTIONS.forEach(function (s) {
-    for (let f = 0; f <= ROOF; f++) {
-      worksForFloor_(f).forEach(function (w) {
-        let v = 0;
-        docs.forEach(function (r) {
-          const p = parseRowLabel_(r[0]);
-          if (!p || p.floor !== f || p.work !== w) return;
-          const is = s === '4' ? r[1] : r[2], aosr = s === '4' ? r[3] : r[4], rem = s === '4' ? r[5] : r[6];
-          v = (is || aosr) ? 100 : rem ? 50 : 0;
-        });
-        rows.push([s, floorLabel_(f), w, v, '', 'оценка по листу «Таблица»']);
-      });
-    }
-  });
-  sh.getRange(2, 1, rows.length, PROGRESS_HEADER.length).setValues(rows);
-  sh.getRange(2, 4, rows.length, 1).setDataValidation(
+  sh.getRange(2, 4, 1000, 1).setDataValidation(
     SpreadsheetApp.newDataValidation().requireNumberBetween(0, 100).setAllowInvalid(false).build());
   // зелёная шкала прямо в таблице
   const rule = SpreadsheetApp.newConditionalFormatRule()
@@ -252,6 +234,7 @@ function readAll_() {
     progress: readProgress_(),
     journal: readJournal_(),
     docsRows: readDocsRows_(),
+    docsHead: safe_(function () { const r = readDocsRows_(); return r.head || []; }),
     remarks: readRemarks_(),
     fin: readFin_(),
     extra: readExtra_(),
@@ -270,7 +253,7 @@ function readProgress_() {
     .filter(function (r) { return r[0] !== '' && r[2] !== ''; })
     .map(function (r) {
       return {
-        section: String(r[0]).replace(/\D/g, '') || String(r[0]),
+        section: secId_(r[0]),
         floor: parseFloor_(r[1]),
         work: String(r[2]).trim(),
         value: pct_(r[3]),
@@ -310,7 +293,10 @@ function readDocsRows_() {
   if (!sh) return [];
   const last = Math.min(sh.getLastRow(), 80);
   if (last < 3) return [];
-  return sh.getRange(3, 1, last - 2, 7).getDisplayValues().map(function (r, i) { r.push(i + 3); return r; }).filter(function (r) { return parseRowLabel_(r[0]); });
+  const w = Math.min(sh.getLastColumn(), 30);
+  const rows = sh.getRange(3, 1, last - 2, w).getDisplayValues().map(function (r, i) { r.push(i + 3); return r; }).filter(function (r) { return parseRowLabel_(r[0]); });
+  rows.head = sh.getRange(1, 1, 2, w).getDisplayValues();
+  return rows;
 }
 
 function readRemarks_() {
@@ -328,8 +314,10 @@ function readRemarks_() {
 // ---------------------------------------------------------------- другие таблицы
 
 function readExtra_() {
+  const volumes = safe_(readVolumes_);
   return {
-    volumes: safe_(readVolumes_),
+    structure: structure_(volumes),
+    volumes: volumes,
     moves: safe_(readMoves_),
     worklog: safe_(readWorklog_),
     floorStatus: safe_(readFloorStatus_),
@@ -371,9 +359,9 @@ function canEdit_(id) {
 function readVolumes_() {
   const book = SpreadsheetApp.openById(VOLUMES_ID);
   const out = [];
-  ['4', '5'].forEach(function (sec) {
-    const sh = book.getSheetByName('Секция ' + sec);
-    if (!sh || sh.getLastRow() < 3) return;
+  sectionSheets_(book).forEach(function (x) {
+    const sec = x.id, sh = x.sheet;
+    if (sh.getLastRow() < 3) return;
     const w = Math.min(sh.getLastColumn(), 60);
     const head = sh.getRange(2, 1, 1, w).getDisplayValues()[0];
     const weeks = [];
@@ -391,10 +379,33 @@ function readVolumes_() {
       if (!total) continue;
       const weekly = {};
       weeks.forEach(function (wk) { const v = num_(r[wk[0]]); if (v) weekly[wk[1]] = v; });
-      out.push({ row: i + 3, sheet: 'Секция ' + sec, weekCols: weekCols, section: sec, floor: floor, work: work, total: total, done: num_(r[7]), accepted: num_(r[13]), status: String(r[10]).trim(), due: String(r[9]).trim(), handover: String(r[0]).trim(), contractor: String(r[2]).trim(), weekly: weekly });
+      out.push({ row: i + 3, sheet: sh.getName(), weekCols: weekCols, section: sec, floor: floor, work: work, total: total, done: num_(r[7]), accepted: num_(r[13]), status: String(r[10]).trim(), due: String(r[9]).trim(), handover: String(r[0]).trim(), contractor: String(r[2]).trim(), weekly: weekly });
     }
   });
   return out;
+}
+
+/** Листы «Секция …» в таблице объёмов — это и есть секции проекта (добавили лист — появилась секция) */
+function sectionSheets_(book) {
+  return book.getSheets().map(function (sh) {
+    const m = sh.getName().match(/^\s*Секци[яи]\s*(.+?)\s*$/i);
+    return m ? { id: m[1], sheet: sh } : null;
+  }).filter(Boolean);
+}
+
+/** Структура проекта: секции (листы «Секция …») и этажность каждой (столбец «Этаж») — из таблицы, не из кода */
+function structure_(vols) {
+  const secs = {};
+  try {
+    sectionSheets_(SpreadsheetApp.openById(VOLUMES_ID)).forEach(function (x) {
+      let top = 0;
+      const n = x.sheet.getLastRow();
+      if (n >= 3) x.sheet.getRange(3, 2, n - 2, 1).getDisplayValues().forEach(function (r) { const f = parseFloor_(r[0]); if (f !== null && f !== ROOF && f < 200) top = Math.max(top, f); });
+      secs[x.id] = top;
+    });
+  } catch (e) { /* таблица недоступна — по строкам объёмов */ }
+  (vols || []).forEach(function (v) { if (v.floor !== ROOF && v.floor < 200) secs[v.section] = Math.max(secs[v.section] || 0, v.floor); });
+  return { sections: Object.keys(secs).map(function (id) { return { id: id, floors: secs[id] || 1 }; }), roofKey: ROOF };
 }
 
 /** «VUP CORE»: Движение материалов */
@@ -472,7 +483,7 @@ const EDITABLE = {
   'G|УЧЁТ ИНСТРУМЕНТА ': { name: 2, qty: 3 },
   'G|Формула оплаты Глоракс ': { value: 2 },
   'G|Замечания АСГ': { due1: 10, due2: 11, due3: 12, due4: 13, due5: 14, due6: 15, due7: 16, status: 20, done: 21, note: 24 },
-  'G|Таблица': { is4: 2, is5: 3, aosr4: 4, aosr5: 5, rem4: 6, rem5: 7 },
+  'G|Таблица': { cell: 0 },
   'V|Секция 4': { total: 5, accepted: 14, week: 0 },
   'V|Секция 5': { total: 5, accepted: 14, week: 0 },
   'U|Движение материалов': { date: 3, type: 4, material: 5, zone: 6, pallets: 7, doc: 9, status: 10, comment: 14 },
@@ -507,6 +518,10 @@ function setCell_(q) {
   if (q.f === 'week') {
     col = Number(q.c);
     if (!(col >= 15) || !ddmmyy_(sh.getRange(2, col).getDisplayValue())) throw new Error('Неверная неделя');
+  }
+  if (q.f === 'cell') {   // «Таблица»: колонки ИС/АОСР/замечаний по секциям, кроме названия строки
+    col = Number(q.c);
+    if (!(col >= 2 && col <= sh.getLastColumn())) throw new Error('Неверная колонка');
   }
   const row = Number(q.r);
   if (!(row >= 2)) throw new Error('Неверная строка');
@@ -562,8 +577,8 @@ function checks_() {
   try {
     const book = SpreadsheetApp.openById(VOLUMES_ID);
     const vols = readVolumes_();
-    ['4', '5'].forEach(function (sec) {
-      const sh = book.getSheetByName('Секция ' + sec); if (!sh) return;
+    sectionSheets_(book).forEach(function (x) {
+      const sec = x.id, sh = x.sheet;
       const rows = sh.getRange(3, 1, sh.getLastRow() - 2, 9).getDisplayValues();
       let inTotals = false;
       rows.forEach(function (r) {
@@ -814,15 +829,15 @@ function findDate_(text) {
 // ---------------------------------------------------------------- запись
 
 function setProgress_(section, floor, work, value) {
-  if (SECTIONS.indexOf(section) < 0) throw new Error('Секция должна быть 4 или 5');
-  if (!(floor >= 0 && floor <= ROOF)) throw new Error('Неверный этаж');
+  if (!section) throw new Error('Нет секции');
+  if (!(floor >= 0 && (floor <= 200 || floor === ROOF))) throw new Error('Неверный этаж');
   const v = Math.max(0, Math.min(100, Math.round(value)));
   const sh = progressSheet_();
   const n = Math.max(0, sh.getLastRow() - 1);
   const vals = n ? sh.getRange(2, 1, n, 3).getValues() : [];
   const now = new Date();
   for (let i = 0; i < vals.length; i++) {
-    if (String(vals[i][0]).replace(/\D/g, '') === section && parseFloor_(vals[i][1]) === floor && String(vals[i][2]).trim() === work) {
+    if (secId_(vals[i][0]) === String(section) && parseFloor_(vals[i][1]) === floor && String(vals[i][2]).trim() === work) {
       sh.getRange(i + 2, 4, 1, 3).setValues([[v, now, '']]);
       sh.getRange(i + 2, 5).setNumberFormat('dd.MM.yyyy HH:mm');
       SpreadsheetApp.flush();
@@ -883,6 +898,7 @@ function worksForFloor_(f) {
   if (f === ROOF) return ['Кровля'];
   return ['Наружные стены', 'Перегородки'];
 }
+function secId_(v) { return String(v).replace(/^\s*Секци[яи]\s*/i, '').trim(); }
 function floorLabel_(f) { return f === 0 ? 'Подвал' : f === ROOF ? 'Кровля' : String(f); }
 function parseFloor_(v) {
   const s = String(v).trim().toLowerCase();

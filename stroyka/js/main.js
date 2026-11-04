@@ -1,4 +1,4 @@
-import { Store, SECTIONS, FLOORS, ROOF, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS } from './data.js';
+import { Store, SECTIONS, FLOORS, ROOF, TOP, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText } from './data.js';
 import { BuildingScene } from './scene.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -10,7 +10,8 @@ const MONTHS_GEN = ['января', 'февраля', 'марта', 'апрел�
 const store = new Store();
 const state = {
   tab: 'summary',
-  section: '4',
+  section: SECTIONS[0],
+  open: new Set(),   // развёрнутые категории этажа
   floor: 1,
   metric: 'avg',
   month: (() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; })(),
@@ -35,13 +36,13 @@ $('#btnTheme').onclick = () => {
   scene.setTheme();
 };
 
+// подпись проекта — по структуре из таблиц
+$('.sub').textContent = `МКД · ${SECTIONS.length > 1 ? 'секции ' + SECTIONS.slice(0, -1).join(', ') + ' и ' + SECTIONS[SECTIONS.length - 1] : 'секция ' + SECTIONS[0]} · ${TOP} этажей`;
 // ---------- 3D ----------
 const scene = new BuildingScene($('#stage'), store);
-scene.onSelect = (s, f) => {
-  state.section = s; state.floor = f; setTab('floor');
-  scene.focusFloor(s, f);
+scene.onSelect = (s, f, catId) => {
+  openFloor(s, f, catId);
   $('#hintTap').hidden = true; try { localStorage.setItem('stroyka.tapped', '1'); } catch { /* */ }
-  if (matchMedia('(max-width: 900px)').matches) document.querySelector('.side').scrollIntoView({ behavior: 'smooth' });
 };
 
 $('#metric').onclick = (e) => {
@@ -52,7 +53,7 @@ $('#metric').onclick = (e) => {
   renderKpis(); if (state.tab === 'summary') renderSummary();
 };
 $('#btnView').onclick = () => { scene.select(null); scene.resetView(true); };
-scene.onSection = (s) => { state.section = s; if (state.tab === 'floor') renderFloor(); toast(`Секция ${s} — нажмите на этаж, чтобы открыть его`); };
+scene.onSection = (s) => { state.section = s; renderFloor(); toast(`Секция ${s} — нажмите на этаж, чтобы открыть его`); };
 // ---------- панель «Вид» ----------
 const vp = $('#viewPanel');
 const openVP = (on) => { vp.hidden = !on; $('#btnViewPanel').setAttribute('aria-expanded', String(on)); };
@@ -109,7 +110,7 @@ $('.tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) setTa
 function render() {
   renderKpis();
   if (state.tab === 'summary') renderSummary();
-  if (state.tab === 'floor') renderFloor();
+  renderFloor();
   if (state.tab === 'calendar') renderCalendar();
   if (state.tab === 'money') renderMoney();
   if (state.tab === 'stock') renderStock();
@@ -138,6 +139,7 @@ function renderSummary() {
   const open = store.remarks.filter((r) => store.isOpenRemark(r)).sort((a, b) => ruToIso(a.due).localeCompare(ruToIso(b.due)));
   const today = isoToday();
   const works = ['Наружные стены', 'Перегородки', 'Инженерка', 'Кровля'];
+  const fcols = SECTIONS.length === 2 ? '' : `grid-template-columns: 22px repeat(${SECTIONS.length}, minmax(0, 1fr))`;
   el.innerHTML = `
     <div class="renders" aria-label="Проект — тендерные визуализации">
       ${[1, 2, 3].map((i) => `<button class="rthumb" data-r="${i}"><img src="assets/renders/render-${i}.jpg" alt="Проектная визуализация ${i}" loading="lazy"></button>`).join('')}
@@ -157,25 +159,26 @@ function renderSummary() {
     <h3>Фасад по этажам <span class="muted">· ${state.metric === 'avg' ? 'все работы' : state.metric.toLowerCase()}</span></h3>
     <div class="facade" role="grid">
       ${[...FLOORS].reverse().map((f) => `
-        <div class="f-row">
-          ${SECTIONS.map((s) => {
+        <div class="f-row" style="${fcols}">
+          ${SECTIONS.length !== 2 ? `<span class="f-num">${floorShort(f)}</span>` : ''}${SECTIONS.map((s) => {
             const v = store.floorValue(s, f, state.metric);
             const bad = store.remarksFor(s, f).some((r) => store.isOpenRemark(r));
             return `<button class="f-cell ${v === null ? 'na' : ''}" data-s="${s}" data-f="${f}" title="Секция ${s} · ${floorName(f)} · ${v === null ? 'не применимо' : Math.round(v) + '%'}">
               <i style="width:${v ?? 0}%" class="${v >= 100 ? 'full' : ''}"></i>${bad ? '<em class="dot"></em>' : ''}<span>${v === null ? '' : Math.round(v) + '%'}</span></button>`;
-          }).join(`<span class="f-num">${floorShort(f)}</span>`)}
+          }).join(SECTIONS.length === 2 ? `<span class="f-num">${floorShort(f)}</span>` : '')}
         </div>`).join('')}
-      <div class="f-row f-foot"><span>Секция 4</span><span></span><span>Секция 5</span></div>
+      <div class="f-row f-foot" style="${fcols}">${SECTIONS.length !== 2 ? '<span></span>' : ''}${SECTIONS.map((s) => `<span>Секция ${esc(s)}</span>`).join(SECTIONS.length === 2 ? '<span></span>' : '')}</div>
     </div>
     <h3>Открытые поручения <span class="muted">· ${open.length}</span></h3>
     <ul class="remarks">
-      ${open.map(remarkHtml).join('') || '<li class="muted">Нет открытых поручений</li>'}
+      ${open.map((r) => remarkHtml(r, true)).join('') || '<li class="muted">Нет открытых поручений</li>'}
     </ul>
     ${checksHtml()}
     ${sourcesHtml()}
   `;
-  el.querySelectorAll('.f-cell').forEach((b) => b.onclick = () => { state.section = b.dataset.s; state.floor = +b.dataset.f; setTab('floor'); scene.focusFloor(state.section, state.floor); });
+  el.querySelectorAll('.f-cell').forEach((b) => b.onclick = () => openFloor(b.dataset.s, +b.dataset.f));
   el.querySelectorAll('[data-r]').forEach((b) => b.onclick = () => { $('#renderImg').src = `assets/renders/render-${b.dataset.r}.jpg`; $('#renderDlg').showModal(); });
+  el.querySelectorAll('[data-floor]').forEach((b) => b.onclick = () => { const [sec, fl] = b.dataset.floor.split('|'); openFloor(sec, +fl, 'remarks'); });
   el.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => { state.money = 'contract'; setTab(b.dataset.goto); });
 }
 
@@ -202,79 +205,179 @@ const pct = (v) => (v == null ? '—' : Math.round(v) + '%');
 /** Понедельник текущей недели (ISO) — колонка недели в «Выполнении» */
 function thisMonday() { const d = new Date(); const k = (d.getDay() + 6) % 7; d.setDate(d.getDate() - k); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
-function renderFloor() {
-  const el = $('#tab-floor');
+// ---------- Этаж: категории-аккордеон ----------
+/** Категория: заголовок со сводкой; нажатие разворачивает. Пустая — видна, но не раскрывается. */
+function cat(id, icon, title, summary, body, tone = '') {
+  const empty = !body;
+  const open = !empty && state.open.has(id);
+  return `<section class="cat ${tone} ${open ? 'open' : ''} ${empty ? 'empty' : ''}" data-cat="${id}">
+    <button type="button" class="cat-h" ${empty ? 'disabled' : `aria-expanded="${open}"`}>
+      <i class="cat-i" aria-hidden="true">${icon}</i><b>${title}</b><span class="cat-s">${summary}</span>${empty ? '' : '<em class="cat-chev" aria-hidden="true">›</em>'}
+    </button>
+    ${open ? `<div class="cat-b">${body}</div>` : ''}
+  </section>`;
+}
+
+function floorHtml() {
   const s = state.section, f = state.floor;
+  const fl = floorName(f).toLowerCase();
   const doc = (w) => store.docs.find((d) => d.floor === f && d.work === w);
-  const rem = store.remarksFor(s, f);
   const wk = thisMonday();
   const fv = store.floorValue(s, f);
   const works = store.worksFor(s, f);
-  const hasVol = works.some((w) => store.volumeGroup(s, f, w));
-  el.innerHTML = `
-    <div class="floor-nav">
-      <div class="seg small">${SECTIONS.map((x) => `<button data-sec="${x}" class="${x === s ? 'on' : ''}">Секция ${x}</button>`).join('')}</div>
-      <div class="stepper">
-        <button class="btn ghost small" data-step="-1" ${f === 0 ? 'disabled' : ''} aria-label="Этаж ниже">▼</button>
-        <select id="floorSel">${FLOORS.map((x) => `<option value="${x}" ${x === f ? 'selected' : ''}>${floorName(x)}</option>`).join('')}</select>
-        <button class="btn ghost small" data-step="1" ${f === ROOF ? 'disabled' : ''} aria-label="Этаж выше">▲</button>
-      </div>
-    </div>
-    <div class="big floor-big">${fv == null ? '<span class="nodata">нет данных</span>' : pct(fv)}<span class="muted"> ${floorName(f).toLowerCase()}, секция ${s}</span></div>
-    <p class="hint-line">Значения со значком ✎ можно изменить — изменение запишется в ячейку таблицы.</p>
-    ${store.floorStatusOf(s, f).map((x) => `<div class="fstatus"><b>${ev(esc(x.status), { b: 'U', s: 'Стройка · статусы этажей', r: x.row, f: 'status', raw: x.status, expect: x.status, type: 'text', label: `Статус этажа ${f}, секция ${s}`, prop: 'status', list: 'extra.floorStatus' })}</b><span>${x.date ? shortDate(x.date) : ''} · ${esc(x.source || 'VUP CORE')}</span>${x.comment ? `<p>${esc(x.comment)}</p>` : ''}</div>`).join('')}
-    ${works.map((w) => {
-      const v = store.get(s, f, w);
-      const d = doc(w);
-      const dd = d ? d[s] : null;
-      const dspec = (k, val, lbl) => ({ b: 'G', s: 'Таблица', r: d.row, f: `${k}${s}`, raw: val, expect: val, type: 'text', label: `${lbl}: ${d.label}, секция ${s}`, prop: '', list: '' });
-      const docsHtml = dd && d.row ? `<div class="docs">
-          <span class="${dd.is ? 'ok' : ''}">ИС: ${ev(esc(dd.is || 'нет'), dspec('is', dd.is, 'ИС'))}</span>
-          <span class="${dd.aosr ? 'ok' : ''}">АОСР: ${ev(esc(dd.aosr || 'нет'), dspec('aosr', dd.aosr, 'АОСР'))}</span>
-          <span class="rem">Замечания: ${ev(esc(dd.rem || 'нет'), dspec('rem', dd.rem, 'Замечания по АОСР'))}</span>
-        </div>` : '';
-      const g = store.volumeGroup(s, f, w);
-      if (g) return `
-      <div class="work vol">
-        <div class="work-h"><b>${esc(w)}</b><span class="val-ro">${pct(v)}</span></div>
-        <div class="bar big-bar"><i style="width:${v || 0}%"></i></div>
-        <div class="tablewrap"><table class="voltab"><thead><tr><th>Вид работ</th><th>Объём</th><th>Принято КС-6а</th><th>Неделя с ${shortDate(wk)}</th><th>Выполнено</th></tr></thead><tbody>
+
+  // 1. Работы — каждый вид разворачивается отдельно
+  const workHtml = works.map((w) => {
+    const v = store.get(s, f, w);
+    const g = store.volumeGroup(s, f, w);
+    const id = 'w:' + w;
+    const open = state.open.has(id);
+    const body = g ? `<div class="tablewrap"><table class="voltab"><thead><tr><th>Вид работ</th><th>Объём</th><th>Принято КС-6а</th><th>Неделя с ${shortDate(wk)}</th><th>Выполнено</th></tr></thead><tbody>
           ${g.items.map((it) => {
-            const vs = (fld, val, lbl, extra = {}) => ev(fmtN(val || 0), { b: 'V', s: it.sheet, r: it.row, f: fld, raw: val || 0, expect: val || '', type: 'number', label: `${it.work}, ${floorName(f).toLowerCase()}, с. ${s}: ${lbl}`, prop: fld, list: 'extra.volumes', ...extra });
+            const vs = (fld, val, lbl, extra = {}) => ev(fmtN(val || 0), { b: 'V', s: it.sheet, r: it.row, f: fld, raw: val || 0, expect: val || '', type: 'number', label: `${it.work}, ${fl}, с. ${s}: ${lbl}`, prop: fld, list: 'extra.volumes', ...extra });
             const col = it.weekCols && it.weekCols[wk];
             const wv = (it.weekly || {})[wk] || 0;
-            return `<tr><td>${esc(it.work)}</td><td>${vs('total', it.total, 'общий объём')}</td><td>${vs('accepted', it.accepted, 'принято по КС-6а')}</td>
+            return `<tr><td>${esc(it.work)}${it.contractor ? `<div class="muted">${esc(it.contractor)}</div>` : ''}</td><td>${vs('total', it.total, 'общий объём')}</td><td>${vs('accepted', it.accepted, 'принято по КС-6а')}</td>
               <td>${col ? vs('week', wv, `за неделю с ${shortDate(wk)}`, { c: col, prop: '' }) : '<span class="muted">нет колонки</span>'}</td>
               <td><b>${fmtN(it.done)}</b> <span class="muted">${Math.round(it.done / it.total * 100)}%</span></td></tr>`;
           }).join('')}
         </tbody></table></div>
-        <p class="muted small-note">«Выполнено» таблица считает сама из принятого и недельных объёмов — поэтому меняется через них.</p>
-        ${docsHtml}
-      </div>`;
-      return `
-      <div class="work">
-        <div class="work-h"><b>${esc(w)}</b><span class="val-ro">${pct(v)}</span></div>
-        <p class="muted small-note">Нет строки в таблице «Выполнение» для этого этажа — процент не известен.</p>
-        ${docsHtml}
-      </div>`;
-    }).join('')}
-    ${!hasVol && !works.length ? '<p class="muted">По этому этажу нет данных ни в одной таблице.</p>' : ''}
-    ${(() => { const mv = store.movesTo(s, f); return mv.length ? `<h3>Материал на этаж <span class="muted">· VUP CORE</span></h3><ul class="totals">${mv.map((m) => `<li><span>${esc(m.material)}${m.date ? ` <em class="muted">${m.dateExact ? '' : '≈ '}${shortDate(m.date)}</em>` : ''}</span><b class="num">${ev(fmtN(m.pallets) + ' пал.', { b: 'U', s: 'Движение материалов', r: m.row, f: 'pallets', raw: m.pallets, expect: m.pallets, type: 'number', label: `${m.material} → ${m.zone}: паллет`, prop: 'pallets', list: 'extra.moves' })}</b></li>`).join('')}</ul>` : ''; })()}
-    ${(() => { const wl = store.worklogOf(s, f); return wl.length ? `<h3>Ход работ <span class="muted">· VUP CORE</span></h3><ul class="totals">${wl.map((w) => `<li><span>${esc(w.stage)}${w.brigade && !/не уточн/i.test(w.brigade) ? ' · ' + esc(w.brigade) : ''}${w.start ? ' · с ' + shortDate(w.start) : ''}</span><b>${ev((w.workers ? fmtN(w.workers) : '—') + ' чел.', { b: 'U', s: 'Стройка · ход работ', r: w.row, f: 'workers', raw: w.workers || '', expect: w.workers || '', type: 'number', label: `${w.stage}, ${floorName(f).toLowerCase()}: число рабочих`, prop: 'workers', list: 'extra.worklog' })}</b></li>`).join('')}</ul>` : ''; })()}
-    <h3>Поручения по этажу</h3>
-    <ul class="remarks">${rem.map(remarkHtml).join('') || '<li class="muted">Нет поручений с упоминанием этого этажа</li>'}</ul>
-  `;
+        <p class="muted small-note">«Выполнено» таблица считает сама из принятого и недельных объёмов — поэтому меняется через них.</p>`
+      : '<p class="muted small-note">Нет строки в таблице «Выполнение» для этого этажа — процент не известен.</p>';
+    return `<div class="sub-cat ${open ? 'open' : ''}" data-cat="${esc(id)}">
+      <button type="button" class="sub-h" aria-expanded="${open}"><b>${esc(w)}</b><span class="bar"><i style="width:${v || 0}%"></i></span><span class="val-ro">${pct(v)}</span><em class="cat-chev">›</em></button>
+      ${open ? `<div class="sub-b">${body}</div>` : ''}</div>`;
+  }).join('');
+  const worksSum = works.length ? works.map((w) => `${esc(w.split(' ')[0])} ${pct(store.get(s, f, w))}`).join(' · ') : 'нет данных';
+
+  // 2. Замечания: поручения АСГ с упоминанием этажа + замечания по АОСР из листа «Таблица»
+  const rem = store.remarksFor(s, f);
+  const openRem = rem.filter((r) => store.isOpenRemark(r));
+  const dspec = (d, k, val, lbl) => ({ b: 'G', s: 'Таблица', r: d.row, f: 'cell', c: d[s].cols[k], raw: val, expect: val, type: 'text', label: `${lbl}: ${d.label}, секция ${s}`, prop: '', list: 'docsRows' });
+  const docRows = works.map((w) => ({ w, d: doc(w) })).filter((x) => x.d && x.d[s] && x.d.row);
+  const aosrRem = docRows.filter((x) => x.d[s].cols.rem);
+  const aosrOpen = aosrRem.filter((x) => x.d[s].rem).length;
+  const remBody = (rem.length || aosrRem.length) ? `
+    ${openRem.length ? `<ul class="remarks">${openRem.map((r) => remarkHtml(r)).join('')}</ul>` : ''}
+    ${aosrRem.length ? `<div class="kv-list">${aosrRem.map((x) => `<div class="kv"><span>По АОСР · ${esc(x.w.toLowerCase())}</span>${ev(esc(x.d[s].rem || 'нет'), dspec(x.d, 'rem', x.d[s].rem, 'Замечания по АОСР'))}</div>`).join('')}</div>` : ''}
+    ${rem.length > openRem.length ? `<details class="done-list"><summary>Выполненные · ${rem.length - openRem.length}</summary><ul class="remarks">${rem.filter((r) => !store.isOpenRemark(r)).map((r) => remarkHtml(r)).join('')}</ul></details>` : ''}` : '';
+  const remN = openRem.length + aosrOpen;
+
+  // 3. Документы ИС / АОСР
+  const isN = docRows.filter((x) => x.d[s].is).length, aoN = docRows.filter((x) => x.d[s].aosr).length;
+  const docsBody = docRows.length ? `<table class="doctab"><thead><tr><th></th><th>ИС</th><th>АОСР</th></tr></thead><tbody>
+    ${docRows.map((x) => `<tr><td>${esc(x.w)}</td>
+      <td class="${x.d[s].is ? 'ok' : ''}">${x.d[s].cols.is ? ev(esc(x.d[s].is || 'нет'), dspec(x.d, 'is', x.d[s].is, 'ИС')) : '—'}</td>
+      <td class="${x.d[s].aosr ? 'ok' : ''}">${x.d[s].cols.aosr ? ev(esc(x.d[s].aosr || 'нет'), dspec(x.d, 'aosr', x.d[s].aosr, 'АОСР')) : '—'}</td></tr>`).join('')}
+    </tbody></table>` : '';
+
+  // 4. Материал на этаж (VUP CORE)
+  const mv = store.movesTo(s, f);
+  const mvBody = mv.length ? `<ul class="totals">${mv.map((m) => `<li><span>${esc(m.material)}${m.date ? ` <em class="muted">${m.dateExact ? '' : '≈ '}${shortDate(m.date)}</em>` : ''}</span><b class="num">${ev(fmtN(m.pallets) + ' пал.', { b: 'U', s: 'Движение материалов', r: m.row, f: 'pallets', raw: m.pallets, expect: m.pallets, type: 'number', label: `${m.material} → ${m.zone}: паллет`, prop: 'pallets', list: 'extra.moves' })}</b></li>`).join('')}</ul>` : '';
+  const pal = mv.reduce((a, m) => a + (m.pallets || 0), 0);
+
+  // 5. Люди и бригады (VUP CORE · ход работ)
+  const wl = store.worklogOf(s, f);
+  const wlBody = wl.length ? `<ul class="totals">${wl.map((w) => `<li><span>${esc(w.stage)}${w.brigade && !/не уточн/i.test(w.brigade) ? ' · ' + esc(w.brigade) : ''}${w.start ? ' · с ' + shortDate(w.start) : ''}</span><b>${ev((w.workers ? fmtN(w.workers) : '—') + ' чел.', { b: 'U', s: 'Стройка · ход работ', r: w.row, f: 'workers', raw: w.workers || '', expect: w.workers || '', type: 'number', label: `${w.stage}, ${fl}: число рабочих`, prop: 'workers', list: 'extra.worklog' })}</b></li>`).join('')}</ul>` : '';
+  const ppl = wl.reduce((a, w) => a + (Number(w.workers) || 0), 0);
+
+  // 6. Статус этажа (VUP CORE)
+  const st = store.floorStatusOf(s, f);
+  const stBody = st.length ? st.map((x) => `<div class="fstatus"><b>${ev(esc(x.status), { b: 'U', s: 'Стройка · статусы этажей', r: x.row, f: 'status', raw: x.status, expect: x.status, type: 'text', label: `Статус этажа ${f}, секция ${s}`, prop: 'status', list: 'extra.floorStatus' })}</b><span>${x.date ? shortDate(x.date) : ''} · ${esc(x.source || 'VUP CORE')}</span>${x.comment ? `<p>${esc(x.comment)}</p>` : ''}</div>`).join('') : '';
+
+  return `
+    <div class="floor-nav">
+      ${SECTIONS.length > 1 ? `<div class="seg small">${SECTIONS.map((x) => `<button data-sec="${esc(x)}" class="${x === s ? 'on' : ''}">Секция ${esc(x)}</button>`).join('')}</div>` : `<b>Секция ${esc(s)}</b>`}
+      <div class="stepper">
+        <button class="btn ghost small" data-step="-1" ${f === 0 ? 'disabled' : ''} aria-label="Этаж ниже">▼</button>
+        <select class="floor-sel" aria-label="Этаж">${FLOORS.map((x) => `<option value="${x}" ${x === f ? 'selected' : ''}>${floorName(x)}</option>`).join('')}</select>
+        <button class="btn ghost small" data-step="1" ${f === ROOF ? 'disabled' : ''} aria-label="Этаж выше">▲</button>
+      </div>
+    </div>
+    <div class="big floor-big">${fv == null ? '<span class="nodata">нет данных</span>' : pct(fv)}<span class="muted"> ${fl}, секция ${esc(s)}</span></div>
+    <div class="cats">
+      ${cat('works', '▥', 'Работы', worksSum, works.length ? workHtml : '')}
+      ${cat('remarks', '!', 'Замечания', remN ? `<span class="err-t">${remN} открыт.</span>` : (rem.length || aosrRem.length) ? 'открытых нет' : 'нет', remBody, remN ? 'warn' : '')}
+      ${cat('docs', '▤', 'Документы', docRows.length ? `ИС ${isN}/${docRows.length} · АОСР ${aoN}/${docRows.length}` : 'нет строки в «Таблице»', docsBody)}
+      ${cat('mat', '▣', 'Материал на этаж', mv.length ? `${mv.length} подач · ${fmtN(pal)} пал.` : 'нет', mvBody)}
+      ${cat('people', '👷', 'Люди и бригады', wl.length ? `${wl.length} бригад${ppl ? ' · ' + fmtN(ppl) + ' чел.' : ''}` : 'нет', wlBody)}
+      ${cat('status', '◉', 'Статус этажа', st.length ? esc(st[0].status) : 'нет', stBody)}
+    </div>
+    <p class="hint-line">Нажмите категорию, чтобы развернуть. Значения со значком ✎ записываются прямо в ячейку таблицы.</p>`;
+}
+
+/** Где показан этаж: в панели справа (компьютер) и/или в нижней шторке (телефон) */
+function renderFloor() {
+  const targets = [];
+  if (state.tab === 'floor') targets.push($('#tab-floor'));
+  if (!$('#sheet').hidden) targets.push($('#sheetBody'));
+  if (!targets.length) return;
+  const html = floorHtml();
+  for (const el of targets) {
+    const keep = el.scrollTop;
+    el.innerHTML = html;
+    el.scrollTop = keep;
+    bindFloor(el);
+  }
+  $('#sheetTitle').textContent = `Секция ${state.section} · ${floorName(state.floor)}`;
+}
+function bindFloor(el) {
   const go = () => { scene.select(state.section, state.floor); scene.focusFloor(state.section, state.floor); renderFloor(); };
   el.querySelectorAll('[data-sec]').forEach((b) => b.onclick = () => { state.section = b.dataset.sec; go(); });
   el.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => { state.floor = Math.max(0, Math.min(ROOF, state.floor + +b.dataset.step)); go(); });
-  $('#floorSel', el).onchange = (e) => { state.floor = +e.target.value; go(); };
+  el.querySelector('.floor-sel').onchange = (e) => { state.floor = +e.target.value; go(); };
+  el.querySelectorAll('.cat-h:not([disabled]), .sub-h').forEach((b) => b.onclick = () => {
+    const id = b.parentElement.dataset.cat;
+    if (state.open.has(id)) state.open.delete(id); else state.open.add(id);
+    renderFloor();
+  });
 }
 
+/** Открыть этаж (из 3D, из обзора, из поручения). cat — какую категорию сразу развернуть. */
+function openFloor(s, f, catId) {
+  state.section = s; state.floor = f;
+  if (catId) state.open.add(catId);
+  scene.select(s, f);
+  scene.focusFloor(s, f);
+  if (mobile.matches) { openSheet(); }
+  else { setTab('floor'); $('.side').scrollTop = 0; $('#tab-floor').scrollTop = 0; }
+  if (catId) setTimeout(() => document.querySelectorAll(`[data-cat="${catId}"]`).forEach((x) => x.scrollIntoView({ block: 'nearest', behavior: 'smooth' })), 60);
+}
+
+// ---------- нижняя шторка этажа (телефон) ----------
+function openSheet() {
+  const sh = $('#sheet');
+  sh.hidden = false;
+  document.body.classList.add('sheet-open');
+  requestAnimationFrame(() => sh.classList.add('up'));
+  renderFloor();
+}
+function closeSheet() {
+  const sh = $('#sheet');
+  sh.classList.remove('up');
+  document.body.classList.remove('sheet-open');
+  setTimeout(() => { sh.hidden = true; }, 220);
+  if (state.tab !== 'floor') scene.select(null);
+}
+$('#sheetClose').onclick = closeSheet;
+(() => {   // смахнуть вниз — закрыть
+  const h = $('#sheetGrip'), sh = $('#sheet');
+  let y0 = null;
+  h.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) return; y0 = e.clientY; h.setPointerCapture(e.pointerId); sh.style.transition = 'none'; });
+  h.addEventListener('pointermove', (e) => { if (y0 != null) sh.style.transform = `translateY(${Math.max(0, e.clientY - y0)}px)`; });
+  const end = (e) => { if (y0 == null) return; const dy = e.clientY - y0; y0 = null; sh.style.transition = ''; sh.style.transform = ''; if (dy > 70) closeSheet(); };
+  h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
+})();
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
+
 /** Поручение с редактируемыми статусом и датой выполнения */
-function remarkHtml(r) {
+function remarkHtml(r, links = false) {
+  const sec = SECTIONS.includes(String(r.section)) ? String(r.section) : null;
+  const fls = links && sec ? floorsInText(r.short + ' ' + r.text) : [];
+  const go = fls.length ? `<span class="r-go">${fls.slice(0, 6).map((f) => `<button type="button" class="chip-go" data-floor="${esc(sec)}|${f}" title="Открыть этаж">с.${esc(sec)} · ${f} эт. ›</button>`).join('')}${fls.length > 6 ? '…' : ''}</span>` : '';
   const spec = (f, raw, type, label, extra = {}) => ({ b: 'G', s: 'Замечания АСГ', r: r.row, f, raw, expect: raw, type, label: `${r.short}: ${label}`, prop: f === 'status' ? 'status' : f === 'done' ? 'done' : '', list: 'remarks', ...extra });
   return `<li class="${store.isOpenRemark(r) ? 'late' : 'done'}"><div><b>${esc(r.short)}</b>
-    <div class="muted">${r.row ? ev(esc(r.status || 'статус'), spec('status', r.status, 'text', 'статус по протоколу', { options: ['В работе', 'Срыв сроков', 'Выполнено'] })) : esc(r.status)}${r.note ? ' · ' + esc(r.note) : ''}</div></div>
+    <div class="muted">${r.row ? ev(esc(r.status || 'статус'), spec('status', r.status, 'text', 'статус по протоколу', { options: ['В работе', 'Срыв сроков', 'Выполнено'] })) : esc(r.status)}${r.note ? ' · ' + esc(r.note) : ''}</div>${go}</div>
     <div class="r-meta"><span>срок ${esc(r.due)}</span>${r.row ? `<span>выполнено: ${ev(esc(r.done || '—'), spec('done', ruToIso(r.done) || '', 'date', 'дата выполнения'))}</span>` : ''}</div></li>`;
 }
 
@@ -359,16 +462,15 @@ function renderCalendar() {
   for (let i = 0; i < startDow; i++) cells.push('<div class="c-cell empty"></div>');
   for (let d = 1; d <= days; d++) {
     const k = iso(d);
-    const p4 = store.peopleOn(k, '4'), p5 = store.peopleOn(k, '5'), pAll = store.peopleOn(k);
+    const ps = SECTIONS.map((x) => [x, store.peopleOn(k, x)]), pAll = store.peopleOn(k), pSec = ps.reduce((a, x) => a + x[1], 0);
     const mats = store.journalOn(k).filter((j) => j.type === 'Материал').length;
     const spent = store.expenseTotal(store.expensesOn(k));
     const heat = pAll / maxPeople;
     cells.push(`<button class="c-cell ${k === today ? 'today' : ''} ${k === state.day ? 'sel' : ''}" data-d="${k}" style="--heat:${(heat * 0.55).toFixed(2)}">
       <span class="c-d">${d}</span>
       <span class="c-chips">
-        ${p4 ? `<span class="chip-s s4" title="Секция 4: ${p4} чел.">4·${p4}</span>` : ''}
-        ${p5 ? `<span class="chip-s s5" title="Секция 5: ${p5} чел.">5·${p5}</span>` : ''}
-        ${pAll - p4 - p5 > 0 ? `<span class="chip-s" title="Общее: ${pAll - p4 - p5} чел.">∑·${pAll - p4 - p5}</span>` : ''}
+        ${ps.map(([x, n], i) => n ? `<span class="chip-s s${i % 2 ? 5 : 4}" title="Секция ${esc(x)}: ${n} чел.">${esc(x)}·${n}</span>` : '').join('')}
+        ${pAll - pSec > 0 ? `<span class="chip-s" title="Общее: ${pAll - pSec} чел.">∑·${pAll - pSec}</span>` : ''}
         ${mats ? `<span class="chip-m" title="Поставок: ${mats}">🚚${mats > 1 ? mats : ''}</span>` : ''}
         ${spent ? `<span class="chip-r" title="Расходы: ${rub(spent)}">₽${rubShort(spent).replace(' ₽', '')}</span>` : ''}
       </span>
@@ -684,7 +786,7 @@ function renderMoney() {
     const cv = (k) => store.contractValue(k);
     const D = cv('D'), E = cv('E'), B = cv('B');
     const pct = D && E ? (E / D) * 100 : 0;
-    const phys = ((store.sectionValue('4') || 0) + (store.sectionValue('5') || 0)) / 2;
+    const phys = SECTIONS.reduce((a, x) => a + (store.sectionValue(x) || 0), 0) / SECTIONS.length;
     const spent = fin.partial && fin.summary ? fin.summary.total : store.expenseTotal();
     const rows = [
       ['Стоимость работ по договору', D], ['Выполнено работ', E], ['Принято по КС-2', B],
@@ -765,20 +867,20 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 
 // ---------- 3D-тур: камера и стройка по прокрутке ----------
 function tourSteps() {
-  const s4 = Math.round(store.sectionValue('4') || 0), s5 = Math.round(store.sectionValue('5') || 0);
+  const sv = (x) => Math.round(store.sectionValue(x) || 0);
   const open = (s) => store.remarks.filter((r) => String(r.section) === s && store.isOpenRemark(r)).length;
   const w = (s, k) => Math.round(store.sectionValue(s, k) || 0);
   const ppl = (s) => { const d = store.journal.filter((j) => j.type === 'Люди' && j.section === s).map((j) => j.date).sort().pop(); return d ? `${store.peopleOn(d, s)} чел. (${shortDate(d)})` : 'нет данных'; };
   const mats = store.journal.filter((j) => j.type === 'Материал').length + store.fin.nominated.length;
   const cats = store.byCategory();
   const total = store.fin.partial && store.fin.summary ? store.fin.summary.total : store.expenseTotal();
+  const n2 = (i) => String(i).padStart(2, '0');
   return [
-    ['01', 'Две секции, 16 этажей', 'Прокручивайте вниз: дом построится до текущего состояния.'],
-    ['02', 'Каркас поднимается', `Этажи заливаются зелёным по факту выполнения. Сейчас готово: секция 4 — ${s4}%, секция 5 — ${s5}%.`],
-    ['03', `Секция 4 · ${s4}%`, `Наружные стены ${w('4', 'Наружные стены')}%, перегородки ${w('4', 'Перегородки')}%. На объекте: ${ppl('4')}. Открытых поручений: ${open('4')}.`],
-    ['04', `Секция 5 · ${s5}%`, `Наружные стены ${w('5', 'Наружные стены')}%, перегородки ${w('5', 'Перегородки')}%. На объекте: ${ppl('5')}. Открытых поручений: ${open('5')}.`],
-    ['05', 'Материал и деньги', `Поставок в учёте: ${mats}. Авансы за номинированный материал: ${rubShort(store.expenseTotal(store.fin.advances))}. Расходы: ${rubShort(total)}, из них работы ${rubShort(cats['Работы'] || 0)}, материалы ${rubShort(cats['Материалы'] || 0)}.`],
-    ['06', 'Сверху', 'Двор, парковка и кран. Нажмите «Закрыть тур», чтобы вернуться к редактированию.'],
+    ['01', `${SECTIONS.length === 1 ? 'Секция' : SECTIONS.length + ' секц.'} · ${TOP} этажей`, 'Прокручивайте вниз: дом построится до текущего состояния.'],
+    ['02', 'Каркас поднимается', `Этажи заливаются зелёным по факту выполнения. Сейчас готово: ${SECTIONS.map((x) => `секция ${x} — ${sv(x)}%`).join(', ')}.`],
+    ...SECTIONS.map((x, i) => [n2(i + 3), `Секция ${x} · ${sv(x)}%`, `Наружные стены ${w(x, 'Наружные стены')}%, перегородки ${w(x, 'Перегородки')}%. На объекте: ${ppl(x)}. Открытых поручений: ${open(x)}.`]),
+    [n2(SECTIONS.length + 3), 'Материал и деньги', `Поставок в учёте: ${mats}. Авансы за номинированный материал: ${rubShort(store.expenseTotal(store.fin.advances))}. Расходы: ${rubShort(total)}, из них работы ${rubShort(cats['Работы'] || 0)}, материалы ${rubShort(cats['Материалы'] || 0)}.`],
+    [n2(SECTIONS.length + 4), 'Сверху', 'Двор, парковка и кран. Нажмите «Закрыть тур», чтобы вернуться к редактированию.'],
   ];
 }
 function openTour() {
@@ -948,6 +1050,7 @@ store.on((what) => {
   if (what === 'log' && $('#syncDlg').open) renderSync();
   if (what === 'saved-local') toast('Сохранено на устройстве · таблица не подключена');
   if (what && what.type === 'rejected') toast('Таблица не приняла изменение: ' + what.message, true);
+  if (what === 'data' && store.structureChanged) { location.reload(); return; }   // в таблицах другие секции/этажность — перестроить 3D
   if (what === 'data') {
     scene.update();
     if (typing()) { renderPending = true; renderKpis(); } else render();
