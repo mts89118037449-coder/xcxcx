@@ -70,7 +70,7 @@ button { font: inherit; color: inherit; }
 .layout { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 420px; min-height: 0; }
 .stage { position: relative; min-height: 420px; overflow: hidden; }
 .stage canvas { display: block; touch-action: none; }
-.labels-layer { position: absolute; inset: 0; pointer-events: none; }
+.labels-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
 .side { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
 .tab { padding: 6px 18px 24px; overflow-y: auto; flex: 1; }
 .tabs { display: flex; gap: 4px; padding: 10px 14px 0; border-bottom: 1px solid var(--line); }
@@ -204,3 +204,6 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 20px); background: var(--ink); color: var(--panel); padding: 9px 14px; border-radius: 9px; font-size: 13px; opacity: 0; transition: .2s; pointer-events: none; z-index: 20; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.bad { background: var(--red); color: #fff; }
+
+.project-view .legend, .project-view #metric { opacity: .35; pointer-events: none; }
+.stage-ui .btn.ghost { background: var(--panel); box-shadow: var(--shadow); }

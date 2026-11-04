@@ -39,6 +39,12 @@ $('#metric').onclick = (e) => {
   renderKpis(); if (state.tab === 'summary') renderSummary();
 };
 $('#btnView').onclick = () => scene.resetView();
+$('#viewMode').onclick = (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  for (const x of $('#viewMode').children) x.classList.toggle('on', x === b);
+  scene.setView(b.dataset.v);
+  document.body.classList.toggle('project-view', b.dataset.v === 'project');
+};
 
 // ---------- вкладки ----------
 function setTab(t) {
