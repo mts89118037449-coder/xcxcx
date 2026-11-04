@@ -210,7 +210,46 @@ export class BuildingScene {
   setQuality(hq) { this.hq = hq; try { localStorage.setItem('stroyka.hq', hq ? '1' : '0'); } catch { /* */ } }
 
   /** Подробности стройплощадки: строительная сетка на этажах в работе, мачтовый подъёмник */
+  /** Перегородки внутри этажей: стенки из газоблока растут слева направо по проценту «Перегородок» */
+  buildInterior() {
+    const tex = makeBlockTexture();
+    const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 });
+    const geo = new THREE.BoxGeometry(1, H - SLAB - 0.05, 0.2);
+    for (const s of SECTIONS) {
+      const sec = this[`pil${s}`].parent;
+      const items = [];
+      for (let f = 0; f < ROOF; f++) {
+        const segs = [];
+        for (let k = 0; k < 4; k++) for (const zs of [1, -1]) segs.push({ x: -L / 2 + 0.6 + (k + 0.5) * ((L - 1.2) / 4), z: zs * 1.3, len: (L - 1.2) / 4 - 0.1, rot: 0 });  // стены коридора
+        for (let k = 1; k < 8; k++) for (const zs of [1, -1]) segs.push({ x: -L / 2 + k * 3, z: zs * (1.3 + (D / 2 - 0.6 - 1.3) / 2), len: D / 2 - 0.6 - 1.3, rot: Math.PI / 2 });  // межквартирные
+        segs.sort((a, b) => a.x - b.x);
+        segs.forEach((g, i) => items.push({ f, i, n: segs.length, ...g }));
+      }
+      const mesh = new THREE.InstancedMesh(geo, mat, items.length);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      mesh.userData.items = items;
+      sec.add(mesh);
+      this[`int${s}`] = mesh;
+    }
+  }
+
+  updateInterior() {
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+    for (const s of SECTIONS) {
+      const mesh = this[`int${s}`]; if (!mesh) continue;
+      mesh.userData.items.forEach((it, i) => {
+        const o = this.floors.get(`${s}|${it.f}`);
+        const on = this.view === 'fact' && (it.i + 0.5) / it.n <= (o.pPart || 0);
+        q.setFromAxisAngle(up, it.rot);
+        m4.compose(new THREE.Vector3(it.x, it.f * H + SLAB + (H - SLAB) / 2, it.z), q, on ? new THREE.Vector3(it.len, 1, 1) : new THREE.Vector3(0, 0, 0));
+        mesh.setMatrixAt(i, m4);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
   buildSiteDetails() {
+    this.buildInterior();
     const netTex = makeNetTexture();
     for (const o of this.floors.values()) {
       if (o.isRoof) continue;
@@ -681,7 +720,14 @@ export class BuildingScene {
       const na = v === null;
       // в 3D-туре этажи «строятся» снизу вверх по мере прокрутки
       const grow = this.growth == null ? 1 : Math.max(0, Math.min(1, this.growth * 20 - f));
-      const p = (project ? 1 : na ? 0 : v / 100) * grow;
+      const pMetric = (na ? 0 : v / 100) * grow;
+      // фасад с окнами — только по наружным стенам (у перегородок и инженерки окон нет: они внутри)
+      const ext = o.isRoof ? this.store.floorValue(s, f, 'Кровля') : this.store.floorValue(s, f, 'Наружные стены');
+      const pFacade = ((ext == null ? 0 : ext) / 100) * grow;
+      const p = project ? grow : this.view === 'progress' ? pMetric : pFacade;
+      const part = this.store.floorValue(s, f, 'Перегородки');
+      o.pPart = project ? 1 : ((part == null ? 0 : part) / 100) * grow;
+      o.pMetric = pMetric;
       o.target = Math.max(0.001, (L - 0.06) * p);
       o.p = p;
 
@@ -712,16 +758,17 @@ export class BuildingScene {
       for (const m of new Set([o.slabSide, o.slabTop])) { m.transparent = na && !project; m.opacity = na && !project ? 0.35 : 1; m.needsUpdate = true; }
       const open = this.store.remarksFor(s, f).filter((r) => this.store.isOpenRemark(r));
       o.marker.visible = !project && open.length > 0;
-      o.bar.visible = this.view === 'fact' && !o.isRoof && p > 0.001;
       if (o.nets) for (const n of o.nets) {
         const on = this.view === 'fact' && p > 0.001 && p < 0.999;
         n.visible = on;
         if (on) { const start = -L / 2 + (L - 0.06) * p; n.position.x = start; n.scale.x = L / 2 - start; n.material.map.repeat.set(Math.max(1, n.scale.x / 1.5), 2); }
       }
-      o.bar.scale.x = Math.max(0.001, (L - 0.06) * p);
+      o.bar.scale.x = Math.max(0.001, (L - 0.06) * pMetric);
+      o.bar.visible = this.view === 'fact' && !o.isRoof && pMetric > 0.001;
     }
     this.updatePilasters();
     this.updateWindows();
+    this.updateInterior();
     for (const s of SECTIONS) {
       const roofDone = this.store.floorValue(s, ROOF, 'avg') >= 100;
       this[`roof${s}`].visible = (project || roofDone) && (this.growth == null || this.growth >= 0.95);
@@ -936,6 +983,19 @@ function makeNormalFromNoise(n, strength) {
   }
   g.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; return t;
+}
+
+function makeBlockTexture() {
+  // кладка газобетона: светлые блоки 625×250 с тонкими швами вперевязку
+  const c = document.createElement('canvas'); c.width = 128; c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#e4e2dc'; g.fillRect(0, 0, 128, 64);
+  g.strokeStyle = '#b9b5ac'; g.lineWidth = 1.5;
+  for (let row = 0; row < 4; row++) {
+    const y = row * 16; g.beginPath(); g.moveTo(0, y); g.lineTo(128, y); g.stroke();
+    for (let x = (row % 2) * 20; x < 128; x += 40) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 16); g.stroke(); }
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
 }
 
 function makeNetTexture() {
