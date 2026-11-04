@@ -1,0 +1,12 @@
+services:
+  stroyka:
+    build:
+      context: .
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}   # если Docker Hub недоступен: mirror.gcr.io/library/node:20-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"   # наружу открывает nginx (HTTPS); прямой порт только локально
+    env_file: .env
+    volumes:
+      - ./data:/data            # база и бэкапы остаются на диске сервера

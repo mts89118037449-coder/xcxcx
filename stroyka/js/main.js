@@ -582,6 +582,8 @@ function renderStatus() {
   const n = store.queue.length;
   if (store.connected && n && store.syncError) { t = `Нет связи · в очереди ${n}`; cls = 'err'; }
   else if (store.connected && (store.flushing || n)) { t = 'Сохранение…'; cls = 'warn'; }
+  else if (store.status === 'ok' && store.stale) { t = 'Копия сервера · Google недоступен'; cls = 'warn'; }
+  else if (store.status === 'error' && store.cachedAt) { t = 'Нет связи · копия ' + new Date(store.cachedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); cls = 'err'; }
   else if (store.status === 'ok') {
     const at = store.lastCheck || store.loadedAt;
     t = 'Онлайн · ' + (at ? at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '');
@@ -595,6 +597,42 @@ $('#btnReload').onclick = () => store.load();
 $('#btnSettings').onclick = () => { $('#cfgUrl').value = store.url; $('#cfgToken').value = store.token; $('#settings').showModal(); };
 $('#btnSave').onclick = () => { store.saveConfig($('#cfgUrl').value, $('#cfgToken').value); store.load(); };
 $('#btnDemoReset').onclick = () => { if (confirm('Удалить правки, сохранённые на этом устройстве?')) { store.resetDemo(); $('#settings').close(); toast('Локальные правки удалены'); } };
+
+// ---------- резервные копии ----------
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+const stampName = () => new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+function csv(rows) {
+  // «;» и BOM — чтобы русский Excel открыл файл без настройки
+  return '\ufeff' + rows.map((r) => r.map((v) => { const t = String(v ?? ''); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; }).join(';')).join('\r\n');
+}
+const num = (n) => String(n).replace('.', ',');
+$('#bkJson').onclick = () => { download(`stroyka-backup-${stampName()}.json`, JSON.stringify(store.exportBackup(), null, 1), 'application/json'); toast('Копия скачана'); };
+document.querySelectorAll('[data-csv]').forEach((b) => b.onclick = () => {
+  const k = b.dataset.csv;
+  let rows;
+  if (k === 'expenses') rows = [['№', 'Дата', 'Категория', 'Контрагент', 'Основание', 'Примечание', 'Сумма, ₽'], ...store.fin.expenses.map((e) => [e.n || '', e.date, e.cat, e.who, e.basis, e.note, num(e.sum)])];
+  if (k === 'journal') rows = [['Дата', 'Секция', 'Тип', 'Наименование', 'Количество', 'Ед.', 'Примечание'], ...store.journal.map((j) => [j.date, j.section, j.type, j.name, num(j.qty), j.unit, j.note])];
+  if (k === 'progress') rows = [['Секция', 'Этаж', 'Вид работ', 'Процент', 'Обновлено'], ...[...store.progress.values()].map((p) => [p.section, floorName(p.floor), p.work, p.value, p.updated || ''])];
+  download(`stroyka-${k}-${stampName()}.csv`, csv(rows), 'text/csv;charset=utf-8');
+});
+$('#bkFile').onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    let text;
+    if (f.name.endsWith('.gz')) text = await new Response(f.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    else text = await f.text();
+    const obj = JSON.parse(text);
+    const where = store.connected ? 'на сервер — текущие данные сервера будут заменены (перед этим сервер сам сделает бэкап)' : 'на это устройство';
+    if (!confirm('Восстановить копию ' + where + '?')) return;
+    toast(await store.importBackup(obj));
+  } catch (err) { toast('Не удалось восстановить: ' + err.message, true); }
+  e.target.value = '';
+};
 
 let toastT;
 function toast(msg, bad) {
@@ -623,4 +661,6 @@ setInterval(renderStatus, 5000);
 
 renderStatus();
 store.load();
+// офлайн-режим: приложение откроется и без связи (последняя копия данных на устройстве)
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
 window.__stroyka = { store, scene, state };

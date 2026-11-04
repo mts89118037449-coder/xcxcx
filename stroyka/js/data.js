@@ -162,6 +162,8 @@ export class Store {
         const data = await r.json();
         if (!data.ok) throw new Error(data.error || 'Ошибка Apps Script');
         this.apply(data);
+        this.stale = data.stale ? (data.staleAt || 'да') : null;
+        this.cacheSave(data);
         this.version = data.v || this.version;
         for (const op of this.queue) this.applyLocal(op); // неотправленные правки не теряются
         this.status = 'ok';
@@ -177,13 +179,22 @@ export class Store {
       console.error(e);
       this.error = String(e.message || e);
       this.status = 'error';
-      if (!this.progress.size) this.loadDemo();
+      // сервер недоступен — показываем последнюю копию, сохранённую на этом устройстве
+      const c = this.connected && this.cacheLoad();
+      if (c && !this.progress.size) {
+        this.apply(c.data);
+        for (const op of this.queue) this.applyLocal(op);
+        this.cachedAt = c.at;
+        this.error += ' · показана копия на устройстве от ' + new Date(c.at).toLocaleString('ru-RU');
+        this.startLiveSync();
+      } else if (!this.progress.size) this.loadDemo();
     }
     this.emit('data'); this.emit('status');
   }
 
   apply(data) {
-    this.docs = docsFromRows(data.docsRows || []);
+    this.docsRows = data.docsRows || [];
+    this.docs = docsFromRows(this.docsRows);
     this.remarks = data.remarks || [];
     this.fin = normFin(data.fin || {});
     this.journal = (data.journal || []).map((j) => ({ ...j, qty: Number(j.qty) || 0 }));
@@ -194,6 +205,7 @@ export class Store {
 
   loadDemo() {
     const saved = LS.get('stroyka.demo', null);
+    this.docsRows = SEED_DOCS_ROWS;
     this.docs = docsFromRows(SEED_DOCS_ROWS);
     this.remarks = SEED_REMARKS;
     this.journal = saved ? saved.journal : SEED_JOURNAL.slice();
@@ -203,6 +215,39 @@ export class Store {
     const list = saved ? saved.progress : estimateFromDocs(this.docs);
     for (const p of list) this.progress.set(key(p.section, p.floor, p.work), p);
   }
+  // ---------- резервные копии ----------
+  cacheSave(data) {
+    try { localStorage.setItem('stroyka.cache', JSON.stringify({ at: Date.now(), src: this.url, data })); } catch { /* нет места — не критично */ }
+  }
+  cacheLoad() {
+    const c = LS.get('stroyka.cache', null);
+    return c && c.src === this.url ? c : null;
+  }
+  /** Полная копия данных приложения (формат понимают сервер и кнопка «Восстановить») */
+  snapshot() {
+    return {
+      progress: [...this.progress.values()], journal: this.journal, docsRows: this.docsRows || [], remarks: this.remarks,
+      fin: { expenses: this.fin.expenses, advances: this.fin.advances, income: this.fin.income, nominated: this.fin.nominated, summary: this.fin.summary, partial: this.fin.partial },
+    };
+  }
+  exportBackup() {
+    return { format: 'stroyka-backup', version: 1, exportedAt: new Date().toISOString(), source: this.url || 'snapshot', data: this.snapshot() };
+  }
+  /** Восстановление: на свой сервер (MODE=standalone) — целиком; без подключения — на это устройство */
+  async importBackup(obj) {
+    const d = obj && obj.format === 'stroyka-backup' ? obj.data : obj;
+    if (!d || !Array.isArray(d.progress)) throw new Error('Это не файл резервной копии приложения');
+    if (this.connected) {
+      const res = await this.post({ action: 'restore', data: obj });
+      await this.load();
+      return res.restored ? `Восстановлено на сервере: прогресс ${res.restored.progress}, журнал ${res.restored.journal}, расходы ${res.restored.expenses}` : 'Восстановлено';
+    }
+    this.apply(d);
+    this.saveDemo();
+    this.emit('data');
+    return 'Копия загружена на это устройство';
+  }
+
   saveDemo() {
     if (this.connected) return;
     LS.set('stroyka.demo', { progress: [...this.progress.values()], journal: this.journal, expenses: this.fin.expenses.filter((e) => e.local) });

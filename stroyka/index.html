@@ -5,14 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Стройка 3D — секции 4 и 5</title>
 <meta name="description" content="3D-визуализация хода строительства МКД (секции 4 и 5, 16 этажей) с синхронизацией с Google Таблицами: прогресс по этажам, люди и поставки материалов по датам.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  "three": "./vendor/three/three.module.js",
+  "three/addons/": "./vendor/three/addons/"
 } }
 </script>
 </head>
@@ -88,6 +85,17 @@
     </ol>
     <label>URL веб-приложения<input id="cfgUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
     <label>Токен (необязательно)<input id="cfgToken" type="text" autocomplete="off"></label>
+    <fieldset class="backup">
+      <legend>Резервная копия данных</legend>
+      <p class="muted">Скачайте копию, чтобы данные не зависели от одного сервера. На каждом устройстве автоматически хранится последняя загруженная версия: если сервер станет недоступен, приложение покажет её.</p>
+      <div class="backup-actions">
+        <button class="btn" type="button" id="bkJson">⬇ Скачать копию (JSON)</button>
+        <button class="btn ghost" type="button" data-csv="expenses">CSV: расходы</button>
+        <button class="btn ghost" type="button" data-csv="journal">CSV: люди и поставки</button>
+        <button class="btn ghost" type="button" data-csv="progress">CSV: прогресс</button>
+        <label class="btn ghost file-btn">⬆ Восстановить из файла<input type="file" id="bkFile" accept=".json,.gz,application/json" hidden></label>
+      </div>
+    </fieldset>
     <div class="dlg-actions">
       <button class="btn ghost" value="cancel">Отмена</button>
       <button class="btn ghost" id="btnDemoReset" value="cancel" type="button">Удалить локальные правки</button>
