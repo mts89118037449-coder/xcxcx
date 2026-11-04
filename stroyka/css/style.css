@@ -441,3 +441,7 @@ body.touring .floor-tag { opacity: 0; }
 .checks li { display: flex; gap: 8px; padding: 6px 8px; border-radius: 6px; background: var(--panel-2); }
 .checks li.bad { background: #fde8e8; }
 :root[data-theme="dark"] .checks li.bad { background: #3a1f1f; }
+
+.section-tag { pointer-events: auto; cursor: pointer; transition: transform .15s; }
+.section-tag:hover { transform: scale(1.06); }
+.nodata { font-size: 18px; color: var(--muted); font-weight: 600; letter-spacing: 0; }

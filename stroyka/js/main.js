@@ -39,6 +39,7 @@ $('#btnTheme').onclick = () => {
 const scene = new BuildingScene($('#stage'), store);
 scene.onSelect = (s, f) => {
   state.section = s; state.floor = f; setTab('floor');
+  scene.focusFloor(s, f);
   $('#hintTap').hidden = true; try { localStorage.setItem('stroyka.tapped', '1'); } catch { /* */ }
   if (matchMedia('(max-width: 900px)').matches) document.querySelector('.side').scrollIntoView({ behavior: 'smooth' });
 };
@@ -50,7 +51,8 @@ $('#metric').onclick = (e) => {
   scene.setMetric(state.metric); updateViewLabel();
   renderKpis(); if (state.tab === 'summary') renderSummary();
 };
-$('#btnView').onclick = () => scene.resetView();
+$('#btnView').onclick = () => { scene.select(null); scene.resetView(true); };
+scene.onSection = (s) => { state.section = s; if (state.tab === 'floor') renderFloor(); toast(`Секция ${s} — нажмите на этаж, чтобы открыть его`); };
 // ---------- панель «Вид» ----------
 const vp = $('#viewPanel');
 const openVP = (on) => { vp.hidden = !on; $('#btnViewPanel').setAttribute('aria-expanded', String(on)); };
@@ -172,7 +174,7 @@ function renderSummary() {
     ${checksHtml()}
     ${sourcesHtml()}
   `;
-  el.querySelectorAll('.f-cell').forEach((b) => b.onclick = () => { state.section = b.dataset.s; state.floor = +b.dataset.f; setTab('floor'); });
+  el.querySelectorAll('.f-cell').forEach((b) => b.onclick = () => { state.section = b.dataset.s; state.floor = +b.dataset.f; setTab('floor'); scene.focusFloor(state.section, state.floor); });
   el.querySelectorAll('[data-r]').forEach((b) => b.onclick = () => { $('#renderImg').src = `assets/renders/render-${b.dataset.r}.jpg`; $('#renderDlg').showModal(); });
   el.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => { state.money = 'contract'; setTab(b.dataset.goto); });
 }
@@ -218,7 +220,7 @@ function renderFloor() {
         <button class="btn ghost small" data-step="1" ${f === ROOF ? 'disabled' : ''} aria-label="Этаж выше">▲</button>
       </div>
     </div>
-    <div class="big floor-big">${pct(fv)}<span class="muted"> ${floorName(f).toLowerCase()}, секция ${s}</span></div>
+    <div class="big floor-big">${fv == null ? '<span class="nodata">нет данных</span>' : pct(fv)}<span class="muted"> ${floorName(f).toLowerCase()}, секция ${s}</span></div>
     <p class="hint-line">Значения со значком ✎ можно изменить — изменение запишется в ячейку таблицы.</p>
     ${store.floorStatusOf(s, f).map((x) => `<div class="fstatus"><b>${ev(esc(x.status), { b: 'U', s: 'Стройка · статусы этажей', r: x.row, f: 'status', raw: x.status, expect: x.status, type: 'text', label: `Статус этажа ${f}, секция ${s}`, prop: 'status', list: 'extra.floorStatus' })}</b><span>${x.date ? shortDate(x.date) : ''} · ${esc(x.source || 'VUP CORE')}</span>${x.comment ? `<p>${esc(x.comment)}</p>` : ''}</div>`).join('')}
     ${works.map((w) => {
@@ -262,9 +264,10 @@ function renderFloor() {
     <h3>Поручения по этажу</h3>
     <ul class="remarks">${rem.map(remarkHtml).join('') || '<li class="muted">Нет поручений с упоминанием этого этажа</li>'}</ul>
   `;
-  el.querySelectorAll('[data-sec]').forEach((b) => b.onclick = () => { state.section = b.dataset.sec; scene.select(state.section, state.floor); renderFloor(); });
-  el.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => { state.floor = Math.max(0, Math.min(ROOF, state.floor + +b.dataset.step)); scene.select(state.section, state.floor); renderFloor(); });
-  $('#floorSel', el).onchange = (e) => { state.floor = +e.target.value; scene.select(state.section, state.floor); renderFloor(); };
+  const go = () => { scene.select(state.section, state.floor); scene.focusFloor(state.section, state.floor); renderFloor(); };
+  el.querySelectorAll('[data-sec]').forEach((b) => b.onclick = () => { state.section = b.dataset.sec; go(); });
+  el.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => { state.floor = Math.max(0, Math.min(ROOF, state.floor + +b.dataset.step)); go(); });
+  $('#floorSel', el).onchange = (e) => { state.floor = +e.target.value; go(); };
 }
 
 /** Поручение с редактируемыми статусом и датой выполнения */

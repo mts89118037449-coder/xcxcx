@@ -328,11 +328,55 @@ export class BuildingScene {
   /** На узких (портретных) экранах камера отходит дальше, чтобы обе секции влезли */
   fit() { const a = this.camera.aspect || 1.6; return Math.max(1, Math.min(2.6, 1.3 / a)); }
 
-  resetView() {
+  resetView(animate = false) {
     const k = this.fit();
-    this.camera.position.set(-48 * k, 24 + 22 * k, 158 * k);
-    this.controls.target.set(0, 24, 0);
+    const pos = new THREE.Vector3(-48 * k, 24 + 22 * k, 158 * k), tg = new THREE.Vector3(0, 24, 0);
+    if (this.selBox) this.selBox.visible = false;
+    if (animate) return this.flyTo(pos, tg);
+    this.camera.position.copy(pos);
+    this.controls.target.copy(tg);
     this.controls.update();
+  }
+
+  /** Плавный перелёт камеры к точке (около 0,9 с) */
+  flyTo(pos, target, ms = 900) {
+    this.camAnim = { p0: this.camera.position.clone(), t0: this.controls.target.clone(), p1: pos, t1: target, start: performance.now(), ms };
+  }
+
+  /** Взять этаж в фокус: камера подлетает к этажу спереди, этаж обводится рамкой */
+  focusFloor(section, floor) {
+    const sec = this.floors.get(`${section}|${floor}`).group.parent;
+    const tg = new THREE.Vector3(sec.position.x, floor * H + H / 2, sec.position.z);
+    // сохраняем текущее направление взгляда по горизонтали, но смотрим чуть сверху и ближе
+    const dir = this.camera.position.clone().sub(this.controls.target); dir.y = 0;
+    if (dir.lengthSq() < 1) dir.set(-0.3, 0, 1);
+    dir.normalize();
+    const dist = 42 * this.fit();
+    const pos = tg.clone().addScaledVector(dir, dist); pos.y = tg.y + dist * 0.28;
+    this.flyTo(pos, tg);
+    this.showSelBox(section, floor);
+  }
+  /** Взять в фокус секцию целиком */
+  focusSection(section) {
+    const sec = this.floors.get(`${section}|0`).group.parent;
+    const tg = new THREE.Vector3(sec.position.x, 24, sec.position.z);
+    const dir = this.camera.position.clone().sub(this.controls.target); dir.y = 0;
+    if (dir.lengthSq() < 1) dir.set(-0.3, 0, 1);
+    dir.normalize();
+    const dist = 100 * this.fit();
+    const pos = tg.clone().addScaledVector(dir, dist); pos.y = 24 + dist * 0.3;
+    this.flyTo(pos, tg);
+    if (this.selBox) this.selBox.visible = false;
+  }
+  showSelBox(section, floor) {
+    if (!this.selBox) {
+      this.selBox = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(L + 1.4, H + 0.2, D + 1.4)), new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.95, depthTest: false }));
+      this.selBox.renderOrder = 10;
+      this.scene.add(this.selBox);
+    }
+    const sec = this.floors.get(`${section}|${floor}`).group.parent;
+    this.selBox.position.set(sec.position.x, floor * H + H / 2, sec.position.z);
+    this.selBox.visible = true;
   }
 
   // ------------------------------------------------------------ окружение
@@ -616,6 +660,8 @@ export class BuildingScene {
       const tag = document.createElement('div');
       tag.className = 'section-tag';
       tag.innerHTML = `<b>Секция ${s}</b><span data-pct></span>`;
+      tag.title = 'Показать секцию';
+      tag.addEventListener('click', (e) => { e.stopPropagation(); this.focusSection(s); this.onSection && this.onSection(s); });
       const obj = new CSS2DObject(tag);
       obj.position.set(0, ROOF * H + ROOF_H + 7, 0);
       sec.add(obj);
@@ -842,6 +888,8 @@ export class BuildingScene {
 
   select(section, floor) {
     this.selected = section ? { section, floor } : null;
+    if (!section && this.selBox) this.selBox.visible = false;
+    else if (section) this.showSelBox(section, floor);
     this.paintHighlight();
   }
 
@@ -862,11 +910,11 @@ export class BuildingScene {
       this.paintHighlight();
     });
     el.addEventListener('pointerleave', () => { this.hovered = null; this.tooltip.style.opacity = 0; this.paintHighlight(); });
-    el.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
+    el.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; this.camAnim = null; });
     el.addEventListener('pointerup', (e) => {
       if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
       const hit = this.pick(e);
-      if (hit) { this.select(hit.section, hit.floor); this.onSelect(hit.section, hit.floor); }
+      if (hit) { this.tooltip.style.opacity = 0; this.hovered = null; this.select(hit.section, hit.floor); this.onSelect(hit.section, hit.floor); }
     });
   }
 
@@ -921,6 +969,13 @@ export class BuildingScene {
       }
       a.needsUpdate = true;
     }
+    if (this.camAnim && !this.touring) {
+      const a = this.camAnim, t = Math.min(1, (performance.now() - a.start) / a.ms), e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      this.camera.position.lerpVectors(a.p0, a.p1, e);
+      this.controls.target.lerpVectors(a.t0, a.t1, e);
+      if (t >= 1) this.camAnim = null;
+    }
+    if (this.selBox && this.selBox.visible) this.selBox.material.opacity = 0.65 + 0.3 * Math.sin(now / 300);
     if (!this.touring) this.controls.update();
     if (this.hoistCage) this.hoistCage.position.y = 1.2 + (Math.sin(now / 14000) * 0.5 + 0.5) * (12 * H);
     if (this.hq && this.composer) this.composer.render(dt); else this.renderer.render(this.scene, this.camera);
