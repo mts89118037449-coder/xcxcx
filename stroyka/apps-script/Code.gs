@@ -28,6 +28,10 @@ const SPREADSHEET_ID = '1H-0BjSxyU60e4O7LVViPMi1bJYX9quiKk1TFKsuHJlo';
 const BACKUP_FOLDER_ID = '1V9zW5kvqI9pC3eICf2vJ3-lg2JaHg-te';
 const BACKUP_KEEP_DAYS = 60;
 
+// Другие таблицы проекта (читаются, если у владельца есть к ним доступ)
+const VOLUMES_ID = '1UfElwyFGpqPo93bvn1BSOKSF7ydP2X4kPDyLsYBo5f8';   // «Выполнение»: объёмы по этажам и неделям
+const VUP_ID = '119zaY3sQ-7JtZ3JF2ILViGlGe6ULJuDf-jHep_O6X8w';       // «VUP CORE · ЕДИНАЯ БАЗА»: материалы, ход работ, статусы
+
 const SHEET_PROGRESS = 'Прогресс';
 const SHEET_JOURNAL = 'Журнал';
 const SHEET_DOCS = 'Таблица';
@@ -227,6 +231,7 @@ function readAll_() {
     docsRows: readDocsRows_(),
     remarks: readRemarks_(),
     fin: readFin_(),
+    extra: readExtra_(),
     updated: new Date().toISOString(),
   };
 }
@@ -292,6 +297,95 @@ function readRemarks_() {
     .map(function (r) {
       return { n: r[0], text: r[4], short: r[5] || r[4], section: String(r[6]), who: r[7], due: r[16] || r[9], moves: r[17], status: r[19], done: r[20], state: r[22], note: r[23] };
     });
+}
+
+// ---------------------------------------------------------------- другие таблицы
+
+function readExtra_() {
+  return {
+    volumes: safe_(readVolumes_),
+    moves: safe_(readMoves_),
+    worklog: safe_(readWorklog_),
+    floorStatus: safe_(readFloorStatus_),
+    sources: safe_(sourcesInfo_),
+  };
+}
+
+function sourcesInfo_() {
+  const out = [{ id: SPREADSHEET_ID, title: ss_().getName() }];
+  [VOLUMES_ID, VUP_ID].forEach(function (id) {
+    try { out.push({ id: id, title: SpreadsheetApp.openById(id).getName() }); } catch (e) { out.push({ id: id, title: '', error: 'нет доступа' }); }
+  });
+  return out;
+}
+
+/** «Выполнение», листы «Секция 4/5»: B этаж, D вид работ, E объём, H выполнено, N принято (КС-6а), O… по неделям */
+function readVolumes_() {
+  const book = SpreadsheetApp.openById(VOLUMES_ID);
+  const out = [];
+  ['4', '5'].forEach(function (sec) {
+    const sh = book.getSheetByName('Секция ' + sec);
+    if (!sh || sh.getLastRow() < 3) return;
+    const w = Math.min(sh.getLastColumn(), 60);
+    const head = sh.getRange(2, 1, 1, w).getDisplayValues()[0];
+    const weeks = [];
+    for (let c = 14; c < w; c++) { const d = ddmmyy_(head[c]); if (d) weeks.push([c, d]); }
+    const rows = sh.getRange(3, 1, sh.getLastRow() - 2, w).getDisplayValues();
+    let floor = null;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (/итого/i.test(r[0] + r[1] + r[3])) break;
+      if (String(r[1]).trim() !== '') floor = parseFloor_(r[1]);
+      const work = String(r[3]).trim();
+      if (floor === null || !work) continue;
+      const total = num_(r[4]);
+      if (!total) continue;
+      const weekly = {};
+      weeks.forEach(function (wk) { const v = num_(r[wk[0]]); if (v) weekly[wk[1]] = v; });
+      out.push({ section: sec, floor: floor, work: work, total: total, done: num_(r[7]), accepted: num_(r[13]), status: String(r[10]).trim(), due: String(r[9]).trim(), handover: String(r[0]).trim(), contractor: String(r[2]).trim(), weekly: weekly });
+    }
+  });
+  return out;
+}
+
+/** «VUP CORE»: Движение материалов */
+function readMoves_() {
+  const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Движение материалов');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 14).getDisplayValues()
+    .filter(function (r) { return r[0] || r[4]; })
+    .map(function (r) {
+      const zone = String(r[5]);
+      const fm = zone.match(/(\d+)\s*этаж/i), sm = zone.match(/секци[яи]\s*(\d)/i);
+      return { id: r[0], date: pickDate_(r[2]) || pickDate_(r[8]) || pickDate_(r[11]), dateExact: !!pickDate_(r[2]), type: r[3], material: r[4], zone: zone,
+        floor: fm ? +fm[1] : null, section: sm ? sm[1] : '', pallets: num_(r[6]), doc: r[8], status: r[9], comment: String(r[13]).slice(0, 300) };
+    });
+}
+
+/** «VUP CORE»: Стройка · ход работ (бригады, число рабочих) */
+function readWorklog_() {
+  const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Стройка · ход работ');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 14).getDisplayValues()
+    .filter(function (r) { return r[0]; })
+    .map(function (r) { return { id: r[0], section: String(r[2]), floor: parseFloor_(r[3]), brigade: r[4], stage: r[5], start: pickDate_(r[6]) || pickDate_(r[13]), end: pickDate_(r[7]), status: r[8], workers: num_(r[9]), shifts: num_(r[10]), volume: num_(r[11]), unit: r[12], source: r[13] }; });
+}
+
+/** «VUP CORE»: Стройка · статусы этажей */
+function readFloorStatus_() {
+  const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Стройка · статусы этажей');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 6).getDisplayValues()
+    .filter(function (r) { return r[0] && r[1]; })
+    .map(function (r) { return { section: String(r[0]), floor: parseFloor_(r[1]), status: r[2], date: pickDate_(r[3]), source: r[4], comment: r[5] }; });
+}
+
+/** «02.11.26» / «02.11.2026» → ISO (для шапки недель; будущие даты допустимы) */
+function ddmmyy_(v) {
+  const m = String(v || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$/);
+  if (!m) return '';
+  const y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+  return y + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
 }
 
 // ---------------------------------------------------------------- финансы

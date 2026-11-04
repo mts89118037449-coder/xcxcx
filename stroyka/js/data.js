@@ -22,7 +22,15 @@ export function worksForFloor(f) {
   if (f === ROOF) return ['Кровля'];
   return ['Наружные стены', 'Перегородки'];
 }
-export const ALL_WORKS = ['Наружные стены', 'Перегородки', 'Кровля'];
+export const ALL_WORKS = ['Наружные стены', 'Перегородки', 'Инженерка', 'Кровля'];
+/** Вид работ из таблицы «Выполнение» → группа работ приложения */
+export function workGroup(work, floor) {
+  if (floor === ROOF) return 'Кровля';
+  if (/наруж|кирпич/i.test(work)) return 'Наружные стены';
+  if (/внутр/i.test(work)) return 'Перегородки';
+  if (/инженер/i.test(work)) return 'Инженерка';
+  return null;
+}
 
 /** «5 этаж наружные стены» → { floor: 5, work: 'Наружные стены' } */
 export function parseRowLabel(label) {
@@ -135,6 +143,8 @@ export class Store {
     this.loadedAt = null;
     this.listeners = new Set();
     this.queue = LS.get('stroyka.queue', []);
+    this.extra = { volumes: [], moves: [], worklog: [], floorStatus: [], sources: [] };
+    this.vol = new Map();
     this.version = null;
     this.flushing = false;
     this.syncError = '';
@@ -202,6 +212,7 @@ export class Store {
     this.docs = docsFromRows(this.docsRows);
     this.remarks = data.remarks || [];
     this.fin = normFin(data.fin || {});
+    this.setExtra(data.extra);
     this.journal = (data.journal || []).map((j) => ({ ...j, qty: Number(j.qty) || 0 }));
     this.progress = new Map();
     const list = data.progress && data.progress.length ? data.progress : estimateFromDocs(this.docs);
@@ -231,6 +242,7 @@ export class Store {
   /** Полная копия данных приложения (формат понимают сервер и кнопка «Восстановить») */
   snapshot() {
     return {
+      extra: this.extra,
       progress: [...this.progress.values()], journal: this.journal, docsRows: this.docsRows || [], remarks: this.remarks,
       fin: { expenses: this.fin.expenses, advances: this.fin.advances, income: this.fin.income, nominated: this.fin.nominated, personal: this.fin.personal, tools: this.fin.tools, contract: this.fin.contract, summary: this.fin.summary, partial: this.fin.partial },
     };
@@ -262,16 +274,42 @@ export class Store {
     this.loadDemo(); this.emit('data');
   }
 
+  /** Данные других таблиц: «Выполнение» (объёмы) и «VUP CORE» (материалы, ход работ, статусы этажей) */
+  setExtra(x) {
+    const e = x || {};
+    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], sources: e.sources || [] };
+    this.vol = new Map();
+    for (const v of this.extra.volumes) {
+      const g = workGroup(v.work, Number(v.floor));
+      if (!g || !(v.total > 0)) continue;
+      const k = `${v.section}|${Number(v.floor)}`;
+      const fl = this.vol.get(k) || {};
+      const grp = (fl[g] ||= { total: 0, done: 0, items: [] });
+      grp.total += v.total; grp.done += Math.min(v.done || 0, v.total); grp.items.push(v);
+      this.vol.set(k, fl);
+    }
+  }
+  volumeGroup(section, floor, work) { const fl = this.vol.get(`${section}|${floor}`); return fl ? fl[work] || null : null; }
+  /** Виды работ этажа: по таблице «Выполнение», если в ней есть этот этаж, иначе стандартный набор */
+  worksFor(section, floor) {
+    const fl = this.vol.get(`${section}|${floor}`);
+    if (fl) return ALL_WORKS.filter((w) => fl[w]);
+    return worksForFloor(floor);
+  }
+  isVolumeBased(section, floor, work) { return !!this.volumeGroup(section, floor, work); }
+
   // ---------- вычисления ----------
   get(section, floor, work) {
+    const g = this.volumeGroup(section, floor, work);
+    if (g) return Math.round((g.done / g.total) * 100);
     const p = this.progress.get(key(section, floor, work));
     return p ? p.value : 0;
   }
   /** work = 'avg' → среднее по видам работ этажа; иначе конкретный вид (null если не применим) */
   floorValue(section, floor, work = 'avg') {
-    const works = worksForFloor(floor);
+    const works = this.worksFor(section, floor);
     if (work !== 'avg') return works.includes(work) ? this.get(section, floor, work) : null;
-    return works.reduce((a, w) => a + this.get(section, floor, w), 0) / works.length;
+    return works.length ? works.reduce((a, w) => a + this.get(section, floor, w), 0) / works.length : 0;
   }
   sectionValue(section, work = 'avg') {
     let sum = 0, n = 0;
@@ -286,10 +324,28 @@ export class Store {
     return this.remarks.filter((r) => String(r.section) === section && floorsInText(r.short + ' ' + r.text).includes(floor));
   }
   isOpenRemark(r) { return !/выполнено/i.test(r.status || '') && !r.done; }
-  journalOn(date) { return this.journal.filter((j) => j.date === date); }
-  peopleOn(date, section) {
-    return this.journal.filter((j) => j.date === date && j.type === 'Люди' && (!section || j.section === section)).reduce((a, j) => a + j.qty, 0);
+  /** Журнал + записи из «VUP CORE» (только чтение): поставки/подачи материала и рабочие по ходу работ */
+  allJournal() {
+    const ext = [];
+    for (const m of this.extra.moves) {
+      if (!m.date) continue;
+      const feed = /подач/i.test(m.type);
+      ext.push({ id: 'vup-' + m.id, date: m.date, approx: !m.dateExact, section: m.section || 'Общее', type: 'Материал', kind: feed ? 'feed' : 'in',
+        name: m.material + (feed ? ` → ${m.zone}` : ''), qty: m.pallets, unit: 'пал.', note: m.doc, ro: true, src: 'VUP CORE' });
+    }
+    for (const w of this.extra.worklog) {
+      if (!w.start || !w.workers) continue;
+      ext.push({ id: 'vupw-' + w.id, date: w.start, section: w.section || 'Общее', type: 'Люди', name: `${w.stage || 'Работы'}${w.floor != null ? `, ${w.floor} эт.` : ''}${w.brigade && !/не уточн/i.test(w.brigade) ? ` (${w.brigade})` : ''}`, qty: w.workers, unit: 'чел.', note: w.status, ro: true, src: 'VUP CORE' });
+    }
+    return this.journal.concat(ext);
   }
+  journalOn(date) { return this.allJournal().filter((j) => j.date === date); }
+  peopleOn(date, section) {
+    return this.allJournal().filter((j) => j.date === date && j.type === 'Люди' && (!section || j.section === section)).reduce((a, j) => a + j.qty, 0);
+  }
+  floorStatusOf(section, floor) { return this.extra.floorStatus.filter((x) => String(x.section) === section && Number(x.floor) === floor); }
+  movesTo(section, floor) { return this.extra.moves.filter((m) => m.section === section && m.floor === floor); }
+  worklogOf(section, floor) { return this.extra.worklog.filter((w) => String(w.section) === section && Number(w.floor) === floor); }
 
   // ---------- запись: очередь операций → Apps Script ----------
   // Любая правка сразу применяется в приложении и ставится в очередь. Очередь хранится

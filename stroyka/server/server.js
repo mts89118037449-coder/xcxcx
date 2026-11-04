@@ -80,6 +80,7 @@ function normalize(x) {
   const f = d.fin || {};
   for (const k of ['expenses', 'advances', 'income', 'nominated', 'personal', 'tools', 'contract']) if (Array.isArray(f[k])) out.fin[k] = f[k];
   if (f.summary) { out.fin.summary = f.summary; out.fin.partial = !!f.partial; }
+  if (d.extra && typeof d.extra === 'object') out.extra = d.extra;
   out.fin.expenses = out.fin.expenses.map((e) => ({ ...e, id: e.id || 'r' + (e.row || crypto.randomUUID().slice(0, 8)) }));
   out.journal = out.journal.map((j) => ({ ...j, id: j.id || 'j' + crypto.randomUUID().slice(0, 8) }));
   return out;
