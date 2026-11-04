@@ -19,6 +19,7 @@
 #   REPO_URL        другой адрес репозитория (зеркало GitLab/свой git), если GitHub недоступен
 # Повторный запуск той же командой = обновление: данные и .env сохраняются.
 set -euo pipefail
+trap 'echo "✖ Ошибка в строке $LINENO: $BASH_COMMAND" >&2' ERR
 
 REPO="mts89118037449-coder/xcxcx"
 BRANCH="${BRANCH:-ccr-daed372c-kxhkyu}"
@@ -120,8 +121,9 @@ curl -fs "http://127.0.0.1:$PORT/healthz" >/dev/null || die "Сервер не �
 say "nginx + вход по паролю"
 NEWPASS=""
 if [ ! -f /etc/nginx/stroyka.htpasswd ] || [ -n "${PASSWORD:-}" ]; then
-  NEWPASS="${PASSWORD:-$(tr -dc 'A-HJ-NP-Za-km-z2-9' </dev/urandom | head -c 12)}"
-  htpasswd -bc /etc/nginx/stroyka.htpasswd "$LOGIN" "$NEWPASS" >/dev/null 2>&1
+  NEWPASS="${PASSWORD:-$( (tr -dc 'A-HJ-NP-Za-km-z2-9' </dev/urandom | head -c 12) 2>/dev/null || true )}"
+  [ ${#NEWPASS} -ge 8 ] || die "Не удалось сгенерировать пароль, задайте PASSWORD=…"
+  htpasswd -bc /etc/nginx/stroyka.htpasswd "$LOGIN" "$NEWPASS" >/dev/null
 fi
 SERVER_NAME="${DOMAIN:-_}"
 # Внешний порт сайта: при повторном запуске — прежний; иначе 80, если он свободен, иначе первый свободный
