@@ -312,3 +312,7 @@ body.touring .floor-tag { opacity: 0; }
 :root[data-theme="dark"] .banner { background: #2e2715; color: #f3dc9a; border-color: #4a3d1c; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .banner { background: #2e2715; color: #f3dc9a; border-color: #4a3d1c; } }
 @media (max-width: 900px) { .banner { padding: 6px 12px; font-size: 12px; } }
+
+.form-actions { display: flex; gap: 8px; }
+.form-actions .btn[type=submit] { flex: 1; }
+.x.ed { font-size: 14px; }

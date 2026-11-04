@@ -3,7 +3,9 @@
  *
  * Установка:
  *   1. Откройте таблицу → Расширения → Apps Script, вставьте этот файл целиком, сохраните.
- *   2. Выберите функцию setup → Выполнить (выдайте доступ). Будут созданы листы «Прогресс» и «Журнал».
+ *   2. Выберите функцию setup → Выполнить (выдайте доступ). Будут созданы листы «Прогресс» и «Журнал»
+ *      и триггер, который отмечает любую правку в таблице — по этой отметке приложение
+ *      за ~10 секунд подтягивает изменения, сделанные прямо в таблице.
  *   3. (Необязательно) Настройки проекта → Свойства скрипта → добавьте TOKEN = любой пароль.
  *   4. Начать развертывание → Новое развертывание → Веб-приложение:
  *        Запуск от имени: «Я», У кого есть доступ: «Все». Скопируйте URL …/exec.
@@ -40,7 +42,8 @@ function doGet(e) {
   try {
     const p = (e && e.parameter) || {};
     checkToken_(p.token);
-    return json_(Object.assign({ ok: true }, readAll_()));
+    if (p.action === 'version') return json_({ ok: true, v: version_() });
+    return json_(Object.assign({ ok: true, v: version_() }, readAll_()));
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message || err) });
   }
@@ -57,10 +60,14 @@ function doPost(e) {
       case 'setProgress': res = setProgress_(String(body.section), Number(body.floor), String(body.work), Number(body.value)); break;
       case 'addJournal': res = addJournal_(body.entry || {}); break;
       case 'deleteJournal': res = deleteJournal_(String(body.id)); break;
+      case 'updateJournal': res = updateJournal_(body.entry || {}); break;
       case 'addExpense': res = addExpense_(body.entry || {}); break;
+      case 'updateExpense': res = updateExpense_(body.entry || {}, body.expect || {}); break;
+      case 'deleteExpense': res = deleteExpense_(String(body.id)); break;
       default: throw new Error('Неизвестное действие: ' + body.action);
     }
-    return json_(Object.assign({ ok: true }, res || {}));
+    SpreadsheetApp.flush();
+    return json_(Object.assign({ ok: true, v: stamp_() }, res || {}));
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message || err) });
   } finally {
@@ -82,6 +89,25 @@ function checkToken_(t) {
 function setup() {
   progressSheet_();
   journalSheet_();
+  // триггеры «при изменении»: любая правка в таблице меняет отметку версии
+  const have = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
+  if (have.indexOf('onSheetEdit') < 0) ScriptApp.newTrigger('onSheetEdit').forSpreadsheet(ss_()).onEdit().create();
+  if (have.indexOf('onSheetChange') < 0) ScriptApp.newTrigger('onSheetChange').forSpreadsheet(ss_()).onChange().create();
+  stamp_();
+}
+
+/** Триггер: правка ячеек вручную */
+function onSheetEdit(e) { stamp_(); }
+/** Триггер: вставка/удаление строк, листов, вставка данных */
+function onSheetChange(e) { stamp_(); }
+
+function stamp_() {
+  const v = String(Date.now());
+  PropertiesService.getScriptProperties().setProperty('V', v);
+  return v;
+}
+function version_() {
+  return PropertiesService.getScriptProperties().getProperty('V') || stamp_();
 }
 
 function progressSheet_() {
@@ -226,11 +252,13 @@ function readExpenses_() {
   disp.forEach(function (r, i) {
     const sum = num_(raw[i][0]);
     if (!sum) return;
+    const mark = String(r[6] || '').match(/\[app:([\w-]+)\]/);
     out.push({
+      id: mark ? mark[1] : 'r' + (i + 5), app: !!mark,
       n: r[0], row: i + 5,
       date: findDate_(r[2]) || findDate_(r[1]) || findDate_(r[5]) || findDate_(r[6]),
       cat: String(r[3] || 'Прочее').trim(), who: String(r[4] || '').trim(),
-      basis: String(r[5] || '').replace(/\s+/g, ' ').slice(0, 160), note: String(r[6] || '').replace(/\s+/g, ' ').slice(0, 120),
+      basis: String(r[5] || '').replace(/\s+/g, ' ').slice(0, 160), note: String(r[6] || '').replace(/\s*\[app:[\w-]+\]/, '').replace(/\s+/g, ' ').slice(0, 120),
       sum: sum,
     });
   });
@@ -284,9 +312,45 @@ function addExpense_(e) {
   nums.forEach(function (v) { const k = parseInt(v[0], 10); if (k > maxN) maxN = k; });
   const p = String(e.date || '').split('-').map(Number);
   const d = p.length === 3 ? new Date(p[0], p[1] - 1, p[2]) : new Date();
-  sh.getRange(row, 1, 1, 8).setValues([[maxN + 1, '', d, String(e.cat || 'Прочее'), String(e.who || ''), String(e.basis || ''), String(e.note || '') + ' [из приложения]', sum]]);
+  sh.getRange(row, 1, 1, 8).setValues([[maxN + 1, '', d, String(e.cat || 'Прочее'), String(e.who || ''), String(e.basis || ''), String(e.note || '') + ' [app:' + String(e.id || Utilities.getUuid().slice(0, 8)) + ']', sum]]);
   sh.getRange(row, 3).setNumberFormat('dd.MM.yyyy');
   return { row: row };
+}
+
+/** Найти строку расхода: по метке [app:id] или по номеру строки 'r123' */
+function findExpenseRow_(sh, id) {
+  const last = sh.getLastRow();
+  if (last < 5) return 0;
+  const m = String(id).match(/^r(\d+)$/);
+  if (m) return Number(m[1]);
+  const notes = sh.getRange(5, 7, last - 4, 1).getValues();
+  for (let i = 0; i < notes.length; i++) if (String(notes[i][0]).indexOf('[app:' + id + ']') >= 0) return i + 5;
+  return 0;
+}
+
+function updateExpense_(e, expect) {
+  const sh = ss_().getSheetByName(SHEET_EXPENSES);
+  const row = findExpenseRow_(sh, e.id);
+  if (!row) return addExpense_(e);
+  const cur = sh.getRange(row, 1, 1, 8).getValues()[0];
+  // защита: строку могли сдвинуть или изменить в таблице — тогда не перезаписываем чужие данные
+  if (/^r\d+$/.test(e.id) && expect && expect.sum != null && Math.abs(num_(cur[7]) - Number(expect.sum)) > 0.009) {
+    throw new Error('Строка ' + row + ' в «Счета» изменилась в таблице — обновите приложение и повторите');
+  }
+  const p = String(e.date || '').split('-').map(Number);
+  const mark = String(cur[6]).match(/\s*\[app:[\w-]+\]/);
+  sh.getRange(row, 3, 1, 6).setValues([[p.length === 3 ? new Date(p[0], p[1] - 1, p[2]) : cur[2], String(e.cat || cur[3]), String(e.who || ''), String(e.basis || ''), String(e.note || '') + (mark ? mark[0] : ''), num_(e.sum)]]);
+  sh.getRange(row, 3).setNumberFormat('dd.MM.yyyy');
+  return { row: row };
+}
+
+/** Удаляет только строки, добавленные из приложения */
+function deleteExpense_(id) {
+  const sh = ss_().getSheetByName(SHEET_EXPENSES);
+  if (/^r\d+$/.test(id)) throw new Error('Строки, внесённые в таблице вручную, удаляйте в самой таблице');
+  const row = findExpenseRow_(sh, id);
+  if (row) sh.deleteRow(row);
+  return { deleted: row ? 1 : 0 };
 }
 
 function num_(v) {
@@ -341,6 +405,20 @@ function addJournal_(e) {
   const id = String(e.id || ('j' + Utilities.getUuid().slice(0, 8)));
   sh.appendRow([d, String(e.section || 'Общее'), e.type === 'Люди' ? 'Люди' : 'Материал', String(e.name || ''), Number(e.qty) || 0, String(e.unit || ''), String(e.note || ''), id]);
   return { id: id };
+}
+
+function updateJournal_(e) {
+  const sh = journalSheet_();
+  const n = sh.getLastRow() - 1;
+  const ids = n > 0 ? sh.getRange(2, 8, n, 1).getValues() : [];
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(e.id)) {
+      const p = String(e.date).split('-').map(Number);
+      sh.getRange(i + 2, 1, 1, 7).setValues([[new Date(p[0], p[1] - 1, p[2]), String(e.section || 'Общее'), e.type === 'Люди' ? 'Люди' : 'Материал', String(e.name || ''), Number(e.qty) || 0, String(e.unit || ''), String(e.note || '')]]);
+      return { row: i + 2 };
+    }
+  }
+  return addJournal_(e); // строку удалили в таблице — создаём заново
 }
 
 function deleteJournal_(id) {

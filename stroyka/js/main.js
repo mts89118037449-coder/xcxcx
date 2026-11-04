@@ -190,8 +190,7 @@ function save(s, f, w, v) {
   const k = `${s}|${f}|${w}`;
   clearTimeout(pending.get(k));
   pending.set(k, setTimeout(async () => {
-    try { await store.setProgress(s, f, w, v); toast(store.connected ? 'Сохранено в таблицу' : 'Сохранено на устройстве · таблица не подключена'); }
-    catch (e) { toast('Не удалось сохранить: ' + e.message, true); }
+    store.setProgress(s, f, w, v);
   }, 350));
   preview(s, f, w, v);
 }
@@ -262,7 +261,7 @@ function renderCalendar() {
       ${dayEntries.map((j) => `<li class="${j.type === 'Люди' ? 'e-people' : 'e-mat'}">
         <span class="e-ico">${j.type === 'Люди' ? '👷' : '🚚'}</span>
         <div><b>${esc(j.name || j.type)}</b> — ${fmtN(j.qty)} ${esc(j.unit)}<div class="muted">${esc(j.section === 'Общее' ? 'Общее' : 'Секция ' + j.section)}${j.note ? ' · ' + esc(j.note) : ''}</div></div>
-        <button class="x" data-del="${esc(j.id)}" aria-label="Удалить">×</button></li>`).join('') || '<li class="muted">Записей нет</li>'}
+        <button class="x ed" data-edj="${esc(j.id)}" aria-label="Изменить">✎</button><button class="x" data-del="${esc(j.id)}" aria-label="Удалить">×</button></li>`).join('') || '<li class="muted">Записей нет</li>'}
     </ul>
 
     ${(() => { const ex = store.expensesOn(state.day); return ex.length ? `<h3>Расходы за день <span class="muted">· ${rub(store.expenseTotal(ex))}</span></h3><ul class="entries">${ex.map((e) => `<li><span class="cat-dot" style="--c:${CAT_COLORS[e.cat] || '#888'}"></span><div><b>${esc(e.note || e.basis || e.cat)}</b><div class="muted">${esc(e.cat)} · ${esc(e.who || '')}</div></div><b class="num">${rub(e.sum)}</b></li>`).join('')}</ul>` : ''; })()}
@@ -281,7 +280,7 @@ function renderCalendar() {
       </div>
       <datalist id="units"><option value="чел."><option value="м³"><option value="шт."><option value="поддон"><option value="т"><option value="машина"></datalist>
       <label>Примечание<input name="note"></label>
-      <button class="btn" type="submit">Добавить запись</button>
+      <div class="form-actions"><button class="btn" type="submit" data-submit>Добавить запись</button><button class="btn ghost" type="button" data-cancel hidden>Отмена</button></div>
     </form>
 
     ${Object.keys(matTotals).length ? `<h3>Материал за месяц</h3><ul class="totals">${Object.entries(matTotals).map(([k, v]) => { const [n, u] = k.split('|'); return `<li><span>${esc(n)}</span><b>${fmtN(v)} ${esc(u)}</b></li>`; }).join('')}</ul>` : ''}
@@ -296,7 +295,7 @@ function renderCalendar() {
   el.querySelectorAll('.c-cell[data-d]').forEach((b) => b.onclick = () => { state.day = b.dataset.d; renderCalendar(); });
   el.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
     if (!confirm('Удалить запись?')) return;
-    try { await store.deleteJournal(b.dataset.del); toast('Удалено'); } catch (e) { toast('Ошибка: ' + e.message, true); }
+    store.deleteJournal(b.dataset.del);
   });
 
   const form = $('#addForm', el);
@@ -309,15 +308,26 @@ function renderCalendar() {
     form.name.placeholder = type === 'Люди' ? 'Каменщики' : 'Газобетон 650х200х250';
     form.unit.value = type === 'Люди' ? 'чел.' : 'м³';
   };
-  form.onsubmit = async (e) => {
+  let editId = null;
+  el.querySelectorAll('[data-edj]').forEach((b) => b.onclick = () => {
+    const j = store.journal.find((x) => x.id === b.dataset.edj); if (!j) return;
+    editId = j.id;
+    $(`#addType [data-t="${j.type}"]`, el)?.click();
+    form.section.value = j.section; form.date.value = j.date; form.name.value = j.name; form.qty.value = j.qty; form.unit.value = j.unit; form.note.value = j.note || '';
+    $('[data-submit]', form).textContent = 'Сохранить изменения';
+    $('[data-cancel]', form).hidden = false;
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  $('[data-cancel]', form).onclick = () => renderCalendar();
+  form.onsubmit = (e) => {
     e.preventDefault();
     const fd = new FormData(form);
     const entry = { date: fd.get('date'), section: fd.get('section'), type, name: fd.get('name') || (type === 'Люди' ? 'Рабочие' : 'Материал'), qty: fd.get('qty'), unit: fd.get('unit'), note: fd.get('note') };
     state.day = entry.date;
     const [ey, em] = entry.date.split('-').map(Number);
     state.month = { y: ey, m: em - 1 };
-    try { await store.addJournal(entry); toast(store.connected ? 'Записано в лист «Журнал»' : 'Сохранено на устройстве · таблица не подключена'); }
-    catch (err) { toast('Ошибка: ' + err.message, true); }
+    if (editId) store.updateJournal({ ...entry, id: editId }); else store.addJournal(entry);
+    form.reset();
   };
 }
 
@@ -371,8 +381,8 @@ function renderMoney() {
       <h3>Крупнейшие получатели</h3>
       ${bars(top.map(([w, v]) => [w, v, 'var(--blue)']), top[0] ? top[0][1] : 0)}
 
-      <details class="add-exp">
-        <summary class="btn">+ Добавить расход</summary>
+      <details class="add-exp" ${state.expEdit ? 'open' : ''}>
+        <summary class="btn">${state.expEdit ? '✎ Изменить расход' : '+ Добавить расход'}</summary>
         <form class="add" id="expForm">
           <div class="grid2">
             <label>Дата<input type="date" name="date" value="${isoToday()}" required></label>
@@ -383,7 +393,7 @@ function renderMoney() {
           <label>Основание<input name="basis" placeholder="Оплата по счету № … от …"></label>
           <label>Примечание<input name="note" placeholder="Арматура"></label>
           <label>Сумма, ₽<input name="sum" type="number" step="0.01" min="0" required></label>
-          <button class="btn" type="submit">Записать ${store.connected ? 'в лист «Счета»' : 'на устройство'}</button>
+          <div class="form-actions"><button class="btn" type="submit">${state.expEdit ? 'Сохранить' : 'Записать'} ${store.connected ? 'в лист «Счета»' : 'на устройство'}</button>${state.expEdit ? '<button class="btn ghost" type="button" id="expCancel">Отмена</button>' : ''}</div>
         </form>
       </details>
 
@@ -395,7 +405,7 @@ function renderMoney() {
       <ul class="entries ops">${list.slice(0, state.expLimit).map((e) => `<li>
         <span class="cat-dot" style="--c:${CAT_COLORS[e.cat] || '#888'}"></span>
         <div><b>${esc(e.note || e.basis || e.cat)}</b><div class="muted">${e.date ? shortDate(e.date) + ' · ' : ''}${esc(e.who || '')}</div></div>
-        <b class="num">${rub(e.sum)}</b>${e.local ? `<button class="x" data-delx="${esc(e.id)}" aria-label="Удалить">×</button>` : ''}</li>`).join('') || '<li class="muted">Ничего не найдено</li>'}</ul>
+        <b class="num">${rub(e.sum)}</b><button class="x ed" data-edx="${esc(e.id)}" aria-label="Изменить">✎</button>${e.local || e.app ? `<button class="x" data-delx="${esc(e.id)}" aria-label="Удалить">×</button>` : ''}</li>`).join('') || '<li class="muted">Ничего не найдено</li>'}</ul>
       ${list.length > state.expLimit ? `<button class="btn ghost more" id="expMore">Показать ещё ${Math.min(40, list.length - state.expLimit)}</button>` : ''}
       ${fin.partial ? '<p class="note">Итоги и категории посчитаны по всем 355 операциям листа «Счета». Список и график пока показывают только август: полный реестр загрузится, когда таблица будет подключена онлайн (кнопка «Таблица»).</p>' : ''}`;
   }
@@ -476,16 +486,20 @@ function renderMoney() {
   const q = $('#expQ', el);
   if (q) q.oninput = debounce(() => { state.expQuery = q.value; state.expLimit = 40; renderMoney(); const nq = $('#expQ'); nq.focus(); nq.setSelectionRange(nq.value.length, nq.value.length); }, 250);
   const more = $('#expMore', el); if (more) more.onclick = () => { state.expLimit += 40; renderMoney(); };
-  el.querySelectorAll('[data-delx]').forEach((b) => b.onclick = () => { if (confirm('Удалить запись?')) store.deleteLocalExpense(b.dataset.delx); });
+  el.querySelectorAll('[data-delx]').forEach((b) => b.onclick = () => { if (confirm('Удалить расход из листа «Счета»?')) store.deleteExpense(b.dataset.delx); });
+  el.querySelectorAll('[data-edx]').forEach((b) => b.onclick = () => { state.expEdit = b.dataset.edx; renderMoney(); $('#expForm')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  const xc = $('#expCancel', el); if (xc) xc.onclick = () => { state.expEdit = null; renderMoney(); };
   const sa = $('#supAdd', el); if (sa) sa.onclick = () => { setTab('calendar'); const t = document.querySelector('#addType [data-t="Материал"]'); if (t) t.click(); document.querySelector('#addForm')?.scrollIntoView({ behavior: 'smooth' }); };
   const f = $('#expForm', el);
-  if (f) f.onsubmit = async (e) => {
+  const ed = state.expEdit && store.fin.expenses.find((x) => x.id === state.expEdit);
+  if (f && ed) { f.date.value = ed.date || isoToday(); f.cat.value = ed.cat; f.who.value = ed.who || ''; f.basis.value = ed.basis || ''; f.note.value = ed.note || ''; f.sum.value = ed.sum; }
+  if (f) f.onsubmit = (e) => {
     e.preventDefault();
     const fd = new FormData(f);
-    try {
-      await store.addExpense({ date: fd.get('date'), cat: fd.get('cat'), who: fd.get('who'), basis: fd.get('basis'), note: fd.get('note'), sum: fd.get('sum') });
-      toast(store.connected ? 'Записано в лист «Счета»' : 'Сохранено на устройстве · таблица не подключена');
-    } catch (err) { toast('Ошибка: ' + err.message, true); }
+    const x = { date: fd.get('date'), cat: fd.get('cat'), who: fd.get('who'), basis: fd.get('basis'), note: fd.get('note'), sum: fd.get('sum') };
+    if (ed) store.updateExpense({ ...ed, ...x }); else store.addExpense(x);
+    state.expEdit = null;
+    renderMoney();
   };
 }
 
@@ -564,10 +578,17 @@ function renderBanner() {
 function renderStatus() {
   const el = $('#status');
   const map = { loading: ['Загрузка…', ''], ok: ['Онлайн · таблица', 'ok'], demo: ['Таблица не подключена', 'warn'], error: ['Ошибка связи', 'err'], idle: ['—', ''] };
-  const [t, cls] = map[store.status] || map.idle;
+  let [t, cls] = map[store.status] || map.idle;
+  const n = store.queue.length;
+  if (store.connected && n && store.syncError) { t = `Нет связи · в очереди ${n}`; cls = 'err'; }
+  else if (store.connected && (store.flushing || n)) { t = 'Сохранение…'; cls = 'warn'; }
+  else if (store.status === 'ok') {
+    const at = store.lastCheck || store.loadedAt;
+    t = 'Онлайн · ' + (at ? at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '');
+  }
   el.textContent = t;
   el.className = 'pill ' + cls;
-  el.title = store.error || (store.loadedAt ? 'Обновлено ' + store.loadedAt.toLocaleTimeString('ru-RU') : '');
+  el.title = store.syncError || store.error || (store.loadedAt ? 'Данные из таблицы загружены в ' + store.loadedAt.toLocaleTimeString('ru-RU') + '. Проверка изменений каждые 10 с.' : '');
 }
 
 $('#btnReload').onclick = () => store.load();
@@ -582,13 +603,23 @@ function toast(msg, bad) {
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600);
 }
 
+// Пока человек заполняет форму, свежие данные из таблицы не перерисовывают панель — применим после
+let renderPending = false;
+const typing = () => { const a = document.activeElement; return a && a.closest && a.closest('.side form, .side .filters') && /INPUT|SELECT|TEXTAREA/.test(a.tagName); };
+document.addEventListener('focusout', () => setTimeout(() => { if (renderPending && !typing()) { renderPending = false; render(); } }, 50));
+
 store.on((what) => {
   if (what === 'status') { renderStatus(); renderBanner(); }
-  if (what === 'data') { scene.update(); render(); }
+  if (what === 'sync') renderStatus();
+  if (what === 'saved') { renderStatus(); toast('✓ Записано в таблицу'); }
+  if (what === 'saved-local') toast('Сохранено на устройстве · таблица не подключена');
+  if (what && what.type === 'rejected') toast('Таблица не приняла изменение: ' + what.message, true);
+  if (what === 'data') {
+    scene.update();
+    if (typing()) { renderPending = true; renderKpis(); } else render();
+  }
 });
-
-// автообновление раз в 2 минуты, если подключена таблица
-setInterval(() => { if (store.connected && !document.hidden) store.load(); }, 120000);
+setInterval(renderStatus, 5000);
 
 renderStatus();
 store.load();

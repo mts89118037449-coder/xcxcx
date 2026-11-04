@@ -134,6 +134,10 @@ export class Store {
     this.error = '';
     this.loadedAt = null;
     this.listeners = new Set();
+    this.queue = LS.get('stroyka.queue', []);
+    this.version = null;
+    this.flushing = false;
+    this.syncError = '';
   }
 
   get connected() { return !!this.url; }
@@ -147,8 +151,8 @@ export class Store {
   }
 
   // ---------- чтение ----------
-  async load() {
-    this.status = 'loading'; this.emit('status');
+  async load(silent = false) {
+    if (!silent) { this.status = 'loading'; this.emit('status'); }
     try {
       if (this.connected) {
         const u = new URL(this.url);
@@ -158,7 +162,11 @@ export class Store {
         const data = await r.json();
         if (!data.ok) throw new Error(data.error || 'Ошибка Apps Script');
         this.apply(data);
+        this.version = data.v || this.version;
+        for (const op of this.queue) this.applyLocal(op); // неотправленные правки не теряются
         this.status = 'ok';
+        this.startLiveSync();
+        this.flush();
       } else {
         this.loadDemo();
         this.status = 'demo';
@@ -233,43 +241,120 @@ export class Store {
     return this.journal.filter((j) => j.date === date && j.type === 'Люди' && (!section || j.section === section)).reduce((a, j) => a + j.qty, 0);
   }
 
-  // ---------- запись ----------
+  // ---------- запись: очередь операций → Apps Script ----------
+  // Любая правка сразу применяется в приложении и ставится в очередь. Очередь хранится
+  // на устройстве и отправляется в таблицу немедленно; при пропаже связи — повтор каждые 10 с.
   async post(payload) {
-    const r = await fetch(this.url, {
-      method: 'POST',
-      // text/plain — «простой» запрос без CORS-preflight, Apps Script его принимает
-      body: JSON.stringify({ ...payload, token: this.token }),
-      redirect: 'follow',
-    });
-    const data = await r.json();
+    let r;
+    try {
+      r = await fetch(this.url, {
+        method: 'POST',
+        // text/plain — «простой» запрос без CORS-preflight, Apps Script его принимает
+        body: JSON.stringify({ ...payload, token: this.token }),
+        redirect: 'follow',
+      });
+    } catch (e) { const err = new Error('Нет связи с таблицей'); err.network = true; throw err; }
+    let data;
+    try { data = await r.json(); } catch { const err = new Error('Таблица не ответила'); err.network = true; throw err; }
     if (!data.ok) throw new Error(data.error || 'Ошибка записи');
     return data;
   }
 
-  async setProgress(section, floor, work, value) {
-    const v = clampPct(value);
-    const updated = new Date().toISOString().slice(0, 16).replace('T', ' ');
-    this.progress.set(key(section, floor, work), { section, floor, work, value: v, updated, note: '' });
-    this.emit('data');
-    if (!this.connected) { this.saveDemo(); return; }
-    await this.post({ action: 'setProgress', section, floor, work, value: v });
+  /** Применить операцию к локальным данным (и до отправки, и поверх свежей загрузки) */
+  applyLocal(op) {
+    const e = op.entry;
+    switch (op.action) {
+      case 'setProgress':
+        this.progress.set(key(op.section, op.floor, op.work), { section: op.section, floor: op.floor, work: op.work, value: op.value, updated: op.at || '', note: '' });
+        break;
+      case 'addJournal':
+        if (!this.journal.some((j) => j.id === e.id)) this.journal.push({ ...e });
+        break;
+      case 'updateJournal':
+        this.journal = this.journal.map((j) => (j.id === e.id ? { ...j, ...e } : j));
+        break;
+      case 'deleteJournal':
+        this.journal = this.journal.filter((j) => j.id !== op.id);
+        break;
+      case 'addExpense':
+        if (!this.fin.expenses.some((x) => x.id === e.id)) this.fin.expenses.push({ ...e });
+        break;
+      case 'updateExpense':
+        this.fin.expenses = this.fin.expenses.map((x) => (x.id === e.id ? { ...x, ...e } : x));
+        break;
+      case 'deleteExpense':
+        this.fin.expenses = this.fin.expenses.filter((x) => x.id !== op.id);
+        break;
+    }
   }
 
-  async addJournal(entry) {
-    const e = { ...entry, id: 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), qty: Number(entry.qty) || 0 };
-    this.journal.push(e);
+  /** Записать операцию: локально сразу, в таблицу — через очередь */
+  commit(op) {
+    op.at = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    this.applyLocal(op);
     this.emit('data');
-    if (!this.connected) { this.saveDemo(); return e; }
-    await this.post({ action: 'addJournal', entry: e });
+    if (!this.connected) { this.saveDemo(); this.emit('saved-local'); return; }
+    this.queue.push(op);
+    LS.set('stroyka.queue', this.queue);
+    this.flush();
+  }
+
+  async flush() {
+    if (this.flushing || !this.connected || !this.queue.length) return;
+    this.flushing = true; this.emit('sync');
+    try {
+      while (this.queue.length) {
+        const op = this.queue[0];
+        try {
+          const res = await this.post(op);
+          if (res.v) this.version = res.v;
+          if (res.id && op.entry && res.id !== op.entry.id) this.applyLocal({ action: op.action.replace('add', 'update'), entry: { ...op.entry, id: res.id } });
+          this.syncError = '';
+          this.emit('saved');
+        } catch (err) {
+          if (err.network) { this.syncError = err.message; this.retryLater(); break; }
+          this.emit({ type: 'rejected', message: err.message }); // таблица отклонила — не блокируем очередь
+        }
+        this.queue.shift();
+        LS.set('stroyka.queue', this.queue);
+      }
+    } finally {
+      this.flushing = false; this.emit('sync');
+    }
+  }
+  retryLater() { clearTimeout(this.retryT); this.retryT = setTimeout(() => this.flush(), 10000); }
+
+  // ---------- чтение изменений из таблицы ----------
+  /** Лёгкая проверка: изменилась ли таблица (отметку ставит триггер скрипта при любой правке) */
+  async checkVersion() {
+    if (!this.connected || this.flushing || this.queue.length || this.status === 'loading') return;
+    try {
+      const u = new URL(this.url);
+      u.searchParams.set('action', 'version');
+      if (this.token) u.searchParams.set('token', this.token);
+      const data = await (await fetch(u.toString(), { redirect: 'follow' })).json();
+      if (data.ok && data.v && data.v !== this.version) await this.load(true);
+      else if (data.ok) { this.lastCheck = new Date(); this.emit('sync'); }
+    } catch { /* следующая проверка через 10 с */ }
+  }
+  startLiveSync() {
+    if (this.liveT) return;
+    this.liveT = setInterval(() => { if (!document.hidden) this.checkVersion(); }, 10000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { this.flush(); this.checkVersion(); } });
+    addEventListener('focus', () => this.checkVersion());
+    addEventListener('online', () => { this.flush(); this.checkVersion(); });
+  }
+
+  setProgress(section, floor, work, value) {
+    this.commit({ action: 'setProgress', section, floor, work, value: clampPct(value) });
+  }
+  addJournal(entry) {
+    const e = { ...entry, id: 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), qty: Number(entry.qty) || 0 };
+    this.commit({ action: 'addJournal', entry: e });
     return e;
   }
-
-  async deleteJournal(id) {
-    this.journal = this.journal.filter((j) => j.id !== id);
-    this.emit('data');
-    if (!this.connected) { this.saveDemo(); return; }
-    await this.post({ action: 'deleteJournal', id });
-  }
+  updateJournal(entry) { this.commit({ action: 'updateJournal', entry: { ...entry, qty: Number(entry.qty) || 0 } }); }
+  deleteJournal(id) { this.commit({ action: 'deleteJournal', id }); }
 }
 
 export function normFin(f) {
@@ -304,18 +389,18 @@ Object.assign(Store.prototype, {
     }
     return r;
   },
-  async addExpense(e) {
-    const x = { ...e, sum: money(e.sum), local: !this.connected, id: 'x' + Date.now().toString(36) };
-    this.fin.expenses.push(x);
-    this.emit('data');
-    if (!this.connected) { this.saveDemo(); return x; }
-    await this.post({ action: 'addExpense', entry: x });
+  addExpense(e) {
+    const x = { ...e, sum: money(e.sum), local: !this.connected, app: true, id: 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) };
+    this.commit({ action: 'addExpense', entry: x });
     return x;
   },
-  async deleteLocalExpense(id) {
-    this.fin.expenses = this.fin.expenses.filter((e) => !(e.local && e.id === id));
-    this.saveDemo(); this.emit('data');
+  /** Изменить любую строку «Счета» (по id строки, с проверкой на сервере) */
+  updateExpense(e) {
+    const prev = this.fin.expenses.find((x) => x.id === e.id) || {};
+    this.commit({ action: 'updateExpense', entry: { ...e, sum: money(e.sum) }, expect: { sum: prev.sum, who: prev.who } });
   },
+  /** Удалить можно только расход, добавленный из приложения */
+  deleteExpense(id) { this.commit({ action: 'deleteExpense', id }); },
 });
 
 function clampPct(v) {
