@@ -1,4 +1,4 @@
-import { Store, SECTIONS, FLOORS, ROOF, floorName, floorShort, worksForFloor, ruToIso, isoToday } from './data.js';
+import { Store, SECTIONS, FLOORS, ROOF, floorName, floorShort, worksForFloor, ruToIso, isoToday, EXPENSE_CATS } from './data.js';
 import { BuildingScene } from './scene.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -15,7 +15,14 @@ const state = {
   metric: 'avg',
   month: (() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; })(),
   day: isoToday(),
+  money: 'exp',
+  expCat: 'all',
+  expQuery: '',
+  expLimit: 40,
 };
+const CAT_COLORS = { 'Материалы': '#2e9e57', 'Работы': '#1f6feb', 'Услуги': '#d08a00', 'Логистика': '#8b5cf6', 'Прочее': '#8a8780' };
+const rub = (n) => Math.round(n).toLocaleString('ru-RU') + ' ₽';
+const rubShort = (n) => n >= 1e6 ? (n / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' млн' : n >= 1e3 ? Math.round(n / 1e3) + ' тыс' : Math.round(n) + ' ₽';
 
 // ---------- тема ----------
 try { const t = localStorage.getItem('stroyka.theme'); if (t) document.documentElement.dataset.theme = t; } catch { /* */ }
@@ -48,6 +55,7 @@ $('#viewMode').onclick = (e) => {
 
 // ---------- вкладки ----------
 function setTab(t) {
+  if (t === 'tour') { openTour(); return; }
   state.tab = t;
   for (const b of document.querySelectorAll('.tabs button')) b.classList.toggle('on', b.dataset.tab === t);
   for (const el of document.querySelectorAll('.tab')) el.hidden = el.id !== `tab-${t}`;
@@ -61,6 +69,7 @@ function render() {
   if (state.tab === 'summary') renderSummary();
   if (state.tab === 'floor') renderFloor();
   if (state.tab === 'calendar') renderCalendar();
+  if (state.tab === 'money') renderMoney();
 }
 
 // ---------- KPI поверх сцены ----------
@@ -208,6 +217,7 @@ function renderCalendar() {
     const k = iso(d);
     const p4 = store.peopleOn(k, '4'), p5 = store.peopleOn(k, '5'), pAll = store.peopleOn(k);
     const mats = store.journalOn(k).filter((j) => j.type === 'Материал').length;
+    const spent = store.expenseTotal(store.expensesOn(k));
     const heat = pAll / maxPeople;
     cells.push(`<button class="c-cell ${k === today ? 'today' : ''} ${k === state.day ? 'sel' : ''}" data-d="${k}" style="--heat:${(heat * 0.55).toFixed(2)}">
       <span class="c-d">${d}</span>
@@ -216,6 +226,7 @@ function renderCalendar() {
         ${p5 ? `<span class="chip-s s5" title="Секция 5: ${p5} чел.">5·${p5}</span>` : ''}
         ${pAll - p4 - p5 > 0 ? `<span class="chip-s" title="Общее: ${pAll - p4 - p5} чел.">∑·${pAll - p4 - p5}</span>` : ''}
         ${mats ? `<span class="chip-m" title="Поставок: ${mats}">🚚${mats > 1 ? mats : ''}</span>` : ''}
+        ${spent ? `<span class="chip-r" title="Расходы: ${rub(spent)}">₽${rubShort(spent).replace(' ₽', '')}</span>` : ''}
       </span>
       ${dueMap[k] ? `<em class="dot" title="Срок поручений: ${dueMap[k].length}"></em>` : ''}
     </button>`);
@@ -242,6 +253,7 @@ function renderCalendar() {
     <div class="cal-stats">
       <span>Среднее за день: <b>${fmtN(Math.round(avgPeople))} чел.</b></span>
       <span>Поставок: <b>${monthEntries.filter((j) => j.type === 'Материал').length}</b></span>
+      <span>Расходы: <b>${rub(store.expenseTotal(store.fin.expenses.filter((e) => e.date.startsWith(monthPrefix))))}</b></span>
     </div>
 
     <h3>${dd} ${MONTHS_GEN[dm - 1]} ${dy}</h3>
@@ -252,6 +264,8 @@ function renderCalendar() {
         <div><b>${esc(j.name || j.type)}</b> — ${fmtN(j.qty)} ${esc(j.unit)}<div class="muted">${esc(j.section === 'Общее' ? 'Общее' : 'Секция ' + j.section)}${j.note ? ' · ' + esc(j.note) : ''}</div></div>
         <button class="x" data-del="${esc(j.id)}" aria-label="Удалить">×</button></li>`).join('') || '<li class="muted">Записей нет</li>'}
     </ul>
+
+    ${(() => { const ex = store.expensesOn(state.day); return ex.length ? `<h3>Расходы за день <span class="muted">· ${rub(store.expenseTotal(ex))}</span></h3><ul class="entries">${ex.map((e) => `<li><span class="cat-dot" style="--c:${CAT_COLORS[e.cat] || '#888'}"></span><div><b>${esc(e.note || e.basis || e.cat)}</b><div class="muted">${esc(e.cat)} · ${esc(e.who || '')}</div></div><b class="num">${rub(e.sum)}</b></li>`).join('')}</ul>` : ''; })()}
 
     <form class="add" id="addForm">
       <div class="seg small" id="addType"><button type="button" data-t="Люди" class="on">👷 Люди вышли</button><button type="button" data-t="Материал">🚚 Материал приехал</button></div>
@@ -306,6 +320,230 @@ function renderCalendar() {
     catch (err) { toast('Ошибка: ' + err.message, true); }
   };
 }
+
+// ---------- Учёт: расходы, авансы, поставки, поступления ----------
+function bars(rows, max) {
+  return rows.map(([label, v, color, extra]) => `<div class="hbar"><span title="${esc(label)}">${esc(label)}</span><div class="bar"><i style="width:${max ? (v / max) * 100 : 0}%;background:${color || 'var(--green)'}"></i></div><b>${rubShort(v)}</b>${extra ? `<em>${extra}</em>` : ''}</div>`).join('');
+}
+function monthChart(byMonth, cats) {
+  const months = Object.keys(byMonth).sort();
+  if (!months.length) return '<p class="muted">Нет операций с датой.</p>';
+  const tot = (m) => cats.reduce((a, c) => a + (byMonth[m][c] || 0), 0);
+  const max = Math.max(...months.map(tot));
+  return `<div class="vchart">${months.map((m) => {
+    const [y, mm] = m.split('-').map(Number);
+    return `<div class="vcol" title="${MONTHS[mm - 1]} ${y}: ${rub(tot(m))}"><b>${rubShort(tot(m))}</b><div class="vstack" style="height:${(tot(m) / max) * 100}%">${cats.map((c) => byMonth[m][c] ? `<i style="flex:${byMonth[m][c]};background:${CAT_COLORS[c] || 'var(--green)'}"></i>` : '').join('')}</div><span>${MONTHS[mm - 1].slice(0, 3)}</span></div>`;
+  }).join('')}</div>`;
+}
+
+function renderMoney() {
+  const el = $('#tab-money');
+  const views = [['exp', 'Расходы'], ['adv', 'Авансы'], ['sup', 'Поставки'], ['inc', 'Поступления']];
+  const head = `<div class="seg small money-seg">${views.map(([k, t]) => `<button data-mv="${k}" class="${state.money === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+  let body = '';
+  const fin = store.fin;
+
+  if (state.money === 'exp') {
+    const cats = store.byCategory();
+    const total = fin.partial && fin.summary ? fin.summary.total : store.expenseTotal();
+    const count = fin.partial && fin.summary ? fin.summary.count : fin.expenses.length;
+    const maxCat = Math.max(...Object.values(cats));
+    const who = {};
+    for (const e of fin.expenses) if (e.who) who[e.who] = (who[e.who] || 0) + e.sum;
+    const top = Object.entries(who).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const q = state.expQuery.toLowerCase();
+    const list = fin.expenses
+      .filter((e) => state.expCat === 'all' || e.cat === state.expCat)
+      .filter((e) => !q || `${e.who} ${e.note} ${e.basis}`.toLowerCase().includes(q))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const listSum = store.expenseTotal(list);
+    body = `
+      <div class="kpis3">
+        <div><span>Всего расходов</span><b>${rubShort(total)}</b></div>
+        <div><span>Операций</span><b>${count}</b></div>
+        <div><span>Средний платёж</span><b>${rubShort(count ? total / count : 0)}</b></div>
+      </div>
+      <h3>По категориям</h3>
+      ${bars(Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([c, v]) => [c, v, CAT_COLORS[c], total ? Math.round((v / total) * 100) + '%' : '']), maxCat)}
+      <h3>По месяцам ${fin.partial ? '<span class="muted">· в демо только август</span>' : ''}</h3>
+      ${monthChart(store.byMonth(), EXPENSE_CATS)}
+      <div class="legend-row">${EXPENSE_CATS.map((c) => `<span><i style="background:${CAT_COLORS[c]}"></i>${c}</span>`).join('')}</div>
+      <h3>Крупнейшие получатели</h3>
+      ${bars(top.map(([w, v]) => [w, v, 'var(--blue)']), top[0] ? top[0][1] : 0)}
+
+      <details class="add-exp">
+        <summary class="btn">+ Добавить расход</summary>
+        <form class="add" id="expForm">
+          <div class="grid2">
+            <label>Дата<input type="date" name="date" value="${isoToday()}" required></label>
+            <label>Категория<select name="cat">${EXPENSE_CATS.map((c) => `<option>${c}</option>`).join('')}</select></label>
+          </div>
+          <label>Контрагент<input name="who" list="whoList" required></label>
+          <datalist id="whoList">${Object.keys(who).map((w) => `<option value="${esc(w)}">`).join('')}</datalist>
+          <label>Основание<input name="basis" placeholder="Оплата по счету № … от …"></label>
+          <label>Примечание<input name="note" placeholder="Арматура"></label>
+          <label>Сумма, ₽<input name="sum" type="number" step="0.01" min="0" required></label>
+          <button class="btn" type="submit">Записать ${store.connected ? 'в лист «Счета»' : '(демо)'}</button>
+        </form>
+      </details>
+
+      <h3>Операции <span class="muted">· ${list.length} на ${rub(listSum)}</span></h3>
+      <div class="filters">
+        <input type="search" id="expQ" placeholder="Поиск: контрагент, примечание…" value="${esc(state.expQuery)}">
+        <div class="chips">${['all', ...EXPENSE_CATS].map((c) => `<button class="chip ${state.expCat === c ? 'on' : ''}" data-cat="${c}">${c === 'all' ? 'Все' : c}</button>`).join('')}</div>
+      </div>
+      <ul class="entries ops">${list.slice(0, state.expLimit).map((e) => `<li>
+        <span class="cat-dot" style="--c:${CAT_COLORS[e.cat] || '#888'}"></span>
+        <div><b>${esc(e.note || e.basis || e.cat)}</b><div class="muted">${e.date ? shortDate(e.date) + ' · ' : ''}${esc(e.who || '')}</div></div>
+        <b class="num">${rub(e.sum)}</b>${e.local ? `<button class="x" data-delx="${esc(e.id)}" aria-label="Удалить">×</button>` : ''}</li>`).join('') || '<li class="muted">Ничего не найдено</li>'}</ul>
+      ${list.length > state.expLimit ? `<button class="btn ghost more" id="expMore">Показать ещё ${Math.min(40, list.length - state.expLimit)}</button>` : ''}
+      ${fin.partial ? '<p class="note">Демо: итоги и категории — по всем 355 операциям листа «Счета», а список и график — только часть за август. После подключения таблицы загрузятся все строки.</p>' : ''}`;
+  }
+
+  if (state.money === 'adv') {
+    const adv = fin.advances.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const total = store.expenseTotal(adv);
+    const st = {};
+    for (const a of adv) st[a.status] = (st[a.status] || 0) + a.sum;
+    const sup = {};
+    for (const a of adv) { const k = (a.desc || 'Без описания').split(/[\s—-]/)[0].replace(/[()]/g, '') || '—'; sup[k] = (sup[k] || 0) + a.sum; }
+    const supTop = Object.entries(sup).sort((a, b) => b[1] - a[1]);
+    const byM = {};
+    for (const a of adv) if (a.date) { const k = a.date.slice(0, 7); (byM[k] ||= {})['Материалы'] = (byM[k]['Материалы'] || 0) + a.sum; }
+    const stColor = (x) => /оплач/i.test(x) ? 'var(--green)' : /утвер/i.test(x) ? 'var(--blue)' : 'var(--amber)';
+    body = `
+      <div class="kpis3">
+        <div><span>Авансов</span><b>${adv.length}</b></div>
+        <div><span>Сумма</span><b>${rubShort(total)}</b></div>
+        <div><span>Оплачено</span><b>${rubShort(st['Оплачен'] || 0)}</b></div>
+      </div>
+      <h3>По статусу</h3>
+      ${bars(Object.entries(st).map(([k, v]) => [k, v, stColor(k)]), total)}
+      <h3>По поставщикам</h3>
+      ${bars(supTop.map(([k, v]) => [k, v, 'var(--green)']), supTop[0] ? supTop[0][1] : 0)}
+      <h3>По месяцам</h3>
+      ${monthChart(byM, ['Материалы'])}
+      <h3>Заявки <span class="muted">· лист «Для РП»</span></h3>
+      <ul class="entries ops">${adv.map((a) => `<li><span class="cat-dot" style="--c:${stColor(a.status)}"></span><div><b>${esc(a.desc || a.type)}</b><div class="muted">№${esc(a.n)} · ${a.date ? shortDate(a.date) : ''} · ${esc(a.status)}</div></div><b class="num">${rub(a.sum)}</b></li>`).join('')}</ul>`;
+  }
+
+  if (state.money === 'sup') {
+    const items = [];
+    for (const j of store.journal.filter((j) => j.type === 'Материал')) items.push({ date: j.date, name: j.name, qty: j.qty, unit: j.unit, who: j.section === 'Общее' ? 'Общее' : 'Секция ' + j.section, src: 'Журнал' });
+    for (const n of fin.nominated) for (const [name, qty] of n.items || []) {
+      const dup = items.some((x) => x.date === n.date && x.name.startsWith(name));
+      if (!dup) items.push({ date: n.date, name, qty: Number(String(qty).replace(',', '.')) || 0, unit: '', who: n.who, src: 'Номинированные' });
+    }
+    items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const tot = {};
+    for (const x of items) { const k = `${x.name}|${x.unit}`; tot[k] = (tot[k] || 0) + x.qty; }
+    const matAdv = store.expenseTotal(fin.advances);
+    const matExp = (store.byCategory()['Материалы']) || 0;
+    body = `
+      <div class="kpis3">
+        <div><span>Поставок</span><b>${items.length}</b></div>
+        <div><span>Авансы за материал</span><b>${rubShort(matAdv)}</b></div>
+        <div><span>Расходы «Материалы»</span><b>${rubShort(matExp)}</b></div>
+      </div>
+      <h3>Итого по материалам</h3>
+      <ul class="totals">${Object.entries(tot).map(([k, v]) => { const [n, u] = k.split('|'); return `<li><span>${esc(n)}</span><b>${fmtN(v)} ${esc(u)}</b></li>`; }).join('') || '<li class="muted">Поставок пока нет</li>'}</ul>
+      <h3>Поставки по датам</h3>
+      <ul class="entries ops">${items.map((x) => `<li class="e-mat"><span class="e-ico">🚚</span><div><b>${esc(x.name)}</b><div class="muted">${x.date ? shortDate(x.date) : ''} · ${esc(x.who)} · ${x.src}</div></div><b class="num">${fmtN(x.qty)} ${esc(x.unit)}</b></li>`).join('')}</ul>
+      <button class="btn" id="supAdd">+ Отметить поставку в календаре</button>`;
+  }
+
+  if (state.money === 'inc') {
+    const inc = fin.income;
+    const got = store.expenseTotal(inc.filter((x) => /^оплачено/i.test(x.status || '')));
+    const spent = fin.partial && fin.summary ? fin.summary.total : store.expenseTotal();
+    const adv = store.expenseTotal(fin.advances.filter((a) => /оплач/i.test(a.status)));
+    body = `
+      <div class="kpis3">
+        <div><span>Получено</span><b>${rubShort(got)}</b></div>
+        <div><span>Авансы за материал</span><b>${rubShort(adv)}</b></div>
+        <div><span>Расходы</span><b>${rubShort(spent)}</b></div>
+      </div>
+      <h3>Баланс</h3>
+      ${bars([['Поступления + авансы', got + adv, 'var(--green)'], ['Расходы (лист «Счета»)', spent, 'var(--red)']], Math.max(got + adv, spent))}
+      <p class="muted small-note">Разница: <b>${rub(got + adv - spent)}</b>. Авансы за номинированный материал Глоракс платит поставщикам напрямую.</p>
+      <h3>Счета Глоракс <span class="muted">· лист «Оплаты Глоракс»</span></h3>
+      <ul class="entries ops">${inc.map((x) => `<li><span class="cat-dot" style="--c:${/^оплачено/i.test(x.status) ? 'var(--green)' : 'var(--amber)'}"></span><div><b>${esc(x.note || 'Счёт')}</b><div class="muted">${x.date ? shortDate(x.date) : ''} · ${esc(x.status)}</div></div><b class="num">${rub(x.sum)}</b></li>`).join('') || '<li class="muted">Нет счетов</li>'}</ul>`;
+  }
+
+  el.innerHTML = head + body;
+  el.querySelectorAll('[data-mv]').forEach((b) => b.onclick = () => { state.money = b.dataset.mv; renderMoney(); });
+  el.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.expCat = b.dataset.cat; state.expLimit = 40; renderMoney(); });
+  const q = $('#expQ', el);
+  if (q) q.oninput = debounce(() => { state.expQuery = q.value; state.expLimit = 40; renderMoney(); const nq = $('#expQ'); nq.focus(); nq.setSelectionRange(nq.value.length, nq.value.length); }, 250);
+  const more = $('#expMore', el); if (more) more.onclick = () => { state.expLimit += 40; renderMoney(); };
+  el.querySelectorAll('[data-delx]').forEach((b) => b.onclick = () => { if (confirm('Удалить запись?')) store.deleteLocalExpense(b.dataset.delx); });
+  const sa = $('#supAdd', el); if (sa) sa.onclick = () => { setTab('calendar'); const t = document.querySelector('#addType [data-t="Материал"]'); if (t) t.click(); document.querySelector('#addForm')?.scrollIntoView({ behavior: 'smooth' }); };
+  const f = $('#expForm', el);
+  if (f) f.onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(f);
+    try {
+      await store.addExpense({ date: fd.get('date'), cat: fd.get('cat'), who: fd.get('who'), basis: fd.get('basis'), note: fd.get('note'), sum: fd.get('sum') });
+      toast(store.connected ? 'Записано в лист «Счета»' : 'Записано (демо)');
+    } catch (err) { toast('Ошибка: ' + err.message, true); }
+  };
+}
+
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+// ---------- 3D-тур: камера и стройка по прокрутке ----------
+function tourSteps() {
+  const s4 = Math.round(store.sectionValue('4')), s5 = Math.round(store.sectionValue('5'));
+  const open = (s) => store.remarks.filter((r) => String(r.section) === s && store.isOpenRemark(r)).length;
+  const w = (s, k) => Math.round(store.sectionValue(s, k));
+  const ppl = (s) => { const d = store.journal.filter((j) => j.type === 'Люди' && j.section === s).map((j) => j.date).sort().pop(); return d ? `${store.peopleOn(d, s)} чел. (${shortDate(d)})` : 'нет данных'; };
+  const mats = store.journal.filter((j) => j.type === 'Материал').length + store.fin.nominated.length;
+  const cats = store.byCategory();
+  const total = store.fin.partial && store.fin.summary ? store.fin.summary.total : store.expenseTotal();
+  return [
+    ['01', 'Две секции, 16 этажей', 'Прокручивайте вниз: дом построится до текущего состояния.'],
+    ['02', 'Каркас поднимается', `Этажи заливаются зелёным по факту выполнения. Сейчас готово: секция 4 — ${s4}%, секция 5 — ${s5}%.`],
+    ['03', `Секция 4 · ${s4}%`, `Наружные стены ${w('4', 'Наружные стены')}%, перегородки ${w('4', 'Перегородки')}%. На объекте: ${ppl('4')}. Открытых поручений: ${open('4')}.`],
+    ['04', `Секция 5 · ${s5}%`, `Наружные стены ${w('5', 'Наружные стены')}%, перегородки ${w('5', 'Перегородки')}%. На объекте: ${ppl('5')}. Открытых поручений: ${open('5')}.`],
+    ['05', 'Материал и деньги', `Поставок в учёте: ${mats}. Авансы за номинированный материал: ${rubShort(store.expenseTotal(store.fin.advances))}. Расходы: ${rubShort(total)}, из них работы ${rubShort(cats['Работы'] || 0)}, материалы ${rubShort(cats['Материалы'] || 0)}.`],
+    ['06', 'Сверху', 'Двор, парковка и кран. Нажмите «Закрыть тур», чтобы вернуться к редактированию.'],
+  ];
+}
+function openTour() {
+  const t = $('#tour');
+  $('#tourSteps').innerHTML = tourSteps().map(([n, h, p]) => `<section class="tour-step"><div class="tour-card"><span class="tour-n">${n}</span><h2>${esc(h)}</h2><p>${esc(p)}</p></div></section>`).join('') + '<section class="tour-step tour-end"></section>';
+  t.hidden = false;
+  t.scrollTop = 0;
+  document.body.classList.add('touring');
+  scene.setTour(true);
+  scene.resize();
+  scene.tour(0);
+  t.focus();
+}
+function closeTour() {
+  $('#tour').hidden = true;
+  document.body.classList.remove('touring');
+  scene.setTour(false);
+  requestAnimationFrame(() => scene.resize());
+}
+$('#tour').addEventListener('scroll', () => {
+  const t = $('#tour');
+  const p = t.scrollTop / Math.max(1, t.scrollHeight - t.clientHeight);
+  $('#tourBar').style.width = (p * 100).toFixed(1) + '%';
+  scene.tour(p);
+}, { passive: true });
+$('#tourClose').onclick = closeTour;
+$('#btnTour').onclick = openTour;
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('touring')) closeTour(); });
+
+// ---------- мобильный вид: 3D закреплено сверху, прокрутка страницы вращает модель ----------
+const mobile = matchMedia('(max-width: 900px)');
+let lastY = scrollY;
+addEventListener('scroll', () => {
+  const dy = scrollY - lastY; lastY = scrollY;
+  if (mobile.matches && !document.body.classList.contains('touring')) scene.orbitBy(dy * 0.002);
+}, { passive: true });
+$('#btnExpand').onclick = () => { document.body.classList.toggle('stage-big'); setTimeout(() => scene.resize(), 320); };
 
 function shortDate(iso) { const [, m, d] = iso.split('-').map(Number); return `${d} ${MONTHS_GEN[m - 1]}`; }
 

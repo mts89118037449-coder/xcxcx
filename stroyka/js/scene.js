@@ -126,8 +126,12 @@ export class BuildingScene {
     this.hemi.intensity = dark ? 0.5 : 0.9;
   }
 
+  /** На узких (портретных) экранах камера отходит дальше, чтобы обе секции влезли */
+  fit() { const a = this.camera.aspect || 1.6; return Math.max(1, Math.min(2.6, 1.3 / a)); }
+
   resetView() {
-    this.camera.position.set(-48, 46, 158);
+    const k = this.fit();
+    this.camera.position.set(-48 * k, 24 + 22 * k, 158 * k);
     this.controls.target.set(0, 24, 0);
     this.controls.update();
   }
@@ -390,6 +394,49 @@ export class BuildingScene {
     this.scene.add(g);
   }
 
+  // ------------------------------------------------------------ 3D-тур и прокрутка
+  setTour(on) {
+    this.touring = on;
+    this.controls.enabled = !on;
+    this.growth = on ? 0 : null;
+    if (!on) this.resetView();
+    this.update();
+  }
+
+  /** p ∈ [0..1] — положение прокрутки тура: камера летит по ключевым точкам, здание растёт */
+  tour(p) {
+    const ease = (t) => t * t * (3 - 2 * t);
+    const K = [
+      { t: 0.00, az: -70, el: 6, dist: 260, tg: [0, 18, 0] },
+      { t: 0.22, az: -35, el: 16, dist: 175, tg: [0, 24, 0] },
+      { t: 0.45, az: -38, el: 12, dist: 95, tg: [-21, 26, 5] },
+      { t: 0.68, az: 28, el: 14, dist: 95, tg: [21, 26, -5] },
+      { t: 0.86, az: 70, el: 30, dist: 170, tg: [0, 22, 0] },
+      { t: 1.00, az: 140, el: 58, dist: 210, tg: [0, 10, 0] },
+    ];
+    let i = 0;
+    while (i < K.length - 2 && p > K[i + 1].t) i++;
+    const a = K[i], b = K[i + 1];
+    const t = ease(Math.max(0, Math.min(1, (p - a.t) / (b.t - a.t))));
+    const lerp = (x, y) => x + (y - x) * t;
+    const az = THREE.MathUtils.degToRad(lerp(a.az, b.az)), el = THREE.MathUtils.degToRad(lerp(a.el, b.el)), dist = lerp(a.dist, b.dist) * this.fit();
+    const tg = new THREE.Vector3(lerp(a.tg[0], b.tg[0]), lerp(a.tg[1], b.tg[1]), lerp(a.tg[2], b.tg[2]));
+    this.tourCam = { pos: new THREE.Vector3(tg.x + dist * Math.cos(el) * Math.sin(az), tg.y + dist * Math.sin(el), tg.z + dist * Math.cos(el) * Math.cos(az)), tg };
+    const g = Math.max(0, Math.min(1, p / 0.5));
+    if (g !== this.growth) { this.growth = g; this.update(); }
+  }
+
+  /** Поворот камеры вокруг цели (прокрутка страницы на телефоне) */
+  orbitBy(angle) {
+    if (this.touring) return;
+    const t = this.controls.target, c = this.camera.position;
+    const x = c.x - t.x, z = c.z - t.z;
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    c.x = t.x + x * cos - z * sin;
+    c.z = t.z + x * sin + z * cos;
+    this.camera.lookAt(t);
+  }
+
   setMetric(m) { this.metric = m; this.update(); }
   setView(v) { this.view = v; this.update(); }
 
@@ -405,7 +452,9 @@ export class BuildingScene {
       const { section: s, floor: f } = o;
       const v = this.store.floorValue(s, f, this.metric);
       const na = v === null;
-      const p = project ? 1 : na ? 0 : v / 100;
+      // в 3D-туре этажи «строятся» снизу вверх по мере прокрутки
+      const grow = this.growth == null ? 1 : Math.max(0, Math.min(1, this.growth * 20 - f));
+      const p = (project ? 1 : na ? 0 : v / 100) * grow;
       o.target = Math.max(0.001, (L - 0.06) * p);
       o.p = p;
 
@@ -434,7 +483,7 @@ export class BuildingScene {
     }
     for (const s of SECTIONS) {
       const roofDone = this.store.floorValue(s, ROOF, 'avg') >= 100;
-      this[`roof${s}`].visible = project || roofDone;
+      this[`roof${s}`].visible = (project || roofDone) && (this.growth == null || this.growth >= 0.95);
       const pct = Math.round(this.store.sectionValue(s, this.metric));
       this[`tag${s}`].querySelector('[data-pct]').textContent = project ? 'проект' : `${pct}%`;
     }
@@ -497,8 +546,10 @@ export class BuildingScene {
   resize() {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     if (!w || !h) return;
+    const wasPortrait = this.camera.aspect < 1;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    if (wasPortrait !== this.camera.aspect < 1 && !this.touring) this.resetView();
     this.renderer.setSize(w, h);
     this.labels.setSize(w, h);
   }
@@ -508,7 +559,12 @@ export class BuildingScene {
     const now = performance.now();
     const dt = Math.min(0.5, (now - (this.last || now)) / 1000);
     this.last = now;
-    const k = 1 - Math.exp(-dt * 7); // скорость не зависит от FPS
+    const k = 1 - Math.exp(-dt * (this.touring ? 14 : 7)); // скорость не зависит от FPS
+    if (this.touring && this.tourCam) {
+      this.camera.position.lerp(this.tourCam.pos, 1 - Math.exp(-dt * 8));
+      this.controls.target.lerp(this.tourCam.tg, 1 - Math.exp(-dt * 8));
+      this.camera.lookAt(this.controls.target);
+    }
     for (const o of this.floors.values()) {
       if (o.target === undefined) continue;
       const cur = o.fill.scale.x;
@@ -518,7 +574,7 @@ export class BuildingScene {
       if (o.front.map && !o.isRoof) o.front.map.repeat.x = Math.max(1, Math.round(o.fill.scale.x / MOD));
     }
     if (this.crane) this.crane.rotation.y = Math.sin(performance.now() / 9000) * 0.5;
-    this.controls.update();
+    if (!this.touring) this.controls.update();
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
   }

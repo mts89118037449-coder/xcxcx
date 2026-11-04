@@ -29,9 +29,9 @@
   </div>
   <div class="top-actions">
     <span class="pill" id="status" title="">—</span>
-    <button class="btn ghost" id="btnReload" title="Перечитать таблицу">⟳ Обновить</button>
+    <button class="btn ghost" id="btnReload" title="Перечитать таблицу">⟳<span class="hide-sm"> Обновить</span></button>
     <button class="btn ghost" id="btnTheme" title="Светлая / тёмная тема">Тема</button>
-    <button class="btn" id="btnSettings">Таблица…</button>
+    <button class="btn" id="btnSettings">Таблица<span class="hide-sm">…</span></button>
   </div>
 </header>
 
@@ -47,7 +47,9 @@
         <button data-v="progress" class="on">Прогресс</button>
         <button data-v="project">Проект</button>
       </div>
-      <button class="btn ghost small" id="btnView">Вид по умолчанию</button>
+      <button class="btn ghost small" id="btnView" title="Вид по умолчанию">⌂ Вид</button>
+      <button class="btn small" id="btnTour">▶ 3D-тур</button>
+      <button class="btn ghost small only-mobile" id="btnExpand" title="Развернуть 3D">⤢</button>
     </div>
     <div class="legend">
       <span><i class="sw sw-green"></i>выполнено</span>
@@ -61,13 +63,16 @@
 
   <aside class="side">
     <nav class="tabs" role="tablist">
-      <button data-tab="summary" class="on">Сводка</button>
-      <button data-tab="floor">Этаж</button>
-      <button data-tab="calendar">Календарь</button>
+      <button data-tab="summary" class="on"><i aria-hidden="true">▦</i><span>Сводка</span></button>
+      <button data-tab="floor"><i aria-hidden="true">≡</i><span>Этаж</span></button>
+      <button data-tab="calendar"><i aria-hidden="true">▤</i><span>Календарь</span></button>
+      <button data-tab="money"><i aria-hidden="true">₽</i><span>Учёт</span></button>
+      <button data-tab="tour" class="tab-tour"><i aria-hidden="true">◎</i><span>3D-тур</span></button>
     </nav>
     <div class="tab" id="tab-summary"></div>
     <div class="tab" id="tab-floor" hidden></div>
     <div class="tab" id="tab-calendar" hidden></div>
+    <div class="tab" id="tab-money" hidden></div>
   </aside>
 </main>
 
@@ -90,6 +95,12 @@
     </div>
   </form>
 </dialog>
+
+<div class="tour" id="tour" hidden aria-label="3D-тур по прокрутке">
+  <button class="btn tour-close" id="tourClose">✕ Закрыть тур</button>
+  <div class="tour-progress"><i id="tourBar"></i></div>
+  <div class="tour-steps" id="tourSteps"></div>
+</div>
 
 <div class="toast" id="toast" role="status"></div>
 

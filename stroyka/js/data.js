@@ -1,5 +1,6 @@
 // Модель данных и синхронизация с Google Sheets через Apps Script (см. apps-script/Code.gs).
 import { SEED_DOCS_ROWS, SEED_REMARKS, SEED_JOURNAL } from './seed.js';
+import { SEED_FIN } from './seed-fin.js';
 
 export const SECTIONS = ['4', '5'];
 export const FLOORS = Array.from({ length: 18 }, (_, i) => i); // 0 = подвал, 1..16, 17 = кровля
@@ -87,6 +88,29 @@ export function isoToday() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+const RU_MONTHS = ['январ', 'феврал', 'март', 'апрел', 'ма', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр', 'декабр'];
+/** Ищет дату в произвольном тексте: «17.04.2026», «2026-04-17», «от 4 июля 2026 г.» → ISO */
+export function findDate(text) {
+  const s = String(text || '');
+  let m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[0];
+  m = s.match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  m = s.toLowerCase().match(/(\d{1,2})\s+([а-я]+)\s+(\d{4})/);
+  if (m) {
+    const i = RU_MONTHS.findIndex((x) => m[2].startsWith(x) && (x !== 'ма' || m[2].startsWith('мая') || m[2] === 'май'));
+    if (i >= 0) return `${m[3]}-${String(i + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  }
+  return '';
+}
+/** «1 234 567,89» / «10523.85» / 1234 → число */
+export function money(v) {
+  if (typeof v === 'number') return v;
+  const n = Number(String(v || '').replace(/[\s\u00a0₽]/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+}
+export const EXPENSE_CATS = ['Материалы', 'Работы', 'Услуги', 'Логистика', 'Прочее'];
+
 const LS = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* приватный режим */ } },
@@ -104,6 +128,7 @@ export class Store {
     this.journal = [];
     this.docs = [];
     this.remarks = [];
+    this.fin = { expenses: [], advances: [], income: [], nominated: [], summary: null, partial: false };
     this.status = 'idle'; // idle | loading | ok | error | demo
     this.error = '';
     this.loadedAt = null;
@@ -151,6 +176,7 @@ export class Store {
   apply(data) {
     this.docs = docsFromRows(data.docsRows || []);
     this.remarks = data.remarks || [];
+    this.fin = normFin(data.fin || {});
     this.journal = (data.journal || []).map((j) => ({ ...j, qty: Number(j.qty) || 0 }));
     this.progress = new Map();
     const list = data.progress && data.progress.length ? data.progress : estimateFromDocs(this.docs);
@@ -162,13 +188,15 @@ export class Store {
     this.docs = docsFromRows(SEED_DOCS_ROWS);
     this.remarks = SEED_REMARKS;
     this.journal = saved ? saved.journal : SEED_JOURNAL.slice();
+    this.fin = normFin({ ...SEED_FIN, expenses: [...SEED_FIN.expenses, ...((saved && saved.expenses) || [])] });
+    this.fin.partial = true;
     this.progress = new Map();
     const list = saved ? saved.progress : estimateFromDocs(this.docs);
     for (const p of list) this.progress.set(key(p.section, p.floor, p.work), p);
   }
   saveDemo() {
     if (this.connected) return;
-    LS.set('stroyka.demo', { progress: [...this.progress.values()], journal: this.journal });
+    LS.set('stroyka.demo', { progress: [...this.progress.values()], journal: this.journal, expenses: this.fin.expenses.filter((e) => e.local) });
   }
   resetDemo() {
     try { localStorage.removeItem('stroyka.demo'); } catch { /* */ }
@@ -242,6 +270,52 @@ export class Store {
     await this.post({ action: 'deleteJournal', id });
   }
 }
+
+export function normFin(f) {
+  const exp = (f.expenses || []).map((e) => ({ ...e, sum: money(e.sum), date: e.date || findDate(e.basis) || '', cat: e.cat || 'Прочее' }));
+  return {
+    expenses: exp,
+    advances: (f.advances || []).map((a) => ({ ...a, sum: money(a.sum) })),
+    income: (f.income || []).map((a) => ({ ...a, sum: money(a.sum) })),
+    nominated: f.nominated || [],
+    summary: f.summary || null,
+    partial: !!f.partial,
+  };
+}
+
+Object.assign(Store.prototype, {
+  expensesOn(date) { return this.fin.expenses.filter((e) => e.date === date); },
+  expenseTotal(list = this.fin.expenses) { return list.reduce((a, e) => a + e.sum, 0); },
+  /** Итоги по категориям: из сводки листа «Счета» (демо) или из строк */
+  byCategory() {
+    if (this.fin.summary && this.fin.partial) return this.fin.summary.cats;
+    const r = {};
+    for (const c of EXPENSE_CATS) r[c] = 0;
+    for (const e of this.fin.expenses) r[e.cat] = (r[e.cat] || 0) + e.sum;
+    return r;
+  },
+  byMonth(list = this.fin.expenses) {
+    const r = {};
+    for (const e of list) {
+      if (!e.date) continue;
+      const k = e.date.slice(0, 7);
+      (r[k] ||= {})[e.cat] = (r[k][e.cat] || 0) + e.sum;
+    }
+    return r;
+  },
+  async addExpense(e) {
+    const x = { ...e, sum: money(e.sum), local: !this.connected, id: 'x' + Date.now().toString(36) };
+    this.fin.expenses.push(x);
+    this.emit('data');
+    if (!this.connected) { this.saveDemo(); return x; }
+    await this.post({ action: 'addExpense', entry: x });
+    return x;
+  },
+  async deleteLocalExpense(id) {
+    this.fin.expenses = this.fin.expenses.filter((e) => !(e.local && e.id === id));
+    this.saveDemo(); this.emit('data');
+  },
+});
 
 function clampPct(v) {
   const n = Number(String(v).replace(',', '.').replace('%', ''));

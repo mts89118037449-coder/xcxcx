@@ -9,8 +9,11 @@
  *        Запуск от имени: «Я», У кого есть доступ: «Все». Скопируйте URL …/exec.
  *   5. В приложении нажмите «Таблица…» и вставьте URL (и TOKEN, если задавали).
  *
- * Читает:  «Прогресс», «Журнал», «Таблица» (ИС/АОСР/замечания), «Замечания АСГ».
- * Пишет:   «Прогресс» (проценты по этажам), «Журнал» (люди и материалы по датам).
+ * Читает:  «Прогресс», «Журнал», «Таблица» (ИС/АОСР/замечания), «Замечания АСГ»,
+ *          «Счета» (расходы), «Для РП» (авансы), «Оплаты Глоракс» (поступления),
+ *          «Номинированные материалы» (заявки на поставку).
+ * Пишет:   «Прогресс» (проценты по этажам), «Журнал» (люди и материалы по датам),
+ *          «Счета» — только новой строкой при «+ Добавить расход» в приложении.
  * Остальные листы не трогает.
  */
 
@@ -18,6 +21,10 @@ const SHEET_PROGRESS = 'Прогресс';
 const SHEET_JOURNAL = 'Журнал';
 const SHEET_DOCS = 'Таблица';
 const SHEET_REMARKS = 'Замечания АСГ';
+const SHEET_EXPENSES = 'Счета';
+const SHEET_ADVANCES = 'Для РП';
+const SHEET_INCOME = 'Оплаты Глоракс';
+const SHEET_NOMINATED = 'Номинированные материалы';
 
 const PROGRESS_HEADER = ['Секция', 'Этаж', 'Вид работ', 'Процент', 'Обновлено', 'Примечание'];
 const JOURNAL_HEADER = ['Дата', 'Секция', 'Тип', 'Наименование', 'Количество', 'Ед.', 'Примечание', 'ID'];
@@ -50,6 +57,7 @@ function doPost(e) {
       case 'setProgress': res = setProgress_(String(body.section), Number(body.floor), String(body.work), Number(body.value)); break;
       case 'addJournal': res = addJournal_(body.entry || {}); break;
       case 'deleteJournal': res = deleteJournal_(String(body.id)); break;
+      case 'addExpense': res = addExpense_(body.entry || {}); break;
       default: throw new Error('Неизвестное действие: ' + body.action);
     }
     return json_(Object.assign({ ok: true }, res || {}));
@@ -132,6 +140,7 @@ function readAll_() {
     journal: readJournal_(),
     docsRows: readDocsRows_(),
     remarks: readRemarks_(),
+    fin: readFin_(),
     updated: new Date().toISOString(),
   };
 }
@@ -197,6 +206,110 @@ function readRemarks_() {
     .map(function (r) {
       return { n: r[0], text: r[4], short: r[5] || r[4], section: String(r[6]), who: r[7], due: r[16] || r[9], moves: r[17], status: r[19], done: r[20], state: r[22], note: r[23] };
     });
+}
+
+// ---------------------------------------------------------------- финансы
+
+function readFin_() {
+  return { expenses: safe_(readExpenses_), advances: safe_(readAdvances_), income: safe_(readIncome_), nominated: safe_(readNominated_) };
+}
+function safe_(fn) { try { return fn(); } catch (e) { return []; } }
+
+/** «Счета»: с 5-й строки. A №, B дата счёта, C дата платежа, D категория, E контрагент, F основание, G примечание, H сумма */
+function readExpenses_() {
+  const sh = ss_().getSheetByName(SHEET_EXPENSES);
+  if (!sh || sh.getLastRow() < 5) return [];
+  const n = sh.getLastRow() - 4;
+  const disp = sh.getRange(5, 1, n, 8).getDisplayValues();
+  const raw = sh.getRange(5, 8, n, 1).getValues();
+  const out = [];
+  disp.forEach(function (r, i) {
+    const sum = num_(raw[i][0]);
+    if (!sum) return;
+    out.push({
+      n: r[0], row: i + 5,
+      date: findDate_(r[2]) || findDate_(r[1]) || findDate_(r[5]) || findDate_(r[6]),
+      cat: String(r[3] || 'Прочее').trim(), who: String(r[4] || '').trim(),
+      basis: String(r[5] || '').replace(/\s+/g, ' ').slice(0, 160), note: String(r[6] || '').replace(/\s+/g, ' ').slice(0, 120),
+      sum: sum,
+    });
+  });
+  return out;
+}
+
+/** «Для РП»: с 3-й строки. A №, C тип, D дата, F сумма, G статус, H описание */
+function readAdvances_() {
+  const sh = ss_().getSheetByName(SHEET_ADVANCES);
+  if (!sh || sh.getLastRow() < 3) return [];
+  return sh.getRange(3, 1, sh.getLastRow() - 2, 8).getDisplayValues()
+    .filter(function (r) { return /^\d+$/.test(String(r[0]).trim()) && num_(r[5]); })
+    .map(function (r) { return { n: r[0], type: String(r[2]).replace('Аванс за ', '').replace(/^н/, 'Н'), date: findDate_(r[3]), sum: num_(r[5]), status: r[6], desc: r[7] }; });
+}
+
+/** «Оплаты Глоракс»: с 4-й строки. A №, B дата счёта, C статус, D дата платежа, E примечание, F сумма */
+function readIncome_() {
+  const sh = ss_().getSheetByName(SHEET_INCOME);
+  if (!sh || sh.getLastRow() < 4) return [];
+  return sh.getRange(4, 1, sh.getLastRow() - 3, 6).getDisplayValues()
+    .filter(function (r) { return num_(r[5]); })
+    .map(function (r) { return { n: r[0], date: findDate_(r[3]) || findDate_(String(r[1]).replace(/\//g, '.')), status: r[2], note: r[4], sum: num_(r[5]) }; });
+}
+
+/** «Номинированные материалы»: заголовок в 5-й строке, материалы — колонки J и правее */
+function readNominated_() {
+  const sh = ss_().getSheetByName(SHEET_NOMINATED);
+  if (!sh || sh.getLastRow() < 6) return [];
+  const w = sh.getLastColumn();
+  const head = sh.getRange(5, 1, 1, w).getDisplayValues()[0];
+  return sh.getRange(6, 1, sh.getLastRow() - 5, w).getDisplayValues()
+    .map(function (r) {
+      const items = [];
+      for (let c = 9; c < w; c++) if (head[c] && num_(r[c])) items.push([String(head[c]).trim(), num_(r[c])]);
+      return { date: findDate_(r[2]) || findDate_(r[1]) || findDate_(r[3]), who: r[6], basis: r[7], note: String(r[8] || '').trim(), sum: num_(r[4]), items: items };
+    })
+    .filter(function (x) { return x.items.length || x.sum; });
+}
+
+/** Новый расход → следующая строка после последней заполненной суммы в «Счета» */
+function addExpense_(e) {
+  const sh = ss_().getSheetByName(SHEET_EXPENSES);
+  if (!sh) throw new Error('Нет листа «' + SHEET_EXPENSES + '»');
+  const sum = num_(e.sum);
+  if (!sum) throw new Error('Нет суммы');
+  const last = sh.getLastRow();
+  const sums = last >= 5 ? sh.getRange(5, 8, last - 4, 1).getValues() : [];
+  const nums = last >= 5 ? sh.getRange(5, 1, last - 4, 1).getValues() : [];
+  let row = 5, maxN = 0;
+  sums.forEach(function (v, i) { if (num_(v[0])) row = i + 6; });
+  nums.forEach(function (v) { const k = parseInt(v[0], 10); if (k > maxN) maxN = k; });
+  const p = String(e.date || '').split('-').map(Number);
+  const d = p.length === 3 ? new Date(p[0], p[1] - 1, p[2]) : new Date();
+  sh.getRange(row, 1, 1, 8).setValues([[maxN + 1, '', d, String(e.cat || 'Прочее'), String(e.who || ''), String(e.basis || ''), String(e.note || '') + ' [из приложения]', sum]]);
+  sh.getRange(row, 3).setNumberFormat('dd.MM.yyyy');
+  return { row: row };
+}
+
+function num_(v) {
+  if (typeof v === 'number') return v;
+  const n = Number(String(v || '').replace(/[\s\u00a0₽]/g, '').replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+const RU_M_ = ['январ', 'феврал', 'март', 'апрел', 'ма', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр', 'декабр'];
+function findDate_(text) {
+  if (text instanceof Date) return Utilities.formatDate(text, tz_(), 'yyyy-MM-dd');
+  const s = String(text || '');
+  let m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[0];
+  m = s.match(/(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})/);
+  if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+  m = s.toLowerCase().match(/(\d{1,2})\s+([а-я]+)\s+(\d{4})/);
+  if (m) {
+    for (let i = 0; i < RU_M_.length; i++) {
+      const x = RU_M_[i];
+      if (m[2].indexOf(x) === 0 && (x !== 'ма' || m[2] === 'мая' || m[2] === 'май')) return m[3] + '-' + ('0' + (i + 1)).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+    }
+  }
+  return '';
 }
 
 // ---------------------------------------------------------------- запись
