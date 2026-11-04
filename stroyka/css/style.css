@@ -461,7 +461,7 @@ body.touring .floor-tag { opacity: 0; }
 .cat.empty .cat-h:hover { background: none; }
 .cat-b { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
 .sub-cat { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-.sub-h { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: minmax(0, 1.2fr) 1fr 44px 14px; gap: 8px; align-items: center; padding: 10px; cursor: pointer; font-size: 13px; color: var(--ink); }
+.sub-h { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: minmax(0, 1.2fr) 1fr auto 14px; gap: 8px; align-items: center; padding: 10px; cursor: pointer; font-size: 13px; color: var(--ink); }
 .sub-h .bar { margin: 0; }
 .sub-b { padding: 0 10px 10px; }
 .doctab { width: 100%; border-collapse: collapse; font-size: 12.5px; }

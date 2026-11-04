@@ -1,5 +1,6 @@
-import { Store, SECTIONS, FLOORS, ROOF, TOP, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText } from './data.js';
+import { Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText } from './data.js';
 import { BuildingScene } from './scene.js';
+import { UnitsScene } from './scene-units.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -12,7 +13,7 @@ const state = {
   tab: 'summary',
   section: SECTIONS[0],
   open: new Set(),   // развёрнутые категории этажа
-  floor: 1,
+  floor: LAYOUT === 'stack' ? 1 : (levelsOf(SECTIONS[0])[0] ?? 0),
   metric: 'avg',
   month: (() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; })(),
   day: isoToday(),
@@ -37,9 +38,18 @@ $('#btnTheme').onclick = () => {
 };
 
 // подпись проекта — по структуре из таблиц
-$('.sub').textContent = `МКД · ${SECTIONS.length > 1 ? 'секции ' + SECTIONS.slice(0, -1).join(', ') + ' и ' + SECTIONS[SECTIONS.length - 1] : 'секция ' + SECTIONS[0]} · ${TOP} этажей`;
+const listParts = () => (SECTIONS.length > 1 ? `${T.partsL} ${SECTIONS.slice(0, -1).join(', ')} и ${SECTIONS[SECTIONS.length - 1]}` : `${T.partL} ${SECTIONS[0]}`);
+$('.sub').textContent = `${T.object} · ${listParts()} · ${LAYOUT === 'stack' ? TOP + ' этажей' : `${T.levels}: ${FLOORS.length}`}`;
+document.title = `Стройка 3D — ${T.object}`;
+{ const tb = document.querySelector('.tabs [data-tab="floor"] span'); if (tb) tb.textContent = T.level; }
+// «Что показать»: для МКД — укрупнённые группы, для других объектов — виды работ из таблицы
+function renderMetricButtons() {
+  const list = PROFILE.type === 'mkd' ? ['Наружные стены', 'Перегородки', 'Инженерка'] : WORKS.slice(0, 6);
+  $('#metric').innerHTML = `<button data-m="avg" class="${state.metric === 'avg' ? 'on' : ''}">Все работы</button>` + list.map((w) => `<button data-m="${esc(w)}" class="${state.metric === w ? 'on' : ''}">${esc(w)}</button>`).join('');
+}
+renderMetricButtons();
 // ---------- 3D ----------
-const scene = new BuildingScene($('#stage'), store);
+const scene = LAYOUT === 'stack' ? new BuildingScene($('#stage'), store) : new UnitsScene($('#stage'), store);
 scene.onSelect = (s, f, catId) => {
   openFloor(s, f, catId);
   $('#hintTap').hidden = true; try { localStorage.setItem('stroyka.tapped', '1'); } catch { /* */ }
@@ -53,7 +63,7 @@ $('#metric').onclick = (e) => {
   renderKpis(); if (state.tab === 'summary') renderSummary();
 };
 $('#btnView').onclick = () => { scene.select(null); scene.resetView(true); };
-scene.onSection = (s) => { state.section = s; renderFloor(); toast(`Секция ${s} — нажмите на этаж, чтобы открыть его`); };
+scene.onSection = (s) => { state.section = s; renderFloor(); toast(`${T.part} ${s} — нажмите на ${T.levelAcc}, чтобы открыть`); };
 // ---------- панель «Вид» ----------
 const vp = $('#viewPanel');
 const openVP = (on) => { vp.hidden = !on; $('#btnViewPanel').setAttribute('aria-expanded', String(on)); };
@@ -61,10 +71,10 @@ $('#btnViewPanel').onclick = (e) => { e.stopPropagation(); openVP(vp.hidden); };
 $('#vpClose').onclick = () => openVP(false);
 document.addEventListener('click', (e) => { if (!vp.hidden && !vp.contains(e.target) && e.target !== $('#btnViewPanel')) openVP(false); });
 function updateViewLabel() {
-  const m = { avg: 'все работы', 'Наружные стены': 'наружные стены', 'Перегородки': 'перегородки', 'Инженерка': 'инженерка' }[state.metric];
+  const m = state.metric === 'avg' ? 'все работы' : state.metric.toLowerCase();
   const v = { fact: 'Факт', progress: 'Прогресс', project: 'Проект' }[scene.view];
   $('#viewLabel').textContent = `${v} · ${m}`;
-  $('#viewNote').textContent = { fact: 'Готовое — как на проекте, остальное — каркас. Зелёная полоса — процент этажа.', progress: 'Этажи заливаются зелёным по проценту выполнения.', project: 'Как будет выглядеть после завершения.' }[scene.view];
+  $('#viewNote').textContent = { fact: (LAYOUT === 'stack' ? 'Готовое — как на проекте, остальное — каркас.' : 'Заполнение — процент работ.') + ` Зелёная полоса — процент: ${T.levelL}.`, progress: `${T.levels} заливаются зелёным по проценту выполнения.`, project: 'Как будет выглядеть после завершения.' }[scene.view];
   const sun = scene.sunInfo;
   $('#sunNote').textContent = sun ? sun.text : '';
 }
@@ -83,17 +93,23 @@ setInterval(() => { if (scene.timeMode === 'now') { scene.setTime('now'); update
 // подсказка «нажмите на этаж» — пока человек ни разу не открыл этаж
 let tapped = false; try { tapped = !!localStorage.getItem('stroyka.tapped'); } catch { /* */ }
 if (!tapped) $('#hintTap').hidden = false;
+function renderLegend(v) {
+  const shell = LAYOUT === 'stack' ? 'каркас, не начато' : 'не начато';
+  const L = {
+    fact: `<span><i class="sw sw-facade"></i>готово</span><span><i class="sw sw-strip"></i>полоса — % ${T.levelGen}</span><span><i class="sw sw-shell"></i>${shell}</span><span><i class="sw sw-red"></i>открытые замечания</span>`,
+    progress: '<span><i class="sw sw-green"></i>выполнено</span><span><i class="sw sw-full"></i>100%</span><span><i class="sw sw-shell"></i>не начато</span><span><i class="sw sw-red"></i>открытые замечания</span>',
+    project: '<span><i class="sw sw-facade"></i>проектный вид после завершения</span>',
+  }[v];
+  $('#legend').innerHTML = L + `<span class="hint">Клик: ${T.levelL} — подробности · колесо — масштаб</span>`;
+}
+renderLegend('fact');
+$('#hintTap').textContent = `Нажмите на ${T.levelAcc} — откроются объёмы, замечания и материалы`;
 $('#viewMode').onclick = (e) => {
   const b = e.target.closest('button'); if (!b) return;
   for (const x of $('#viewMode').children) x.classList.toggle('on', x === b);
   scene.setView(b.dataset.v); updateViewLabel();
   document.body.classList.toggle('project-view', b.dataset.v === 'project');
-  const L = {
-    fact: '<span><i class="sw sw-facade"></i>готово</span><span><i class="sw sw-strip"></i>полоса — % этажа</span><span><i class="sw sw-shell"></i>каркас, не начато</span><span><i class="sw sw-red"></i>открытые замечания</span>',
-    progress: '<span><i class="sw sw-green"></i>выполнено</span><span><i class="sw sw-full"></i>100%</span><span><i class="sw sw-shell"></i>не начато</span><span><i class="sw sw-red"></i>открытые замечания</span>',
-    project: '<span><i class="sw sw-facade"></i>проектный вид после завершения</span>',
-  }[b.dataset.v];
-  $('#legend').innerHTML = L + '<span class="hint">Клик по этажу — редактирование · колесо — масштаб</span>';
+  renderLegend(b.dataset.v);
 };
 
 // ---------- вкладки ----------
@@ -126,7 +142,7 @@ function renderKpis() {
   };
   $('#kpis').innerHTML = SECTIONS.map((s) => {
     const p = lastPeople(s);
-    return `<div class="kpi"><div class="kpi-h">Секция ${s}</div>
+    return `<div class="kpi"><div class="kpi-h">${T.part} ${s}</div>
       <div class="kpi-v">${pct(store.sectionValue(s, state.metric))}</div>
       <div class="bar"><i style="width:${store.sectionValue(s, state.metric) || 0}%"></i></div>
       <div class="kpi-s">${p ? `${p.n} чел. · ${shortDate(p.d)}` : 'людей нет в журнале'}</div></div>`;
@@ -138,17 +154,17 @@ function renderSummary() {
   const el = $('#tab-summary');
   const open = store.remarks.filter((r) => store.isOpenRemark(r)).sort((a, b) => ruToIso(a.due).localeCompare(ruToIso(b.due)));
   const today = isoToday();
-  const works = ['Наружные стены', 'Перегородки', 'Инженерка', 'Кровля'];
-  const fcols = SECTIONS.length === 2 ? '' : `grid-template-columns: 22px repeat(${SECTIONS.length}, minmax(0, 1fr))`;
+  const works = PROFILE.type === 'mkd' ? ['Наружные стены', 'Перегородки', 'Инженерка', 'Кровля'] : WORKS.slice(0, 5);
+  const fcols = SECTIONS.length === 2 && LAYOUT === 'stack' ? '' : `grid-template-columns: ${LAYOUT === 'stack' ? '22px' : 'minmax(64px, auto)'} repeat(${SECTIONS.length}, minmax(0, 1fr))`;
   el.innerHTML = `
-    <div class="renders" aria-label="Проект — тендерные визуализации">
+    ${PROFILE.type !== 'mkd' ? '' : `<div class="renders" aria-label="Проект — тендерные визуализации">
       ${[1, 2, 3].map((i) => `<button class="rthumb" data-r="${i}"><img src="assets/renders/render-${i}.jpg" alt="Проектная визуализация ${i}" loading="lazy"></button>`).join('')}
       <span class="rcap">Проект — как будет выглядеть</span>
-    </div>
+    </div>`}
     <div class="cards">
       ${SECTIONS.map((s) => `
         <div class="card">
-          <div class="card-h">Секция ${s}</div>
+          <div class="card-h">${T.part} ${s}</div>
           <div class="big">${pct(store.sectionValue(s, 'avg'))}</div>
           ${works.map((w) => { const v = store.sectionValue(s, w); return `<div class="row-bar"><span>${w}</span><div class="bar"><i style="width:${v || 0}%"></i></div><b>${pct(v)}</b></div>`; }).join('')}
         </div>`).join('')}
@@ -156,18 +172,18 @@ function renderSummary() {
     ${(() => { const D = store.contractValue('D'), E = store.contractValue('E'); if (!D || !E) return ''; const p = E / D * 100; return `<button class="contract-card" data-goto="money">
       <span>Выполнено по договору</span><b>${p.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%</b>
       <div class="bar"><i style="width:${p}%"></i></div><em>${rubShort(E)} из ${rubShort(D)} ₽</em></button>`; })()}
-    <h3>Фасад по этажам <span class="muted">· ${state.metric === 'avg' ? 'все работы' : state.metric.toLowerCase()}</span></h3>
+    <h3>По ${T.levelsDat} <span class="muted">· ${state.metric === 'avg' ? 'все работы' : state.metric.toLowerCase()}</span></h3>
     <div class="facade" role="grid">
-      ${[...FLOORS].reverse().map((f) => `
+      ${(LAYOUT === 'stack' ? [...FLOORS].reverse() : FLOORS).map((f) => `
         <div class="f-row" style="${fcols}">
-          ${SECTIONS.length !== 2 ? `<span class="f-num">${floorShort(f)}</span>` : ''}${SECTIONS.map((s) => {
+          ${SECTIONS.length !== 2 || LAYOUT !== 'stack' ? `<span class="f-num">${floorShort(f)}</span>` : ''}${SECTIONS.map((s) => {
             const v = store.floorValue(s, f, state.metric);
             const bad = store.remarksFor(s, f).some((r) => store.isOpenRemark(r));
-            return `<button class="f-cell ${v === null ? 'na' : ''}" data-s="${s}" data-f="${f}" title="Секция ${s} · ${floorName(f)} · ${v === null ? 'не применимо' : Math.round(v) + '%'}">
+            return `<button class="f-cell ${v === null ? 'na' : ''}" data-s="${s}" data-f="${f}" title="${T.part} ${s} · ${floorName(f)} · ${v === null ? 'не применимо' : Math.round(v) + '%'}">
               <i style="width:${v ?? 0}%" class="${v >= 100 ? 'full' : ''}"></i>${bad ? '<em class="dot"></em>' : ''}<span>${v === null ? '' : Math.round(v) + '%'}</span></button>`;
-          }).join(SECTIONS.length === 2 ? `<span class="f-num">${floorShort(f)}</span>` : '')}
+          }).join(SECTIONS.length === 2 && LAYOUT === 'stack' ? `<span class="f-num">${floorShort(f)}</span>` : '')}
         </div>`).join('')}
-      <div class="f-row f-foot" style="${fcols}">${SECTIONS.length !== 2 ? '<span></span>' : ''}${SECTIONS.map((s) => `<span>Секция ${esc(s)}</span>`).join(SECTIONS.length === 2 ? '<span></span>' : '')}</div>
+      <div class="f-row f-foot" style="${fcols}">${SECTIONS.length !== 2 || LAYOUT !== 'stack' ? '<span></span>' : ''}${SECTIONS.map((s) => `<span>${T.part} ${esc(s)}</span>`).join(SECTIONS.length === 2 && LAYOUT === 'stack' ? '<span></span>' : '')}</div>
     </div>
     <h3>Открытые поручения <span class="muted">· ${open.length}</span></h3>
     <ul class="remarks">
@@ -225,6 +241,7 @@ function floorHtml() {
   const wk = thisMonday();
   const fv = store.floorValue(s, f);
   const works = store.worksFor(s, f);
+  const lv = levelsOf(s);
 
   // 1. Работы — каждый вид разворачивается отдельно
   const workHtml = works.map((w) => {
@@ -243,17 +260,17 @@ function floorHtml() {
           }).join('')}
         </tbody></table></div>
         <p class="muted small-note">«Выполнено» таблица считает сама из принятого и недельных объёмов — поэтому меняется через них.</p>`
-      : '<p class="muted small-note">Нет строки в таблице «Выполнение» для этого этажа — процент не известен.</p>';
+      : `<p class="muted small-note">Нет строки в таблице «Выполнение» для: ${esc(fl)} — процент не известен.</p>`;
     return `<div class="sub-cat ${open ? 'open' : ''}" data-cat="${esc(id)}">
       <button type="button" class="sub-h" aria-expanded="${open}"><b>${esc(w)}</b><span class="bar"><i style="width:${v || 0}%"></i></span><span class="val-ro">${pct(v)}</span><em class="cat-chev">›</em></button>
       ${open ? `<div class="sub-b">${body}</div>` : ''}</div>`;
   }).join('');
-  const worksSum = works.length ? works.map((w) => `${esc(w.split(' ')[0])} ${pct(store.get(s, f, w))}`).join(' · ') : 'нет данных';
+  const worksSum = works.length ? (works.length > 3 ? `${works.length} видов · ${pct(fv)}` : works.map((w) => `${esc(w.split(' ')[0])} ${pct(store.get(s, f, w))}`).join(' · ')) : 'нет данных';
 
   // 2. Замечания: поручения АСГ с упоминанием этажа + замечания по АОСР из листа «Таблица»
   const rem = store.remarksFor(s, f);
   const openRem = rem.filter((r) => store.isOpenRemark(r));
-  const dspec = (d, k, val, lbl) => ({ b: 'G', s: 'Таблица', r: d.row, f: 'cell', c: d[s].cols[k], raw: val, expect: val, type: 'text', label: `${lbl}: ${d.label}, секция ${s}`, prop: '', list: 'docsRows' });
+  const dspec = (d, k, val, lbl) => ({ b: 'G', s: 'Таблица', r: d.row, f: 'cell', c: d[s].cols[k], raw: val, expect: val, type: 'text', label: `${lbl}: ${d.label}, ${T.partL} ${s}`, prop: '', list: 'docsRows' });
   const docRows = works.map((w) => ({ w, d: doc(w) })).filter((x) => x.d && x.d[s] && x.d.row);
   const aosrRem = docRows.filter((x) => x.d[s].cols.rem);
   const aosrOpen = aosrRem.filter((x) => x.d[s].rem).length;
@@ -283,25 +300,25 @@ function floorHtml() {
 
   // 6. Статус этажа (VUP CORE)
   const st = store.floorStatusOf(s, f);
-  const stBody = st.length ? st.map((x) => `<div class="fstatus"><b>${ev(esc(x.status), { b: 'U', s: 'Стройка · статусы этажей', r: x.row, f: 'status', raw: x.status, expect: x.status, type: 'text', label: `Статус этажа ${f}, секция ${s}`, prop: 'status', list: 'extra.floorStatus' })}</b><span>${x.date ? shortDate(x.date) : ''} · ${esc(x.source || 'VUP CORE')}</span>${x.comment ? `<p>${esc(x.comment)}</p>` : ''}</div>`).join('') : '';
+  const stBody = st.length ? st.map((x) => `<div class="fstatus"><b>${ev(esc(x.status), { b: 'U', s: 'Стройка · статусы этажей', r: x.row, f: 'status', raw: x.status, expect: x.status, type: 'text', label: `Статус этажа ${f}, ${T.partL} ${s}`, prop: 'status', list: 'extra.floorStatus' })}</b><span>${x.date ? shortDate(x.date) : ''} · ${esc(x.source || 'VUP CORE')}</span>${x.comment ? `<p>${esc(x.comment)}</p>` : ''}</div>`).join('') : '';
 
   return `
     <div class="floor-nav">
-      ${SECTIONS.length > 1 ? `<div class="seg small">${SECTIONS.map((x) => `<button data-sec="${esc(x)}" class="${x === s ? 'on' : ''}">Секция ${esc(x)}</button>`).join('')}</div>` : `<b>Секция ${esc(s)}</b>`}
+      ${SECTIONS.length > 1 ? `<div class="seg small">${SECTIONS.map((x) => `<button data-sec="${esc(x)}" class="${x === s ? 'on' : ''}">${T.part} ${esc(x)}</button>`).join('')}</div>` : `<b>${T.part} ${esc(s)}</b>`}
       <div class="stepper">
-        <button class="btn ghost small" data-step="-1" ${f === 0 ? 'disabled' : ''} aria-label="Этаж ниже">▼</button>
-        <select class="floor-sel" aria-label="Этаж">${FLOORS.map((x) => `<option value="${x}" ${x === f ? 'selected' : ''}>${floorName(x)}</option>`).join('')}</select>
-        <button class="btn ghost small" data-step="1" ${f === ROOF ? 'disabled' : ''} aria-label="Этаж выше">▲</button>
+        <button class="btn ghost small" data-step="-1" ${lv.indexOf(f) <= 0 ? 'disabled' : ''} aria-label="${LAYOUT === 'stack' ? 'Этаж ниже' : 'Предыдущий'}">${LAYOUT === 'stack' ? '▼' : '◀'}</button>
+        <select class="floor-sel" aria-label="${T.level}">${lv.map((x) => `<option value="${x}" ${x === f ? 'selected' : ''}>${esc(floorName(x))}</option>`).join('')}</select>
+        <button class="btn ghost small" data-step="1" ${lv.indexOf(f) >= lv.length - 1 ? 'disabled' : ''} aria-label="${LAYOUT === 'stack' ? 'Этаж выше' : 'Следующий'}">${LAYOUT === 'stack' ? '▲' : '▶'}</button>
       </div>
     </div>
-    <div class="big floor-big">${fv == null ? '<span class="nodata">нет данных</span>' : pct(fv)}<span class="muted"> ${fl}, секция ${esc(s)}</span></div>
+    <div class="big floor-big">${fv == null ? '<span class="nodata">нет данных</span>' : pct(fv)}<span class="muted"> ${fl}, ${T.partL} ${esc(s)}</span></div>
     <div class="cats">
       ${cat('works', '▥', 'Работы', worksSum, works.length ? workHtml : '')}
       ${cat('remarks', '!', 'Замечания', remN ? `<span class="err-t">${remN} открыт.</span>` : (rem.length || aosrRem.length) ? 'открытых нет' : 'нет', remBody, remN ? 'warn' : '')}
       ${cat('docs', '▤', 'Документы', docRows.length ? `ИС ${isN}/${docRows.length} · АОСР ${aoN}/${docRows.length}` : 'нет строки в «Таблице»', docsBody)}
-      ${cat('mat', '▣', 'Материал на этаж', mv.length ? `${mv.length} подач · ${fmtN(pal)} пал.` : 'нет', mvBody)}
+      ${cat('mat', '▣', 'Материал', mv.length ? `${mv.length} подач · ${fmtN(pal)} пал.` : 'нет', mvBody)}
       ${cat('people', '👷', 'Люди и бригады', wl.length ? `${wl.length} бригад${ppl ? ' · ' + fmtN(ppl) + ' чел.' : ''}` : 'нет', wlBody)}
-      ${cat('status', '◉', 'Статус этажа', st.length ? esc(st[0].status) : 'нет', stBody)}
+      ${cat('status', '◉', 'Статус', st.length ? esc(st[0].status) : 'нет', stBody)}
     </div>
     <p class="hint-line">Нажмите категорию, чтобы развернуть. Значения со значком ✎ записываются прямо в ячейку таблицы.</p>`;
 }
@@ -319,12 +336,12 @@ function renderFloor() {
     el.scrollTop = keep;
     bindFloor(el);
   }
-  $('#sheetTitle').textContent = `Секция ${state.section} · ${floorName(state.floor)}`;
+  $('#sheetTitle').textContent = `${T.part} ${state.section} · ${floorName(state.floor)}`;
 }
 function bindFloor(el) {
   const go = () => { scene.select(state.section, state.floor); scene.focusFloor(state.section, state.floor); renderFloor(); };
-  el.querySelectorAll('[data-sec]').forEach((b) => b.onclick = () => { state.section = b.dataset.sec; go(); });
-  el.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => { state.floor = Math.max(0, Math.min(ROOF, state.floor + +b.dataset.step)); go(); });
+  el.querySelectorAll('[data-sec]').forEach((b) => b.onclick = () => { state.section = b.dataset.sec; const lv = levelsOf(state.section); if (!lv.includes(state.floor)) state.floor = lv[0]; go(); });
+  el.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => { const lv = levelsOf(state.section); const i = Math.max(0, Math.min(lv.length - 1, lv.indexOf(state.floor) + +b.dataset.step)); state.floor = lv[i]; go(); });
   el.querySelector('.floor-sel').onchange = (e) => { state.floor = +e.target.value; go(); };
   el.querySelectorAll('.cat-h:not([disabled]), .sub-h').forEach((b) => b.onclick = () => {
     const id = b.parentElement.dataset.cat;
@@ -374,7 +391,7 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidd
 function remarkHtml(r, links = false) {
   const sec = SECTIONS.includes(String(r.section)) ? String(r.section) : null;
   const fls = links && sec ? floorsInText(r.short + ' ' + r.text) : [];
-  const go = fls.length ? `<span class="r-go">${fls.slice(0, 6).map((f) => `<button type="button" class="chip-go" data-floor="${esc(sec)}|${f}" title="Открыть этаж">с.${esc(sec)} · ${f} эт. ›</button>`).join('')}${fls.length > 6 ? '…' : ''}</span>` : '';
+  const go = fls.length ? `<span class="r-go">${fls.slice(0, 6).map((f) => `<button type="button" class="chip-go" data-floor="${esc(sec)}|${f}" title="Открыть">${T.partShort}${esc(sec)} · ${esc(floorShort(f))}${LAYOUT === 'stack' ? ' эт.' : ''} ›</button>`).join('')}${fls.length > 6 ? '…' : ''}</span>` : '';
   const spec = (f, raw, type, label, extra = {}) => ({ b: 'G', s: 'Замечания АСГ', r: r.row, f, raw, expect: raw, type, label: `${r.short}: ${label}`, prop: f === 'status' ? 'status' : f === 'done' ? 'done' : '', list: 'remarks', ...extra });
   return `<li class="${store.isOpenRemark(r) ? 'late' : 'done'}"><div><b>${esc(r.short)}</b>
     <div class="muted">${r.row ? ev(esc(r.status || 'статус'), spec('status', r.status, 'text', 'статус по протоколу', { options: ['В работе', 'Срыв сроков', 'Выполнено'] })) : esc(r.status)}${r.note ? ' · ' + esc(r.note) : ''}</div>${go}</div>
@@ -437,7 +454,7 @@ function save(s, f, w, v, orig) {
   pending.set(k, setTimeout(async () => {
     const old = original.get(k); original.delete(k);
     if (old === v) return;
-    const yes = await ask([`Секция ${s}, ${floorName(f).toLowerCase()} — ${w.toLowerCase()}: ${old}% → ${v}%`], store.connected ? 'Лист «Прогресс» таблицы «Glorax_Учёт».' : '');
+    const yes = await ask([`${T.part} ${s}, ${floorName(f).toLowerCase()} — ${w.toLowerCase()}: ${old}% → ${v}%`], store.connected ? 'Лист «Прогресс» таблицы «Glorax_Учёт».' : '');
     if (yes) store.setProgress(s, f, w, v);
     else { preview(s, f, w, old); renderFloor(); toast('Изменение отменено'); }
   }, 450));
@@ -469,7 +486,7 @@ function renderCalendar() {
     cells.push(`<button class="c-cell ${k === today ? 'today' : ''} ${k === state.day ? 'sel' : ''}" data-d="${k}" style="--heat:${(heat * 0.55).toFixed(2)}">
       <span class="c-d">${d}</span>
       <span class="c-chips">
-        ${ps.map(([x, n], i) => n ? `<span class="chip-s s${i % 2 ? 5 : 4}" title="Секция ${esc(x)}: ${n} чел.">${esc(x)}·${n}</span>` : '').join('')}
+        ${ps.map(([x, n], i) => n ? `<span class="chip-s s${i % 2 ? 5 : 4}" title="${T.part} ${esc(x)}: ${n} чел.">${esc(x)}·${n}</span>` : '').join('')}
         ${pAll - pSec > 0 ? `<span class="chip-s" title="Общее: ${pAll - pSec} чел.">∑·${pAll - pSec}</span>` : ''}
         ${mats ? `<span class="chip-m" title="Поставок: ${mats}">🚚${mats > 1 ? mats : ''}</span>` : ''}
         ${spent ? `<span class="chip-r" title="Расходы: ${rub(spent)}">₽${rubShort(spent).replace(' ₽', '')}</span>` : ''}
@@ -503,11 +520,11 @@ function renderCalendar() {
     </div>
 
     <h3>${dd} ${MONTHS_GEN[dm - 1]} ${dy}</h3>
-    ${(dueMap[state.day] || []).map((r) => `<div class="due">Срок: ${esc(r.short)} (с. ${esc(r.section)})</div>`).join('')}
+    ${(dueMap[state.day] || []).map((r) => `<div class="due">Срок: ${esc(r.short)} (${T.partShort} ${esc(r.section)})</div>`).join('')}
     <ul class="entries">
       ${dayEntries.map((j) => `<li class="${j.type === 'Люди' ? 'e-people' : 'e-mat'}">
         <span class="e-ico">${j.type === 'Люди' ? '👷' : j.kind === 'feed' ? '⬆️' : '🚚'}</span>
-        <div><b>${esc(j.name || j.type)}</b> — ${fmtN(j.qty)} ${esc(j.unit)}<div class="muted">${esc(j.section === 'Общее' ? 'Общее' : 'Секция ' + j.section)}${j.note ? ' · ' + esc(j.note) : ''}</div></div>
+        <div><b>${esc(j.name || j.type)}</b> — ${fmtN(j.qty)} ${esc(j.unit)}<div class="muted">${esc(j.section === 'Общее' ? 'Общее' : T.part + ' ' + j.section)}${j.note ? ' · ' + esc(j.note) : ''}</div></div>
         ${j.ro ? `<span class="src">${esc(j.src)}</span>` : `<button class="x ed" data-edj="${esc(j.id)}" aria-label="Изменить">✎</button><button class="x" data-del="${esc(j.id)}" aria-label="Удалить">×</button>`}</li>`).join('') || '<li class="muted">Записей нет</li>'}
     </ul>
 
@@ -516,7 +533,7 @@ function renderCalendar() {
     <form class="add" id="addForm">
       <div class="seg small" id="addType"><button type="button" data-t="Люди" class="on">👷 Люди вышли</button><button type="button" data-t="Материал">🚚 Материал приехал</button></div>
       <div class="grid2">
-        <label>Секция<select name="section"><option>4</option><option>5</option><option>Общее</option></select></label>
+        <label>${T.part}<select name="section">${SECTIONS.map((x) => `<option>${esc(x)}</option>`).join('')}<option>Общее</option></select></label>
         <label>Дата<input type="date" name="date" value="${state.day}" required></label>
       </div>
       <label><span data-lbl>Бригада / профессия</span><input name="name" list="names" placeholder="Каменщики" ></label>
@@ -571,7 +588,7 @@ function renderCalendar() {
     e.preventDefault();
     const fd = new FormData(form);
     const entry = { date: fd.get('date'), section: fd.get('section'), type, name: fd.get('name') || (type === 'Люди' ? 'Рабочие' : 'Материал'), qty: fd.get('qty'), unit: fd.get('unit'), note: fd.get('note') };
-    if (!(await ask([`${editId ? 'Исправить' : 'Добавить'} в «Журнал»: ${entry.date}, секция ${entry.section}, ${entry.name} — ${entry.qty} ${entry.unit}`], store.connected ? 'Лист «Журнал» таблицы «Glorax_Учёт».' : ''))) return;
+    if (!(await ask([`${editId ? 'Исправить' : 'Добавить'} в «Журнал»: ${entry.date}, ${T.partL} ${entry.section}, ${entry.name} — ${entry.qty} ${entry.unit}`], store.connected ? 'Лист «Журнал» таблицы «Glorax_Учёт».' : ''))) return;
     state.day = entry.date;
     const [ey, em] = entry.date.split('-').map(Number);
     state.month = { y: ey, m: em - 1 };
@@ -597,15 +614,15 @@ function renderStock() {
       <div><span>Расхождений</span><b>${dis.length}</b></div>
       <div><span>Инструмент</span><b>${tools.length} поз.</b></div>
     </div>
-    <h3>Материал на складе <span class="muted">· поступило − подано на этажи</span></h3>
+    <h3>Материал на складе <span class="muted">· поступило − подано на объект</span></h3>
     ${st.length ? `<div class="tablewrap"><table class="voltab stock"><thead><tr><th>Материал</th><th>Поступило</th><th>Подано</th><th>Остаток</th></tr></thead><tbody>
       ${st.map((r) => `<tr><td title="${esc(r.names.join(' · '))}">${esc(r.material)}</td><td>${fmtN(r.in)}</td><td>${fmtN(r.out)}</td><td><b class="${r.left < 0 ? 'neg' : ''}">${fmtN(r.left)}</b></td></tr>`).join('')}
     </tbody></table></div>
     <p class="muted small-note">Паллеты, по листу «Движение материалов» (VUP CORE). Отрицательный остаток — подачу записали, а поступление нет: стоит сверить.</p>` : '<p class="muted">Нет движений материала.</p>'}
     ${inv.length ? `<h3>Инвентаризация склада</h3><ul class="totals">${inv.map((x) => `<li><span>${esc(x.material)} <em class="muted">${x.date ? shortDate(x.date) : ''}</em></span><b class="num">${fmtN(x.qty)} ${esc(x.unit)}</b></li>`).join('')}</ul>` : ''}
-    <div class="add-row"><button class="btn" data-add="move-in">+ Материал приехал</button><button class="btn ghost" data-add="move-feed">+ Подача на этаж</button></div>
-    ${dis.length ? `<h3>Расхождения <span class="muted">· требуют сверки</span></h3><ul class="remarks">${dis.map((d) => `<li class="late"><div><b>Секция ${esc(d.section)}, ${d.floor} эт. · ${esc(d.material)}</b><div class="muted">План ${fmtN(d.plan)}, учтено ${fmtN(d.fact)} — не хватает ${fmtN(d.diff)} пал.</div></div><div class="r-meta"><span>${ev(esc(d.status), { b: 'U', s: 'Стройка · контроль расхождений', r: d.row, f: 'status', raw: d.status, expect: d.status, type: 'text', label: `Расхождение ${d.material}, ${d.floor} эт.: статус`, options: ['Требуется сверка', 'Сверено', 'Исправлено'], prop: 'status', list: 'extra.discrepancies' })}</span></div></li>`).join('')}</ul>` : ''}
-    ${floors.length ? `<h3>План подачи на этажи</h3>${floors.map((k) => { const [sec, fl] = k.split('|'); const rows = byFloor[k]; return `<div class="planbox"><div class="planh"><b>Секция ${sec} · ${fl} этаж</b>${store.floorStatusOf(sec, +fl).map((x) => `<span class="chip-ok">${esc(x.status)}</span>`).join('')}</div>
+    <div class="add-row"><button class="btn" data-add="move-in">+ Материал приехал</button><button class="btn ghost" data-add="move-feed">+ Подача: ${T.levelL}</button></div>
+    ${dis.length ? `<h3>Расхождения <span class="muted">· требуют сверки</span></h3><ul class="remarks">${dis.map((d) => `<li class="late"><div><b>${T.part} ${esc(d.section)}, ${d.floor} эт. · ${esc(d.material)}</b><div class="muted">План ${fmtN(d.plan)}, учтено ${fmtN(d.fact)} — не хватает ${fmtN(d.diff)} пал.</div></div><div class="r-meta"><span>${ev(esc(d.status), { b: 'U', s: 'Стройка · контроль расхождений', r: d.row, f: 'status', raw: d.status, expect: d.status, type: 'text', label: `Расхождение ${d.material}, ${d.floor} эт.: статус`, options: ['Требуется сверка', 'Сверено', 'Исправлено'], prop: 'status', list: 'extra.discrepancies' })}</span></div></li>`).join('')}</ul>` : ''}
+    ${floors.length ? `<h3>План подачи · по ${T.levelsDat}</h3>${floors.map((k) => { const [sec, fl] = k.split('|'); const rows = byFloor[k]; return `<div class="planbox"><div class="planh"><b>${T.part} ${sec} · ${fl} этаж</b>${store.floorStatusOf(sec, +fl).map((x) => `<span class="chip-ok">${esc(x.status)}</span>`).join('')}</div>
       <table class="voltab"><tbody>${rows.map((p) => `<tr><td>${esc(p.key)}</td><td>план ${ev(fmtN(p.pallets), { b: 'U', s: 'Стройка · план', r: p.row, f: 'pallets', raw: p.pallets, expect: p.pallets, type: 'number', label: `План ${p.key}, ${p.zone}: паллет`, prop: 'pallets', list: 'extra.plan' })}</td><td>подано ${fmtN(p.fed)}</td><td><b class="${p.fed < p.pallets ? 'neg' : 'okc'}">${p.fed >= p.pallets ? '✓' : '−' + fmtN(p.pallets - p.fed)}</b></td></tr>`).join('')}</tbody></table></div>`; }).join('')}` : ''}
     <h3>Инструмент <span class="muted">· лист «УЧЁТ ИНСТРУМЕНТА»${tools[0] && tools[0].date ? ', на ' + shortDate(tools[0].date) : ''}</span></h3>
     <ul class="totals tools">${tools.map((x) => `<li><span>${ev(esc(x.name), { b: 'G', s: 'УЧЁТ ИНСТРУМЕНТА ', r: x.row, f: 'name', raw: x.name, expect: x.name, type: 'text', label: 'Инструмент: наименование', prop: 'name', list: 'fin.tools' })}</span><b class="num">${ev(esc(x.qty || '—'), { b: 'G', s: 'УЧЁТ ИНСТРУМЕНТА ', r: x.row, f: 'qty', raw: x.qty, expect: x.qty, type: 'text', label: `${x.name}: количество`, prop: 'qty', list: 'fin.tools' })}</b></li>`).join('') || '<li class="muted">Нет данных</li>'}</ul>
@@ -622,7 +639,7 @@ document.addEventListener('click', async (e) => {
     tool: { book: 'G', sheet: 'УЧЁТ ИНСТРУМЕНТА ', title: 'Новый инструмент', fields: [['name', 'Наименование', 'text', ''], ['qty', 'Количество', 'text', '']] },
     personal: { book: 'G', sheet: 'Личные расходы', title: 'Новый личный расход', fields: [['date', 'Дата', 'date', today], ['name', 'Наименование', 'text', ''], ['sum', 'Сумма, ₽', 'number', ''], ['who', 'Плательщик', 'text', ''], ['note', 'Примечание', 'text', '']] },
     'move-in': { book: 'U', sheet: 'Движение материалов', title: 'Материал приехал на склад', fields: [['date', 'Дата', 'date', today], ['material', 'Материал', 'text', 'СКЦ 190 мм'], ['pallets', 'Паллет', 'number', ''], ['doc', 'Документ (ТТН / сообщение)', 'text', ''], ['comment', 'Комментарий', 'text', '']], fixed: { type: 'Поступление', zone: 'Склад', status: 'Подтверждено' } },
-    'move-feed': { book: 'U', sheet: 'Движение материалов', title: 'Подача материала на этаж', fields: [['date', 'Дата', 'date', today], ['material', 'Материал', 'text', 'СКЦ 190 мм'], ['zone', 'Этаж и секция', 'text', `${state.floor || 1} этаж, секция ${state.section}`], ['pallets', 'Паллет', 'number', ''], ['comment', 'Комментарий', 'text', '']], fixed: { type: 'Подача на этаж', status: 'Подтверждено' } },
+    'move-feed': { book: 'U', sheet: 'Движение материалов', title: `Подача материала: ${T.levelL}`, fields: [['date', 'Дата', 'date', today], ['material', 'Материал', 'text', 'СКЦ 190 мм'], ['zone', 'Этаж и секция', 'text', `${state.floor || 1} этаж, ${T.partL} ${state.section}`], ['pallets', 'Паллет', 'number', ''], ['comment', 'Комментарий', 'text', '']], fixed: { type: 'Подача на этаж', status: 'Подтверждено' } },
   }[k];
   if (!defs) return;
   if (!store.canEditBook(defs.book)) { const bi = store.bookInfo(defs.book); toast(`Только просмотр: нет прав на запись в ${BOOK[defs.book]}. Владелец (${bi.owner || '—'}) должен дать «Редактор».`, true); return; }
@@ -741,7 +758,7 @@ function renderMoney() {
 
   if (state.money === 'sup') {
     const items = [];
-    for (const j of store.allJournal().filter((j) => j.type === 'Материал')) items.push({ date: j.date, approx: j.approx, name: j.name, qty: j.qty, unit: j.unit, who: j.section === 'Общее' ? 'Общее' : 'Секция ' + j.section, src: j.src || 'Журнал' });
+    for (const j of store.allJournal().filter((j) => j.type === 'Материал')) items.push({ date: j.date, approx: j.approx, name: j.name, qty: j.qty, unit: j.unit, who: j.section === 'Общее' ? 'Общее' : T.part + ' ' + j.section, src: j.src || 'Журнал' });
     for (const n of fin.nominated) for (const [name, qty] of n.items || []) {
       const dup = items.some((x) => x.date === n.date && x.name.startsWith(name));
       if (!dup) items.push({ date: n.date, name, qty: Number(String(qty).replace(',', '.')) || 0, unit: '', who: n.who, src: 'Номинированные' });
@@ -801,7 +818,7 @@ function renderMoney() {
       </div>
       <h3>Выполнение</h3>
       <div class="hbar"><span>По деньгам (E / D)</span><div class="bar"><i style="width:${pct}%"></i></div><b>${Math.round(pct)}%</b></div>
-      <div class="hbar"><span>По этажам (стены, перегородки)</span><div class="bar"><i style="width:${phys}%;background:var(--blue)"></i></div><b>${Math.round(phys)}%</b></div>
+      <div class="hbar"><span>По объёмам работ (${T.levelsL})</span><div class="bar"><i style="width:${phys}%;background:var(--blue)"></i></div><b>${Math.round(phys)}%</b></div>
       <div class="hbar"><span>Расходы к выполненному</span><div class="bar"><i style="width:${E ? Math.min(100, spent / E * 100) : 0}%;background:var(--amber)"></i></div><b>${E ? Math.round(spent / E * 100) : 0}%</b></div>
       <h3>Формула оплаты Глоракс</h3>
       <ul class="totals">${fin.contract.map((c) => `<li><span>${esc(c.label.replace(/^[A-ZА-ЯЁ]\s*-\s*/, ''))}</span><b class="num">${c.formula ? `${rub(c.value)} <em class="muted" title="Считается формулой в таблице">ƒ</em>` : ev(rub(c.value), { b: 'G', s: 'Формула оплаты Глоракс ', r: c.row, f: 'value', raw: c.value, expect: c.value, type: 'number', label: c.label.trim(), prop: 'value', list: 'fin.contract' })}</b></li>`).join('')}</ul>
@@ -876,9 +893,9 @@ function tourSteps() {
   const total = store.fin.partial && store.fin.summary ? store.fin.summary.total : store.expenseTotal();
   const n2 = (i) => String(i).padStart(2, '0');
   return [
-    ['01', `${SECTIONS.length === 1 ? 'Секция' : SECTIONS.length + ' секц.'} · ${TOP} этажей`, 'Прокручивайте вниз: дом построится до текущего состояния.'],
-    ['02', 'Каркас поднимается', `Этажи заливаются зелёным по факту выполнения. Сейчас готово: ${SECTIONS.map((x) => `секция ${x} — ${sv(x)}%`).join(', ')}.`],
-    ...SECTIONS.map((x, i) => [n2(i + 3), `Секция ${x} · ${sv(x)}%`, `Наружные стены ${w(x, 'Наружные стены')}%, перегородки ${w(x, 'Перегородки')}%. На объекте: ${ppl(x)}. Открытых поручений: ${open(x)}.`]),
+    ['01', `${T.object} · ${SECTIONS.length === 1 ? T.part + ' ' + SECTIONS[0] : T.parts + ': ' + SECTIONS.length} · ${LAYOUT === 'stack' ? TOP + ' этажей' : T.levels + ': ' + FLOORS.length}`, 'Прокручивайте вниз: объект построится до текущего состояния.'],
+    ['02', LAYOUT === 'stack' ? 'Каркас поднимается' : 'Работы по уровням', `${T.levels} заливаются зелёным по факту выполнения. Сейчас готово: ${SECTIONS.map((x) => `${T.partL} ${x} — ${sv(x)}%`).join(', ')}.`],
+    ...SECTIONS.map((x, i) => [n2(i + 3), `${T.part} ${x} · ${sv(x)}%`, `${(PROFILE.type === 'mkd' ? ['Наружные стены', 'Перегородки'] : WORKS.slice(0, 3)).map((k) => `${k} ${w(x, k)}%`).join(', ')}. На объекте: ${ppl(x)}. Открытых поручений: ${open(x)}.`]),
     [n2(SECTIONS.length + 3), 'Материал и деньги', `Поставок в учёте: ${mats}. Авансы за номинированный материал: ${rubShort(store.expenseTotal(store.fin.advances))}. Расходы: ${rubShort(total)}, из них работы ${rubShort(cats['Работы'] || 0)}, материалы ${rubShort(cats['Материалы'] || 0)}.`],
     [n2(SECTIONS.length + 4), 'Сверху', 'Двор, парковка и кран. Нажмите «Закрыть тур», чтобы вернуться к редактированию.'],
   ];
@@ -977,8 +994,8 @@ document.querySelectorAll('[data-csv]').forEach((b) => b.onclick = () => {
   const k = b.dataset.csv;
   let rows;
   if (k === 'expenses') rows = [['№', 'Дата', 'Категория', 'Контрагент', 'Основание', 'Примечание', 'Сумма, ₽'], ...store.fin.expenses.map((e) => [e.n || '', e.date, e.cat, e.who, e.basis, e.note, num(e.sum)])];
-  if (k === 'journal') rows = [['Дата', 'Секция', 'Тип', 'Наименование', 'Количество', 'Ед.', 'Примечание'], ...store.journal.map((j) => [j.date, j.section, j.type, j.name, num(j.qty), j.unit, j.note])];
-  if (k === 'progress') rows = [['Секция', 'Этаж', 'Вид работ', 'Процент', 'Обновлено'], ...[...store.progress.values()].map((p) => [p.section, floorName(p.floor), p.work, p.value, p.updated || ''])];
+  if (k === 'journal') rows = [['Дата', T.part, 'Тип', 'Наименование', 'Количество', 'Ед.', 'Примечание'], ...store.journal.map((j) => [j.date, j.section, j.type, j.name, num(j.qty), j.unit, j.note])];
+  if (k === 'progress') rows = [[T.part, T.level, 'Вид работ', 'Процент', 'Обновлено'], ...[...store.progress.values()].map((p) => [p.section, floorName(p.floor), p.work, p.value, p.updated || ''])];
   download(`stroyka-${k}-${stampName()}.csv`, csv(rows), 'text/csv;charset=utf-8');
 });
 $('#bkFile').onchange = async (e) => {
@@ -1051,6 +1068,7 @@ store.on((what) => {
   if (what === 'saved-local') toast('Сохранено на устройстве · таблица не подключена');
   if (what && what.type === 'rejected') toast('Таблица не приняла изменение: ' + what.message, true);
   if (what === 'data' && store.structureChanged) { location.reload(); return; }   // в таблицах другие секции/этажность — перестроить 3D
+  if (what === 'data') renderMetricButtons();
   if (what === 'data') {
     scene.update();
     if (typing()) { renderPending = true; renderKpis(); } else render();

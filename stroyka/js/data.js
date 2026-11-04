@@ -3,51 +3,166 @@ import { SEED_DOCS_ROWS, SEED_REMARKS, SEED_JOURNAL } from './seed.js';
 import { SEED_FIN } from './seed-fin.js';
 import { API_URL, API_TOKEN } from './config.js';
 
-// Структура проекта (секции и этажность) приходит из таблиц: листы «Секция …» в «Выполнении».
-// Значения «живые» (export let): модули видят текущую структуру. По умолчанию — до первой загрузки.
+// Структура проекта приходит из таблиц: каждый лист-часть («Секция 4», «Квартира 12», «Цех 2»…) в «Выполнении»
+// и упорядоченный список уровней в его столбце B (этажи, помещения, пролёты, зоны). Значения «живые» (export let).
+//   LAYOUT 'stack' — уровни-этажи друг над другом (МКД, корпус);
+//          'plan'  — помещения рядом на плане (квартира, офис, ремонт);
+//          'hall'  — пролёты/зоны вдоль длинного здания (цех, склад, ангар).
+export const ROOF_KEY = 999;         // так кровлю передаёт таблица
 export let SECTIONS = ['4', '5'];
-export let TOP = 16;                 // верхний жилой этаж
-export let ROOF = 17;                // ключ кровли в приложении = TOP + 1
-export let FLOORS = [];              // 0 = подвал, 1..TOP, ROOF = кровля
-export const ROOF_KEY = 999;         // так кровлю передаёт таблица (не зависит от этажности)
-function setStructure(secs, top) {
-  SECTIONS = secs.length ? secs : ['1'];
-  TOP = Math.max(1, Math.min(60, top | 0 || 16));
-  ROOF = TOP + 1;
-  FLOORS = Array.from({ length: TOP + 2 }, (_, i) => i);
+export let TOP = 16;                 // stack: верхний этаж; plan/hall: число уровней
+export let ROOF = 17;                // stack: ключ кровли = TOP + 1; иначе −1 (кровли нет)
+export let FLOORS = [];              // номера уровней в приложении
+export let LAYOUT = 'stack';
+export let PROFILE = { type: 'mkd', name: '', part: 'Секция', level: 'Этаж' };
+export let T = {};                   // слова интерфейса: «Секция»/«Квартира», «этаж»/«помещение»… в нужных падежах
+export const MKD_WORKS = ['Наружные стены', 'Перегородки', 'Инженерка', 'Кровля'];
+export let WORKS = MKD_WORKS.slice();
+export const ALL_WORKS = MKD_WORKS;
+let LEVELS = [];                     // plan/hall: [{ key, label }], индекс = номер уровня
+let LEVEL_IDX = new Map();
+let PART_LEVELS = {};
+
+// Склонения известных слов: [именительный, родительный, винительный, мн. число, сокращение]; незнакомое — как есть
+const WORDS = {
+  'секция': ['Секция', 'секции', 'секцию', 'Секции', 'с.'], 'секции': ['Секция', 'секции', 'секцию', 'Секции', 'с.'],
+  'корпус': ['Корпус', 'корпуса', 'корпус', 'Корпуса', 'корп.'], 'здание': ['Здание', 'здания', 'здание', 'Здания', 'зд.'],
+  'блок': ['Блок', 'блока', 'блок', 'Блоки', 'бл.'], 'подъезд': ['Подъезд', 'подъезда', 'подъезд', 'Подъезды', 'п.'],
+  'квартира': ['Квартира', 'квартиры', 'квартиру', 'Квартиры', 'кв.'], 'кв.': ['Квартира', 'квартиры', 'квартиру', 'Квартиры', 'кв.'], 'кв': ['Квартира', 'квартиры', 'квартиру', 'Квартиры', 'кв.'],
+  'помещение': ['Помещение', 'помещения', 'помещение', 'Помещения', 'пом.'], 'офис': ['Офис', 'офиса', 'офис', 'Офисы', 'оф.'],
+  'цех': ['Цех', 'цеха', 'цех', 'Цеха', 'цех'], 'склад': ['Склад', 'склада', 'склад', 'Склады', 'скл.'], 'ангар': ['Ангар', 'ангара', 'ангар', 'Ангары', 'анг.'],
+  'пролёт': ['Пролёт', 'пролёта', 'пролёт', 'Пролёты', 'пр.'], 'пролет': ['Пролёт', 'пролёта', 'пролёт', 'Пролёты', 'пр.'],
+  'участок': ['Участок', 'участка', 'участок', 'Участки', 'уч.'], 'объект': ['Объект', 'объекта', 'объект', 'Объекты', 'об.'],
+  'очередь': ['Очередь', 'очереди', 'очередь', 'Очереди', 'оч.'], 'этаж': ['Этаж', 'этажа', 'этаж', 'Этажи', 'эт.'],
+  'зона': ['Зона', 'зоны', 'зону', 'Зоны', 'зона'], 'комната': ['Комната', 'комнаты', 'комнату', 'Комнаты', 'комн.'],
+  'оси': ['Оси', 'осей', 'оси', 'Оси', 'оси'], 'уровень': ['Уровень', 'уровня', 'уровень', 'Уровни', 'ур.'],
+};
+const DAT_PL = { 'Этажи': 'этажам', 'Помещения': 'помещениям', 'Пролёты': 'пролётам', 'Зоны': 'зонам', 'Комнаты': 'комнатам', 'Оси': 'осям', 'Уровни': 'уровням' };
+function word(w) {
+  const s = String(w || '').trim();
+  const x = WORDS[s.toLowerCase()] || [s, s.toLowerCase(), s.toLowerCase(), s, s.toLowerCase().slice(0, 4) + '.'];
+  return { one: x[0], gen: x[1], acc: x[2], pl: x[3], short: x[4] };
 }
-setStructure(SECTIONS, TOP);
-try { const st = JSON.parse(localStorage.getItem('stroyka.structure') || 'null'); if (st && st.sections) setStructure(st.sections, st.top); } catch { /* */ }
+function makeTerms() {
+  const p = word(PROFILE.part || 'Секция'), l = word(PROFILE.level || 'Этаж');
+  const objName = { mkd: 'МКД', flat: 'Помещения', industrial: 'Промышленный объект' }[PROFILE.type] || 'Объект';
+  T = {
+    part: p.one, partL: p.one.toLowerCase(), partGen: p.gen, partAcc: p.acc, parts: p.pl, partsL: p.pl.toLowerCase(), partShort: p.short,
+    level: l.one, levelL: l.one.toLowerCase(), levelGen: l.gen, levelAcc: l.acc, levels: l.pl, levelsL: l.pl.toLowerCase(), levelShort: l.short,
+    levelsDat: DAT_PL[l.pl] || l.pl.toLowerCase(), object: PROFILE.name || objName,
+  };
+}
+
+/** Тип объекта: из листа «Проект» (Тип объекта), иначе по слову частей и виду уровней */
+function detectType(prj, parts) {
+  const numeric = parts.every((p) => (p.levels || []).every((l) => typeof l.key === 'number'));
+  const t = String(prj.type || '').toLowerCase(), w = String(prj.part || '').toLowerCase();
+  if (/пром|цех|склад|ангар|завод|произв/.test(t)) return 'industrial';
+  if (/кварт|офис|помещ|ремонт|отдел|интерьер/.test(t)) return 'flat';
+  if (/мкд|жил|дом|много|здан|корпус/.test(t)) return numeric ? 'mkd' : 'flat';
+  if (/цех|склад|ангар|прол/.test(w)) return 'industrial';
+  if (/кв|помещ|офис/.test(w)) return 'flat';
+  return numeric ? 'mkd' : 'flat';
+}
+function setStructure(st) {
+  SECTIONS = st.sections && st.sections.length ? st.sections.map(String) : ['1'];
+  PROFILE = { type: 'mkd', name: '', part: 'Секция', level: 'Этаж', ...(st.profile || {}) };
+  LAYOUT = st.layout || 'stack';
+  LEVELS = st.levels || [];
+  LEVEL_IDX = new Map(LEVELS.map((l, i) => [String(l.key), i]));
+  if (LAYOUT === 'stack') {
+    TOP = Math.max(1, Math.min(60, st.top | 0 || 16));
+    ROOF = TOP + 1;
+    FLOORS = Array.from({ length: TOP + 2 }, (_, i) => i);
+    PART_LEVELS = Object.fromEntries(SECTIONS.map((s) => [s, FLOORS]));
+  } else {
+    TOP = LEVELS.length; ROOF = -1;
+    FLOORS = LEVELS.map((_, i) => i);
+    PART_LEVELS = Object.fromEntries(SECTIONS.map((s) => [s, (st.partLevels && st.partLevels[s]) || FLOORS]));
+  }
+  WORKS = PROFILE.type === 'mkd' ? MKD_WORKS.slice() : (st.works || []);
+  makeTerms();
+}
+const STRUCT_KEY = 'stroyka.structure.v2';
+setStructure({ sections: SECTIONS, top: TOP });
+try { const st = JSON.parse(localStorage.getItem(STRUCT_KEY) || 'null'); if (st && st.sections) setStructure(st); } catch { /* */ }
+
+/** Уровни конкретной части (у квартир — свои помещения, у секций — общий набор этажей) */
+export function levelsOf(s) { return PART_LEVELS[s] || FLOORS; }
+
 /** Применить структуру из таблиц; true — если она поменялась (нужно перестроить 3D) */
 export function configure(structure) {
   if (!structure || !Array.isArray(structure.sections) || !structure.sections.length) return false;
-  const secs = structure.sections.map((x) => String(x.id)).sort((a, b) => a.localeCompare(b, 'ru', { numeric: true }));
-  const top = Math.max(...structure.sections.map((x) => Number(x.floors) || 0)) || TOP;
-  const changed = secs.join('|') !== SECTIONS.join('|') || top !== TOP;
-  setStructure(secs, top);
-  try { localStorage.setItem('stroyka.structure', JSON.stringify({ sections: secs, top })); } catch { /* */ }
+  const parts = structure.sections.map((x) => ({ ...x, id: String(x.id) })).sort((a, b) => a.id.localeCompare(b.id, 'ru', { numeric: true }));
+  const prj = structure.project || {};
+  const type = detectType(prj, parts);
+  const st = { sections: parts.map((p) => p.id), profile: { type, name: prj.name || '', part: prj.part || 'Секция', level: prj.level || 'Этаж' } };
+  if (type === 'mkd') {
+    st.layout = 'stack';
+    st.top = Math.max(...parts.map((x) => Number(x.floors) || 0)) || 16;
+  } else {
+    st.layout = type === 'industrial' ? 'hall' : 'plan';
+    const levels = [], idx = new Map();
+    st.partLevels = {};
+    for (const p of parts) {
+      st.partLevels[p.id] = [];
+      for (const l of p.levels || []) {
+        const k = String(l.key);
+        if (!idx.has(k)) { idx.set(k, levels.length); levels.push({ key: l.key, label: String(l.label) }); }
+        st.partLevels[p.id].push(idx.get(k));
+      }
+    }
+    st.levels = levels;
+  }
+  let prev = null; try { prev = JSON.parse(localStorage.getItem(STRUCT_KEY) || 'null'); } catch { /* */ }
+  const sig = (x) => JSON.stringify([x.sections, x.layout, x.top || 0, x.profile, x.levels || [], x.partLevels || {}]);
+  const cur = prev || { sections: SECTIONS, layout: LAYOUT, top: LAYOUT === 'stack' ? TOP : 0, profile: PROFILE };
+  const changed = sig(st) !== sig(cur);
+  try { localStorage.setItem(STRUCT_KEY, JSON.stringify(st)); } catch { /* */ }
+  setStructure(st);
   return changed;
 }
-const fromKey = (f) => (Number(f) === ROOF_KEY ? ROOF : Number(f));
+/** Виды работ проекта (не МКД) — из строк объёмов, в порядке таблицы */
+export function setWorks(list) { if (PROFILE.type !== 'mkd') WORKS = list; }
+
+/** Ключ уровня из таблицы → номер в приложении (null — такого уровня нет в структуре) */
+export function fromKey(f) {
+  if (f === null || f === undefined || f === '') return null;
+  if (LAYOUT === 'stack') { const n = Number(f); return n === ROOF_KEY ? ROOF : Number.isFinite(n) ? n : null; }
+  const i = LEVEL_IDX.get(String(f));
+  return i === undefined ? null : i;
+}
+/** Номер уровня в приложении → ключ для записи в таблицу */
+export function toKey(f) {
+  if (LAYOUT === 'stack') return f === ROOF ? ROOF_KEY : f;
+  return LEVELS[f] ? LEVELS[f].key : f;
+}
 
 export function floorName(f) {
+  if (LAYOUT !== 'stack') return LEVELS[f] ? LEVELS[f].label : `${T.level} ${f}`;
   if (f === 0) return 'Подвал';
   if (f === ROOF) return 'Кровля';
   return `${f} этаж`;
 }
 export function floorShort(f) {
+  if (LAYOUT !== 'stack') { const l = LEVELS[f] ? LEVELS[f].label : String(f); return l.length > 9 ? l.slice(0, 8) + '…' : l; }
   if (f === 0) return 'П';
   if (f === ROOF) return 'К';
   return String(f);
 }
 export function worksForFloor(f) {
+  if (PROFILE.type !== 'mkd') return [];
   if (f === 0) return ['Перегородки'];
   if (f === ROOF) return ['Кровля'];
   return ['Наружные стены', 'Перегородки'];
 }
-export const ALL_WORKS = ['Наружные стены', 'Перегородки', 'Инженерка', 'Кровля'];
-/** Вид работ из таблицы «Выполнение» → группа работ приложения */
+/** «Штукатурка стен, м²» → «Штукатурка стен» */
+export function cleanWork(work) {
+  return String(work || '').replace(/\s*,\s*(м²|м2|м³|м3|кв\.?\s*м|куб\.?\s*м|шт|п\.?\s*м|м\.?\s*п|пог\.?\s*м|т|кг|компл)\.?\s*$/i, '').replace(/\s+/g, ' ').trim();
+}
+/** Вид работ из «Выполнения» → группа работ приложения. Для МКД — укрупнённые группы, иначе — как в таблице. */
 export function workGroup(work, floor) {
+  if (PROFILE.type !== 'mkd') return cleanWork(work) || null;
   if (floor === ROOF) return 'Кровля';
   if (/наруж|кирпич/i.test(work)) return 'Наружные стены';
   if (/внутр/i.test(work)) return 'Перегородки';
@@ -59,6 +174,14 @@ export function workGroup(work, floor) {
 export function parseRowLabel(label) {
   const s = String(label || '').trim().toLowerCase();
   if (!s) return null;
+  if (LAYOUT !== 'stack') {   // «Кухня отделка», «Пролёт 1–2 полы»: начало — уровень, дальше — вид работ
+    let best = -1, len = 0;
+    LEVELS.forEach((l, i) => { const t = l.label.toLowerCase(); if (t.length > len && s.startsWith(t)) { best = i; len = t.length; } });
+    if (best < 0) return null;
+    const rest = s.slice(len).trim();
+    const work = WORKS.find((w) => rest && (w.toLowerCase().startsWith(rest) || rest.startsWith(w.toLowerCase().split(' ')[0]))) || null;
+    return work ? { floor: best, work } : null;
+  }
   if (s.startsWith('кровл')) return { floor: ROOF, work: 'Кровля' };
   let floor = null;
   if (s.startsWith('подвал')) floor = 0;
@@ -118,6 +241,7 @@ export function estimateFromDocs(docs) {
 /** Номера этажей, упомянутые в тексте замечания: «6 эт.», «2–5 эт.», «8–9 этаж», «1 по 15 этаж». */
 export function floorsInText(text) {
   const s = String(text || '');
+  if (LAYOUT !== 'stack') { const t = s.toLowerCase(); return LEVELS.map((l, i) => (l.label.length >= 3 && t.includes(l.label.toLowerCase()) ? i : -1)).filter((i) => i >= 0); }
   const res = new Set();
   const re = /(\d{1,2})\s*(?:[–\-—]|по)\s*(\d{1,2})\s*(?:эт|этаж)|(\d{1,2})\s*(?:эт\.|этаж|эт(?![а-яё]))|этаж[а-я]*\s*(\d{1,2})/gi;
   let m;
@@ -167,6 +291,11 @@ const LS = {
 };
 
 const key = (s, f, w) => `${s}|${f}|${w}`;
+/** Ключи уровней из таблиц → номера уровней приложения (один раз, при загрузке) */
+function mapFloors(e) {
+  if (!e) return;
+  for (const k of ['volumes', 'floorStatus', 'worklog', 'moves', 'plan', 'discrepancies']) for (const v of e[k] || []) if (v && 'floor' in v) v.floor = fromKey(v.floor);
+}
 
 /** «СКЦ 160 мм / ПОЛИГРАН 160 ПГ C50», «ПОЛИГРАН 160» → «СКЦ 160»; «Газобетон 100 мм · КСМ» → «Газобетон 100» */
 export function materialKey(name) {
@@ -272,12 +401,13 @@ export class Store {
     this.docs = docsFromRows(this.docsRows, this.docsHead);
     this.remarks = data.remarks || [];
     this.fin = normFin(data.fin || {});
+    mapFloors(data.extra);
     this.setExtra(data.extra);
     this.checks = data.checks || [];
     this.journal = (data.journal || []).map((j) => ({ ...j, qty: Number(j.qty) || 0 }));
     this.progress = new Map();
     const list = data.progress || [];   // никаких оценок: проценты — из «Выполнения», ручные значения — из листа «Прогресс»
-    for (const p of list) { const f = fromKey(p.floor); this.progress.set(key(String(p.section), f, p.work), { ...p, section: String(p.section), floor: f, value: clampPct(p.value) }); }
+    for (const p of list) { const f = fromKey(p.floor); if (f === null) continue; this.progress.set(key(String(p.section), f, p.work), { ...p, section: String(p.section), floor: f, value: clampPct(p.value) }); }
   }
 
   loadDemo() {
@@ -338,10 +468,11 @@ export class Store {
   /** Данные других таблиц: «Выполнение» (объёмы) и «VUP CORE» (материалы, ход работ, статусы этажей) */
   setExtra(x) {
     const e = x || {};
-    for (const k of ['volumes', 'floorStatus', 'worklog', 'moves', 'plan']) for (const v of e[k] || []) if (v && v.floor != null && Number(v.floor) === ROOF_KEY) v.floor = ROOF;
     this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null };
     this.vol = new Map();
+    if (PROFILE.type !== 'mkd') setWorks([...new Set(this.extra.volumes.map((v) => workGroup(v.work, v.floor)).filter(Boolean))]);
     for (const v of this.extra.volumes) {
+      if (v.floor === null || v.floor === undefined) continue;
       const g = workGroup(v.work, Number(v.floor));
       if (!g || !(v.total > 0)) continue;
       const k = `${v.section}|${Number(v.floor)}`;
@@ -355,7 +486,7 @@ export class Store {
   /** Виды работ этажа: по таблице «Выполнение», если в ней есть этот этаж, иначе стандартный набор */
   worksFor(section, floor) {
     const fl = this.vol.get(`${section}|${floor}`);
-    if (fl) return ALL_WORKS.filter((w) => fl[w]);
+    if (fl) return WORKS.filter((w) => fl[w]);
     return worksForFloor(floor);
   }
   isVolumeBased(section, floor, work) { return !!this.volumeGroup(section, floor, work); }
@@ -376,7 +507,7 @@ export class Store {
   }
   sectionValue(section, work = 'avg') {
     let sum = 0, n = 0;
-    for (const f of FLOORS) {
+    for (const f of levelsOf(section)) {
       const v = this.floorValue(section, f, work);
       if (v === null) continue;
       sum += v; n++;
@@ -437,7 +568,7 @@ export class Store {
       r = await fetch(this.url, {
         method: 'POST',
         // text/plain — «простой» запрос без CORS-preflight, Apps Script его принимает
-        body: JSON.stringify({ ...payload, ...(payload.action === 'setProgress' && payload.floor === ROOF ? { floor: ROOF_KEY } : {}), token: this.token }),
+        body: JSON.stringify({ ...payload, ...(payload.action === 'setProgress' ? { floor: toKey(payload.floor) } : {}), token: this.token }),
         redirect: 'follow',
       });
     } catch (e) { const err = new Error('Нет связи с таблицей'); err.network = true; throw err; }

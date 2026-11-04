@@ -254,7 +254,7 @@ function readProgress_() {
     .map(function (r) {
       return {
         section: secId_(r[0]),
-        floor: parseFloor_(r[1]),
+        floor: levelKey_(r[1]),
         work: String(r[2]).trim(),
         value: pct_(r[3]),
         updated: r[4] instanceof Date ? Utilities.formatDate(r[4], tz_(), 'yyyy-MM-dd HH:mm') : String(r[4] || ''),
@@ -372,7 +372,7 @@ function readVolumes_() {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (/итого/i.test(r[0] + r[1] + r[3])) break;
-      if (String(r[1]).trim() !== '') floor = parseFloor_(r[1]);
+      if (String(r[1]).trim() !== '') floor = levelKey_(r[1]);
       const work = String(r[3]).trim();
       if (floor === null || !work) continue;
       const total = num_(r[4]);
@@ -385,27 +385,81 @@ function readVolumes_() {
   return out;
 }
 
-/** Листы «Секция …» в таблице объёмов — это и есть секции проекта (добавили лист — появилась секция) */
+/** Слова, которыми в таблице объёмов называют части объекта: «Секция 4», «Квартира 12», «Цех 2», «Корпус Б»… */
+const PART_WORDS = ['Секция', 'Секции', 'Корпус', 'Здание', 'Блок', 'Подъезд', 'Квартира', 'Кв.', 'Кв', 'Помещение', 'Офис', 'Цех', 'Склад', 'Ангар', 'Пролёт', 'Пролет', 'Участок', 'Объект', 'Очередь'];
+/** Листы-части в таблице объёмов: по слову из листа «Проект» (Часть), иначе — по известным словам */
 function sectionSheets_(book) {
+  const prj = readProject_();
+  const words = prj.part ? [prj.part] : PART_WORDS;
+  const re = new RegExp('^\\s*(' + words.map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|') + ')\\s*(.*?)\\s*$', 'i');
   return book.getSheets().map(function (sh) {
-    const m = sh.getName().match(/^\s*Секци[яи]\s*(.+?)\s*$/i);
-    return m ? { id: m[1], sheet: sh } : null;
+    const m = sh.getName().match(re);
+    if (!m) return null;
+    return { id: m[2] || sh.getName(), word: m[1], sheet: sh };
   }).filter(Boolean);
 }
 
-/** Структура проекта: секции (листы «Секция …») и этажность каждой (столбец «Этаж») — из таблицы, не из кода */
+/** Лист «Проект» (необязательный, в «Выполнении» или «Glorax_Учёт»): строки «параметр | значение».
+ *  Тип объекта (МКД / квартира / помещение / промышленный…), Название, Часть (слово листа: Секция, Квартира, Цех),
+ *  Уровень (Этаж, Помещение, Пролёт, Зона). Без листа всё определяется по названиям листов и столбцу уровней. */
+function readProject_() {
+  if (readProject_.c) return readProject_.c;
+  const out = {};
+  [VOLUMES_ID, SPREADSHEET_ID].forEach(function (id) {
+    if (out._found) return;
+    let sh = null;
+    try { sh = SpreadsheetApp.openById(id).getSheetByName('Проект'); } catch (e) { /* */ }
+    if (!sh || sh.getLastRow() < 1) return;
+    out._found = true;
+    sh.getRange(1, 1, Math.min(sh.getLastRow(), 40), 2).getDisplayValues().forEach(function (r) {
+      const k = String(r[0]).trim().toLowerCase(), v = String(r[1]).trim();
+      if (!v) return;
+      if (/^тип/.test(k)) out.type = v;
+      else if (/назв/.test(k)) out.name = v;
+      else if (/^част|^раздел|^секц/.test(k)) out.part = v;
+      else if (/^уров|^этаж|^помещ/.test(k)) out.level = v;
+    });
+  });
+  delete out._found;
+  readProject_.c = out;
+  return out;
+}
+
+/** Структура проекта — из таблицы, не из кода: части (листы) и упорядоченный список уровней каждой (столбец B) */
 function structure_(vols) {
-  const secs = {};
+  const prj = readProject_();
+  const parts = [];
+  let word = '', levelWord = '';
   try {
     sectionSheets_(SpreadsheetApp.openById(VOLUMES_ID)).forEach(function (x) {
-      let top = 0;
+      word = word || x.word;
       const n = x.sheet.getLastRow();
-      if (n >= 3) x.sheet.getRange(3, 2, n - 2, 1).getDisplayValues().forEach(function (r) { const f = parseFloor_(r[0]); if (f !== null && f !== ROOF && f < 200) top = Math.max(top, f); });
-      secs[x.id] = top;
+      const levels = [], seen = {};
+      if (n >= 2) {
+        const col = x.sheet.getRange(2, 2, n - 1, 1).getDisplayValues();
+        levelWord = levelWord || String(col[0][0]).trim();
+        for (let i = 1; i < col.length; i++) {
+          const raw = String(col[i][0]).trim();
+          if (!raw) continue;
+          if (/итого/i.test(raw)) break;
+          const k = levelKey_(raw);
+          if (k === null || seen[k]) continue;
+          seen[k] = 1; levels.push({ key: k, label: raw });
+        }
+      }
+      parts.push({ id: x.id, levels: levels });
     });
   } catch (e) { /* таблица недоступна — по строкам объёмов */ }
-  (vols || []).forEach(function (v) { if (v.floor !== ROOF && v.floor < 200) secs[v.section] = Math.max(secs[v.section] || 0, v.floor); });
-  return { sections: Object.keys(secs).map(function (id) { return { id: id, floors: secs[id] || 1 }; }), roofKey: ROOF };
+  if (!parts.length) {
+    const by = {};
+    (vols || []).forEach(function (v) { if (!by[v.section]) by[v.section] = { id: v.section, levels: [], seen: {} }; if (!by[v.section].seen[v.floor]) { by[v.section].seen[v.floor] = 1; by[v.section].levels.push({ key: v.floor, label: String(v.floor) }); } });
+    Object.keys(by).forEach(function (k) { parts.push({ id: k, levels: by[k].levels }); });
+  }
+  parts.forEach(function (p) {
+    const nums = p.levels.filter(function (l) { return typeof l.key === 'number' && l.key !== ROOF; }).map(function (l) { return l.key; });
+    p.floors = nums.length ? Math.max.apply(null, nums) : 0;
+  });
+  return { sections: parts, roofKey: ROOF, project: { type: prj.type || '', name: prj.name || '', part: prj.part || word || 'Секция', level: prj.level || levelWord || 'Этаж' } };
 }
 
 /** «VUP CORE»: Движение материалов */
@@ -428,7 +482,7 @@ function readWorklog_() {
   if (!sh || sh.getLastRow() < 2) return [];
   return rowsOf_(sh, 2, 14)
     .filter(function (r) { return r[0]; })
-    .map(function (r) { return { row: r.row, id: r[0], section: String(r[2]), floor: parseFloor_(r[3]), brigade: r[4], stage: r[5], start: pickDate_(r[6]) || pickDate_(r[13]), end: pickDate_(r[7]), status: r[8], workers: num_(r[9]), shifts: num_(r[10]), volume: num_(r[11]), unit: r[12], source: r[13] }; });
+    .map(function (r) { return { row: r.row, id: r[0], section: String(r[2]), floor: levelKey_(r[3]), brigade: r[4], stage: r[5], start: pickDate_(r[6]) || pickDate_(r[13]), end: pickDate_(r[7]), status: r[8], workers: num_(r[9]), shifts: num_(r[10]), volume: num_(r[11]), unit: r[12], source: r[13] }; });
 }
 
 /** «VUP CORE»: Стройка · статусы этажей */
@@ -437,7 +491,7 @@ function readFloorStatus_() {
   if (!sh || sh.getLastRow() < 2) return [];
   return rowsOf_(sh, 2, 6)
     .filter(function (r) { return r[0] && r[1]; })
-    .map(function (r) { return { row: r.row, section: String(r[0]), floor: parseFloor_(r[1]), status: r[2], date: pickDate_(r[3]), source: r[4], comment: r[5] }; });
+    .map(function (r) { return { row: r.row, section: String(r[0]), floor: levelKey_(r[1]), status: r[2], date: pickDate_(r[3]), source: r[4], comment: r[5] }; });
 }
 
 /** «VUP CORE»: Стройка · план — потребность материала по этажам, паллет */
@@ -458,7 +512,7 @@ function readDiscrepancies_() {
   if (!sh || sh.getLastRow() < 2) return [];
   return rowsOf_(sh, 2, 9)
     .filter(function (r) { return r[0] && r[2]; })
-    .map(function (r) { return { row: r.row, section: String(r[0]), floor: parseFloor_(r[1]), material: r[2], plan: num_(r[3]), fact: num_(r[4]), diff: num_(r[5]), status: r[6], date: pickDate_(r[7]), note: r[8] }; });
+    .map(function (r) { return { row: r.row, section: String(r[0]), floor: levelKey_(r[1]), material: r[2], plan: num_(r[3]), fact: num_(r[4]), diff: num_(r[5]), status: r[6], date: pickDate_(r[7]), note: r[8] }; });
 }
 
 /** «VUP CORE»: Стройка · инвентаризация склада */
@@ -830,14 +884,14 @@ function findDate_(text) {
 
 function setProgress_(section, floor, work, value) {
   if (!section) throw new Error('Нет секции');
-  if (!(floor >= 0 && (floor <= 200 || floor === ROOF))) throw new Error('Неверный этаж');
+  if (floor === null || floor === undefined || floor === '' || (typeof floor === 'number' && !(floor >= 0 && (floor <= 200 || floor === ROOF)))) throw new Error('Неверный этаж / помещение');
   const v = Math.max(0, Math.min(100, Math.round(value)));
   const sh = progressSheet_();
   const n = Math.max(0, sh.getLastRow() - 1);
   const vals = n ? sh.getRange(2, 1, n, 3).getValues() : [];
   const now = new Date();
   for (let i = 0; i < vals.length; i++) {
-    if (secId_(vals[i][0]) === String(section) && parseFloor_(vals[i][1]) === floor && String(vals[i][2]).trim() === work) {
+    if (secId_(vals[i][0]) === String(section) && String(levelKey_(vals[i][1])) === String(floor) && String(vals[i][2]).trim() === work) {
       sh.getRange(i + 2, 4, 1, 3).setValues([[v, now, '']]);
       sh.getRange(i + 2, 5).setNumberFormat('dd.MM.yyyy HH:mm');
       SpreadsheetApp.flush();
@@ -900,6 +954,8 @@ function worksForFloor_(f) {
 }
 function secId_(v) { return String(v).replace(/^\s*Секци[яи]\s*/i, '').trim(); }
 function floorLabel_(f) { return f === 0 ? 'Подвал' : f === ROOF ? 'Кровля' : String(f); }
+/** Ключ уровня: номер этажа (подвал 0, кровля ROOF) или название помещения / пролёта / зоны как есть */
+function levelKey_(v) { const f = parseFloor_(v); if (f !== null) return f; const t = String(v == null ? '' : v).trim(); return t || null; }
 function parseFloor_(v) {
   const s = String(v).trim().toLowerCase();
   if (s.indexOf('подвал') === 0) return 0;

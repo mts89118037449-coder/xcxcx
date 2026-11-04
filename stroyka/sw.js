@@ -3,7 +3,7 @@
 // запросы к API в кэш не попадают — данные хранит само приложение (последняя копия на устройстве).
 const CACHE = 'stroyka-v1';
 const SHELL = [
-  './', './index.html', './css/style.css', './js/main.js', './js/data.js', './js/scene.js', './js/seed.js', './js/seed-fin.js', './js/config.js',
+  './', './index.html', './css/style.css', './js/main.js', './js/data.js', './js/scene.js', './js/scene-units.js', './js/seed.js', './js/seed-fin.js', './js/config.js',
   './vendor/three/three.module.js', './vendor/three/addons/controls/OrbitControls.js',
   './vendor/three/addons/environments/RoomEnvironment.js', './vendor/three/addons/renderers/CSS2DRenderer.js',
 ];

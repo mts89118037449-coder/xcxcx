@@ -12,7 +12,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { SECTIONS, FLOORS, ROOF, TOP, floorName } from './data.js';
+import { SECTIONS, FLOORS, ROOF, TOP, T, floorName } from './data.js';
 
 // Размеры в метрах (башня-секция с почти квадратным планом)
 const L = 24;        // ширина фасада (вдоль X)
@@ -672,7 +672,7 @@ export class BuildingScene {
 
       const tag = document.createElement('div');
       tag.className = 'section-tag';
-      tag.innerHTML = `<b>Секция ${s}</b><span data-pct></span>`;
+      tag.innerHTML = `<b>${T.part} ${s}</b><span data-pct></span>`;
       tag.title = 'Показать секцию';
       tag.addEventListener('click', (e) => { e.stopPropagation(); this.focusSection(s); this.onSection && this.onSection(s); });
       const obj = new CSS2DObject(tag);
@@ -916,7 +916,7 @@ export class BuildingScene {
       el.style.cursor = hit ? 'pointer' : 'grab';
       if (hit) {
         const v = this.store.floorValue(hit.section, hit.floor, this.metric);
-        this.tooltip.textContent = `Секция ${hit.section} · ${floorName(hit.floor)} · ${v === null ? '—' : Math.round(v) + '%'}`;
+        this.tooltip.textContent = `${T.part} ${hit.section} · ${floorName(hit.floor)} · ${v === null ? '—' : Math.round(v) + '%'}`;
         const r = this.container.getBoundingClientRect();
         this.tooltip.style.transform = `translate(${e.clientX - r.left + 14}px, ${e.clientY - r.top + 14}px)`;
         this.tooltip.style.opacity = 1;
