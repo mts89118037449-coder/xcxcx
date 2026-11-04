@@ -102,6 +102,9 @@ function doPost(e) {
       case 'setCell': res = setCell_(body); break;
       case 'addRow': res = addRow_(body); break;
       case 'newObject': res = newObject_(body); break;
+      case 'addObject': res = addObject_(body); break;
+      case 'copyTemplate': res = copyTemplate_(body); break;
+      case 'removeObject': res = removeObject_(body); break;
       case 'updateExpense': res = updateExpense_(body.entry || {}, body.expect || {}); break;
       case 'deleteExpense': res = deleteExpense_(String(body.id)); break;
       default: throw new Error('Неизвестное действие: ' + body.action);
@@ -349,6 +352,7 @@ function readExtra_() {
     objects: safe_(readObjects_),
     object: CUR_V,
     registry: safe_(function () { return registryBook_().getUrl(); }),
+    template: PropertiesService.getScriptProperties().getProperty('TEMPLATE_ID') || TEMPLATE_ID,
     volumes: volumes,
     moves: MODE === 'book' ? [] : safe_(readMoves_),
     worklog: MODE === 'book' ? [] : safe_(readWorklog_),
@@ -1150,11 +1154,25 @@ function newObject_(q) {
   if (!levels.length) levels = ['1'];
   const works = (q.works && q.works.length ? q.works : tpl.works).map(String).slice(0, 30);
   const book = SpreadsheetApp.create('Стройка · ' + name);
+  buildBook_(book, tpl, name, parts, levels, works, false);
+  // в реестр объектов
+  const list = registryBook_().getSheetByName(SHEET_OBJECTS);
+  list.appendRow([name, book.getUrl(), tpl.type, 'создан из приложения ' + Utilities.formatDate(new Date(), tz_(), 'dd.MM.yyyy')]);
+  try { DriveApp.getFileById(book.getId()).moveTo(workFolder_()); } catch (e) { /* останется в корне Диска */ }
+  SpreadsheetApp.flush();
+  return { id: book.getId(), url: book.getUrl(), sheet: SHEET_OBJECTS, row: list.getLastRow(), check: { display: name } };
+}
+/** Заполнить таблицу объекта листами шаблона. onlyMissing — только недостающие листы, существующие не трогаются. */
+function buildBook_(book, tpl, name, parts, levels, works, onlyMissing) {
   const weeks = weekDates_(16);
   const head = ['Дата передачи', tpl.level, 'Исполнитель', 'Вид работ', 'Общий объём', 'Остаток', '% остатка', 'Выполнено всего', '% выполн.', 'Срок', 'Статус', 'Расценка', 'Стоимость', 'Принято КС-6а'].concat(weeks);
   const W = head.length, lastCol = columnLetter_(W);
-  parts.forEach(function (p, pi) {
-    const sh = pi === 0 ? book.getSheets()[0].setName(tpl.part + ' ' + p) : book.insertSheet(tpl.part + ' ' + p);
+  const added = [];
+  const has = function (n) { return onlyMissing && !!book.getSheetByName(n); };
+  const make = function (n) { added.push(n); return book.insertSheet(n); };
+  const fresh = !onlyMissing && book.getSheets().length === 1 && book.getSheets()[0].getLastRow() === 0 ? book.getSheets()[0] : null;
+  if (!(onlyMissing && sectionSheets_(book).length)) parts.forEach(function (p, pi) {
+    const sh = pi === 0 && fresh ? fresh.setName(tpl.part + ' ' + p) : make(tpl.part + ' ' + p);
     const rows = [[tpl.part + ' ' + p].concat(new Array(W - 1).fill('')), head];
     levels.forEach(function (l) {
       works.forEach(function (w, wi) {
@@ -1191,45 +1209,58 @@ function newObject_(q) {
   const partList = SpreadsheetApp.newDataValidation().requireValueInList(parts.concat(['Общее']), true).setAllowInvalid(true).build();
   const levelList = SpreadsheetApp.newDataValidation().requireValueInList(levels.slice(0, 500), true).setAllowInvalid(true).build();
   // Проект
-  const prj = book.insertSheet('Проект');
+  if (!has('Проект')) {
+  const prj = make('Проект');
   prj.getRange(1, 1, 5, 2).setValues([['Тип объекта', tpl.type], ['Название', name], ['Часть', tpl.part], ['Уровень', tpl.level], ['Виды работ', works.join('; ')]]);
   prj.getRange(1, 1, 5, 1).setFontWeight('bold'); prj.setColumnWidth(1, 180); prj.setColumnWidth(2, 420);
+  }
   // Журнал: люди и поставки
-  const jr = book.insertSheet(SHEET_JOURNAL);
+  if (!has(SHEET_JOURNAL)) {
+  const jr = make(SHEET_JOURNAL);
   headRow_(jr, ['Дата', tpl.part, 'Тип', 'Наименование', 'Количество', 'Ед.', 'Примечание', 'ID']);
   jr.getRange('A2:A').setNumberFormat('dd.MM.yyyy');
   jr.getRange('B2:B').setDataValidation(partList);
   jr.getRange('C2:C').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Люди', 'Материал'], true).build());
+  }
   // Расходы — та же раскладка, что у «Счетов»: итог в H1, строки с 5-й
-  const ex = book.insertSheet('Расходы');
+  if (!has('Расходы')) {
+  const ex = make('Расходы');
   ex.getRange(1, 7, 1, 2).setValues([['Итоговая сумма=', '=SUM(H5:H)']]).setFontWeight('bold');
   ex.getRange(4, 1, 1, 8).setValues([['№', 'Дата счёта', 'Дата платежа', 'Категория', 'Контрагент', 'Основание', 'Назначение', 'Сумма']]).setFontWeight('bold').setBackground('#e3f3e8');
   ex.setFrozenRows(4);
   ex.getRange('B5:C').setNumberFormat('dd.MM.yyyy');
   ex.getRange('D5:D').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Материалы', 'Работы', 'Услуги', 'Логистика', 'Прочее'], true).setAllowInvalid(true).build());
   ex.getRange('H5:H').setNumberFormat('#,##0.00');
+  }
   // Замечания
-  const rm = book.insertSheet('Замечания');
+  if (!has('Замечания')) {
+  const rm = make('Замечания');
   headRow_(rm, ['№', 'Дата', tpl.part, tpl.level, 'Замечание', 'Ответственный', 'Срок', 'Статус', 'Выполнено', 'Примечание']);
   rm.getRange('B2:B').setNumberFormat('dd.MM.yyyy'); rm.getRange('G2:G').setNumberFormat('dd.MM.yyyy'); rm.getRange('I2:I').setNumberFormat('dd.MM.yyyy');
   rm.getRange('C2:C').setDataValidation(partList); rm.getRange('D2:D').setDataValidation(levelList);
   rm.getRange('H2:H').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['В работе', 'Срыв сроков', 'Выполнено'], true).setAllowInvalid(true).build());
   rm.setColumnWidth(5, 380);
+  }
   // Документы: ИС / АОСР по части × уровню × виду работ
-  const dc = book.insertSheet('Документы');
+  if (!has('Документы')) {
+  const dc = make('Документы');
   headRow_(dc, [tpl.part, tpl.level, 'Вид работ', 'ИС', 'АОСР', 'Замечания по АОСР']);
   const drows = [];
   parts.forEach(function (p) { levels.forEach(function (l) { works.forEach(function (w) { if (drows.length < 3000) drows.push([p, l, w, '', '', '']); }); }); });
   if (drows.length) dc.getRange(2, 1, drows.length, 6).setValues(drows);
   dc.setColumnWidth(3, 220);
+  }
   // Разделы: какие работы к какому разделу (приложение и само узнаёт электрику, воду, связь, фасады, отделку…)
-  const sec = book.insertSheet('Разделы');
+  if (!has('Разделы')) {
+  const sec = make('Разделы');
   headRow_(sec, ['Слово в названии работы', 'Раздел']);
   sec.getRange(2, 1, 6, 2).setValues([['кабель', 'Электрика'], ['ВК', 'Вода и канализация'], ['ОВ', 'Отопление и вентиляция'], ['СКС', 'Связь и слаботочка'], ['вентфасад', 'Фасад'], ['МОП', 'Отделка']]);
   sec.getRange(9, 1).setValue('Необязательно: без этого листа разделы определяются автоматически. Строка выше пустой строки переопределяет автоматику.');
   sec.setColumnWidth(1, 240); sec.setColumnWidth(2, 220);
+  }
   // Как заполнять
-  const help = book.insertSheet('Как заполнять');
+  if (!has('Как заполнять')) {
+  const help = make('Как заполнять');
   help.getRange(1, 1, 9, 1).setValues([
     ['Это самостоятельная таблица объекта «' + name + '»: приложение берёт отсюда всё — объёмы, людей и поставки, расходы, замечания, документы.'],
     ['Листы «' + tpl.part + ' …» — части объекта. Новая часть: копия листа с новым именем («' + tpl.part + ' 2»).'],
@@ -1242,11 +1273,63 @@ function newObject_(q) {
     ['Лист «Прогресс» появится сам, если проценты вводить вручную из приложения.'],
   ]);
   help.setColumnWidth(1, 900); help.getRange(1, 1, 9, 1).setWrap(true);
-  // в реестр объектов
+  }
+  return added;
+}
+
+/** Подключить существующую таблицу (копию шаблона или свою) по ссылке: проверить доступ, дописать недостающие листы, внести в реестр */
+function addObject_(q) {
+  const id = sheetId_(q.url);
+  if (!id) throw new Error('Не похоже на ссылку на Google-таблицу');
+  let book;
+  try { book = SpreadsheetApp.openById(id); } catch (e) {
+    throw new Error('Нет доступа к таблице. Откройте её → «Настройки доступа» → добавьте ' + Session.getEffectiveUser().getEmail() + ' как «Редактор» и повторите');
+  }
+  if (readObjects_().some(function (o) { return o.id === id; })) return { id: id, url: book.getUrl(), already: true, sheet: SHEET_OBJECTS, check: { display: book.getName() } };
+  // смотрим таблицу как объект: её «Проект», её листы-части
+  MODE = 'book'; CUR_V = id; SS_CACHE_ = null; readProject_.c = null;
+  const prj = readProject_();
+  const parts0 = sectionSheets_(book);
+  // слово частей и уровней — из самой таблицы: имя листа («Корпус Б») и шапка столбца B («Этаж», «Помещение»)
+  const word = prj.part || (parts0[0] ? parts0[0].word.charAt(0).toUpperCase() + parts0[0].word.slice(1).toLowerCase() : '');
+  const lvl = prj.level || (parts0[0] ? String(parts0[0].sheet.getRange(2, 2).getDisplayValue()).trim() : '');
+  const numeric = parts0.length && parts0.every(function (x) { const n = x.sheet.getLastRow(); return n < 3 || x.sheet.getRange(3, 2, n - 2, 1).getDisplayValues().every(function (r) { const t = String(r[0]).trim(); return !t || /итого/i.test(t) || typeof levelKey_(t) === 'number'; }); });
+  const probe = (prj.type || '') + ' ' + word + ' ' + lvl;
+  const kind = /пром|цех|склад|ангар|пролёт|пролет/i.test(probe) ? 'industrial' : /офис/i.test(probe) ? 'office' : /кварт|ремонт|помещ|комнат/i.test(probe) ? 'flat' : (/мкд|секц|дом|жил|корпус|здан|блок|этаж/i.test(probe) || numeric) ? 'mkd' : 'flat';
+  const tpl = Object.assign({}, OBJECT_TEMPLATES[kind]);
+  if (word) tpl.part = word; if (lvl) tpl.level = lvl;
+  const parts = parts0.length ? parts0.map(function (x) { return x.id; }) : ['1'];
+  const vols = safe_(readVolumes_);
+  const levels = vols.length ? vols.map(function (v) { return String(v.floor === ROOF ? 'Кровля' : v.floor); }).filter(function (v, i, a) { return a.indexOf(v) === i; }) : (kind === 'mkd' ? ['1'] : ['Помещение 1']);
+  const name = String(q.name || prj.name || book.getName().replace(/^Стройка\s*·\s*/, '')).trim().slice(0, 80);
+  const added = buildBook_(book, tpl, name, parts, levels, tpl.works, true);
   const list = registryBook_().getSheetByName(SHEET_OBJECTS);
-  list.appendRow([name, book.getUrl(), tpl.type, 'создан из приложения ' + Utilities.formatDate(new Date(), tz_(), 'dd.MM.yyyy')]);
-  try { DriveApp.getFileById(book.getId()).moveTo(workFolder_()); } catch (e) { /* останется в корне Диска */ }
+  list.appendRow([name, book.getUrl(), prj.type || tpl.type, 'подключён ' + Utilities.formatDate(new Date(), tz_(), 'dd.MM.yyyy') + (added.length ? ' · добавлены листы: ' + added.join(', ') : '')]);
+  SpreadsheetApp.flush();
+  return { id: id, url: book.getUrl(), added: added, sheet: SHEET_OBJECTS, row: list.getLastRow(), check: { display: name } };
+}
+/** Универсальный шаблон таблицы объекта (можно заменить свойством скрипта TEMPLATE_ID) */
+const TEMPLATE_ID = '1GEeAlWpaXUpmMp9Ly-4OIu6_3VEKtuln39EydP91iGE';
+/** Новый объект одной кнопкой: копия универсального шаблона в папке «Стройка 3D» + запись в реестр */
+function copyTemplate_(q) {
+  const tid = PropertiesService.getScriptProperties().getProperty('TEMPLATE_ID') || TEMPLATE_ID;
+  const name = String(q.name || 'Новый объект').trim().slice(0, 80);
+  let file;
+  try { file = DriveApp.getFileById(tid).makeCopy('Стройка · ' + name, workFolder_()); } catch (e) { throw new Error('Шаблон недоступен: ' + e.message); }
+  const book = SpreadsheetApp.openById(file.getId());
+  const prj = book.getSheetByName('Проект');
+  if (prj) prj.getRange(2, 2).setValue(name);   // строка «Название»
+  const list = registryBook_().getSheetByName(SHEET_OBJECTS);
+  list.appendRow([name, book.getUrl(), String(prj ? prj.getRange(1, 2).getDisplayValue() : ''), 'копия шаблона ' + Utilities.formatDate(new Date(), tz_(), 'dd.MM.yyyy')]);
   SpreadsheetApp.flush();
   return { id: book.getId(), url: book.getUrl(), sheet: SHEET_OBJECTS, row: list.getLastRow(), check: { display: name } };
+}
+/** Убрать объект из реестра (файл таблицы остаётся на Диске) */
+function removeObject_(q) {
+  const id = sheetId_(q.id);
+  const sh = registryBook_().getSheetByName(SHEET_OBJECTS);
+  const vals = sh.getRange(2, 2, Math.max(1, sh.getLastRow() - 1), 1).getDisplayValues();
+  for (let i = vals.length - 1; i >= 0; i--) if (sheetId_(vals[i][0]) === id) { sh.deleteRow(i + 2); return { removed: 1, sheet: SHEET_OBJECTS, row: i + 2 }; }
+  return { removed: 0 };
 }
 function columnLetter_(n) { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }

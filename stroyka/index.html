@@ -177,8 +177,20 @@
     <h2>Ваши объекты</h2>
     <p class="muted">Нажмите на объект, чтобы открыть его. У каждого объекта своя Google-таблица (↗ — открыть её).</p>
     <ul class="obj-list" id="objList"></ul>
-    <details class="obj-new" id="objNew">
-      <summary class="btn">+ Новый объект</summary>
+    <div class="obj-add" id="objAdd">
+      <h3>Добавить объект</h3>
+      <div class="obj-step">
+        <b>Новый — из универсального шаблона</b>
+        <div class="obj-row"><input id="noQuickName" placeholder="Название, например «ЖК Север · отделка»" maxlength="80"><button class="btn" type="button" id="noCopy">Создать</button></div>
+        <p class="muted small-note">В папке «Стройка 3D» появится копия шаблона со всеми листами. Заполните её — данные сразу будут в приложении.</p>
+      </div>
+      <div class="obj-step">
+        <b>Готовая таблица — по ссылке</b>
+        <div class="obj-row"><input id="noUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/…"><button class="btn" type="button" id="noAdd">Подключить</button></div>
+        <p class="muted small-note">Подойдёт копия шаблона (<a id="tplCopy" target="_blank" rel="noopener">сделать копию вручную ↗</a>) или своя таблица — недостающие листы допишутся сами, существующие не изменятся. Доступ к таблице — «Редактор» для <span id="noMe">аккаунта скрипта</span>.</p>
+      </div>
+      <details class="obj-new" id="objNew">
+      <summary class="link-sum">Настроить новый объект вручную: части, уровни, виды работ</summary>
       <div class="ed-fields">
         <label>Название<input id="noName" placeholder="ЖК Север · отделка квартир" maxlength="80"></label>
         <div class="seg small" id="noKind">
@@ -190,7 +202,8 @@
         <p class="muted small-note">Будет создана одна Google-таблица в папке «Стройка 3D»: лист на каждую часть (уровень × вид работ, формулы «Выполнено» и «Итого», недели), «Журнал» людей и поставок, «Расходы», «Замечания», «Документы» ИС/АОСР и «Проект». Ничего общего с другими объектами.</p>
         <button class="btn" type="button" id="noCreate">Создать таблицу и открыть объект</button>
       </div>
-    </details>
+      </details>
+    </div>
     <div class="dlg-actions"><button class="btn ghost" value="ok">Закрыть</button></div>
   </form>
 </dialog>

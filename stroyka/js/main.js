@@ -1132,7 +1132,17 @@ function renderObjects() {
   const cur = store.obj || (list[0] && list[0].id);
   $('#objList').innerHTML = list.map((o) => `<li class="${o.id === cur ? 'on' : ''}">
     <button type="button" class="obj-item" data-obj="${esc(o.id)}"><b>${esc(o.name)}</b><span class="muted">${esc([o.type, o.note].filter(Boolean).join(' · '))}</span></button>
-    <a class="btn ghost small" href="https://docs.google.com/spreadsheets/d/${esc(o.id)}/edit" target="_blank" rel="noopener" title="Открыть таблицу">↗</a></li>`).join('');
+    <a class="btn ghost small" href="https://docs.google.com/spreadsheets/d/${esc(o.id)}/edit" target="_blank" rel="noopener" title="Открыть таблицу">↗</a>
+    ${o === list[0] ? '' : `<button type="button" class="btn ghost small" data-unlink="${esc(o.id)}" title="Убрать из списка (таблица останется на Диске)">✕</button>`}</li>`).join('');
+  $('#objList').querySelectorAll('[data-unlink]').forEach((b) => b.onclick = async () => {
+    const o = list.find((x) => x.id === b.dataset.unlink);
+    if (!(await ask([`Убрать «${o.name}» из списка объектов?`], 'Сама таблица останется на Google Диске — её можно подключить снова по ссылке.'))) return;
+    try { await store.post({ action: 'removeObject', id: o.id }); if (store.obj === o.id) store.setObject(''); location.reload(); } catch (e) { toast('Не удалось: ' + e.message, true); }
+  });
+  const tpl = store.extra.template;
+  $('#tplCopy').href = tpl ? `https://docs.google.com/spreadsheets/d/${tpl}/copy` : '#';
+  const me = (store.extra.sources || []).find((x) => x.me);
+  if (me) $('#noMe').textContent = me.me;
   $('#objList').querySelectorAll('[data-obj]').forEach((b) => b.onclick = () => {
     const id = b.dataset.obj === (list[0] && list[0].id) ? '' : b.dataset.obj;
     if (id === (store.obj || '')) { $('#objDlg').close(); return; }
@@ -1142,9 +1152,9 @@ function renderObjects() {
 function openObjects(newOne) {
   if (!store.connected) { toast('Сначала подключите таблицу (⚙ вверху справа)', true); return; }
   renderObjects(); setKind(noKind);
-  $('#objNew').open = !!newOne;
+  $('#objNew').open = false;
   $('#objDlg').showModal();
-  if (newOne) setTimeout(() => $('#noName').focus(), 60);
+  if (newOne) setTimeout(() => { $('#objAdd').scrollIntoView({ block: 'start' }); $('#noQuickName').focus(); }, 60);
 }
 $('#btnObj').onclick = () => openObjects(false);
 const splitList = (v) => String(v || '').split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
@@ -1168,3 +1178,21 @@ $('#noCreate').onclick = async () => {
     btn.disabled = false; btn.textContent = 'Создать таблицу и открыть объект';
   }
 };
+
+/** Открыть объект после создания/подключения */
+function switchTo(id, msg) { toast(msg); store.setObject(id); setTimeout(() => location.reload(), 700); }
+async function busy(btn, label, fn) {
+  const t = btn.textContent; btn.disabled = true; btn.textContent = label;
+  try { await fn(); } catch (e) { toast(e.message, true); btn.disabled = false; btn.textContent = t; }
+}
+$('#noCopy').onclick = () => busy($('#noCopy'), 'Создаю…', async () => {
+  const name = $('#noQuickName').value.trim() || 'Новый объект';
+  const res = await store.post({ action: 'copyTemplate', name });
+  switchTo(res.id, `✓ Таблица «Стройка · ${name}» создана — открываю`);
+});
+$('#noAdd').onclick = () => busy($('#noAdd'), 'Проверяю…', async () => {
+  const url = $('#noUrl').value.trim();
+  if (!/docs\.google\.com\/spreadsheets\/d\/|^[\w-]{25,}$/.test(url)) throw new Error('Вставьте ссылку на Google-таблицу');
+  const res = await store.post({ action: 'addObject', url });
+  switchTo(res.id, res.already ? 'Эта таблица уже подключена — открываю' : `✓ Подключено${res.added && res.added.length ? ' · добавлены листы: ' + res.added.join(', ') : ''}`);
+});

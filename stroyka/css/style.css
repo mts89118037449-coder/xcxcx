@@ -538,3 +538,9 @@ details.fold > ul { margin-bottom: 12px; }
   .legend { display: none; }
   body.legend-on .legend { display: flex; }
 }
+.obj-add h3 { margin: 16px 0 8px; }
+.obj-step { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; margin-bottom: 8px; background: var(--panel-2); }
+.obj-step > b { display: block; margin-bottom: 6px; font-size: 14px; }
+.obj-row { display: flex; gap: 6px; }
+.obj-row input { flex: 1; min-width: 0; }
+.link-sum { cursor: pointer; color: var(--muted); font-size: 13px; padding: 8px 0; }
