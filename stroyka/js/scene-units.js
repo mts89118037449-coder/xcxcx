@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { BuildingScene } from './scene.js';
-import { SECTIONS, LAYOUT, T, levelsOf, floorName, floorShort } from './data.js';
+import { SECTIONS, LAYOUT, T, BY_EXPENSES, levelsOf, floorName, floorShort } from './data.js';
 
 const COLORS = {
   floor: 0xc9c2b6, wall: 0xdedbd3, edge: 0x56534d, green: 0x2f9e5a, full: 0x1d7a43,
@@ -131,7 +131,7 @@ export class UnitsScene extends BuildingScene {
       tag.title = `Показать: ${T.partL} ${s}`;
       tag.addEventListener('click', (e) => { e.stopPropagation(); this.focusSection(s); this.onSection && this.onSection(s); });
       const obj = new CSS2DObject(tag);
-      obj.position.set(0, k.slab + k.h + (LAYOUT === 'hall' ? 5 : 1.6), -Dp / 2);
+      obj.position.set(0, k.slab + k.h + (LAYOUT === 'hall' ? 5 : 1.6) + (SECTIONS.indexOf(s) % 3) * (LAYOUT === 'hall' ? 4 : 2.4), -Dp / 2);   // соседние подписи не накладываются
       part.add(obj);
       this[`tag${s}`] = tag;
       this[`part${s}`] = part;
@@ -221,7 +221,10 @@ export class UnitsScene extends BuildingScene {
     for (const s of SECTIONS) {
       if (this[`roof${s}`]) this[`roof${s}`].visible = project;
       const pct = Math.round(this.store.sectionValue(s, this.metric) || 0);
-      if (this[`tag${s}`]) this[`tag${s}`].querySelector('[data-pct]').textContent = project ? 'проект' : `${pct}%`;
+      // в таблице только расходы — на подписи сколько потрачено, а не проценты
+      const spent = BY_EXPENSES ? this.store.fin.expenses.filter((e) => e.section === s).reduce((a, e) => a + e.sum, 0) : 0;
+      const money = spent >= 1e6 ? (spent / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' млн ₽' : spent >= 1e3 ? Math.round(spent / 1e3) + ' тыс ₽' : spent ? Math.round(spent) + ' ₽' : '—';
+      if (this[`tag${s}`]) this[`tag${s}`].querySelector('[data-pct]').textContent = project ? 'проект' : BY_EXPENSES ? money : `${pct}%`;
     }
     this.paintHighlight();
   }

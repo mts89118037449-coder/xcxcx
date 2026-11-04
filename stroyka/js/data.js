@@ -18,6 +18,7 @@ export let PROFILE = { type: 'mkd', name: '', part: 'Секция', level: 'Эт
 export let T = {};                   // слова интерфейса: «Секция»/«Квартира», «этаж»/«помещение»… в нужных падежах
 export const MKD_WORKS = ['Наружные стены', 'Перегородки', 'Инженерка', 'Кровля'];
 export let WORKS = MKD_WORKS.slice();
+export let BY_EXPENSES = false;     // в таблице объекта только расходы (частей с объёмами нет)
 export const ALL_WORKS = MKD_WORKS;
 let LEVELS = [];                     // plan/hall: [{ key, label }], индекс = номер уровня
 let LEVEL_IDX = new Map();
@@ -47,7 +48,7 @@ function makeTerms() {
   const p = word(PROFILE.part || 'Секция'), l = word(PROFILE.level || 'Этаж');
   const objName = { mkd: 'МКД', flat: 'Помещения', industrial: 'Промышленный объект' }[PROFILE.type] || 'Объект';
   T = {
-    part: p.one, partL: p.one.toLowerCase(), partGen: p.gen, partAcc: p.acc, parts: p.pl, partsL: p.pl.toLowerCase(), partShort: p.short,
+    part: /^объект$/i.test(p.one) ? '' : p.one, partL: /^объект$/i.test(p.one) ? '' : p.one.toLowerCase(), partGen: p.gen, partAcc: p.acc, parts: p.pl, partsL: p.pl.toLowerCase(), partShort: p.short,
     level: l.one, levelL: l.one.toLowerCase(), levelGen: l.gen, levelAcc: l.acc, levels: l.pl, levelsL: l.pl.toLowerCase(), levelShort: l.short,
     levelsDat: DAT_PL[l.pl] || l.pl.toLowerCase(), object: PROFILE.name || objName,
   };
@@ -55,7 +56,7 @@ function makeTerms() {
 
 /** Тип объекта: из листа «Проект» (Тип объекта), иначе по слову частей и виду уровней */
 function detectType(prj, parts) {
-  const numeric = parts.every((p) => (p.levels || []).every((l) => typeof l.key === 'number'));
+  const numeric = parts.some((p) => (p.levels || []).length) && parts.every((p) => (p.levels || []).every((l) => typeof l.key === 'number'));
   const t = String(prj.type || '').toLowerCase(), w = String(prj.part || '').toLowerCase();
   if (/пром|цех|склад|ангар|завод|произв/.test(t)) return 'industrial';
   if (/кварт|офис|помещ|ремонт|отдел|интерьер/.test(t)) return 'flat';
@@ -81,6 +82,7 @@ function setStructure(st) {
     PART_LEVELS = Object.fromEntries(SECTIONS.map((s) => [s, (st.partLevels && st.partLevels[s]) || FLOORS]));
   }
   WORKS = PROFILE.type === 'mkd' ? MKD_WORKS.slice() : (st.works || []);
+  BY_EXPENSES = !!st.byExpenses;
   makeTerms();
 }
 const STRUCT_KEY = 'stroyka.structure.v2';
@@ -96,7 +98,7 @@ export function configure(structure) {
   const parts = structure.sections.map((x) => ({ ...x, id: String(x.id) })).sort((a, b) => a.id.localeCompare(b.id, 'ru', { numeric: true }));
   const prj = structure.project || {};
   const type = detectType(prj, parts);
-  const st = { sections: parts.map((p) => p.id), profile: { type, name: prj.name || '', part: prj.part || 'Секция', level: prj.level || 'Этаж' } };
+  const st = { byExpenses: !!structure.byExpenses, sections: parts.map((p) => p.id), profile: { type, name: prj.name || '', part: prj.part || 'Секция', level: prj.level || 'Этаж' } };
   if (type === 'mkd') {
     st.layout = 'stack';
     st.top = Math.max(...parts.map((x) => Number(x.floors) || 0)) || 16;
@@ -106,7 +108,9 @@ export function configure(structure) {
     st.partLevels = {};
     for (const p of parts) {
       st.partLevels[p.id] = [];
-      for (const l of p.levels || []) {
+      // у части нет уровней (например, в таблице только расходы) — один уровень «весь объект», чтобы часть была на модели
+      const lv = (p.levels || []).length ? p.levels : [{ key: 'Весь объект', label: 'Весь объект' }];
+      for (const l of lv) {
         const k = String(l.key);
         if (!idx.has(k)) { idx.set(k, levels.length); levels.push({ key: l.key, label: String(l.label) }); }
         st.partLevels[p.id].push(idx.get(k));
@@ -115,7 +119,7 @@ export function configure(structure) {
     st.levels = levels;
   }
   let prev = null; try { prev = JSON.parse(localStorage.getItem(STRUCT_KEY) || 'null'); } catch { /* */ }
-  const sig = (x) => JSON.stringify([x.sections, x.layout, x.top || 0, x.profile, x.levels || [], x.partLevels || {}]);
+  const sig = (x) => JSON.stringify([x.sections, x.layout, x.top || 0, x.profile, x.levels || [], x.partLevels || {}, !!x.byExpenses]);
   const cur = prev || { sections: SECTIONS, layout: LAYOUT, top: LAYOUT === 'stack' ? TOP : 0, profile: PROFILE };
   const changed = sig(st) !== sig(cur);
   try { localStorage.setItem(STRUCT_KEY, JSON.stringify(st)); } catch { /* */ }

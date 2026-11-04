@@ -1,4 +1,4 @@
-import { Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText } from './data.js';
+import { Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, BY_EXPENSES, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText } from './data.js';
 import { BuildingScene } from './scene.js';
 import { UnitsScene } from './scene-units.js';
 
@@ -19,6 +19,7 @@ const state = {
   day: isoToday(),
   money: 'contract',
   expCat: 'all',
+  expPart: 'all',
   expQuery: '',
   expLimit: 40,
 };
@@ -44,7 +45,7 @@ function setObjName() {
   $('#objName').textContent = (o && o.name) || PROFILE.name || T.object || 'Объект';
 }
 const listParts = () => (SECTIONS.length > 1 ? `${T.partsL} ${SECTIONS.slice(0, -1).join(', ')} и ${SECTIONS[SECTIONS.length - 1]}` : `${T.partL} ${SECTIONS[0]}`);
-$('.sub').textContent = `${T.object} · ${listParts()} · ${LAYOUT === 'stack' ? TOP + ' этажей' : `${T.levels}: ${FLOORS.length}`}`;
+$('.sub').textContent = BY_EXPENSES ? `${SECTIONS.join(', ')} · учёт расходов` : `${T.object} · ${listParts()} · ${LAYOUT === 'stack' ? TOP + ' этажей' : `${T.levels}: ${FLOORS.length}`}`;
 document.title = `Стройка 3D — ${T.object}`;
 setObjName();
 // высота шапки — чтобы закреплённое 3D на телефоне вставало сразу под ней
@@ -177,12 +178,18 @@ function renderSummary() {
       ${[1, 2, 3].map((i) => `<button class="rthumb" data-r="${i}"><img src="assets/renders/render-${i}.jpg" alt="Проектная визуализация ${i}" loading="lazy"></button>`).join('')}
       <span class="rcap">Проект — как будет выглядеть</span>
     </div>`}
+    ${BY_EXPENSES && store.connected ? `<details class="fold obj-track"><summary>📐 Вести ход работ по объектам — добавить листы объёмов</summary>
+      <p class="muted small-note">Сейчас в таблице только расходы. Для каждого объекта (${esc(SECTIONS.join(', '))}) появится лист «Объект …»: помещения × виды работ, объём и выполнено по неделям. Расходы не меняются.</p>
+      <label>Помещения или зоны<input id="apLevels" value="Кухня, Санузел, Комната 1, Коридор"></label>
+      <button class="btn small" type="button" id="apGo">Добавить листы объёмов</button></details>` : ''}
     <div class="cards">
       ${SECTIONS.map((s) => `
         <div class="card">
           <div class="card-h">${T.part} ${s}</div>
-          <div class="big">${pct(store.sectionValue(s, 'avg'))}</div>
-          ${store.sectionValue(s, 'avg') == null ? `<p class="muted small-note">Объёмов пока нет: впишите «Общий объём» (столбец E) в лист «${esc(T.part)} ${esc(s)}»${store.obj ? ` — <a href="https://docs.google.com/spreadsheets/d/${esc(store.obj)}/edit" target="_blank" rel="noopener">открыть таблицу ↗</a>` : ''}.</p>` : ''}
+          <div class="big">${BY_EXPENSES ? rubShort(store.fin.expenses.filter((e) => e.section === s).reduce((a, e) => a + e.sum, 0)) : pct(store.sectionValue(s, 'avg'))}</div>
+          ${(() => { const sp = store.fin.expenses.filter((e) => e.section === s).reduce((a, e) => a + e.sum, 0); return sp && !BY_EXPENSES ? `<div class="row-bar"><span>Потрачено</span><span></span><b>${rubShort(sp)}</b></div>` : ''; })()}
+          ${store.sectionValue(s, 'avg') == null && store.extra.structure && store.extra.structure.byExpenses ? `<p class="muted small-note">потрачено · ${store.fin.expenses.filter((e) => e.section === s).length} опер.</p>` : ''}
+          ${store.sectionValue(s, 'avg') == null && !(store.extra.structure && store.extra.structure.byExpenses) ? `<p class="muted small-note">Объёмов пока нет: впишите «Общий объём» (столбец E) в лист «${esc(T.part)} ${esc(s)}»${store.obj ? ` — <a href="https://docs.google.com/spreadsheets/d/${esc(store.obj)}/edit" target="_blank" rel="noopener">открыть таблицу ↗</a>` : ''}.</p>` : ''}
           ${works.map((w) => { const v = store.sectionValue(s, w); return `<div class="row-bar"><span>${w}</span><div class="bar"><i style="width:${v || 0}%"></i></div><b>${pct(v)}</b></div>`; }).join('')}
         </div>`).join('')}
     </div>
@@ -211,6 +218,13 @@ function renderSummary() {
   `;
   el.querySelectorAll('.f-cell').forEach((b) => b.onclick = () => openFloor(b.dataset.s, +b.dataset.f));
   el.querySelectorAll('[data-r]').forEach((b) => b.onclick = () => { $('#renderImg').src = `assets/renders/render-${b.dataset.r}.jpg`; $('#renderDlg').showModal(); });
+  const ap = $('#apGo', el);
+  if (ap) ap.onclick = () => busy(ap, 'Добавляю…', async () => {
+    const levels = $('#apLevels', el).value.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
+    if (!(await ask([`Добавить листы объёмов: ${SECTIONS.map((x) => 'Объект ' + x).join(', ')}`, `Помещения: ${levels.join(', ')}`], `Таблица ${BOOK.G}. Существующие листы не изменятся.`))) throw new Error('Отменено');
+    const res = await store.post({ action: 'addParts', parts: SECTIONS, levels });
+    toast('✓ Добавлены листы: ' + (res.added || []).join(', ')); setTimeout(() => location.reload(), 800);
+  });
   el.querySelectorAll('[data-objdlg]').forEach((b) => b.onclick = () => openObjects(b.dataset.objdlg === 'new'));
   el.querySelectorAll('[data-floor]').forEach((b) => b.onclick = () => { const [sec, fl] = b.dataset.floor.split('|'); openFloor(sec, +fl, 'remarks'); });
   el.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => { state.money = 'contract'; setTab(b.dataset.goto); });
@@ -708,7 +722,11 @@ function renderMoney() {
     for (const e of fin.expenses) if (e.who) who[e.who] = (who[e.who] || 0) + e.sum;
     const top = Object.entries(who).sort((a, b) => b[1] - a[1]).slice(0, 8);
     const q = state.expQuery.toLowerCase();
+    const partsE = [...new Set(fin.expenses.map((e) => e.section).filter(Boolean))];
+    const byPart = {}; for (const e of fin.expenses) if (e.section) byPart[e.section] = (byPart[e.section] || 0) + e.sum;
+    const catsAll = [...new Set([...EXPENSE_CATS, ...fin.expenses.map((e) => e.cat)])];
     const list = fin.expenses
+      .filter((e) => state.expPart === 'all' || e.section === state.expPart)
       .filter((e) => state.expCat === 'all' || e.cat === state.expCat)
       .filter((e) => !q || `${e.who} ${e.note} ${e.basis}`.toLowerCase().includes(q))
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -719,6 +737,7 @@ function renderMoney() {
         <div><span>Операций</span><b>${count}</b></div>
         <div><span>Средний платёж</span><b>${rubShort(count ? total / count : 0)}</b></div>
       </div>
+      ${partsE.length > 1 ? `<h3>По объектам</h3>${bars(Object.entries(byPart).sort((a, b) => b[1] - a[1]).map(([p, v]) => [p, v, 'var(--green)', total ? Math.round((v / total) * 100) + '%' : '']), Math.max(...Object.values(byPart)))}` : ''}
       <h3>По категориям</h3>
       ${bars(Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([c, v]) => [c, v, CAT_COLORS[c], total ? Math.round((v / total) * 100) + '%' : '']), maxCat)}
       <h3>По месяцам ${fin.partial ? '<span class="muted">· пока только август</span>' : ''}</h3>
@@ -732,26 +751,28 @@ function renderMoney() {
         <form class="add" id="expForm">
           <div class="grid2">
             <label>Дата<input type="date" name="date" value="${isoToday()}" required></label>
-            <label>Категория<select name="cat">${EXPENSE_CATS.map((c) => `<option>${c}</option>`).join('')}</select></label>
+            <label>Категория<select name="cat">${catsAll.filter((c) => c !== 'Чеки').map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
           </div>
+          ${partsE.length || SECTIONS.length > 1 ? `<label>${esc(T.part)}<select name="section">${[...new Set([...partsE, ...SECTIONS])].map((p) => `<option ${p === (state.expPart !== 'all' ? state.expPart : '') ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>` : ''}
           <label>Контрагент<input name="who" list="whoList" required></label>
           <datalist id="whoList">${Object.keys(who).map((w) => `<option value="${esc(w)}">`).join('')}</datalist>
           <label>Основание<input name="basis" placeholder="Оплата по счету № … от …"></label>
           <label>Примечание<input name="note" placeholder="Арматура"></label>
           <label>Сумма, ₽<input name="sum" type="number" step="0.01" min="0" required></label>
-          <div class="form-actions"><button class="btn" type="submit">${state.expEdit ? 'Сохранить' : 'Записать'} ${store.connected ? 'в лист «Счета»' : 'на устройство'}</button>${state.expEdit ? '<button class="btn ghost" type="button" id="expCancel">Отмена</button>' : ''}</div>
+          <div class="form-actions"><button class="btn" type="submit">${state.expEdit ? 'Сохранить' : 'Записать'} ${store.connected ? 'в таблицу' : 'на устройство'}</button>${state.expEdit ? '<button class="btn ghost" type="button" id="expCancel">Отмена</button>' : ''}</div>
         </form>
       </details>
 
       <h3>Операции <span class="muted">· ${list.length} на ${rub(listSum)}</span></h3>
       <div class="filters">
         <input type="search" id="expQ" placeholder="Поиск: контрагент, примечание…" value="${esc(state.expQuery)}">
-        <div class="chips">${['all', ...EXPENSE_CATS].map((c) => `<button class="chip ${state.expCat === c ? 'on' : ''}" data-cat="${c}">${c === 'all' ? 'Все' : c}</button>`).join('')}</div>
+        ${partsE.length > 1 ? `<div class="chips">${['all', ...partsE].map((p) => `<button class="chip ${state.expPart === p ? 'on' : ''}" data-part="${esc(p)}">${p === 'all' ? 'Все объекты' : esc(p)}</button>`).join('')}</div>` : ''}
+        <div class="chips">${['all', ...catsAll.filter((c) => fin.expenses.some((e) => e.cat === c))].map((c) => `<button class="chip ${state.expCat === c ? 'on' : ''}" data-cat="${esc(c)}">${c === 'all' ? 'Все' : esc(c)}</button>`).join('')}</div>
       </div>
       <ul class="entries ops">${list.slice(0, state.expLimit).map((e) => `<li>
         <span class="cat-dot" style="--c:${CAT_COLORS[e.cat] || '#888'}"></span>
-        <div><b>${esc(e.note || e.basis || e.cat)}</b><div class="muted">${e.date ? (e.approx ? '≈ ' : '') + shortDate(e.date) + ' · ' : ''}${esc(e.who || '')}</div></div>
-        <b class="num">${rub(e.sum)}</b><button class="x ed" data-edx="${esc(e.id)}" aria-label="Изменить">✎</button>${e.local || e.app ? `<button class="x" data-delx="${esc(e.id)}" aria-label="Удалить">×</button>` : ''}</li>`).join('') || '<li class="muted">Ничего не найдено</li>'}</ul>
+        <div><b>${esc(e.note || e.basis || e.cat)}</b><div class="muted">${e.date ? (e.approx ? '≈ ' : '') + shortDate(e.date) + ' · ' : ''}${esc(e.who || '')}${partsE.length > 1 && e.section && state.expPart === 'all' ? ' · ' + esc(e.section) : ''}</div></div>
+        <b class="num">${rub(e.sum)}</b>${e.ro ? '' : `<button class="x ed" data-edx="${esc(e.id)}" aria-label="Изменить">✎</button>`}${e.local || e.app ? `<button class="x" data-delx="${esc(e.id)}" aria-label="Удалить">×</button>` : ''}</li>`).join('') || '<li class="muted">Ничего не найдено</li>'}</ul>
       ${list.length > state.expLimit ? `<button class="btn ghost more" id="expMore">Показать ещё ${Math.min(40, list.length - state.expLimit)}</button>` : ''}
       ${fin.partial ? '<p class="note">Итоги и категории посчитаны по всем 355 операциям листа «Счета». Список и график пока показывают только август: полный реестр загрузится, когда таблица будет подключена онлайн (кнопка «Таблица»).</p>' : ''}`;
   }
@@ -895,12 +916,13 @@ function renderMoney() {
   const sa = $('#supAdd', el); if (sa) sa.onclick = () => { setTab('calendar'); const t = document.querySelector('#addType [data-t="Материал"]'); if (t) t.click(); document.querySelector('#addForm')?.scrollIntoView({ behavior: 'smooth' }); };
   const f = $('#expForm', el);
   const ed = state.expEdit && store.fin.expenses.find((x) => x.id === state.expEdit);
-  if (f && ed) { f.date.value = ed.date || isoToday(); f.cat.value = ed.cat; f.who.value = ed.who || ''; f.basis.value = ed.basis || ''; f.note.value = ed.note || ''; f.sum.value = ed.sum; }
+  el.querySelectorAll('[data-part]').forEach((b) => b.onclick = () => { state.expPart = b.dataset.part; state.expLimit = 40; renderMoney(); });
+  if (f && ed) { if (f.section && ed.section) f.section.value = ed.section; f.date.value = ed.date || isoToday(); f.cat.value = ed.cat; f.who.value = ed.who || ''; f.basis.value = ed.basis || ''; f.note.value = ed.note || ''; f.sum.value = ed.sum; }
   if (f) f.onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(f);
-    const x = { date: fd.get('date'), cat: fd.get('cat'), who: fd.get('who'), basis: fd.get('basis'), note: fd.get('note'), sum: fd.get('sum') };
-    if (!(await ask([`${ed ? 'Исправить' : 'Добавить'} расход: ${x.date}, ${x.cat}, ${x.who}${x.note ? ', ' + x.note : ''} — ${rub(+x.sum || 0)}${ed ? ` (было ${rub(ed.sum)})` : ''}`], store.connected ? `Лист «${store.expSheet}»${ed && ed.row ? ', строка ' + ed.row : ''} таблицы ${BOOK.G}.` : ''))) return;
+    const x = { date: fd.get('date'), cat: fd.get('cat'), who: fd.get('who'), basis: fd.get('basis'), note: fd.get('note'), sum: fd.get('sum'), ...(fd.get('section') ? { section: fd.get('section') } : {}) };
+    if (!(await ask([`${ed ? 'Исправить' : 'Добавить'} расход: ${x.date}, ${x.cat}, ${x.who}${x.note ? ', ' + x.note : ''} — ${rub(+x.sum || 0)}${ed ? ` (было ${rub(ed.sum)})` : ''}`], store.connected ? `Лист «${(ed && ed.sheet) || x.section || store.expSheet}»${ed && ed.row ? ', строка ' + ed.row : ''} таблицы ${BOOK.G}.` : ''))) return;
     if (ed) store.updateExpense({ ...ed, ...x }); else store.addExpense(x);
     state.expEdit = null;
     renderMoney();

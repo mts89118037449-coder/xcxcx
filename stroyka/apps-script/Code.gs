@@ -104,6 +104,7 @@ function doPost(e) {
       case 'newObject': res = newObject_(body); break;
       case 'addObject': res = addObject_(body); break;
       case 'copyTemplate': res = copyTemplate_(body); break;
+      case 'addParts': res = addParts_(body); break;
       case 'removeObject': res = removeObject_(body); break;
       case 'updateExpense': res = updateExpense_(body.entry || {}, body.expect || {}); break;
       case 'deleteExpense': res = deleteExpense_(String(body.id)); break;
@@ -500,6 +501,12 @@ function structure_(vols) {
       parts.push({ id: x.id, levels: levels });
     });
   } catch (e) { /* таблица недоступна — по строкам объёмов */ }
+  let byExpenses = false;
+  if (!parts.length && MODE === 'book') {   // объёмов нет — части объекта по листам расходов («Раякоски», «Никель»…)
+    safe_(function () { return sheetRoles_().expenses; }).forEach(function (x) {
+      if (x.part && !parts.some(function (p) { return p.id === x.part; })) { parts.push({ id: x.part, levels: [] }); byExpenses = true; }
+    });
+  }
   if (!parts.length) {
     const by = {};
     (vols || []).forEach(function (v) { if (!by[v.section]) by[v.section] = { id: v.section, levels: [], seen: {} }; if (!by[v.section].seen[v.floor]) { by[v.section].seen[v.floor] = 1; by[v.section].levels.push({ key: v.floor, label: String(v.floor) }); } });
@@ -509,7 +516,10 @@ function structure_(vols) {
     const nums = p.levels.filter(function (l) { return typeof l.key === 'number' && l.key !== ROOF; }).map(function (l) { return l.key; });
     p.floors = nums.length ? Math.max.apply(null, nums) : 0;
   });
-  return { sections: parts, roofKey: ROOF, workMap: safe_(readWorkMap_), project: { type: prj.type || '', name: prj.name || '', part: prj.part || word || 'Секция', level: prj.level || levelWord || 'Этаж' } };
+  const title = MODE === 'book' ? safe_(function () { return ss_().getName(); }) : '';
+  const guess = /кварт|ремонт/i.test(title) ? 'Ремонт квартир' : /офис/i.test(title) ? 'Офис' : /цех|склад|завод|ангар/i.test(title) ? 'Промышленный' : '';
+  return { sections: parts, roofKey: ROOF, workMap: safe_(readWorkMap_), byExpenses: byExpenses,
+    project: { type: prj.type || guess, name: prj.name || (MODE === 'book' && typeof title === 'string' ? title.replace(/^Стройка\s*·\s*/, '').trim() : ''), part: prj.part || word || (byExpenses ? 'Объект' : 'Секция'), level: prj.level || levelWord || (byExpenses ? 'Помещение' : 'Этаж') } };
 }
 
 /** «VUP CORE»: Движение материалов */
@@ -608,10 +618,16 @@ function cellValue_(field, v) {
   if (NUM_FIELDS.test(field)) { const n = num_(v); if (isNaN(n)) throw new Error('Нужно число'); return n; }
   return String(v);
 }
+/** Шапки листов самостоятельного объекта — для создания при первой записи */
+const BOOK_SHEETS = {
+  'Замечания': ['№', 'Дата', 'Часть', 'Уровень', 'Замечание', 'Ответственный', 'Срок', 'Статус', 'Выполнено', 'Примечание'],
+  'Документы': ['Часть', 'Уровень', 'Вид работ', 'ИС', 'АОСР', 'Замечания по АОСР'],
+};
 function sheetFor_(b, s) {
   const id = BOOKS[b]; if (!id) throw new Error('Неизвестная таблица');
   if ((b !== 'G' || MODE === 'book') && !canEdit_(id)) throw new Error('Нет прав на запись в эту таблицу — нужен доступ «Редактор»');
-  const sh = SpreadsheetApp.openById(id).getSheetByName(s);
+  let sh = SpreadsheetApp.openById(id).getSheetByName(s);
+  if (!sh && MODE === 'book' && b === 'G' && BOOK_SHEETS[s]) { sh = ss_().insertSheet(s); headRow_(sh, BOOK_SHEETS[s]); }   // лист появится при первой записи
   if (!sh) throw new Error('Нет листа «' + s + '»');
   return sh;
 }
@@ -675,7 +691,15 @@ function same_(a, b) {
 
 function checks_() {
   const out = [];
-  try {
+  if (MODE === 'book') {   // итог листа расходов («Итоговая сумма=» рядом с числом) против суммы строк
+    const exp = safe_(readExpensesBook_);
+    sheetRoles_().expenses.forEach(function (x) {
+      if (x.total == null) return;
+      const app = exp.filter(function (e) { return e.sheet === x.name; }).reduce(function (a, e) { return a + e.sum; }, 0);
+      out.push({ name: '«' + x.name + '»: итог листа и сумма строк', table: x.total, app: Math.round(app * 100) / 100 });
+    });
+  }
+  if (MODE !== 'book') try {
     const sh = ss_().getSheetByName(SHEET_EXPENSES);
     const total = num_(sh.getRange('H1').getValue());
     const sum = readExpenses_().reduce(function (a, e) { return a + e.sum; }, 0);
@@ -711,6 +735,7 @@ function ddmmyy_(v) {
 // ---------------------------------------------------------------- финансы
 
 function readFin_() {
+  if (MODE === 'book') return { expenses: safe_(readExpensesBook_), advances: [], income: [], nominated: [], personal: safe_(readPersonalBook_), tools: [], contract: [] };
   return {
     expenses: safe_(readExpenses_), advances: safe_(readAdvances_), income: safe_(readIncome_), nominated: safe_(readNominated_),
     personal: safe_(readPersonal_), tools: safe_(readTools_), contract: safe_(readContract_),
@@ -821,6 +846,7 @@ function readNominated_() {
 
 /** Новый расход → следующая строка после последней заполненной суммы в «Счета» */
 function addExpense_(e) {
+  if (MODE === 'book') return addExpenseBook_(e);
   const sh = ss_().getSheetByName(SHEET_EXPENSES);
   if (!sh) throw new Error('Нет листа «' + SHEET_EXPENSES + '»');
   const sum = num_(e.sum);
@@ -851,6 +877,7 @@ function findExpenseRow_(sh, id) {
 }
 
 function updateExpense_(e, expect) {
+  if (MODE === 'book') return updateExpenseBook_(e, expect);
   const sh = ss_().getSheetByName(SHEET_EXPENSES);
   const row = findExpenseRow_(sh, e.id);
   if (!row) return addExpense_(e);
@@ -869,6 +896,7 @@ function updateExpense_(e, expect) {
 
 /** Удаляет только строки, добавленные из приложения */
 function deleteExpense_(id) {
+  if (MODE === 'book') return deleteExpenseBook_(id);
   const sh = ss_().getSheetByName(SHEET_EXPENSES);
   if (/^r\d+$/.test(id)) throw new Error('Строки, внесённые в таблице вручную, удаляйте в самой таблице');
   const row = findExpenseRow_(sh, id);
@@ -1223,7 +1251,8 @@ function buildBook_(book, tpl, name, parts, levels, works, onlyMissing) {
   jr.getRange('C2:C').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Люди', 'Материал'], true).build());
   }
   // Расходы — та же раскладка, что у «Счетов»: итог в H1, строки с 5-й
-  if (!has('Расходы')) {
+  const hasExp = onlyMissing && MODE === 'book' && safe_(function () { return sheetRoles_().expenses; }).length > 0;   // свои реестры расходов уже есть
+  if (!has('Расходы') && !hasExp) {
   const ex = make('Расходы');
   ex.getRange(1, 7, 1, 2).setValues([['Итоговая сумма=', '=SUM(H5:H)']]).setFontWeight('bold');
   ex.getRange(4, 1, 1, 8).setValues([['№', 'Дата счёта', 'Дата платежа', 'Категория', 'Контрагент', 'Основание', 'Назначение', 'Сумма']]).setFontWeight('bold').setBackground('#e3f3e8');
@@ -1302,7 +1331,9 @@ function addObject_(q) {
   const vols = safe_(readVolumes_);
   const levels = vols.length ? vols.map(function (v) { return String(v.floor === ROOF ? 'Кровля' : v.floor); }).filter(function (v, i, a) { return a.indexOf(v) === i; }) : (kind === 'mkd' ? ['1'] : ['Помещение 1']);
   const name = String(q.name || prj.name || book.getName().replace(/^Стройка\s*·\s*/, '')).trim().slice(0, 80);
-  const added = buildBook_(book, tpl, name, parts, levels, tpl.works, true);
+  // своя (не по шаблону) таблица — подключаем как есть, ничего не дописываем: нужные листы создадутся при первой записи
+  const looksTemplate = parts0.length > 0 || !!book.getSheetByName('Проект');
+  const added = looksTemplate ? buildBook_(book, tpl, name, parts, levels, tpl.works, true) : [];
   const list = registryBook_().getSheetByName(SHEET_OBJECTS);
   list.appendRow([name, book.getUrl(), prj.type || tpl.type, 'подключён ' + Utilities.formatDate(new Date(), tz_(), 'dd.MM.yyyy') + (added.length ? ' · добавлены листы: ' + added.join(', ') : '')]);
   SpreadsheetApp.flush();
@@ -1324,6 +1355,21 @@ function copyTemplate_(q) {
   SpreadsheetApp.flush();
   return { id: book.getId(), url: book.getUrl(), sheet: SHEET_OBJECTS, row: list.getLastRow(), check: { display: name } };
 }
+/** «Вести ход работ» для таблицы, где пока только расходы: лист объёмов на каждую часть («Объект Раякоски») по шаблону */
+function addParts_(q) {
+  const tpl = Object.assign({}, OBJECT_TEMPLATES[q.kind] || OBJECT_TEMPLATES.flat, { part: 'Объект' });
+  if (q.kind === 'mkd') tpl.level = 'Этаж';
+  const parts = (q.parts || []).map(String).filter(Boolean).slice(0, 40);
+  let levels = q.levels;
+  if (typeof levels === 'number' || /^\d+$/.test(String(levels))) { const n = Math.min(60, Number(levels)); levels = []; for (let i = 1; i <= n; i++) levels.push(String(i)); }
+  levels = (levels || []).map(String).map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 80);
+  if (!parts.length || !levels.length) throw new Error('Нужны объекты и помещения');
+  const added = buildBook_(ss_(), tpl, '', parts, levels, (q.works && q.works.length ? q.works : tpl.works), true);
+  const p = ss_().getSheetByName('Проект');
+  if (p && added.indexOf('Проект') >= 0) p.getRange(2, 2).setValue(ss_().getName());
+  SpreadsheetApp.flush();
+  return { added: added, sheet: added[0] || '', check: { display: added.join(', ') } };
+}
 /** Убрать объект из реестра (файл таблицы остаётся на Диске) */
 function removeObject_(q) {
   const id = sheetId_(q.id);
@@ -1333,3 +1379,166 @@ function removeObject_(q) {
   return { removed: 0 };
 }
 function columnLetter_(n) { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+
+// ---------------------------------------------------------------- самостоятельный объект: роли листов по шапке
+
+/** Роли листов таблицы объекта определяются по шапке, а не по названию:
+ *  реестр расходов — есть столбцы «Сумма» и «Контрагент»/«Категория» (лист = часть объекта: «Раякоски», «Корпус Б»);
+ *  сводный лист («Итоги», «Свод», «Всего») не учитывается повторно; «Личные…» — личные расходы; «Чеки» — мелкие чеки. */
+function sheetRoles_() {
+  if (sheetRoles_.c && sheetRoles_.c.id === CUR_V) return sheetRoles_.c;
+  const book = ss_();
+  const out = { id: CUR_V, expenses: [], personal: null, receipts: null };
+  const partNames = sectionSheets_(book).map(function (x) { return x.sheet.getName(); });
+  book.getSheets().forEach(function (sh) {
+    const n = sh.getName(), t = n.trim().toLowerCase();
+    if (partNames.indexOf(n) >= 0 || /^(журнал|замечания|документы|проект|разделы|прогресс|как заполнять|виды работ)$/.test(t)) return;
+    const lr = Math.min(sh.getLastRow(), 8), lc = Math.min(sh.getLastColumn(), 30);
+    if (lr < 1 || lc < 1) return;
+    const top = sh.getRange(1, 1, lr, lc).getDisplayValues();
+    if (/^личн/.test(t)) { const hi = headIndex_(top, /сумм/, /наимен|расход|плательщ/); if (hi >= 0) out.personal = { sheet: sh, name: n, headRow: hi + 1, cols: mapCols_(top[hi]) }; return; }
+    if (/^ч[её]к/.test(t)) { out.receipts = { sheet: sh, name: n }; return; }
+    const hi = headIndex_(top, /сумм/, /контраг|категор|кому|поставщ|получат/);
+    if (hi < 0) return;
+    out.expenses.push({ sheet: sh, name: n, headRow: hi + 1, cols: mapCols_(top[hi]), total: findTotal_(top), agg: /итог|свод|всего|общ/.test(t) });
+  });
+  if (out.expenses.some(function (x) { return !x.agg; })) out.expenses = out.expenses.filter(function (x) { return !x.agg; });
+  out.expenses.forEach(function (x) { x.part = /^(расходы|счета|счёта|оплаты|затраты|платежи)$/i.test(x.name.trim()) ? '' : x.name.trim(); });
+  sheetRoles_.c = out;
+  return out;
+}
+function headIndex_(rows, need, any) {
+  for (let i = 0; i < rows.length; i++) { const t = rows[i].join(' | ').toLowerCase(); if (need.test(t) && any.test(t)) return i; }
+  return -1;
+}
+/** Номера столбцов (с 0) по названиям в шапке */
+function mapCols_(h) {
+  const low = h.map(function (x) { return String(x).trim().toLowerCase(); });
+  const f = function (re) { for (let i = 0; i < low.length; i++) if (re.test(low[i])) return i; return -1; };
+  const pay = f(/дата\s*(плат|опл)/), any = f(/дата/);
+  return { num: f(/^№|^n$|^номер/), date: pay >= 0 ? pay : any, date2: f(/дата\s*сч/), cat: f(/категор|статья/), who: f(/контраг|кому|поставщ|получат|исполнит|плательщ/),
+    basis: f(/основан/), note: f(/примеч|назнач|описан/), name: f(/наимен/), sum: f(/сумм/), part: f(/^(объект|часть|секция|квартира|адрес)$/) };
+}
+/** «Итоговая сумма=» и число справа — итог листа (если есть) */
+function findTotal_(top) {
+  for (let i = 0; i < Math.min(top.length, 3); i++) for (let j = 0; j < top[i].length - 1; j++)
+    if (/итог/i.test(top[i][j])) for (let k = j + 1; k < top[i].length; k++) if (String(top[i][k]).trim()) return num_(top[i][k]);
+  return null;
+}
+function readExpensesBook_() {
+  const roles = sheetRoles_(), out = [];
+  roles.expenses.forEach(function (x) {
+    const sh = x.sheet, c = x.cols, first = x.headRow + 1, last = sh.getLastRow();
+    if (last < first || c.sum < 0) return;
+    const w = Math.max.apply(null, [c.sum, c.note, c.basis, c.who, c.cat, c.date, c.date2, c.part, 0]) + 1;
+    const disp = sh.getRange(first, 1, last - first + 1, w).getDisplayValues();
+    const raw = sh.getRange(first, c.sum + 1, last - first + 1, 1).getValues();
+    let prev = '';
+    disp.forEach(function (r, i) {
+      const sum = num_(raw[i][0]);
+      if (!sum) return;
+      const g = function (k) { return c[k] >= 0 ? String(r[c[k]] || '') : ''; };
+      const mark = g('note').match(/\[app:([\w-]+)\]/);
+      let date = pickDate_(g('date')) || pickDate_(g('date2')) || pickDate_(g('basis') + ' ' + g('note'));
+      const approx = !date && !!prev; if (!date) date = prev; prev = date || prev;
+      out.push({ id: mark ? mark[1] : x.name + '!r' + (i + first), app: !!mark, row: i + first, sheet: x.name, section: g('part') || x.part, n: g('num'), date: date, approx: approx,
+        cat: g('cat').trim() || 'Прочее', who: g('who').trim(), basis: g('basis').replace(/\s+/g, ' ').slice(0, 160), note: g('note').replace(/\s*\[app:[\w-]+\]/, '').replace(/\s+/g, ' ').slice(0, 120), sum: sum });
+    });
+  });
+  if (roles.receipts) {   // «Чеки»: A — что, B — сумма, C — примечание; без дат, только просмотр
+    const sh = roles.receipts.sheet, n = sh.getLastRow();
+    if (n >= 1) sh.getRange(1, 1, n, 3).getDisplayValues().forEach(function (r, i) {
+      const sum = num_(r[1]);
+      if (!sum || !String(r[0]).trim()) return;
+      out.push({ id: roles.receipts.name + '!r' + (i + 1), row: i + 1, sheet: roles.receipts.name, section: '', date: '', approx: false, cat: 'Чеки', who: '', basis: String(r[2] || ''), note: String(r[0]).trim(), sum: sum, ro: true });
+    });
+  }
+  return out;
+}
+function readPersonalBook_() {
+  const p = sheetRoles_().personal;
+  if (!p) return [];
+  const sh = p.sheet, c = p.cols, first = p.headRow + 1, last = sh.getLastRow();
+  if (last < first) return [];
+  let prev = '';
+  return sh.getRange(first, 1, last - first + 1, Math.max(5, c.sum + 1)).getDisplayValues().map(function (r, i) {
+    const sum = c.sum >= 0 ? num_(r[c.sum]) : 0;
+    if (!sum) return null;
+    const d = pickDate_(r[c.date] || ''); const approx = !d && !!prev; const date = d || prev; prev = date;
+    return { row: i + first, sheet: p.name, date: date, approx: approx, name: String(c.name >= 0 ? r[c.name] : r[1]).trim(), sum: sum, who: c.who >= 0 ? String(r[c.who]).trim() : '', note: c.note >= 0 ? String(r[c.note]).trim() : '' };
+  }).filter(Boolean);
+}
+/** Лист расходов для записи: лист нужной части, иначе первый реестр, иначе новый «Расходы» по шаблону */
+function expTarget_(section) {
+  const roles = sheetRoles_();
+  let x = roles.expenses.filter(function (e) { return section && e.part === section; })[0] || roles.expenses[0];
+  if (!x) {
+    const sh = ss_().insertSheet('Расходы');
+    sh.getRange(1, 7, 1, 2).setValues([['Итоговая сумма=', '=SUM(H5:H)']]).setFontWeight('bold');
+    sh.getRange(4, 1, 1, 8).setValues([['№', 'Дата счёта', 'Дата платежа', 'Категория', 'Контрагент', 'Основание', 'Назначение', 'Сумма']]).setFontWeight('bold').setBackground('#e3f3e8');
+    sheetRoles_.c = null;
+    x = sheetRoles_().expenses.filter(function (e) { return e.name === 'Расходы'; })[0];
+  }
+  return x;
+}
+function expRowValues_(x, cur, e, mark) {
+  const c = x.cols, line = cur.slice();
+  const p = String(e.date || '').split('-').map(Number);
+  const set = function (k, v) { if (c[k] >= 0) line[c[k]] = v; };
+  if (p.length === 3) set('date', new Date(p[0], p[1] - 1, p[2]));
+  set('cat', String(e.cat || 'Прочее')); set('who', String(e.who || '')); set('basis', String(e.basis || ''));
+  if (c.note >= 0) line[c.note] = String(e.note || '') + (mark ? ' ' + mark : '');
+  else if (c.basis >= 0 && mark) line[c.basis] = String(e.basis || '') + ' ' + mark;
+  set('sum', num_(e.sum));
+  return line;
+}
+function addExpenseBook_(e) {
+  const sum = num_(e.sum);
+  if (!sum) throw new Error('Нет суммы');
+  const x = expTarget_(e.section), sh = x.sheet, c = x.cols;
+  const w = Math.max(c.sum, c.note, c.basis, c.who, c.cat, c.date, 0) + 1;
+  const first = x.headRow + 1, last = Math.max(sh.getLastRow(), x.headRow);
+  let row = first, maxN = 0;
+  if (last >= first) {
+    const sums = sh.getRange(first, c.sum + 1, last - first + 1, 1).getValues();
+    sums.forEach(function (v, i) { if (num_(v[0])) row = first + i + 1; });
+    if (c.num >= 0) sh.getRange(first, c.num + 1, last - first + 1, 1).getValues().forEach(function (v) { const k = parseInt(v[0], 10); if (k > maxN) maxN = k; });
+  }
+  const line = expRowValues_(x, new Array(w).fill(''), e, '[app:' + String(e.id || Utilities.getUuid().slice(0, 8)) + ']');
+  if (c.num >= 0) line[c.num] = maxN + 1;
+  sh.getRange(row, 1, 1, w).setValues([line]);
+  if (c.date >= 0) sh.getRange(row, c.date + 1).setNumberFormat('dd.MM.yyyy');
+  SpreadsheetApp.flush();
+  return { sheet: x.name, row: row, check: { sum: num_(sh.getRange(row, c.sum + 1).getValue()) } };
+}
+function findExpenseBook_(id) {
+  const roles = sheetRoles_();
+  const m = String(id).match(/^(.+)!r(\d+)$/);
+  if (m) { const x = roles.expenses.filter(function (e) { return e.name === m[1]; })[0]; return x ? { x: x, row: Number(m[2]), manual: true } : null; }
+  for (let k = 0; k < roles.expenses.length; k++) {
+    const x = roles.expenses[k], col = x.cols.note >= 0 ? x.cols.note : x.cols.basis, first = x.headRow + 1, last = x.sheet.getLastRow();
+    if (col < 0 || last < first) continue;
+    const v = x.sheet.getRange(first, col + 1, last - first + 1, 1).getValues();
+    for (let i = 0; i < v.length; i++) if (String(v[i][0]).indexOf('[app:' + id + ']') >= 0) return { x: x, row: first + i, manual: false };
+  }
+  return null;
+}
+function updateExpenseBook_(e, expect) {
+  const f = findExpenseBook_(e.id);
+  if (!f) return addExpenseBook_(e);
+  const x = f.x, sh = x.sheet, c = x.cols, w = Math.max(c.sum, c.note, c.basis, c.who, c.cat, c.date, 0) + 1;
+  const cur = sh.getRange(f.row, 1, 1, w).getValues()[0];
+  if (f.manual && expect && expect.sum != null && Math.abs(num_(cur[c.sum]) - Number(expect.sum)) > 0.009) throw new Error('Строка ' + f.row + ' в «' + x.name + '» изменилась в таблице — обновите приложение и повторите');
+  const noteCol = c.note >= 0 ? c.note : c.basis;
+  const mark = noteCol >= 0 ? (String(cur[noteCol]).match(/\[app:[\w-]+\]/) || [''])[0] : '';
+  sh.getRange(f.row, 1, 1, w).setValues([expRowValues_(x, cur, e, mark)]);
+  if (c.date >= 0 && e.date) sh.getRange(f.row, c.date + 1).setNumberFormat('dd.MM.yyyy');
+  SpreadsheetApp.flush();
+  return { sheet: x.name, row: f.row, check: { sum: num_(sh.getRange(f.row, c.sum + 1).getValue()) } };
+}
+function deleteExpenseBook_(id) {
+  if (/!r\d+$/.test(id)) throw new Error('Строки, внесённые в таблице вручную, удаляйте в самой таблице');
+  const f = findExpenseBook_(id);
+  if (f) f.x.sheet.deleteRow(f.row);
+  return { deleted: f ? 1 : 0, sheet: f ? f.x.name : '', row: f ? f.row : 0 };
+}
