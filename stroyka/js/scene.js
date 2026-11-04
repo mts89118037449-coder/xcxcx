@@ -676,7 +676,7 @@ export class BuildingScene {
       tag.title = 'Показать секцию';
       tag.addEventListener('click', (e) => { e.stopPropagation(); this.focusSection(s); this.onSection && this.onSection(s); });
       const obj = new CSS2DObject(tag);
-      obj.position.set(0, ROOF * H + ROOF_H + 7, 0);
+      obj.position.set(0, ROOF * H + ROOF_H + 7 + (SECTIONS.indexOf(s) % 2) * 6, 0);   // соседние подписи не накладываются
       sec.add(obj);
       this[`tag${s}`] = tag;
       this[`roof${s}`] = roofKit;

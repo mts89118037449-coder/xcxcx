@@ -101,7 +101,7 @@ $('#timeMode').onclick = (e) => {
 setInterval(() => { if (scene.timeMode === 'now') { scene.setTime('now'); updateViewLabel(); } }, 10 * 60 * 1000);
 // подсказка «нажмите на этаж» — пока человек ни разу не открыл этаж
 let tapped = false; try { tapped = !!localStorage.getItem('stroyka.tapped'); } catch { /* */ }
-if (!tapped) $('#hintTap').hidden = false;
+if (!tapped) { $('#hintTap').hidden = false; setTimeout(() => { $('#hintTap').hidden = true; }, 7000); }
 function renderLegend(v) {
   const shell = LAYOUT === 'stack' ? 'каркас, не начато' : 'не начато';
   const L = {
@@ -129,6 +129,8 @@ function setTab(t) {
   for (const el of document.querySelectorAll('.tab')) el.hidden = el.id !== `tab-${t}`;
   if (t === 'floor') scene.select(state.section, state.floor); else scene.select(null);
   render();
+  // вкладка всегда открывается с начала: на телефоне — сразу под 3D, на компьютере — верх панели
+  if (mobile.matches) scrollTo({ top: 0, behavior: 'instant' }); else { const el = $('#tab-' + t); if (el) el.scrollTop = 0; }
 }
 $('.tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); };
 
@@ -423,7 +425,8 @@ function remarkHtml(r, links = false) {
 function ev(display, spec) {
   if (!spec.r) return display;
   const can = store.canEditBook(spec.b);
-  return `<button type="button" class="ev ${can ? '' : 'ro'}" data-edit="${esc(JSON.stringify(spec))}" title="${can ? 'Изменить в таблице' : 'Только просмотр'}">${display}<i aria-hidden="true">${can ? '✎' : '🔒'}</i></button>`;
+  if (!can) return `<span class="ro-v">${display}</span>`;   // нельзя менять — просто значение, без значков
+  return `<button type="button" class="ev" data-edit="${esc(JSON.stringify(spec))}" title="Изменить в таблице">${display}<i aria-hidden="true">✎</i></button>`;
 }
 function editDialog(title, fields, where) {
   const dlg = $('#editDlg');
@@ -640,7 +643,7 @@ function renderStock() {
     </tbody></table></div>
     <p class="muted small-note">Паллеты, по листу «Движение материалов» (VUP CORE). Отрицательный остаток — подачу записали, а поступление нет: стоит сверить.</p>` : '<p class="muted">Нет движений материала.</p>'}
     ${inv.length ? `<h3>Инвентаризация склада</h3><ul class="totals">${inv.map((x) => `<li><span>${esc(x.material)} <em class="muted">${x.date ? shortDate(x.date) : ''}</em></span><b class="num">${fmtN(x.qty)} ${esc(x.unit)}</b></li>`).join('')}</ul>` : ''}
-    <div class="add-row"><button class="btn" data-add="move-in">+ Материал приехал</button><button class="btn ghost" data-add="move-feed">+ Подача: ${T.levelL}</button></div>
+    <div class="add-row"><button class="btn" data-add="move-in">+ Материал приехал</button><button class="btn ghost" data-add="move-feed">+ Подача ${LAYOUT === 'stack' ? 'на этаж' : 'в ' + T.levelAcc}</button></div>
     ${dis.length ? `<h3>Расхождения <span class="muted">· требуют сверки</span></h3><ul class="remarks">${dis.map((d) => `<li class="late"><div><b>${T.part} ${esc(d.section)}, ${d.floor} эт. · ${esc(d.material)}</b><div class="muted">План ${fmtN(d.plan)}, учтено ${fmtN(d.fact)} — не хватает ${fmtN(d.diff)} пал.</div></div><div class="r-meta"><span>${ev(esc(d.status), { b: 'U', s: 'Стройка · контроль расхождений', r: d.row, f: 'status', raw: d.status, expect: d.status, type: 'text', label: `Расхождение ${d.material}, ${d.floor} эт.: статус`, options: ['Требуется сверка', 'Сверено', 'Исправлено'], prop: 'status', list: 'extra.discrepancies' })}</span></div></li>`).join('')}</ul>` : ''}
     ${floors.length ? `<h3>План подачи · по ${T.levelsDat}</h3>${floors.map((k) => { const [sec, fl] = k.split('|'); const rows = byFloor[k]; return `<div class="planbox"><div class="planh"><b>${T.part} ${sec} · ${fl} этаж</b>${store.floorStatusOf(sec, +fl).map((x) => `<span class="chip-ok">${esc(x.status)}</span>`).join('')}</div>
       <table class="voltab"><tbody>${rows.map((p) => `<tr><td>${esc(p.key)}</td><td>план ${ev(fmtN(p.pallets), { b: 'U', s: 'Стройка · план', r: p.row, f: 'pallets', raw: p.pallets, expect: p.pallets, type: 'number', label: `План ${p.key}, ${p.zone}: паллет`, prop: 'pallets', list: 'extra.plan' })}</td><td>подано ${fmtN(p.fed)}</td><td><b class="${p.fed < p.pallets ? 'neg' : 'okc'}">${p.fed >= p.pallets ? '✓' : '−' + fmtN(p.pallets - p.fed)}</b></td></tr>`).join('')}</tbody></table></div>`; }).join('')}` : ''}
@@ -819,7 +822,7 @@ function renderMoney() {
       <h3>Баланс</h3>
       ${bars([['Поступления + авансы', got + adv, 'var(--green)'], ['Расходы (лист «Счета»)', spent, 'var(--red)']], Math.max(got + adv, spent))}
       <p class="muted small-note">Разница: <b>${rub(got + adv - spent)}</b>. Авансы за номинированный материал Глоракс платит поставщикам напрямую.</p>
-      <h3>Счета Глоракс <span class="muted">· лист «Оплаты Глоракс»</span></h3>
+      <h3>Счета заказчику</h3>
       <ul class="entries ops">${inc.map((x) => { const sp = (f, raw, type, lbl, extra = {}) => ({ b: 'G', s: 'Оплаты Глоракс', r: x.row, f, raw, expect: raw, type, label: `Счёт Глоракс «${x.note || ''}»: ${lbl}`, prop: f, list: 'fin.income', ...extra }); return `<li><span class="cat-dot" style="--c:${/^оплачено/i.test(x.status) ? 'var(--green)' : 'var(--amber)'}"></span><div><b>${esc(x.note || 'Счёт')}</b><div class="muted">${x.date ? shortDate(x.date) + ' · ' : ''}${ev(esc(x.status), sp('status', x.status, 'text', 'статус', { options: ['Оплачено', 'Не оплачено'] }))}</div></div><b class="num">${ev(rub(x.sum), sp('sum', x.sum, 'number', 'сумма, ₽'))}</b></li>`; }).join('') || '<li class="muted">Нет счетов</li>'}</ul>`;
   }
 
@@ -841,12 +844,12 @@ function renderMoney() {
         <div><span>Остаток работ</span><b>${rubShort((D || 0) - (E || 0))}</b></div>
       </div>
       <h3>Выполнение</h3>
-      <div class="hbar"><span>По деньгам (E / D)</span><div class="bar"><i style="width:${pct}%"></i></div><b>${Math.round(pct)}%</b></div>
-      <div class="hbar"><span>По объёмам работ (${T.levelsL})</span><div class="bar"><i style="width:${phys}%;background:var(--blue)"></i></div><b>${Math.round(phys)}%</b></div>
-      <div class="hbar"><span>Расходы к выполненному</span><div class="bar"><i style="width:${E ? Math.min(100, spent / E * 100) : 0}%;background:var(--amber)"></i></div><b>${E ? Math.round(spent / E * 100) : 0}%</b></div>
-      <h3>Формула оплаты Глоракс</h3>
-      <ul class="totals">${fin.contract.map((c) => `<li><span>${esc(c.label.replace(/^[A-ZА-ЯЁ]\s*-\s*/, ''))}</span><b class="num">${c.formula ? `${rub(c.value)} <em class="muted" title="Считается формулой в таблице">ƒ</em>` : ev(rub(c.value), { b: 'G', s: 'Формула оплаты Глоракс ', r: c.row, f: 'value', raw: c.value, expect: c.value, type: 'number', label: c.label.trim(), prop: 'value', list: 'fin.contract' })}</b></li>`).join('')}</ul>
-      <p class="muted small-note">ƒ — значение считает формула таблицы, оно пересчитается само.</p>
+      <div class="hbar"><span>Оплачено по договору</span><div class="bar"><i style="width:${pct}%"></i></div><b>${Math.round(pct)}%</b></div>
+      <div class="hbar"><span>Выполнено работ</span><div class="bar"><i style="width:${phys}%;background:var(--blue)"></i></div><b>${Math.round(phys)}%</b></div>
+      <div class="hbar"><span>Потрачено от выполненного</span><div class="bar"><i style="width:${E ? Math.min(100, spent / E * 100) : 0}%;background:var(--amber)"></i></div><b>${E ? Math.round(spent / E * 100) : 0}%</b></div>
+      <h3>Договор: расчёт оплаты</h3>
+      <ul class="totals">${fin.contract.map((c) => `<li><span>${esc(c.label.replace(/^[A-ZА-ЯЁ]\s*-\s*/, ''))}</span><b class="num">${c.formula ? `${rub(c.value)}` : ev(rub(c.value), { b: 'G', s: 'Формула оплаты Глоракс ', r: c.row, f: 'value', raw: c.value, expect: c.value, type: 'number', label: c.label.trim(), prop: 'value', list: 'fin.contract' })}</b></li>`).join('')}</ul>
+
       <p class="muted small-note">Лист «Формула оплаты Глоракс». Расходы — лист «Счета»: ${rub(spent)}.</p>` : '<p class="muted">Лист «Формула оплаты Глоракс» не найден.</p>';
   }
 
@@ -959,6 +962,7 @@ addEventListener('scroll', () => {
   const dy = scrollY - lastY; lastY = scrollY;
   if (mobile.matches && !document.body.classList.contains('touring')) scene.orbitBy(dy * 0.002);
 }, { passive: true });
+$('#btnLegend').onclick = () => document.body.classList.toggle('legend-on');
 $('#btnExpand').onclick = () => { document.body.classList.toggle('stage-big'); setTimeout(() => scene.resize(), 320); };
 
 function shortDate(iso) { const [, m, d] = iso.split('-').map(Number); return `${d} ${MONTHS_GEN[m - 1]}`; }

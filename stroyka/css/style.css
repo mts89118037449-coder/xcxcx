@@ -518,11 +518,23 @@ details.fold > summary::before { content: '› '; display: inline-block; transit
 details.fold[open] > summary::before { transform: rotate(90deg); }
 details.fold > ul { margin-bottom: 12px; }
 @media (max-width: 900px) {
-  .top { position: sticky; top: 0; z-index: 7; background: var(--panel); }
+  html, body { height: auto; min-height: 100%; }
+  .top { position: fixed; top: 0; left: 0; right: 0; z-index: 30; background: var(--panel); border-bottom: 1px solid var(--line); }
+  body { padding-top: var(--toph, 52px); }
   .stage { top: var(--toph, 52px); }
   .obj-pick { flex: 1; }
   .brand { flex: 1; }
 }
 @media (max-width: 600px) {
   #status { max-width: 28px; padding-left: 8px; padding-right: 8px; color: transparent; }   /* на телефоне — только цветная точка; подробности по нажатию */
+}
+
+/* значения только для просмотра — обычный текст, без значков */
+.ro-v { font-variant-numeric: tabular-nums; }
+/* легенда на телефоне — по кнопке ⓘ */
+.btn-legend { display: none; }
+@media (max-width: 900px) {
+  .btn-legend { display: inline-block; }
+  .legend { display: none; }
+  body.legend-on .legend { display: flex; }
 }
