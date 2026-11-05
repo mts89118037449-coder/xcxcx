@@ -1484,7 +1484,10 @@ function renderStatus() {
   }
   el.textContent = t;
   el.className = 'pill ' + cls;
-  el.title = store.syncError || store.error || (store.loadedAt ? 'Данные из таблицы загружены в ' + store.loadedAt.toLocaleTimeString('ru-RU') + '. Проверка изменений каждые 10 с.' : '');
+  const staleInfo = store.status === 'ok' && store.stale ? `Google недоступен${store.staleWhy ? ': ' + store.staleWhy : ''}. Показана копия с сервера${store.stale !== 'да' ? ' от ' + new Date(store.stale).toLocaleString('ru-RU') : ''}; правки встают в очередь.` : '';
+  el.onclick = staleInfo ? () => toast(staleInfo, true) : null;
+  el.style.cursor = staleInfo ? 'pointer' : '';
+  el.title = staleInfo || store.syncError || store.error || (store.loadedAt ? 'Данные из таблицы загружены в ' + store.loadedAt.toLocaleTimeString('ru-RU') + '. Проверка изменений каждые 10 с.' : '');
 }
 
 $('#btnReload').onclick = () => store.load();

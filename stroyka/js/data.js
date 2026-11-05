@@ -506,6 +506,7 @@ export class Store {
           if (ch.length) { this.addLog({ dir: 'in', status: 'ok', text: 'Из таблиц: ' + ch.join('; ') }); this.emit({ type: 'incoming', text: ch.join('; ') }); }
         }
         this.stale = data.stale ? (data.staleAt || 'да') : null;
+        this.staleWhy = data.stale ? data.staleWhy || '' : '';
         this.cacheSave(data);
         this.version = data.v || this.version;
         for (const op of this.queue) if ((op.obj || '') === (this.obj || '')) this.applyLocal(op); // неотправленные правки не теряются

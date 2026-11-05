@@ -198,11 +198,28 @@ async function googleFetch(params, body) {
   const u = new URL(GOOGLE);
   for (const [k, v] of Object.entries(params || {})) u.searchParams.set(k, v);
   if (GOOGLE_TOKEN && !body) u.searchParams.set('token', GOOGLE_TOKEN);
-  const ctl = AbortSignal.timeout(30000);
-  const r = await fetch(u, body ? { method: 'POST', body: JSON.stringify({ ...body, token: GOOGLE_TOKEN || body.token }), signal: ctl, redirect: 'follow' } : { signal: ctl, redirect: 'follow' });
-  const data = await r.json();
+  const ctl = AbortSignal.timeout(Number(process.env.GOOGLE_TIMEOUT_MS) || 120000);   // полное чтение всех таблиц бывает долгим
+  let r, text;
+  try {
+    r = await fetch(u, body ? { method: 'POST', body: JSON.stringify({ ...body, token: GOOGLE_TOKEN || body.token }), signal: ctl, redirect: 'follow' } : { signal: ctl, redirect: 'follow' });
+    text = await r.text();
+  } catch (e) {
+    throw noteGoogle(new Error(/abort|timeout/i.test(String(e && (e.name + e.message))) ? 'Google не ответил за отведённое время' : 'нет связи с Google: ' + (e.message || e)));
+  }
+  let data;
+  try { data = JSON.parse(text); } catch {
+    // вместо JSON пришла страница: скрипт просит разрешение, упал или удалён
+    const t = String(text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const why = /authoriz|разреш|permission|доступ/i.test(t) ? 'скрипт таблицы ждёт «Разрешить» — запустите connect-google.sh и откройте ссылку из него'
+      : /not found|не найден|404/i.test(t) || r.status === 404 ? 'скрипт таблицы не найден (ссылка устарела) — запустите connect-google.sh'
+      : `ответ Google не JSON (HTTP ${r.status}): ${t.slice(0, 200)}`;
+    throw noteGoogle(new Error(why));
+  }
+  if (data && data.ok === false && data.error) noteGoogle(new Error('скрипт таблицы: ' + data.error)); else googleError = null;
   return data;
 }
+let googleError = null;   // последняя причина, почему Google недоступен (видно в приложении и в журнале)
+function noteGoogle(e) { googleError = { message: e.message, at: new Date().toISOString() }; log('Google:', e.message); return e; }
 let mirrorAt = null;
 async function mirror() {
   if (!GOOGLE) return null;
@@ -313,7 +330,7 @@ async function handleApi(req, res, url) {
           // копии таблицы ещё нет (скрипт ждёт «Разрешить») — отдаём снимок из db.json
           const obj = /^[\w-]{20,80}$/.test(p.obj || '') ? p.obj : '';
           const m = readJson(mirrorFile(obj), null) || { ...db, ok: true };
-          return send(res, 200, p.action === 'version' ? { ok: true, v: m.v } : (fin ? (x) => x : stripFin)({ ...m, ok: true, stale: true, staleAt: mirrorAt && mirrorAt.toISOString() }));
+          return send(res, 200, p.action === 'version' ? { ok: true, v: m.v } : (fin ? (x) => x : stripFin)({ ...m, ok: true, stale: true, staleAt: mirrorAt && mirrorAt.toISOString(), staleWhy: googleError ? googleError.message : '' }));
         }
       }
       if (p.action === 'version') return send(res, 200, { ok: true, v: db.v });
@@ -353,7 +370,7 @@ async function handleApi(req, res, url) {
           if (out.ok) mirror(); // копия на сервере сразу включает свежую правку
           return send(res, 200, out);
         }
-        catch { return send(res, 502, { ok: false, error: 'Google недоступен — правка останется в очереди на устройстве' }); }
+        catch (e) { return send(res, 502, { ok: false, error: `Google недоступен (${e.message}) — правка останется в очереди на устройстве` }); }
       }
       const out = apply(body);
       changed();
