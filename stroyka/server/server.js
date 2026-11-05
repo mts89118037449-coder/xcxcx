@@ -275,6 +275,7 @@ function stripFin(d) {
     out.extra = { ...d.extra, volumes: d.extra.volumes.map((v) => ({ ...v, cost: max ? Math.round(((v.cost || 0) / max) * 1000) / 1000 : 0, rate: 0, money: 0 })) };
   }
   if (out.extra && Array.isArray(out.extra.gpr)) out.extra = { ...out.extra, gpr: out.extra.gpr.map((g) => ({ ...g, cost: 0 })) };
+  if (out.extra && Array.isArray(out.extra.materials)) out.extra = { ...out.extra, materials: out.extra.materials.map((m) => ({ ...m, price: 0 })) };
   if (out.extra && out.extra.handbook) out.extra = { ...out.extra, handbook: { ...out.extra.handbook, contractors: (out.extra.handbook.contractors || []).map((c) => ({ ...c, rates: {} })) } };
   return out;
 }

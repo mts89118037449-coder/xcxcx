@@ -579,3 +579,6 @@ body.worker [data-csv="expenses"] { display: none; }
 .fab-menu button:hover { background: var(--panel-2); }
 .fab-menu i { font-style: normal; width: 22px; text-align: center; }
 @media (max-width: 900px) { .fab { bottom: calc(76px + env(safe-area-inset-bottom)); right: 14px; } .fab-menu { bottom: calc(140px + env(safe-area-inset-bottom)); right: 14px; } body.sheet-open .fab { display: none; } }
+/* аналитика: прирост по неделям */
+.spark { display: flex; align-items: flex-end; gap: 3px; height: 36px; margin: 6px 0 4px; }
+.spark i { flex: 1; background: var(--green); border-radius: 2px 2px 0 0; min-height: 2px; opacity: .85; }

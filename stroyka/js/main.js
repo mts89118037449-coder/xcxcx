@@ -1,4 +1,4 @@
-import { dayDiff, Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, BY_EXPENSES, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText } from './data.js';
+import { dayDiff, addDays, Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, BY_EXPENSES, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText } from './data.js';
 import { BuildingScene } from './scene.js';
 import { UnitsScene } from './scene-units.js';
 
@@ -207,6 +207,7 @@ function renderSummary() {
     ['tasks', 'Поручения', ordersOpen.length + open.length ? `<em class="${lateN ? 'cnt bad' : 'cnt'}">${ordersOpen.length + open.length}</em>` : ''],
     ...(sched.length ? [['plan', 'График', lag ? `<em class="${lag > 14 ? 'cnt bad' : 'cnt'}">−${lag} дн</em>` : '']] : []),
     ['people', 'Люди', ppl.total ? `<em class="cnt">${ppl.total}</em>` : ''],
+    ['stats', 'Аналитика', ''],
     ['floors', T.levels, ''],
     ['data', 'Сверка', (store.checks || []).some((c) => !c.ok) ? '<em class="cnt bad">!</em>' : ''],
   ];
@@ -242,6 +243,7 @@ function renderSummary() {
     </ul>
 `,
     plan: `${gprBlock()}`,
+    stats: analyticsBlock(),
     people: `${peopleBlock(ppl)}${brigadeBlock()}`,
     floors: `    <h3>По ${T.levelsDat} <span class="muted">· ${state.metric === 'avg' ? 'все работы' : state.metric.toLowerCase()}</span></h3>
     <div class="facade" role="grid">
@@ -281,6 +283,143 @@ function renderSummary() {
   el.querySelectorAll('[data-floor]').forEach((b) => b.onclick = () => { const [sec, fl] = b.dataset.floor.split('|'); openFloor(sec, +fl, 'remarks'); });
   el.querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => { state.money = 'contract'; setTab(b.dataset.goto); });
 }
+
+// ---------- Аналитика: день, темп и прогноз, выработка, материалы, деньги ----------
+const r1 = (n) => Math.round(n * 10) / 10;
+const dLate = (n) => n > 0 ? `<span class="err-t">+${n} дн</span>` : n < 0 ? `<span class="okc">${n} дн</span>` : 'в срок';
+function todayBlock() {
+  const today = isoToday();
+  const mv = store.extra.moves.filter((m) => m.date === today);
+  const inP = mv.filter((m) => !/подач/i.test(m.type || '')).reduce((a, m) => a + (m.pallets || 0), 0);
+  const feedP = mv.filter((m) => /подач/i.test(m.type || '')).reduce((a, m) => a + (m.pallets || 0), 0);
+  const orders = (store.extra.orders || []).filter((o) => store.isOpenOrder(o));
+  const rem = store.remarks.filter((r) => store.isOpenRemark(r));
+  const late = orders.filter((o) => o.due && o.due < today).length + rem.filter((r) => ruToIso(r.due) && ruToIso(r.due) < today).length;
+  const dueToday = orders.filter((o) => o.due === today).length + rem.filter((r) => ruToIso(r.due) === today).length;
+  const ppl = store.peopleOn(today);
+  const kv = (k, v) => `<div class="row-kv"><span>${k}</span><b>${v}</b></div>`;
+  return `<h3>Сегодня, ${shortDate(today)}</h3><div class="gpr-card ${late ? 'warn' : ''}">
+    ${kv('Людей на объекте', ppl ? `${ppl} чел.` : '<span class="muted">не записано</span>')}
+    ${kv('Материал приехал', inP ? `${fmtN(inP)} пал.` : '—')}${kv('Подано на этажи', feedP ? `${fmtN(feedP)} пал.` : '—')}
+    ${kv('Записей в журнале', store.journalOn(today).length || '—')}
+    ${kv('Срок сегодня (поручения, замечания)', dueToday || '—')}${kv('Просрочено', late ? `<span class="err-t">${late}</span>` : '<span class="okc">нет</span>')}
+  </div>`;
+}
+function paceBlock() {
+  const ps = SECTIONS.map((s) => store.pace(s)).filter(Boolean);
+  if (!ps.length) return '';
+  return `<h3>Темп и прогноз <span class="muted">· по неделям «Выполнения»</span></h3><div class="gpr-cards">${ps.map((p) => {
+    const ser = p.series.slice(-8), mx = Math.max(0.5, ...ser.map((x) => x.pct));
+    const cls = p.delay > 14 ? 'bad' : p.delay > 0 ? 'warn' : '';
+    return `<div class="gpr-card ${cls}"><b>${esc(T.part)} ${esc(p.section)}</b> <span class="muted">· готово ${pct(p.done)}</span>
+      ${ser.length ? `<div class="spark" title="Прирост готовности по неделям, %">${ser.map((x) => `<i style="height:${Math.max(2, (x.pct / mx) * 100)}%" title="${shortDate(x.week)}: +${r1(x.pct)}%"></i>`).join('')}</div>` : ''}
+      <div class="row-kv"><span>Последняя неделя</span><b>${p.week ? `+${r1(p.week.pct)}%` : '—'}</b></div>
+      <div class="row-kv"><span>Средний темп (4 нед.)</span><b>${p.avg ? `+${r1(p.avg)}% в неделю` : 'нет движения'}</b></div>
+      ${p.needPace ? `<div class="row-kv"><span>Нужно, чтобы успеть</span><b class="${p.needPace > p.avg ? 'err-t' : ''}">+${r1(p.needPace)}% в неделю</b></div>` : ''}
+      <div class="row-kv"><span>Прогноз окончания</span><b>${p.forecast ? shortDate(p.forecast) + ' ' + p.forecast.slice(0, 4) : `<span class="muted">${p.moving ? 'нужно хотя бы 2 недели объёмов' : 'объёмов по неделям нет'}</span>`}</b></div>
+      ${p.planEnd ? `<div class="row-kv"><span>По ГПР (с учётом передачи)</span><b>${shortDate(p.planEnd)}${p.delay != null ? ' · ' + dLate(p.delay) : ''}</b></div>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+function outputBlock() {
+  const bo = store.brigadeOutput();
+  if (!bo.length) return '';
+  const fin = !store.finLocked && bo.some((b) => b.earned4 != null);
+  return `<h3>Выработка бригад <span class="muted">· в среднем за неделю, 4 последние недели</span></h3>
+    <div class="tablewrap"><table class="voltab"><thead><tr><th>Бригада</th><th>Чел.</th><th>Вид работ</th><th>В неделю</th><th>На чел. в неделю</th>${fin ? '<th>Начислено за нед.</th><th>за месяц</th><th>всего</th>' : ''}</tr></thead><tbody>
+    ${bo.map((b) => (b.works.length ? b.works : [{ work: '—', unit: '', perWeek: 0, perPerson: null }]).map((w, i) => `<tr>${i ? '<td></td><td></td>' : `<td><b>${esc(b.name)}</b></td><td>${b.people || '<span class="muted">?</span>'}</td>`}
+      <td>${esc(w.work)}</td><td>${w.perWeek ? `${fmtN(r1(w.perWeek))} ${esc(w.unit)}` : '—'}</td><td>${w.perPerson != null ? `<b>${fmtN(r1(w.perPerson))}</b> ${esc(w.unit)}` : '<span class="muted">впишите численность</span>'}</td>
+      ${fin ? (i ? '<td></td><td></td><td></td>' : `<td>${b.earnedWeek != null ? rub(b.earnedWeek) : '—'}</td><td>${b.earnedMonth != null ? rub(b.earnedMonth) : '—'}</td><td><b>${b.earned != null ? rub(b.earned) : '—'}</b></td>`) : ''}</tr>`).join('')).join('')}
+    </tbody></table></div>
+    ${fin ? '<p class="muted small-note">Начислено = объём за неделю × расценка бригады из «Справочника». «Всего» — по столбцу «Выполнено».</p>' : ''}`;
+}
+function materialUseBlock() {
+  const mu = store.materialUse();
+  if (!mu.length) return '';
+  return `<h3>Расход материала по ${T.levelsDat} <span class="muted">· подано против уложенного</span></h3>
+    <div class="tablewrap"><table class="voltab"><thead><tr><th>${esc(T.level)}</th><th>Материал</th><th>Подано</th><th>= по норме</th><th>Уложено / всего</th><th>Итог</th></tr></thead><tbody>
+    ${mu.map((r) => `<tr><td>${esc(T.partShort)} ${esc(r.section)} · ${esc(floorName(r.floor))}</td><td>${esc(r.mats.join(', '))}</td><td>${fmtN(r.pallets)} пал.</td>
+      <td>${r.noNorm.length ? `<span class="muted">нет нормы: ${esc(r.noNorm.join(', '))}</span>` : `${fmtN(r1(r.fed))} ${esc(r.unit)}`}</td>
+      <td>${r.total ? `${fmtN(r1(r.laid))} / ${fmtN(r1(r.total))} ${esc(r.unit)}` : '<span class="muted">нет объёма</span>'}</td>
+      <td>${r.over != null ? (r.over > 5 ? `<span class="err-t">перерасход ${Math.round(r.over)}%</span>` : r.over < -5 ? `<span class="muted">подано меньше на ${Math.round(-r.over)}% — не все подачи записаны?</span>` : '<span class="okc">в норме</span>') : r.total && r.fed ? `<span class="muted">${r.fed > r.total * 1.05 ? '<span class="err-t">подано больше объёма</span>' : `в работе, хватит на ${Math.round(Math.min(999, (r.fed / r.total) * 100))}%`}</span>` : '—'}</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="muted small-note">Норма — лист «Материалы» в «Выполнении». Если в документе подачи указан поставщик (КСМ, Лентехстром…), берётся его строка.</p>`;
+}
+function moneyPlanBlock() {
+  if (store.finLocked) return '';
+  const ms = SECTIONS.map((s) => store.moneyVsPlan(s)).filter(Boolean);
+  if (!ms.length) return '';
+  return `<h3>Деньги против графика</h3><div class="gpr-cards">${ms.map((m) => `<div class="gpr-card ${m.plan != null && m.fact < m.planAdj * 0.9 ? 'warn' : ''}"><b>${esc(T.part)} ${esc(m.section)}</b>
+    ${m.total ? `<div class="row-kv"><span>Стоимость по ГПР</span><b>${rubShort(m.total)}</b></div>
+    <div class="row-kv"><span>Должно быть к сегодня (договор)</span><b>${rubShort(m.plan)}</b></div>
+    <div class="row-kv"><span>… с учётом передачи этажей</span><b>${rubShort(m.planAdj)}</b></div>
+    <div class="row-kv"><span>Сделано</span><b>${rubShort(m.fact)}</b></div>
+    <div class="row-kv"><span>Разница</span><b class="${m.fact < m.planAdj ? 'err-t' : 'okc'}">${m.fact < m.planAdj ? '−' : '+'}${rubShort(Math.abs(m.fact - m.planAdj))}</b></div>` : ''}
+    ${m.laborAll ? `<div class="row-kv"><span>Бригадам по расценкам</span><b>${rubShort(m.labor)} из ${rubShort(m.laborAll)}</b></div>` : ''}</div>`).join('')}</div>`;
+}
+function analyticsBlock() {
+  return `<div class="add-row"><button class="btn" type="button" data-report>🖨 Отчёт за неделю</button></div>
+    ${todayBlock()}${paceBlock()}${moneyPlanBlock()}${outputBlock()}${materialUseBlock()}`;
+}
+
+// ---------- печатный отчёт за неделю ----------
+function reportHtml(withFin) {
+  const today = isoToday(), from = addDays(today, -6);
+  const inP = (d) => d && d >= from && d <= today;
+  const name = (store.objInfo && store.objInfo.name) || PROFILE.name || T.object;
+  const td = (x) => `<td>${x}</td>`;
+  const tbl = (head, rows) => rows.length ? `<table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map(td).join('')}</tr>`).join('')}</tbody></table>` : '<p class="m">нет данных</p>';
+  const ps = SECTIONS.map((s) => [s, store.pace(s), store.sectionSchedule(s)]);
+  const secRows = ps.map(([s, p, sc]) => [`${esc(T.part)} ${esc(s)}`, pct(store.sectionValue(s, 'avg')), p && p.week ? `+${r1(p.week.pct)}%` : '—', p && p.avg ? `+${r1(p.avg)}%` : '—',
+    p && p.forecast ? p.forecast.split('-').reverse().join('.') : '—', p && p.planEnd ? p.planEnd.split('-').reverse().join('.') : '—',
+    sc ? `${sc.lagContract || 0} / ${sc.lagAdjusted || 0}` : '—']);
+  // объём за последнюю неделю «Выполнения»
+  const weeks = store.pastWeeks(), wk = weeks[weeks.length - 1];
+  const vol = {};
+  for (const v of store.extra.volumes) { const q = wk && (v.weekly || {})[wk]; if (!q) continue; const k = `${v.section}|${v.work}`; (vol[k] ||= { s: v.section, w: v.work, q: 0, fl: new Set() }).q += q; vol[k].fl.add(floorShort(v.floor)); }
+  const volRows = Object.values(vol).map((x) => [`${esc(T.partShort)} ${esc(x.s)}`, esc(x.w), fmtN(r1(x.q)), esc([...x.fl].join(', '))]);
+  // люди по дням
+  const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
+  const pplRows = days.map((d) => [shortDate(d), ...SECTIONS.map((s) => store.peopleOn(d, s) || ''), store.peopleOn(d) || '']).filter((r) => r[r.length - 1]);
+  // материалы
+  const mv = store.extra.moves.filter((m) => inP(m.date));
+  const mvRows = mv.map((m) => [m.date.split('-').reverse().join('.'), esc(m.type), esc(m.material), fmtN(m.pallets || 0), esc(/подач/i.test(m.type) ? m.zone : m.doc || '')]);
+  const stRows = store.stock().filter((r) => r.in || r.out).map((r) => { const c = store.palletsTo(r.material, Math.max(0, r.left)); return [esc(r.material), fmtN(r.in), fmtN(r.out), `<b>${fmtN(r.left)}</b>`, c ? `${fmtN(r1(c.qty))} ${esc(c.unit)}` : '']; });
+  const over = store.materialUse().filter((r) => r.over != null && r.over > 5).map((r) => [`${esc(T.partShort)} ${esc(r.section)} · ${esc(floorName(r.floor))}`, esc(r.mats.join(', ')), `${fmtN(r1(r.fed))} ${esc(r.unit)}`, `${fmtN(r1(r.laid))} ${esc(r.unit)}`, `${Math.round(r.over)}%`]);
+  // замечания и поручения
+  const rem = store.remarks.filter((r) => store.isOpenRemark(r)).map((r) => [`${esc(T.partShort)} ${esc(r.section)}`, esc(r.short || r.text), esc(r.who || ''), `${esc(r.due || '')}${ruToIso(r.due) && ruToIso(r.due) < today ? ' <b class="bad">просрочено</b>' : ''}`]);
+  const ord = (store.extra.orders || []).filter((o) => store.isOpenOrder(o)).map((o) => [o.section ? `${esc(T.partShort)} ${esc(o.section)}${o.floor != null ? ' · ' + esc(floorShort(o.floor)) : ''}` : '', esc(o.text), esc(o.who || ''), `${o.due ? o.due.split('-').reverse().join('.') : ''}${o.due && o.due < today ? ' <b class="bad">просрочено</b>' : ''}`]);
+  const brig = store.brigadeOutput();
+  const finPart = withFin ? `<h2>Деньги</h2>${tbl(['Часть', 'По ГПР', 'Должно к дате', 'С учётом передачи', 'Сделано', 'Бригадам начислено'], SECTIONS.map((s) => store.moneyVsPlan(s)).filter(Boolean).map((m) => [`${esc(T.part)} ${esc(m.section)}`, m.total ? rub(m.total) : '—', m.plan != null ? rub(m.plan) : '—', m.planAdj != null ? rub(m.planAdj) : '—', m.fact != null ? rub(m.fact) : '—', rub(m.labor)]))}
+    ${tbl(['Бригада', 'Начислено за неделю', 'За месяц', 'Всего'], brig.filter((b) => b.earned4 != null).map((b) => [esc(b.name), rub(b.earnedWeek || 0), rub(b.earnedMonth || 0), b.earned != null ? rub(b.earned) : '—']))}` : '';
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Отчёт ${esc(name)} ${today}</title><style>
+    body{font:12px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:18mm 14mm;background:#fff}
+    h1{font-size:18px;margin:0}h2{font-size:14px;margin:16px 0 6px;border-bottom:1px solid #999;padding-bottom:2px}
+    table{border-collapse:collapse;width:100%;margin:4px 0 8px;page-break-inside:auto}th,td{border:1px solid #bbb;padding:3px 5px;text-align:left;vertical-align:top}
+    th{background:#eee}tr{page-break-inside:avoid}.m{color:#666}.bad{color:#b00}.top{display:flex;justify-content:space-between;align-items:flex-end}
+    .bar{position:fixed;top:8px;right:8px}@media print{.bar{display:none}body{margin:0}}
+  </style></head><body><div class="bar"><button onclick="print()">🖨 Печать / PDF</button></div>
+    <div class="top"><div><h1>${esc(name)}</h1><div class="m">Еженедельный отчёт · ${from.split('-').reverse().join('.')} — ${today.split('-').reverse().join('.')}</div></div><div class="m">составлен ${new Date().toLocaleString('ru-RU')}</div></div>
+    <h2>Готовность и график</h2>${tbl([T.part, 'Готово', 'За неделю', 'Темп (4 нед.)', 'Прогноз окончания', 'По ГПР', 'Отставание, дн (договор / с учётом передачи)'], secRows)}
+    <h2>Выполнено за неделю${wk ? ` <span class="m">(столбец ${wk.split('-').reverse().join('.')})</span>` : ''}</h2>${tbl([T.part, 'Вид работ', 'Объём', T.levels], volRows)}
+    <h2>Люди</h2>${tbl(['День', ...SECTIONS.map((s) => `${T.partShort} ${s}`), 'Всего'], pplRows)}
+    ${brig.length ? tbl(['Бригада', 'Чел.', 'Выработка в неделю (4 нед.)'], brig.map((b) => [esc(b.name), b.people || '', esc(b.works.map((w) => `${w.work}: ${fmtN(r1(w.perWeek))} ${w.unit}${w.perPerson != null ? ` (${fmtN(r1(w.perPerson))}/чел.)` : ''}`).join('; '))])) : ''}
+    <h2>Материалы</h2>${tbl(['Дата', 'Операция', 'Материал', 'Пал.', 'Куда / документ'], mvRows)}
+    <h3>Склад сейчас</h3>${tbl(['Материал', 'Пришло', 'Подано', 'Осталось, пал.', '≈ хватит на'], stRows)}
+    ${over.length ? `<h3>Перерасход</h3>${tbl([T.level, 'Материал', 'Подано по норме', 'Уложено', 'Перерасход'], over)}` : ''}
+    <h2>Замечания генподрядчика (открыты)</h2>${tbl([T.part, 'Замечание', 'Ответственный', 'Срок'], rem)}
+    <h2>Поручения руководителя (открыты)</h2>${tbl(['Где', 'Поручение', 'Кому', 'Срок'], ord)}
+    ${finPart}
+  </body></html>`;
+}
+function openReport() {
+  const withFin = !store.finLocked && confirm('Включить в отчёт деньги (ГПР в ₽, начисления бригадам)?\nОК — с деньгами, Отмена — без денег (для генподрядчика / рабочих).');
+  const w = window.open('', '_blank');
+  if (!w) { toast('Браузер заблокировал окно отчёта — разрешите всплывающие окна'); return; }
+  w.document.open(); w.document.write(reportHtml(withFin)); w.document.close();
+  setTimeout(() => { try { w.focus(); w.print(); } catch { /* */ } }, 400);
+}
+document.addEventListener('click', (e) => { if (e.target.closest('[data-report]')) openReport(); });
 
 // ---------- Источники и сверка ----------
 function sourcesHtml() {
@@ -856,11 +995,11 @@ function needHtml() {
   const ms = (m, k, lbl) => ev(m[k] ? fmtN(m[k]) : '—', { b: 'V', s: 'Материалы', r: m.row, f: 'cell', c: m.cols[k], raw: m[k] || '', expect: m[k] || '', type: 'number', label: `${m.name}: ${lbl}` });
   const secs = SECTIONS.map((s) => [s, store.demand(s)]).filter(([, d]) => d.length);
   return `${secs.map(([s, d]) => `<h3>${esc(T.part)} ${esc(s)}</h3>${d.map((w) => `<div class="planbox"><div class="planh"><b>${esc(w.work)}</b><span class="muted">осталось ${fmtN(Math.round(w.left * 10) / 10)} из ${fmtN(Math.round(w.total))} ${esc(w.unit)}</span></div>
-      <table class="voltab"><tbody>${w.mats.map((m) => `<tr><td>${esc(m.name)}</td><td>${m.need != null ? `нужно <b>${fmtN(Math.ceil(m.need))}</b> пал.` : '<span class="muted">нет нормы</span>'}</td><td class="muted">на складе ${fmtN(m.onSite)}</td><td>${m.need != null ? (Math.ceil(m.need) - m.onSite > 0 ? `<span class="err-t">заказать ${fmtN(Math.ceil(m.need) - m.onSite)}</span>` : '<span class="okc">хватает</span>') : ''}</td></tr>`).join('')}</tbody></table>
+      <table class="voltab"><tbody>${w.mats.map((m) => `<tr><td>${esc(m.name)}${m.supplier ? ` <span class="muted">· ${esc(m.supplier)}</span>` : ''}</td><td>${m.need != null ? `нужно <b>${fmtN(Math.ceil(m.need))}</b> пал.` : '<span class="muted">нет нормы</span>'}</td><td class="muted">на складе ${fmtN(m.onSite)}</td><td>${m.need != null ? (Math.ceil(m.need) - m.onSite > 0 ? `<span class="err-t">заказать ${fmtN(Math.ceil(m.need) - m.onSite)}</span>` : '<span class="okc">хватает</span>') : ''}</td></tr>`).join('')}</tbody></table>
       ${w.mats.length > 1 ? '<p class="muted small-note">Несколько материалов на один вид работ — потребность указана, если делать всё этим материалом.</p>' : ''}</div>`).join('')}`).join('') || '<p class="muted">Нет видов работ с нормами материала.</p>'}
     <h3>Нормы: сколько в одном поддоне <span class="muted">· «Выполнение» → «Материалы»</span></h3>
     <div class="tablewrap"><table class="voltab"><thead><tr><th>Материал</th><th>Шт/под.</th><th>Длина, мм</th><th>Высота, мм</th><th>Толщина, мм</th><th>м³/под. (если без размеров)</th><th>= м²/под.</th><th>= м³/под.</th></tr></thead><tbody>
-    ${mats.map((m) => `<tr><td>${esc(m.name)}<div class="muted">${esc(m.work)}</div></td><td>${ms(m, 'pcs', 'шт на поддоне')}</td><td>${ms(m, 'len', 'длина камня, мм')}</td><td>${ms(m, 'height', 'высота камня, мм')}</td><td>${ms(m, 'thick', 'толщина стены, мм')}</td><td>${ms(m, 'm3in', 'м³ на поддоне')}</td><td><b>${m.m2 ? fmtN(Math.round(m.m2 * 100) / 100) : '—'}</b></td><td><b>${m.m3 ? fmtN(Math.round(m.m3 * 1000) / 1000) : '—'}</b></td></tr>`).join('')}
+    ${mats.map((m) => `<tr><td>${esc(m.name)}${m.supplier ? ` · <b>${esc(m.supplier)}</b>` : ''}<div class="muted">${esc(m.work)}${m.price && !store.finLocked ? ` · ${fmtN(m.price)} ₽/м³` : ''}</div></td><td>${ms(m, 'pcs', 'шт на поддоне')}</td><td>${ms(m, 'len', 'длина камня, мм')}</td><td>${ms(m, 'height', 'высота камня, мм')}</td><td>${ms(m, 'thick', 'толщина стены, мм')}</td><td>${ms(m, 'm3in', 'м³ на поддоне')}</td><td><b>${m.m2 ? fmtN(Math.round(m.m2 * 100) / 100) : '—'}</b></td><td><b>${m.m3 ? fmtN(Math.round(m.m3 * 1000) / 1000) : '—'}</b></td></tr>`).join('')}
     </tbody></table></div>
     <p class="muted small-note">Заполните шт на поддоне и размер камня (или м³ на поддоне из накладной) — таблица сама посчитает м² и м³, а приложение — потребность и остаток в м².</p>`;
 }

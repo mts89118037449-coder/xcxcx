@@ -1664,14 +1664,14 @@ function readMaterials_() {
   const book = MODE === 'book' ? ss_() : SpreadsheetApp.openById(CUR_V);
   const sh = book.getSheetByName('Материалы');
   if (!sh || sh.getLastRow() < 2) return [];
-  const w = Math.min(sh.getLastColumn(), 12);
+  const w = Math.min(sh.getLastColumn(), 16);
   const h = sh.getRange(1, 1, 1, w).getDisplayValues()[0].map(function (x) { return String(x).toLowerCase(); });
   const c = function (re) { return h.findIndex(function (x) { return re.test(x); }); };
-  const C = { name: c(/^материал/), work: c(/вид работ/), pcs: c(/шт/), len: c(/длина/), thick: c(/толщин/), height: c(/высот/), m3in: c(/м³.*если/), m3: c(/м³.*итог/), m2: c(/м².*поддон/), src: c(/источник/) };
+  const C = { name: c(/^материал/), work: c(/вид работ/), pcs: c(/шт/), len: c(/длина/), thick: c(/толщин/), height: c(/высот/), m3in: c(/м³.*если/), m3: c(/м³.*итог/), m2: c(/м².*поддон/), src: c(/источник/), supplier: c(/поставщ|производ/), price: c(/цена/) };
   return sh.getRange(2, 1, sh.getLastRow() - 1, w).getDisplayValues().map(function (r, i) {
     const name = C.name >= 0 ? String(r[C.name]).trim() : '';
     if (!name) return null;
     const g = function (k) { return C[k] >= 0 ? num_(r[C[k]]) : 0; };
-    return { row: i + 2, name: name, work: C.work >= 0 ? String(r[C.work]).trim() : '', pcs: g('pcs'), len: g('len'), thick: g('thick'), height: g('height'), m3in: g('m3in'), m3: g('m3'), m2: g('m2'), src: C.src >= 0 ? String(r[C.src]).trim() : '', cols: { pcs: C.pcs + 1, len: C.len + 1, thick: C.thick + 1, height: C.height + 1, m3in: C.m3in + 1 } };
+    return { row: i + 2, name: name, work: C.work >= 0 ? String(r[C.work]).trim() : '', pcs: g('pcs'), len: g('len'), thick: g('thick'), height: g('height'), m3in: g('m3in'), m3: g('m3'), m2: g('m2'), src: C.src >= 0 ? String(r[C.src]).trim() : '', supplier: C.supplier >= 0 ? String(r[C.supplier]).trim() : '', price: g('price'), cols: { pcs: C.pcs + 1, len: C.len + 1, thick: C.thick + 1, height: C.height + 1, m3in: C.m3in + 1, price: C.price + 1 } };
   }).filter(Boolean);
 }

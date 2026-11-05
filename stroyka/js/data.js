@@ -362,6 +362,8 @@ function mapFloors(e) {
 }
 
 /** «СКЦ 160 мм / ПОЛИГРАН 160 ПГ C50», «ПОЛИГРАН 160» → «СКЦ 160»; «Газобетон 100 мм · КСМ» → «Газобетон 100» */
+/** «СТД Петрович (БЦК)» → ['стд', 'петрович', 'бцк']: слова поставщика для поиска в накладной */
+function supplierWords(sup) { return norm(sup).split(/[^a-zа-яё0-9]+/).filter((w) => w.length >= 3).map((w) => w.slice(0, 7)); }
 export function materialKey(name) {
   const s = String(name || '').toLowerCase();
   const size = (s.match(/(\d{2,3})\s*(?:мм|пг|\b)/) || [])[1];
@@ -752,18 +754,23 @@ export class Store {
     return this.allJournal().filter((j) => j.date === date && j.type === 'Люди' && (!section || j.section === section)).reduce((a, j) => a + j.qty, 0);
   }
   // ---------- материалы: пересчёт поддонов в м² / м³ и потребность ----------
-  /** Норма материала из листа «Материалы» (по ключу материала, как в учёте подач) */
-  normOf(material) {
+  /** Норма материала из листа «Материалы»: по ключу материала; если в названии/документе подачи есть поставщик
+   *  («ТН КСМ», «Лентехстром») — строка этого поставщика, иначе первая строка с заполненной нормой */
+  normOf(material, hint = '') {
     const k = materialKey(material);
-    return (this.extra.materials || []).find((m) => materialKey(m.name) === k) || null;
+    const rows = (this.extra.materials || []).filter((m) => materialKey(m.name) === k);
+    if (!rows.length) return null;
+    const h = norm(`${material} ${hint}`);
+    const bySup = h && rows.find((m) => supplierWords(m.supplier).some((w) => h.includes(w)));
+    return bySup || rows.find((m) => m.m2 || m.m3) || rows[0];
   }
   /** Поддоны → объём в единицах вида работ (м² стены или м³) */
-  palletsTo(material, pallets) {
-    const n = this.normOf(material);
+  palletsTo(material, pallets, hint = '') {
+    const n = this.normOf(material, hint);
     if (!n) return null;
     const unit = workUnit(n.work) || 'м²';
     const per = /м³|м3|куб/.test(unit) ? n.m3 : n.m2;
-    return per ? { qty: pallets * per, unit, per } : null;
+    return per ? { qty: pallets * per, unit, per, work: n.work, supplier: n.supplier || '', m3: pallets * (n.m3 || 0), price: n.price || 0 } : null;
   }
   /** Потребность по секции: сколько осталось сделать по каждому виду работ и сколько это поддонов каждого подходящего материала */
   demand(section) {
@@ -776,7 +783,8 @@ export class Store {
       const left = vols.reduce((a, v) => a + Math.max(0, v.total - Math.min(v.done || 0, v.total)), 0);
       const total = vols.reduce((a, v) => a + v.total, 0);
       const unit = workUnit(w);
-      const mats = (this.extra.materials || []).filter((m) => m.work === w).map((m) => {
+      const all = (this.extra.materials || []).filter((m) => m.work === w);
+      const mats = all.filter((m) => m.m2 || m.m3 || !all.some((o) => o !== m && materialKey(o.name) === materialKey(m.name) && (o.m2 || o.m3))).map((m) => {
         const per = /м³|м3|куб/.test(unit) ? m.m3 : m.m2;
         const st = stock.find((r) => r.material === materialKey(m.name));
         return { ...m, per, need: per ? left / per : null, onSite: st ? Math.max(0, st.left) : 0 };
@@ -784,6 +792,89 @@ export class Store {
       out.push({ work: w, unit, total, left, mats });
     }
     return out;
+  }
+  // ---------- аналитика ----------
+  /** Прошедшие недели из «Выполнения» (даты в шапке столбцов O…) */
+  pastWeeks() {
+    const today = isoToday(), set = new Set();
+    for (const v of this.extra.volumes) for (const d of Object.keys(v.weekCols || v.weekly || {})) if (d <= today) set.add(d);
+    return [...set].sort();
+  }
+  /** Вес строки объёма в готовности части: по стоимости, если она есть у всех строк, иначе поровну */
+  weightsOf(vols) {
+    const byCost = vols.length && vols.every((v) => v.cost > 0);
+    const W = vols.reduce((a, v) => a + (byCost ? v.cost : 1), 0) || 1;
+    return (v) => (byCost ? v.cost : 1) / W;
+  }
+  /** Темп части: прирост готовности по неделям, средний за 4 недели, прогноз окончания и сравнение с ГПР */
+  pace(section) {
+    const vols = this.extra.volumes.filter((v) => String(v.section) === String(section) && v.total > 0);
+    if (!vols.length) return null;
+    const wt = this.weightsOf(vols), today = isoToday();
+    const series = this.pastWeeks().map((d) => ({ week: d, pct: vols.reduce((a, v) => a + (((v.weekly || {})[d] || 0) / v.total) * wt(v) * 100, 0) }));
+    const sv = this.sectionValue(section, 'avg');   // та же готовность, что на карточке части
+    const done = sv != null ? sv : vols.reduce((a, v) => a + (Math.min(v.done || 0, v.total) / v.total) * wt(v) * 100, 0);
+    const last = series.slice(-4);
+    const avg = last.length ? last.reduce((a, x) => a + x.pct, 0) / last.length : 0;
+    const left = Math.max(0, 100 - done);
+    const moving = last.filter((x) => x.pct > 0).length;   // прогноз — только когда есть хотя бы 2 недели с движением
+    const weeksLeft = left <= 0.05 ? 0 : avg > 0 && moving >= 2 ? left / avg : null;
+    const forecast = weeksLeft != null ? addDays(today, Math.ceil(weeksLeft * 7)) : '';
+    const sch = this.sectionSchedule(section);
+    const planEnd = sch ? sch.sch.map((x) => x.e2).filter(Boolean).sort().pop() || sch.end || '' : '';
+    const contractEnd = sch ? sch.end || '' : '';
+    const needPace = planEnd && left > 0.05 ? left / Math.max(1, dayDiff(today, planEnd) / 7) : null;
+    return { section, series, done, avg, moving, left, weeksLeft, forecast, planEnd, contractEnd, needPace, delay: forecast && planEnd ? dayDiff(planEnd, forecast) : null, week: series[series.length - 1] || null };
+  }
+  /** Выработка бригад за 4 последние недели: объём по видам работ, на человека в неделю; начислено по расценкам */
+  brigadeOutput() {
+    const all = this.pastWeeks(), weeks = all.slice(-4), n = weeks.length || 1, lastW = all[all.length - 1], month = isoToday().slice(0, 7);
+    return this.brigadeStats().map((b) => {
+      const byWork = {};
+      let m4 = 0, mWeek = 0, mMonth = 0, priced = false;
+      for (const v of b.rows) {
+        const r = this.rateOf(v) || 0; if (r) priced = true;
+        for (const [d, q] of Object.entries(v.weekly || {})) {
+          if (weeks.includes(d)) { (byWork[v.work] ||= { work: v.work, unit: workUnit(v.work), q: 0 }).q += q; m4 += q * r; }
+          if (d === lastW) mWeek += q * r;
+          if (d.slice(0, 7) === month) mMonth += q * r;
+        }
+      }
+      const works = Object.values(byWork).map((x) => ({ ...x, perWeek: x.q / n, perPerson: b.people ? x.q / n / b.people : null }));
+      return { name: b.name, people: b.people, type: b.type, works, weekKey: lastW, earnedWeek: priced ? mWeek : null, earned4: priced ? m4 : null, earnedMonth: priced ? mMonth : null, earned: b.earned };
+    }).filter((b) => b.works.length || b.earned);
+  }
+  /** Расход материала по этажам: подано (поддоны → м²/м³ по норме поставщика) против уложенного по «Выполнению» */
+  materialUse() {
+    const rows = new Map();
+    for (const m of this.extra.moves) {
+      if (!/подач/i.test(m.type || '') || m.floor == null || !m.section) continue;
+      const c = this.palletsTo(m.material, m.pallets || 0, `${m.doc || ''} ${m.comment || ''}`);
+      const nrm = this.normOf(m.material);
+      const work = c ? c.work : nrm ? nrm.work : '';
+      const k = `${m.section}|${m.floor}|${norm(work) || materialKey(m.material)}`;
+      const r = rows.get(k) || { section: String(m.section), floor: m.floor, work, unit: c ? c.unit : workUnit(work), pallets: 0, fed: 0, noNorm: new Set(), mats: new Set() };
+      r.pallets += m.pallets || 0; r.mats.add(materialKey(m.material));
+      if (c) r.fed += c.qty; else r.noNorm.add(materialKey(m.material));
+      rows.set(k, r);
+    }
+    return [...rows.values()].map((r) => {
+      const vols = r.work ? this.extra.volumes.filter((v) => String(v.section) === r.section && v.floor === r.floor && norm(v.work) === norm(r.work)) : [];
+      const total = vols.reduce((a, v) => a + v.total, 0), laid = vols.reduce((a, v) => a + Math.min(v.done || 0, v.total), 0);
+      const finished = total > 0 && laid >= total * 0.95;
+      const over = finished && r.fed && !r.noNorm.size ? (r.fed / laid - 1) * 100 : null;
+      return { ...r, mats: [...r.mats], noNorm: [...r.noNorm], total, laid, finished, over };
+    }).sort((a, b) => a.section.localeCompare(b.section, 'ru', { numeric: true }) || a.floor - b.floor);
+  }
+  /** Деньги против графика: стоимость по ГПР — сколько должно быть сделано к сегодня и сколько сделано; начислено бригадам */
+  moneyVsPlan(section) {
+    const sch = this.sectionSchedule(section);
+    const C = (this.extra.gpr || []).filter((g) => String(g.section) === String(section)).reduce((a, g) => a + (g.cost || 0), 0);
+    const vols = this.extra.volumes.filter((v) => String(v.section) === String(section));
+    const labor = vols.reduce((a, v) => a + Math.min(v.done || 0, v.total) * (this.rateOf(v) || 0), 0);
+    const laborAll = vols.reduce((a, v) => a + v.total * (this.rateOf(v) || 0), 0);
+    if (!C && !labor) return null;
+    return { section, total: C, plan: sch && C ? (sch.planPct / 100) * C : null, planAdj: sch && C ? (sch.planPctAdj / 100) * C : null, fact: sch && C ? (sch.factPct / 100) * C : null, labor, laborAll };
   }
   /** Склад по VUP CORE: поступления минус подачи на этажи, по материалам (паллеты) */
   stock() {
