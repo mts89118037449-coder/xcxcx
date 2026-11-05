@@ -209,8 +209,9 @@ async function googleFetch(params, body) {
   let data;
   try { data = JSON.parse(text); } catch {
     // вместо JSON пришла страница: скрипт просит разрешение, упал или удалён
-    const t = String(text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    const why = /authoriz|разреш|permission|доступ/i.test(t) ? 'скрипт таблицы ждёт «Разрешить» — запустите connect-google.sh и откройте ссылку из него'
+    const raw = String(text || '');
+    const t = raw.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const why = /authorization is required|требуется авторизация|need(s)? (your )?permission|accounts\.google\.com\/(ServiceLogin|signin)/i.test(raw) ? 'скрипт таблицы ждёт «Разрешить» — запустите connect-google.sh и откройте ссылку из него'
       : /not found|не найден|404/i.test(t) || r.status === 404 ? 'скрипт таблицы не найден (ссылка устарела) — запустите connect-google.sh'
       : `ответ Google не JSON (HTTP ${r.status}): ${t.slice(0, 200)}`;
     throw noteGoogle(new Error(why));
