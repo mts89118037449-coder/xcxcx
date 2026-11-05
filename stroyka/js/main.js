@@ -423,6 +423,7 @@ function floorHtml() {
         const body = `<ul class="totals">${g.rows.map((r) => `<li><span><b>${esc(r.work)}</b><div class="muted">план ${shortDate(r.start)} – ${shortDate(r.end)}${r.shift ? ` · с учётом передачи до ${shortDate(r.e2)}` : ''}</div>
             <div class="muted">должно быть ${Math.round(r.expected)}% · факт ${r.fact == null ? '—' : Math.round(r.fact) + '%'} · ${r.lag > 0 ? `<span class="${r.lag > 7 ? 'err-t' : ''}">отстаём ≈ ${r.lag} дн.</span>` : esc(r.status)}</div></span>
             ${g.handover ? '' : `<span class="muted">передан: ${store.finLocked ? (r.received ? shortDate(r.received) : '—') : ev(r.received ? shortDate(r.received) : 'отметить', gs(r))}</span>`}</li>`).join('')}</ul>
+          ${g.receivedSrc && !/Выполнение/.test(g.receivedSrc) ? `<div class="row-kv"><span>Передан по данным</span><b>${shortDate(g.received)} <span class="muted">· ${esc(g.receivedSrc)}</span></b></div>` : ''}
           ${g.handover ? `<div class="row-kv"><span>Этаж передан (факт) <em class="muted">· «Выполнение», столбец A</em></span><b>${store.finLocked ? (g.handover.date ? shortDate(g.handover.date) : '—') : ev(g.handover.date ? shortDate(g.handover.date) : 'отметить', { b: 'V', s: g.handover.sheet, r: g.handover.row, f: 'handover', raw: g.handover.date || '', expect: g.handover.raw || '', type: 'date', label: `${T.part} ${s}, ${fl}: дата передачи этажа`, prop: 'handover', list: 'extra.volumes' })}</b></div>` : ''}
           ${g.shift ? `<p class="muted small-note">Этаж передан на ${g.shift} дн. позже графика — срок сдвинут.</p>` : ''}`;
         return cat('plan', '📅', 'График (ГПР)', sum, body, g.lag > 7 ? 'warn' : ''); })()}
@@ -471,7 +472,21 @@ function gprBlock() {
       <div class="row-kv"><span>Сильнее всего отстаёт</span><b class="${x.maxLag > 7 ? 'err-t' : ''}">${x.maxLag > 0 ? '≈ ' + x.maxLag + ' дн.' + (x.worst ? ` · ${esc(floorShort(x.worst.f))}${LAYOUT === 'stack' ? ' эт.' : ''}` : '') : 'нет'}</b></div>
       <div class="row-kv"><span>Этажи переданы позже</span><b>${x.shifted.length ? `${x.shifted.length} шт., до +${x.maxShift} дн.` : '<span class="muted">не отмечено</span>'}</b></div>
       <div class="row-kv"><span>Окончание по графику</span><b>${x.end ? shortDate(x.end) : '—'}</b></div></div>`).join('')}</div>
+    ${handoverHtml()}
     <p class="muted small-note">«К сегодня по графику» — доля всего графика (по стоимости этапов), которая уже должна быть сделана; отставание — на сколько дней факт позади графика. «С учётом поздней передачи» — если в листе «ГПР» отмечено, что этаж получили позже, срок сдвигается: эта часть задержки не наша.</p>`;
+}
+/** Таблица «Передача этажей»: по каждому этажу — когда по ГПР, когда фактически и откуда дата */
+function handoverHtml() {
+  const t = SECTIONS.map((s) => [s, store.handoverTable(s)]).filter(([, r]) => r.length);
+  if (!t.length) return '';
+  const known = t.reduce((a, [, r]) => a + r.filter((x) => x.fact).length, 0);
+  const floors = [...new Set(t.flatMap(([, r]) => r.map((x) => x.floor)))].sort((a, b) => b - a);
+  const cell = (r) => !r ? '<td></td>' : `<td>${shortDate(r.plan)}${r.fact ? `<div class="${r.shift > 0 ? 'err-t' : 'okc'}">→ ${shortDate(r.fact)}${r.shift ? ` (${r.shift > 0 ? '+' : ''}${r.shift} дн.)` : ''}</div><div class="muted">${esc(r.src || '')}</div>` : '<div class="muted">факт —</div>'}</td>`;
+  return `<details class="fold" ${known ? 'open' : ''}><summary>Передача этажей · дат по факту: ${known}</summary>
+    <div class="tablewrap"><table class="doctab hand"><thead><tr><th></th>${t.map(([s]) => `<th>${esc(T.part)} ${esc(s)}<div class="muted">план → факт</div></th>`).join('')}</tr></thead><tbody>
+    ${floors.map((f) => `<tr><td><button type="button" class="chip-go" data-floor="${esc(t[0][0])}|${f}">${esc(floorShort(f))}</button></td>${t.map(([, r]) => cell(r.find((x) => x.floor === f))).join('')}</tr>`).join('')}
+    </tbody></table></div>
+    <p class="muted small-note">Факт берётся: «Выполнение» → столбец A «Дата передачи этажа»; если пусто — акт передачи из VUP CORE («Акты стройки»); если нет — лист «ГПР», «Этаж передан». Отметить дату: нажмите этаж → «График (ГПР)» → «Этаж передан».</p></details>`;
 }
 /** Бригады в «Обзоре»: кто, сколько человек, где работает, сколько сделал (и на какую сумму — у руководителя) */
 function brigadeBlock() {

@@ -570,3 +570,4 @@ body.worker [data-csv="expenses"] { display: none; }
 .subtabs button.on .cnt { background: rgba(255,255,255,.2); color: inherit; }
 .subbody { padding-bottom: 8px; }
 @media (max-width: 900px) { .subtabs { position: static; } }
+.hand td { vertical-align: top; font-size: 12px; } .hand th { font-size: 12px; } .okc { color: var(--green); }

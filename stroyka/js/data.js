@@ -590,9 +590,11 @@ export class Store {
     if (!rows.length) return null;
     const today = isoToday();
     const ho = this.handoverOf(section, floor);
+    const act = this.handoverAct(section, floor);
+    const recv = (ho && ho.date) ? { date: ho.date, src: '«Выполнение»' } : act ? { date: act.date, src: `акт ${act.number || ''}`.trim(), act } : null;
     const items = rows.map((r) => {
-      // передача этажа: из «Выполнения» (столбец A), иначе из листа «ГПР»
-      const received = (ho && ho.date) || r.received || '';
+      // передача этажа: «Выполнение» (столбец A) → акт передачи (VUP CORE) → лист «ГПР»
+      const received = (recv && recv.date) || r.received || '';
       const shift = received ? Math.max(0, dayDiff(r.start, received)) : (r.shift || 0);
       const s2 = addDays(r.start, shift), e2 = addDays(r.end, shift);
       const dur = Math.max(1, dayDiff(s2, e2));
@@ -608,6 +610,7 @@ export class Store {
     const main = items.find((x) => /кладк/i.test(x.work)) || items[0];
     return { rows: items, start: items.map((x) => x.start).sort()[0], s2: items.map((x) => x.s2).sort()[0], e2: items.map((x) => x.e2).sort().pop(),
       shift: Math.max(0, ...items.map((x) => x.shift || 0)), received: items.map((x) => x.received).filter(Boolean).sort()[0] || '', handover: ho,
+      receivedSrc: recv ? recv.src : items.some((x) => x.received) ? 'лист «ГПР»' : '',
       fact: main.fact, expected: main.expected, lag: worst ? worst.lag : null, status: items.every((x) => x.status === 'готово') ? 'готово' : worst ? worst.status : main.status };
   }
   /** Дата передачи этажа из «Выполнения» (столбец A первой строки этажа) и где её писать */
@@ -618,6 +621,15 @@ export class Store {
     const m = String(it.handover || '').match(/(\d{1,2})\.(\d{1,2})\.(\d{2,4})/);
     const iso = m ? `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
     return { date: iso, raw: it.handover || '', sheet: it.sheet, row: it.floorRow || it.row };
+  }
+  /** Акт передачи этажа из VUP CORE «Акты стройки» (самый ранний по этому этажу) */
+  handoverAct(section, floor) {
+    return (this.extra.acts || []).filter((a) => String(a.section) === String(section) && a.floor === floor && a.date).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+  }
+  /** Передача этажей по секции: план (начало по ГПР) и факт с источником */
+  handoverTable(section) {
+    const floors = [...new Set((this.extra.gpr || []).filter((g) => String(g.section) === String(section) && g.floor != null).map((g) => g.floor))].sort((a, b) => a - b);
+    return floors.map((f) => { const g = this.scheduleOf(section, f); return { floor: f, plan: g.start, fact: g.received, src: g.receivedSrc, shift: g.received ? dayDiff(g.start, g.received) : null }; });
   }
   /** Факт по строке ГПР: кладка → наружные стены + перегородки, обстройка шахт → инженерка, надстройка → кровля; иначе — раздел по названию */
   gprFact(section, floor, work) {
