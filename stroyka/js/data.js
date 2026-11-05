@@ -296,7 +296,10 @@ export function floorsInText(text) {
     else if (m[3]) res.add(+m[3]);
     else if (m[4]) res.add(+m[4]);
   }
-  return [...res].filter((f) => f >= 1 && f <= TOP);
+  const out = [...res].filter((f) => f >= 1 && f <= TOP);
+  if (/кровл|кровел|парапет|надстройк/i.test(s)) out.push(ROOF);   // «кладка на кровле», «парапет» — кровля
+  if (/подвал/i.test(s)) out.push(0);
+  return out;
 }
 
 export function ruToIso(d) {
@@ -406,9 +409,14 @@ export class Store {
   }
   /** Вход руководителя: финансы и управление объектами */
   async login(password) {
-    const res = await this.post({ action: 'login', password });
+    const res = await this.post({ action: 'login', password, obj: this.obj || '' });
     this.finKey = res.fin; LS.set('stroyka.fin', this.finKey);
-    await this.load();
+    if (res.data && res.data.ok) {   // сервер сразу отдал свою свежую копию с финансами — не ждём Google
+      this.apply(res.data);
+      for (const op of this.queue) if ((op.obj || '') === (this.obj || '')) this.applyLocal(op);
+      this.emit('data');
+      this.load(true);   // а свежие данные из таблиц — в фоне
+    } else await this.load();
   }
   logout() { this.finKey = ''; LS.set('stroyka.fin', ''); this.load(); }
   async changeFinPassword(password) { const res = await this.post({ action: 'finPassword', password }); this.finKey = res.fin; LS.set('stroyka.fin', this.finKey); }

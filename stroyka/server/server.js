@@ -331,7 +331,10 @@ async function handleApi(req, res, url) {
         const ok = String(body.password || '').trim().length > 0 && crypto.timingSafeEqual(crypto.createHash('sha256').update(String(body.password || '').trim()).digest(), crypto.createHash('sha256').update(a.password).digest());
         if (!ok) throw Object.assign(new Error('Неверный пароль'), { code: 403 });
         loginTries.delete(ip);
-        return send(res, 200, { ok: true, fin: finIssue() });
+        // сразу отдаём последнюю копию таблиц с финансами (сервер обновляет её постоянно) — вход без ожидания Google
+        const obj = /^[\w-]{20,80}$/.test(body.obj || '') ? body.obj : '';
+        const snap = MODE === 'proxy' && GOOGLE ? readJson(mirrorFile(obj), null) : { ok: true, ...db };
+        return send(res, 200, { ok: true, fin: finIssue(), data: snap && snap.ok !== false ? { ...snap, ok: true } : null });
       }
       if (body.action === 'finPassword') {   // смена пароля руководителем: все остальные входы сбрасываются
         if (!finOk(req)) throw Object.assign(new Error('Нужен вход руководителя'), { code: 403 });
