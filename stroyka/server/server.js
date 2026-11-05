@@ -256,6 +256,7 @@ function needsFin(body) {
   const a = body && body.action;
   if (/Expense$/.test(a || '') || ADMIN_ACTIONS.has(a)) return true;
   if ((a === 'setCell' || a === 'addRow') && FIN_SHEETS.test(String(body.s || '').trim())) return true;
+  if (a === 'setCell' && /^(rate|money|sum|price)$/.test(String(body.f || ''))) return true;   // расценки и деньги
   return false;
 }
 /** Данные для рабочих: без расходов, договора, авансов, личных; стоимость работ — только как относительный вес */
@@ -265,8 +266,9 @@ function stripFin(d) {
   if (Array.isArray(d.checks)) out.checks = d.checks.filter((c) => /по уровням|этаж/i.test(c.name || ''));
   if (d.extra && Array.isArray(d.extra.volumes)) {
     const max = Math.max(0, ...d.extra.volumes.map((v) => v.cost || 0));
-    out.extra = { ...d.extra, volumes: d.extra.volumes.map((v) => ({ ...v, cost: max ? Math.round(((v.cost || 0) / max) * 1000) / 1000 : 0 })) };
+    out.extra = { ...d.extra, volumes: d.extra.volumes.map((v) => ({ ...v, cost: max ? Math.round(((v.cost || 0) / max) * 1000) / 1000 : 0, rate: 0, money: 0 })) };
   }
+  if (out.extra && out.extra.handbook) out.extra = { ...out.extra, handbook: { ...out.extra.handbook, contractors: (out.extra.handbook.contractors || []).map((c) => ({ ...c, rates: {} })) } };
   return out;
 }
 const loginTries = new Map();   // ip → [время попыток]: не больше 8 в 10 минут

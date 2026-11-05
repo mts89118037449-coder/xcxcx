@@ -337,6 +337,7 @@ const LS = {
 };
 
 const key = (s, f, w) => `${s}|${f}|${w}`;
+const norm = (x) => String(x || '').trim().toLowerCase().replace(/\s+/g, ' ');
 /** Процент раздела: по стоимости строк, если есть; при одной единице измерения — по объёму; иначе среднее строк (метры кабеля и штуки розеток не складываются) */
 function groupPct(g) {
   const items = g.items;
@@ -548,7 +549,7 @@ export class Store {
   /** Данные других таблиц: «Выполнение» (объёмы) и «VUP CORE» (материалы, ход работ, статусы этажей) */
   setExtra(x) {
     const e = x || {};
-    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '', brigades: e.brigades || [], acts: e.acts || [] };
+    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '', brigades: e.brigades || [], acts: e.acts || [], handbook: e.handbook || { contractors: [], norms: {}, works: [] } };
     this.vol = new Map();
     setWorkMap(e.structure && e.structure.workMap);
     const groups = this.extra.volumes.filter((v) => v.total > 0 && v.floor != null).map((v) => workGroup(v.work, Number(v.floor))).filter(Boolean);
@@ -564,6 +565,32 @@ export class Store {
       this.vol.set(k, fl);
     }
     for (const fl of this.vol.values()) for (const g of Object.values(fl)) g.pct = groupPct(g);
+  }
+  /** Расценка строки объёма: из самой строки («Расценка») или из «Справочника» по исполнителю и виду работ */
+  rateOf(v) {
+    if (v.rate) return v.rate;
+    const c = (this.extra.handbook.contractors || []).find((x) => norm(x.name) === norm(v.contractor));
+    return c ? (c.rates[v.work] || c.rates[Object.keys(c.rates).find((k) => norm(k) === norm(v.work))] || 0) : 0;
+  }
+  /** Бригады: «Справочник» (исполнители, расценки, телефон) + столбец «Исполнитель» в объёмах + лист «Бригады» (численность).
+   *  Для каждой — где работает и сколько сделано (и на какую сумму — у руководителя). */
+  brigadeStats() {
+    const map = new Map();
+    const get = (name) => { const k = norm(name); if (!map.has(k)) map.set(k, { name: String(name).trim(), rows: [], people: 0, rates: {}, phone: '', type: '', section: '', works: '', note: '', sheetRow: 0 }); return map.get(k); };
+    for (const c of this.extra.handbook.contractors || []) Object.assign(get(c.name), { rates: c.rates, phone: c.phone, hbRow: c.row });
+    for (const b of this.extra.brigades || []) Object.assign(get(b.name), { people: b.people, type: b.type, section: b.section, works: b.works, note: b.note, sheetRow: b.row });
+    for (const v of this.extra.volumes) if (v.contractor && v.total > 0) get(v.contractor).rows.push(v);
+    return [...map.values()].map((b) => {
+      const byWork = {};
+      let earned = 0, priced = false;
+      for (const v of b.rows) {
+        const w = (byWork[v.work] ||= { work: v.work, total: 0, done: 0 });
+        w.total += v.total; w.done += Math.min(v.done || 0, v.total);
+        const r = this.rateOf(v); if (r) { priced = true; earned += Math.min(v.done || 0, v.total) * r; }
+      }
+      const floors = [...new Set(b.rows.map((v) => `${v.section}|${v.floor}`))];
+      return { ...b, byWork: Object.values(byWork), floors, earned: priced ? earned : null };
+    }).sort((a, b) => (b.rows.length - a.rows.length) || (b.people - a.people) || a.name.localeCompare(b.name, 'ru'));
   }
   volumeGroup(section, floor, work) { const fl = this.vol.get(`${section}|${floor}`); return fl ? fl[work] || null : null; }
   /** Виды работ этажа: по таблице «Выполнение», если в ней есть этот этаж, иначе стандартный набор */
@@ -777,7 +804,7 @@ export class Store {
           const rec = list.find((x) => x.row === op.r && (!x.sheet || x.sheet === op.s));
           if (rec) {
             if (op.f === 'week') { const iso = Object.keys(rec.weekCols || {}).find((d) => rec.weekCols[d] === op.c); if (iso) { rec.weekly = { ...(rec.weekly || {}), [iso]: Number(op.value) || 0 }; } }
-            else rec[op.prop] = /^(sum|qty|pallets|workers|total|accepted|value|people)$/.test(op.f) ? Number(String(op.value).replace(',', '.')) : op.value;
+            else rec[op.prop] = /^(sum|qty|pallets|workers|total|accepted|value|people|rate)$/.test(op.f) ? Number(String(op.value).replace(',', '.')) : op.value;
           }
           if (op.list === 'extra.volumes') this.setExtra(this.extra);
         }

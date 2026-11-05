@@ -209,8 +209,7 @@ function renderSummary() {
         </div>`).join('')}
       <div class="f-row f-foot" style="${fcols}">${SECTIONS.length !== 2 || LAYOUT !== 'stack' ? '<span></span>' : ''}${SECTIONS.map((s) => `<span>${T.part} ${esc(s)}</span>`).join(SECTIONS.length === 2 && LAYOUT === 'stack' ? '<span></span>' : '')}</div>
     </div>
-    ${(() => { const br = store.extra.brigades || []; if (!br.length) return ''; const n = br.reduce((a, b) => a + (b.people || 0), 0); const unk = br.filter((b) => !b.people).length;
-      return `<h3>Бригады <span class="muted">· ${fmtN(n)} чел.${unk ? ` + ${unk} уточнить` : ''}</span></h3>${brigadesHtml(br)}<div class="add-row"><button class="btn ghost small" data-add="brigade">+ Бригада</button></div>`; })()}
+    ${brigadeBlock()}
     <h3>Открытые поручения <span class="muted">· ${open.length}</span></h3>
     <ul class="remarks">
       ${open.map((r) => remarkHtml(r, true)).join('') || '<li class="muted">Нет открытых поручений</li>'}
@@ -285,14 +284,19 @@ function floorHtml() {
     const g = store.volumeGroup(s, f, w);
     const id = 'w:' + w;
     const open = state.open.has(id);
-    const body = g ? `<div class="tablewrap"><table class="voltab"><thead><tr><th>Вид работ</th><th>Объём</th><th>Принято КС-6а</th><th>Неделя с ${shortDate(wk)}</th><th>Выполнено</th></tr></thead><tbody>
+    const names = store.brigadeStats().map((b) => b.name);
+    const money = !store.finLocked;
+    const body = g ? `<div class="tablewrap"><table class="voltab"><thead><tr><th>Вид работ</th><th>Исполнитель</th><th>Объём</th><th>Принято КС-6а</th><th>Неделя с ${shortDate(wk)}</th><th>Выполнено</th>${money ? '<th>Расценка, ₽</th><th>Сумма, ₽</th>' : ''}</tr></thead><tbody>
           ${g.items.map((it) => {
             const vs = (fld, val, lbl, extra = {}) => ev(fmtN(val || 0), { b: 'V', s: it.sheet, r: it.row, f: fld, raw: val || 0, expect: val || '', type: 'number', label: `${it.work}, ${fl}, с. ${s}: ${lbl}`, prop: fld, list: 'extra.volumes', ...extra });
             const col = it.weekCols && it.weekCols[wk];
             const wv = (it.weekly || {})[wk] || 0;
-            return `<tr><td>${esc(it.work)}${it.contractor ? `<div class="muted">${esc(it.contractor)}</div>` : ''}</td><td>${vs('total', it.total, 'общий объём')}</td><td>${vs('accepted', it.accepted, 'принято по КС-6а')}</td>
+            const rate = store.rateOf(it);
+            const who = ev(esc(it.contractor || '— назначить'), { b: 'V', s: it.sheet, r: it.row, f: 'contractor', raw: it.contractor || '', expect: it.contractor || '', type: 'text', options: ['', ...names], label: `${it.work}, ${fl}, с. ${s}: исполнитель`, prop: 'contractor', list: 'extra.volumes' });
+            return `<tr><td>${esc(it.work)}${it.due ? `<div class="muted">срок ${esc(it.due)}${it.status ? ' · ' + esc(it.status) : ''}</div>` : ''}</td><td>${who}</td><td>${vs('total', it.total, 'общий объём')}</td><td>${vs('accepted', it.accepted, 'принято по КС-6а')}</td>
               <td>${col ? vs('week', wv, `за неделю с ${shortDate(wk)}`, { c: col, prop: '' }) : '<span class="muted">нет колонки</span>'}</td>
-              <td><b>${fmtN(it.done)}</b> <span class="muted">${Math.round(it.done / it.total * 100)}%</span></td></tr>`;
+              <td><b>${fmtN(it.done)}</b> <span class="muted">${Math.round(it.done / it.total * 100)}%</span></td>
+              ${money ? `<td>${ev(rate ? fmtN(rate) : '—', { b: 'V', s: it.sheet, r: it.row, f: 'rate', raw: it.rate || '', expect: it.rate || '', type: 'number', label: `${it.work}, ${fl}, с. ${s}: расценка, ₽`, prop: 'rate', list: 'extra.volumes' })}${!it.rate && rate ? '<div class="muted">из справочника</div>' : ''}</td><td>${rate ? rub(Math.min(it.done, it.total) * rate) : '—'}</td>` : ''}</tr>`;
           }).join('')}
         </tbody></table></div>
         <p class="muted small-note">«Выполнено» таблица считает сама из принятого и недельных объёмов — поэтому меняется через них.</p>`
@@ -367,6 +371,25 @@ function floorHtml() {
     <p class="hint-line">Нажмите категорию, чтобы развернуть. Значения со значком ✎ записываются прямо в ячейку таблицы.</p>`;
 }
 
+/** Бригады в «Обзоре»: кто, сколько человек, где работает, сколько сделал (и на какую сумму — у руководителя) */
+function brigadeBlock() {
+  const br = store.brigadeStats();
+  if (!br.length) return '';
+  const n = br.reduce((a, b) => a + (b.people || 0), 0);
+  const assigned = br.some((b) => b.rows.length);
+  const fl = (b) => { const by = {}; for (const k of b.floors) { const [sec, f] = k.split('|'); (by[sec] ||= []).push(+f); } return Object.entries(by).map(([sec, fs]) => `${T.partShort}${sec}: ${fs.sort((x, y) => x - y).map(floorShort).join(', ')}`).join(' · '); };
+  const bs = (b) => ({ b: 'G', s: 'Бригады', r: b.sheetRow, f: 'people', raw: b.people || '', expect: b.people || '', type: 'number', label: `Бригада «${b.name}»: человек`, prop: 'people', list: 'extra.brigades' });
+  return `<h3>Бригады <span class="muted">· ${fmtN(n)} чел.</span></h3>
+    <ul class="totals brig">${br.map((b) => `<li><span><b>${esc(b.name)}</b>${b.type ? ` <em class="chip-s">${esc(b.type)}</em>` : ''}
+      ${b.rows.length ? `<div class="muted">${esc(fl(b))}</div><div class="muted">${b.byWork.map((w) => `${esc(cleanW(w.work))} ${fmtN(w.done)}/${fmtN(w.total)} ${esc(unitOf(w.work))}`).join(' · ')}</div>` : b.works ? `<div class="muted">${esc(b.works)}</div>` : ''}
+      ${!store.finLocked && b.earned != null ? `<div class="muted">выполнено на <b>${rub(b.earned)}</b>${Object.keys(b.rates).length ? ' · расценки: ' + Object.entries(b.rates).map(([w, r]) => `${esc(cleanW(w))} ${fmtN(r)} ₽`).join(', ') : ''}</div>` : ''}
+      ${b.phone ? `<div class="muted"><a href="tel:${esc(b.phone.replace(/[^+\d]/g, ''))}">${esc(b.phone)}</a></div>` : ''}${b.note ? `<div class="muted">${esc(b.note)}</div>` : ''}</span>
+      <b class="num">${b.sheetRow ? ev(b.people ? fmtN(b.people) + ' чел.' : '<span class="err-t">уточнить</span>', bs(b)) : (b.people ? fmtN(b.people) + ' чел.' : '')}</b></li>`).join('')}</ul>
+    ${assigned ? '' : `<p class="muted small-note">В «Выполнении» у строк объёмов не указан «Исполнитель» — назначьте бригаду на этаже (Работы → вид работ → «Исполнитель»), и здесь появится, где она работает и сколько сделала.</p>`}
+    <div class="add-row"><button class="btn ghost small" data-add="brigade">+ Бригада</button></div>`;
+}
+const cleanW = (w) => String(w || '').replace(/,\s*[^,]+$/, '');
+const unitOf = (w) => { const m = String(w || '').match(/,\s*([^,]+)$/); return m ? m[1] : ''; };
 /** Бригады (лист «Бригады»): численность правится прямо здесь */
 function brigadesHtml(list) {
   if (!list.length) return '';

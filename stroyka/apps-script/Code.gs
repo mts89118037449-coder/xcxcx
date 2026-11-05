@@ -364,6 +364,7 @@ function readExtra_() {
     inventory: MODE === 'book' ? [] : safe_(readInventory_),
     sources: safe_(sourcesInfo_),
     brigades: safe_(readBrigades_),
+    handbook: safe_(readHandbook_),
     acts: MODE === 'book' ? [] : safe_(readActs_),
   };
 }
@@ -419,7 +420,7 @@ function readVolumes_() {
       if (!total) continue;
       const weekly = {};
       weeks.forEach(function (wk) { const v = num_(r[wk[0]]); if (v) weekly[wk[1]] = v; });
-      out.push({ row: i + 3, sheet: sh.getName(), weekCols: weekCols, section: sec, floor: floor, work: work, total: total, cost: num_(r[12]) || (num_(r[11]) * total) || 0, done: num_(r[7]), accepted: num_(r[13]), status: String(r[10]).trim(), due: String(r[9]).trim(), handover: String(r[0]).trim(), contractor: String(r[2]).trim(), weekly: weekly });
+      out.push({ row: i + 3, sheet: sh.getName(), weekCols: weekCols, section: sec, floor: floor, work: work, total: total, cost: (num_(r[11]) * total) || num_(r[12]) || 0, rate: num_(r[11]), money: num_(r[12]), done: num_(r[7]), accepted: num_(r[13]), status: String(r[10]).trim(), due: String(r[9]).trim(), handover: String(r[0]).trim(), contractor: String(r[2]).trim(), weekly: weekly });
     }
   });
   return out;
@@ -606,7 +607,7 @@ const EDITABLE = {
   'G|Расходы': { date: 3, cat: 4, who: 5, basis: 6, note: 7, sum: 8 },
   'G|Замечания': { date: 2, section: 3, level: 4, text: 5, who: 6, due: 7, status: 8, done: 9, note: 10 },
   'G|Документы': { cell: 0, section: 1, level: 2, work: 3, is: 4, aosr: 5, rem: 6 },
-  'V|*': { total: 5, accepted: 14, week: 0 },   // любой лист-часть таблицы объёмов
+  'V|*': { total: 5, accepted: 14, week: 0, contractor: 3, handover: 1, rate: 12 },   // любой лист-часть таблицы объёмов
   'U|Движение материалов': { date: 3, type: 4, material: 5, zone: 6, pallets: 7, doc: 9, status: 10, comment: 14 },
   'U|Стройка · ход работ': { section: 3, floor: 4, brigade: 5, stage: 6, start: 7, end: 8, status: 9, workers: 10 },
   'U|Стройка · статусы этажей': { section: 1, floor: 2, status: 3, date: 4, source: 5, comment: 6 },
@@ -614,7 +615,7 @@ const EDITABLE = {
   'U|Стройка · контроль расхождений': { status: 7, note: 9 },
 };
 const DATE_FIELDS = /^(date|done|start|end|due\d?)$/;
-const NUM_FIELDS = /^(sum|qty|pallets|workers|total|accepted|week|value)$/;
+const NUM_FIELDS = /^(sum|qty|pallets|workers|total|accepted|week|value|people|rate)$/;
 
 function cellValue_(field, v) {
   if (v === '' || v == null) return '';
@@ -1572,4 +1573,37 @@ function readActs_() {
   return rowsOf_(sh, 2, 11)
     .filter(function (r) { return String(r[5]).trim() || String(r[6]).trim(); })
     .map(function (r) { return { row: r.row, id: r[0], date: pickDate_(r[1]), corpus: r[2], section: secId_(r[3]), floor: levelKey_(r[4]), number: r[5], work: r[6], chain: r[7], status: r[8], link: /^https?:\/\//.test(String(r[9])) ? String(r[9]) : '' }; });
+}
+
+/** «Справочник» таблицы объёмов: исполнители (бригады) с расценками по видам работ и телефоном; нормативы сроков.
+ *  Слева: Исполнитель | <вид работ>… | Телефон / примечание; справа: Вид работ | Срок, дней с даты передачи. */
+function readHandbook_() {
+  const book = MODE === 'book' ? ss_() : SpreadsheetApp.openById(CUR_V);
+  const sh = book.getSheetByName('Справочник');
+  const out = { contractors: [], norms: {}, works: [] };
+  if (!sh || sh.getLastRow() < 2) return out;
+  const n = Math.min(sh.getLastRow(), 200), w = Math.min(sh.getLastColumn(), 30);
+  const v = sh.getRange(1, 1, n, w).getDisplayValues();
+  let hr = -1;
+  for (let i = 0; i < Math.min(6, n); i++) if (/^\s*(исполнитель|бригада|подрядчик)\s*$/i.test(String(v[i][0])) && String(v[i][1]).trim()) { hr = i; break; }
+  if (hr < 0) return out;
+  const head = v[hr];
+  let end = head.length;
+  for (let c = 1; c < head.length; c++) if (!String(head[c]).trim()) { end = c; break; }
+  const phoneCol = head.findIndex(function (x, c) { return c > 0 && c < end && /телефон|примеч|контакт/i.test(x); });
+  const workCols = [];
+  for (let c = 1; c < end; c++) if (c !== phoneCol) workCols.push(c);
+  out.works = workCols.map(function (c) { return String(head[c]).trim(); });
+  for (let i = hr + 1; i < n; i++) {
+    const name = String(v[i][0]).trim();
+    if (!name) continue;
+    if (/^(пуст|новых)/i.test(name)) continue;
+    const rates = {};
+    workCols.forEach(function (c) { const x = num_(v[i][c]); if (x) rates[String(head[c]).trim()] = x; });
+    out.contractors.push({ row: i + 1, name: name, rates: rates, phone: phoneCol >= 0 ? String(v[i][phoneCol]).trim() : '' });
+  }
+  // нормативы: столбец «Вид работ» правее таблицы исполнителей, рядом «Срок, дней»
+  const nc = head.findIndex(function (x, c) { return c >= end && /вид работ/i.test(x); });
+  if (nc >= 0) for (let i = hr + 1; i < n; i++) { const k = String(v[i][nc]).trim(), d = num_(v[i][nc + 1]); if (k && d) out.norms[k] = d; }
+  return out;
 }
