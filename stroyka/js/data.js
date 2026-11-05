@@ -349,7 +349,7 @@ function groupPct(g) {
 /** Ключи уровней из таблиц → номера уровней приложения (один раз, при загрузке) */
 function mapFloors(e) {
   if (!e) return;
-  for (const k of ['volumes', 'floorStatus', 'worklog', 'moves', 'plan', 'discrepancies']) for (const v of e[k] || []) if (v && 'floor' in v) v.floor = fromKey(v.floor);
+  for (const k of ['volumes', 'floorStatus', 'worklog', 'moves', 'plan', 'discrepancies', 'acts']) for (const v of e[k] || []) if (v && 'floor' in v) v.floor = fromKey(v.floor);
 }
 
 /** «СКЦ 160 мм / ПОЛИГРАН 160 ПГ C50», «ПОЛИГРАН 160» → «СКЦ 160»; «Газобетон 100 мм · КСМ» → «Газобетон 100» */
@@ -548,7 +548,7 @@ export class Store {
   /** Данные других таблиц: «Выполнение» (объёмы) и «VUP CORE» (материалы, ход работ, статусы этажей) */
   setExtra(x) {
     const e = x || {};
-    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '' };
+    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '', brigades: e.brigades || [], acts: e.acts || [] };
     this.vol = new Map();
     setWorkMap(e.structure && e.structure.workMap);
     const groups = this.extra.volumes.filter((v) => v.total > 0 && v.floor != null).map((v) => workGroup(v.work, Number(v.floor))).filter(Boolean);
@@ -777,7 +777,7 @@ export class Store {
           const rec = list.find((x) => x.row === op.r && (!x.sheet || x.sheet === op.s));
           if (rec) {
             if (op.f === 'week') { const iso = Object.keys(rec.weekCols || {}).find((d) => rec.weekCols[d] === op.c); if (iso) { rec.weekly = { ...(rec.weekly || {}), [iso]: Number(op.value) || 0 }; } }
-            else rec[op.prop] = /^(sum|qty|pallets|workers|total|accepted|value)$/.test(op.f) ? Number(String(op.value).replace(',', '.')) : op.value;
+            else rec[op.prop] = /^(sum|qty|pallets|workers|total|accepted|value|people)$/.test(op.f) ? Number(String(op.value).replace(',', '.')) : op.value;
           }
           if (op.list === 'extra.volumes') this.setExtra(this.extra);
         }

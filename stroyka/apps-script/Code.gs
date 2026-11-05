@@ -363,6 +363,8 @@ function readExtra_() {
     discrepancies: MODE === 'book' ? [] : safe_(readDiscrepancies_),
     inventory: MODE === 'book' ? [] : safe_(readInventory_),
     sources: safe_(sourcesInfo_),
+    brigades: safe_(readBrigades_),
+    acts: MODE === 'book' ? [] : safe_(readActs_),
   };
 }
 
@@ -599,6 +601,7 @@ const EDITABLE = {
   'G|Формула оплаты Глоракс ': { value: 2 },
   'G|Замечания АСГ': { due1: 10, due2: 11, due3: 12, due4: 13, due5: 14, due6: 15, due7: 16, status: 20, done: 21, note: 24 },
   'G|Таблица': { cell: 0 },
+  'G|Бригады': { name: 1, people: 2, type: 3, section: 4, works: 5, note: 6 },
   // самостоятельный объект (шаблон «Стройка · объект»)
   'G|Расходы': { date: 3, cat: 4, who: 5, basis: 6, note: 7, sum: 8 },
   'G|Замечания': { date: 2, section: 3, level: 4, text: 5, who: 6, due: 7, status: 8, done: 9, note: 10 },
@@ -621,11 +624,13 @@ function cellValue_(field, v) {
 }
 /** Шапки листов самостоятельного объекта — для создания при первой записи */
 const BOOK_SHEETS = {
+  'Бригады': ['Бригада', 'Человек', 'Тип', 'Часть', 'Виды работ', 'Примечание'],
   'Замечания': ['№', 'Дата', 'Часть', 'Уровень', 'Замечание', 'Ответственный', 'Срок', 'Статус', 'Выполнено', 'Примечание'],
   'Документы': ['Часть', 'Уровень', 'Вид работ', 'ИС', 'АОСР', 'Замечания по АОСР'],
 };
 function sheetFor_(b, s) {
-  const id = BOOKS[b]; if (!id) throw new Error('Неизвестная таблица');
+  const id = BOOKS[b];
+  if (b === 'G' && MODE !== 'book' && s === 'Бригады' && !ss_().getSheetByName(s)) { const sh0 = ss_().insertSheet(s); headRow_(sh0, BOOK_SHEETS['Бригады']); } if (!id) throw new Error('Неизвестная таблица');
   if ((b !== 'G' || MODE === 'book') && !canEdit_(id)) throw new Error('Нет прав на запись в эту таблицу — нужен доступ «Редактор»');
   let sh = SpreadsheetApp.openById(id).getSheetByName(s);
   if (!sh && MODE === 'book' && b === 'G' && BOOK_SHEETS[s]) { sh = ss_().insertSheet(s); headRow_(sh, BOOK_SHEETS[s]); }   // лист появится при первой записи
@@ -1542,4 +1547,29 @@ function deleteExpenseBook_(id) {
   const f = findExpenseBook_(id);
   if (f) f.x.sheet.deleteRow(f.row);
   return { deleted: f ? 1 : 0, sheet: f ? f.x.name : '', row: f ? f.row : 0 };
+}
+
+// ---------------------------------------------------------------- бригады и акты
+
+/** «Бригады»: Бригада | Человек | Тип (свои / наёмные) | Секция | Виды работ | Примечание — до строки «Итого» */
+function readBrigades_() {
+  const sh = ss_().getSheetByName('Бригады');
+  if (!sh || sh.getLastRow() < 2) return [];
+  const out = [];
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, 6).getDisplayValues();
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i], name = String(r[0]).trim();
+    if (/^итого/i.test(name)) break;
+    if (!name) continue;
+    out.push({ row: i + 2, name: name, people: num_(r[1]), peopleRaw: String(r[1]).trim(), type: String(r[2]).trim(), section: secId_(r[3]), works: String(r[4]).trim(), note: String(r[5]).trim() });
+  }
+  return out;
+}
+/** VUP CORE «Акты стройки»: акты передачи этажей — номер, вид работ, цепочка подписей, статус, ссылка на фото */
+function readActs_() {
+  const sh = SpreadsheetApp.openById(VUP_ID).getSheetByName('Акты стройки');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return rowsOf_(sh, 2, 11)
+    .filter(function (r) { return String(r[5]).trim() || String(r[6]).trim(); })
+    .map(function (r) { return { row: r.row, id: r[0], date: pickDate_(r[1]), corpus: r[2], section: secId_(r[3]), floor: levelKey_(r[4]), number: r[5], work: r[6], chain: r[7], status: r[8], link: /^https?:\/\//.test(String(r[9])) ? String(r[9]) : '' }; });
 }

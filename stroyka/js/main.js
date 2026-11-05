@@ -209,6 +209,8 @@ function renderSummary() {
         </div>`).join('')}
       <div class="f-row f-foot" style="${fcols}">${SECTIONS.length !== 2 || LAYOUT !== 'stack' ? '<span></span>' : ''}${SECTIONS.map((s) => `<span>${T.part} ${esc(s)}</span>`).join(SECTIONS.length === 2 && LAYOUT === 'stack' ? '<span></span>' : '')}</div>
     </div>
+    ${(() => { const br = store.extra.brigades || []; if (!br.length) return ''; const n = br.reduce((a, b) => a + (b.people || 0), 0); const unk = br.filter((b) => !b.people).length;
+      return `<h3>Бригады <span class="muted">· ${fmtN(n)} чел.${unk ? ` + ${unk} уточнить` : ''}</span></h3>${brigadesHtml(br)}<div class="add-row"><button class="btn ghost small" data-add="brigade">+ Бригада</button></div>`; })()}
     <h3>Открытые поручения <span class="muted">· ${open.length}</span></h3>
     <ul class="remarks">
       ${open.map((r) => remarkHtml(r, true)).join('') || '<li class="muted">Нет открытых поручений</li>'}
@@ -318,11 +320,14 @@ function floorHtml() {
 
   // 3. Документы ИС / АОСР
   const isN = docRows.filter((x) => x.d[s].is).length, aoN = docRows.filter((x) => x.d[s].aosr).length;
-  const docsBody = docRows.length ? `<table class="doctab"><thead><tr><th></th><th>ИС</th><th>АОСР</th></tr></thead><tbody>
+  const acts = (store.extra.acts || []).filter((a) => String(a.section) === s && a.floor === f);
+  const actsHtml = acts.length ? `<h4 class="sub-h4">Акты передачи · VUP CORE</h4><ul class="totals">${acts.map((a) => `<li><span><b>Акт ${esc(a.number || '')}</b> · ${esc(a.work || '')}${a.date ? ` <em class="muted">${shortDate(a.date)}</em>` : ''}<div class="muted">${esc(a.chain || '')}${a.status ? ' · ' + esc(a.status) : ''}</div></span>${a.link ? `<a class="btn ghost small" href="${esc(a.link)}" target="_blank" rel="noopener">фото ↗</a>` : ''}</li>`).join('')}</ul>` : '';
+  const docsBody0 = docRows.length ? `<table class="doctab"><thead><tr><th></th><th>ИС</th><th>АОСР</th></tr></thead><tbody>
     ${docRows.map((x) => `<tr><td>${esc(x.w)}</td>
       <td class="${x.d[s].is ? 'ok' : ''}">${x.d[s].cols.is ? ev(esc(x.d[s].is || 'нет'), dspec(x.d, 'is', x.d[s].is, 'ИС')) : '—'}</td>
       <td class="${x.d[s].aosr ? 'ok' : ''}">${x.d[s].cols.aosr ? ev(esc(x.d[s].aosr || 'нет'), dspec(x.d, 'aosr', x.d[s].aosr, 'АОСР')) : '—'}</td></tr>`).join('')}
     </tbody></table>` : '';
+  const docsBody = (docsBody0 || '') + actsHtml;
 
   // 4. Материал на этаж (VUP CORE)
   const mv = store.movesTo(s, f);
@@ -333,6 +338,9 @@ function floorHtml() {
   const wl = store.worklogOf(s, f);
   const wlBody = wl.length ? `<ul class="totals">${wl.map((w) => `<li><span>${esc(w.stage)}${w.brigade && !/не уточн/i.test(w.brigade) ? ' · ' + esc(w.brigade) : ''}${w.start ? ' · с ' + shortDate(w.start) : ''}</span><b>${ev((w.workers ? fmtN(w.workers) : '—') + ' чел.', { b: 'U', s: 'Стройка · ход работ', r: w.row, f: 'workers', raw: w.workers || '', expect: w.workers || '', type: 'number', label: `${w.stage}, ${fl}: число рабочих`, prop: 'workers', list: 'extra.worklog' })}</b></li>`).join('')}</ul>` : '';
   const ppl = wl.reduce((a, w) => a + (Number(w.workers) || 0), 0);
+  const brig = (store.extra.brigades || []).filter((b) => !b.section || b.section === s);
+  const brigN = brig.reduce((a, b) => a + (b.people || 0), 0);
+  const wlFull = (wlBody || '') + (brig.length ? `<h4 class="sub-h4">Бригады ${brig.some((b) => b.section) ? `${esc(T.partGen)} ${esc(s)}` : 'на объекте'} · ${fmtN(brigN)} чел.</h4>${brigadesHtml(brig)}` : '');
 
   // 6. Статус этажа (VUP CORE)
   const st = store.floorStatusOf(s, f);
@@ -351,14 +359,21 @@ function floorHtml() {
     <div class="cats">
       ${cat('works', '▥', 'Работы', worksSum, works.length ? workHtml : '')}
       ${cat('remarks', '!', 'Замечания', remN ? `<span class="err-t">${remN} открыт.</span>` : (rem.length || aosrRem.length) ? 'открытых нет' : 'нет', remBodyFull, remN ? 'warn' : '')}
-      ${cat('docs', '▤', 'Документы', docRows.length ? `ИС ${isN}/${docRows.length} · АОСР ${aoN}/${docRows.length}` : 'нет строки в «Таблице»', docsBody)}
+      ${cat('docs', '▤', 'Документы', (docRows.length ? `ИС ${isN}/${docRows.length} · АОСР ${aoN}/${docRows.length}` : 'нет строки в «Таблице»') + (acts.length ? ` · актов ${acts.length}` : ''), docsBody)}
       ${cat('mat', '▣', 'Материал', mv.length ? `${mv.length} подач · ${fmtN(pal)} пал.` : 'нет', mvBody)}
-      ${cat('people', '👷', 'Люди и бригады', wl.length ? `${wl.length} бригад${ppl ? ' · ' + fmtN(ppl) + ' чел.' : ''}` : 'нет', wlBody)}
+      ${cat('people', '👷', 'Люди и бригады', wl.length ? `${wl.length} в работе${ppl ? ' · ' + fmtN(ppl) + ' чел.' : ''}` : brig.length ? `${brig.length} бригад · ${fmtN(brigN)} чел.` : 'нет', wlFull)}
       ${cat('status', '◉', 'Статус', st.length ? esc(st[0].status) : 'нет', stBody)}
     </div>
     <p class="hint-line">Нажмите категорию, чтобы развернуть. Значения со значком ✎ записываются прямо в ячейку таблицы.</p>`;
 }
 
+/** Бригады (лист «Бригады»): численность правится прямо здесь */
+function brigadesHtml(list) {
+  if (!list.length) return '';
+  const bs = (b, f, raw, type, lbl, extra = {}) => ({ b: 'G', s: 'Бригады', r: b.row, f, raw, expect: raw, type, label: `Бригада «${b.name}»: ${lbl}`, prop: f, list: 'extra.brigades', ...extra });
+  return `<ul class="totals brig">${list.map((b) => `<li><span><b>${esc(b.name)}</b>${b.type ? ` <em class="chip-s">${esc(b.type)}</em>` : ''}${b.works ? `<div class="muted">${esc(b.works)}</div>` : ''}${b.note ? `<div class="muted">${esc(b.note)}</div>` : ''}</span>
+    <b class="num">${ev(b.people ? fmtN(b.people) + ' чел.' : '<span class="err-t">уточнить</span>', bs(b, 'people', b.people || '', 'number', 'человек'))}</b></li>`).join('')}</ul>`;
+}
 /** Где показан этаж: в панели справа (компьютер) и/или в нижней шторке (телефон) */
 function renderFloor() {
   const targets = [];
@@ -673,6 +688,7 @@ document.addEventListener('click', async (e) => {
   const k = b.dataset.add;
   const today = isoToday();
   const defs = {
+    brigade: { book: 'G', sheet: 'Бригады', title: 'Новая бригада', fields: [['name', 'Бригада (бригадир)', 'text', ''], ['people', 'Человек', 'number', ''], ['type', 'Тип: свои / наёмные', 'text', 'свои'], ['section', `${T.part || 'Часть'} (пусто — все)`, 'text', ''], ['works', 'Виды работ', 'text', '']] },
     remark: { book: 'G', sheet: 'Замечания', title: `Замечание: ${T.partL} ${state.section}, ${floorName(state.floor).toLowerCase()}`, fixed: { date: today, section: state.section, level: LAYOUT === 'stack' ? (state.floor === 0 ? 'Подвал' : state.floor === ROOF ? 'Кровля' : String(state.floor)) : floorName(state.floor), status: 'В работе' }, fields: [['text', 'Замечание', 'text', ''], ['who', 'Ответственный', 'text', ''], ['due', 'Срок', 'date', '']] },
     tool: { book: 'G', sheet: 'УЧЁТ ИНСТРУМЕНТА ', title: 'Новый инструмент', fields: [['name', 'Наименование', 'text', ''], ['qty', 'Количество', 'text', '']] },
     personal: { book: 'G', sheet: 'Личные расходы', title: 'Новый личный расход', fields: [['date', 'Дата', 'date', today], ['name', 'Наименование', 'text', ''], ['sum', 'Сумма, ₽', 'number', ''], ['who', 'Плательщик', 'text', ''], ['note', 'Примечание', 'text', '']] },
