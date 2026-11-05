@@ -110,6 +110,11 @@
     <label>URL веб-приложения<input id="cfgUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
     <label>Токен (необязательно)<input id="cfgToken" type="text" autocomplete="off"></label>
     <div class="dlg-row show-sm"><button class="btn ghost" type="button" id="btnTheme2">◐ Светлая / тёмная тема</button></div>
+    <fieldset class="backup" id="finBox">
+      <legend>Режим руководителя</legend>
+      <p class="muted" id="finState">Финансы и управление объектами — по паролю.</p>
+      <div class="backup-actions" id="finActs"></div>
+    </fieldset>
     <fieldset class="backup">
       <legend>Резервная копия данных</legend>
       <p class="muted">Скачайте копию, чтобы данные не зависели от одного сервера. На каждом устройстве автоматически хранится последняя загруженная версия: если сервер станет недоступен, приложение покажет её.</p>
@@ -205,6 +210,19 @@
       </details>
     </div>
     <div class="dlg-actions"><button class="btn ghost" value="ok">Закрыть</button></div>
+  </form>
+</dialog>
+
+<dialog id="loginDlg">
+  <form method="dialog" class="dlg" id="loginForm">
+    <h2>🔒 Вход руководителя</h2>
+    <p class="muted">Откроются финансы и управление объектами. На этом устройстве вход сохранится на 30 дней.</p>
+    <label>Пароль<input id="loginPass" type="password" autocomplete="current-password" inputmode="text" required></label>
+    <p class="err-t" id="loginErr" hidden></p>
+    <div class="dlg-actions">
+      <button class="btn ghost" value="no" formnovalidate>Отмена</button>
+      <button class="btn" type="submit" id="loginGo">Войти</button>
+    </div>
   </form>
 </dialog>
 

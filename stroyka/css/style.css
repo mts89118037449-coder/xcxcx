@@ -544,3 +544,6 @@ details.fold > ul { margin-bottom: 12px; }
 .obj-row { display: flex; gap: 6px; }
 .obj-row input { flex: 1; min-width: 0; }
 .link-sum { cursor: pointer; color: var(--muted); font-size: 13px; padding: 8px 0; }
+/* вид для рабочих: управление объектами — только у руководителя */
+body.worker #objAdd { display: none; }
+body.worker [data-csv="expenses"] { display: none; }

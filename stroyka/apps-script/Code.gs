@@ -73,11 +73,11 @@ function tz_() { return ss_().getSpreadsheetTimeZone(); }
 function doGet(e) {
   try {
     const p = (e && e.parameter) || {};
-    checkToken_(p.token);
     ensureSetup_();
-    selectObject_(p.obj);
-    // владелец открыл ссылку в браузере (после «Разрешить») — короткая страница вместо JSON
+    // владелец открыл ссылку в браузере (после «Разрешить») — короткая страница вместо JSON, без данных
     if (!p.action) return HtmlService.createHtmlOutput('<meta name="viewport" content="width=device-width,initial-scale=1"><div style="font:18px system-ui;padding:24px"><h2>✓ Стройка 3D подключена к таблице</h2><p>Триггеры и ежедневный бэкап на Google Диск включены. Страницу можно закрыть.</p></div>');
+    checkToken_(p.token);
+    selectObject_(p.obj);
     if (p.action === 'version') return json_({ ok: true, v: version_() });
     return json_(Object.assign({ ok: true, v: version_() }, readAll_()));
   } catch (err) {
@@ -140,7 +140,8 @@ function json_(obj) {
 }
 
 function checkToken_(t) {
-  const need = PropertiesService.getScriptProperties().getProperty('TOKEN');
+  // ключ задаётся сервером при публикации (Secret.gs) или вручную свойством скрипта TOKEN
+  const need = PropertiesService.getScriptProperties().getProperty('TOKEN') || (typeof GEN_TOKEN !== 'undefined' ? GEN_TOKEN : '');
   if (need && String(t || '') !== need) throw new Error('Неверный токен');
 }
 

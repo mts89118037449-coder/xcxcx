@@ -18,10 +18,17 @@ TTY="${TTY:-/dev/tty}"
 GAS=/opt/stroyka-gas                      # проект скрипта и инструменты (вне git, только root)
 CLASP_DIR=/opt/stroyka-clasp
 CLASP="$CLASP_DIR/node_modules/.bin/clasp"
-gas_files() {  # положить в проект актуальный код из репозитория
+# Секретный ключ скрипта: без него скрипт таблицы не отдаёт данные (знает только этот сервер)
+if ! grep -q '^GOOGLE_TOKEN=.\+' "$APP/.env"; then
+  TOK=$("$NODE" -e 'console.log(require("crypto").randomBytes(24).toString("hex"))')
+  if grep -q '^GOOGLE_TOKEN=' "$APP/.env"; then sed -i "s|^GOOGLE_TOKEN=.*|GOOGLE_TOKEN=$TOK|" "$APP/.env"; else echo "GOOGLE_TOKEN=$TOK" >> "$APP/.env"; fi
+fi
+GTOKEN=$(grep '^GOOGLE_TOKEN=' "$APP/.env" | head -1 | cut -d= -f2-)
+gas_files() {  # положить в проект актуальный код из репозитория + ключ
   find "$GAS" -maxdepth 1 \( -name '*.js' -o -name '*.gs' \) -delete
   cp "$APP/apps-script/Code.gs" "$APP/apps-script/appsscript.json" "$GAS/"
-  printf '**/**\n!Code.gs\n!appsscript.json\n' > "$GAS/.claspignore"   # в Google уходят только эти два файла
+  printf "const GEN_TOKEN = '%s';\n" "$GTOKEN" > "$GAS/Secret.gs"
+  printf '**/**\n!Code.gs\n!Secret.gs\n!appsscript.json\n' > "$GAS/.claspignore"   # в Google уходят только эти файлы
 }
 set_api_url() {
   sed -i "s|^GOOGLE_API_URL=.*|GOOGLE_API_URL=$1|; s|^MODE=.*|MODE=proxy|" "$APP/.env"
@@ -78,7 +85,7 @@ TXT
   printf '  Жду разрешения'
   OKG=0
   for i in $(seq 1 180); do
-    if curl -fsSL --max-time 20 "$EXEC?action=version" 2>/dev/null | grep -q '"ok":true'; then OKG=1; break; fi
+    if curl -fsSL --max-time 20 "$EXEC?action=version&token=$GTOKEN" 2>/dev/null | grep -q '"ok":true'; then OKG=1; break; fi
     printf '.'; sleep 5
   done
   echo

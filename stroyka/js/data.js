@@ -366,7 +366,8 @@ export function materialKey(name) {
 export class Store {
   constructor() {
     const cfg = LS.get('stroyka.cfg', {});
-    this.obj = LS.get('stroyka.obj', '');   // выбранный объект — ID его таблицы объёмов ('' — по умолчанию)
+    this.obj = LS.get('stroyka.obj', '');
+    this.finKey = LS.get('stroyka.fin', '');   // вход руководителя (выдаёт сервер после пароля)   // выбранный объект — ID его таблицы объёмов ('' — по умолчанию)
     const qs = new URLSearchParams(location.search);
     this.url = qs.get('api') || cfg.url || API_URL || '';
     this.token = qs.get('token') || cfg.token || API_TOKEN || '';
@@ -392,6 +393,19 @@ export class Store {
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   emit(what) { for (const fn of this.listeners) fn(what); }
 
+  /** Ключ руководителя — только своему серверу (у Google-скрипта напрямую заголовков нет) */
+  finHeaders() {
+    try { if (this.finKey && new URL(this.url, location.href).origin === location.origin) return { 'X-Fin': this.finKey }; } catch { /* */ }
+    return {};
+  }
+  /** Вход руководителя: финансы и управление объектами */
+  async login(password) {
+    const res = await this.post({ action: 'login', password });
+    this.finKey = res.fin; LS.set('stroyka.fin', this.finKey);
+    await this.load();
+  }
+  logout() { this.finKey = ''; LS.set('stroyka.fin', ''); this.load(); }
+  async changeFinPassword(password) { const res = await this.post({ action: 'finPassword', password }); this.finKey = res.fin; LS.set('stroyka.fin', this.finKey); }
   /** Переключить объект: другая таблица объёмов, своя структура и 3D */
   setObject(id) { this.obj = id || ''; LS.set('stroyka.obj', this.obj); }
   get objects() { return (this.extra && this.extra.objects) || []; }
@@ -418,7 +432,7 @@ export class Store {
         u.searchParams.set('action', 'all');
         if (this.obj) u.searchParams.set('obj', this.obj);
         if (this.token) u.searchParams.set('token', this.token);
-        const r = await fetch(u.toString(), { redirect: 'follow' });
+        const r = await fetch(u.toString(), { redirect: 'follow', headers: this.finHeaders() });
         const data = await r.json();
         if (!data.ok) throw new Error(data.error || 'Ошибка Apps Script');
         const before = this.progress.size ? this.digest() : null;
@@ -464,6 +478,7 @@ export class Store {
     this.docs = data.docsList ? docsFromList(data.docsList) : docsFromRows(this.docsRows, this.docsHead);
     this.remarks = (data.remarks || []).map((r) => (r.level !== undefined ? { ...r, floor: fromKey(r.level) } : r));
     this.objInfo = data.object || null;
+    this.finLocked = !!data.finLocked;   // вид для рабочих: сервер не прислал финансы
     this.expSheet = data.object && data.object.mode === 'book' ? 'Расходы' : 'Счета';
     this.fin = normFin(data.fin || {});
     mapFloors(data.extra);
@@ -640,6 +655,7 @@ export class Store {
     try {
       r = await fetch(this.url, {
         method: 'POST',
+        headers: this.finHeaders(),
         // text/plain — «простой» запрос без CORS-preflight, Apps Script его принимает
         body: JSON.stringify({ obj: this.obj || '', ...payload, ...(payload.action === 'setProgress' ? { floor: toKey(payload.floor) } : {}), token: this.token }),
         redirect: 'follow',
@@ -821,7 +837,7 @@ export class Store {
       u.searchParams.set('action', 'version');
       if (this.obj) u.searchParams.set('obj', this.obj);
       if (this.token) u.searchParams.set('token', this.token);
-      const data = await (await fetch(u.toString(), { redirect: 'follow' })).json();
+      const data = await (await fetch(u.toString(), { redirect: 'follow', headers: this.finHeaders() })).json();
       if (data.ok && data.v && data.v !== this.version) await this.load(true);
       else if (data.ok) { this.lastCheck = new Date(); this.emit('sync'); }
     } catch { /* следующая проверка через 10 с */ }

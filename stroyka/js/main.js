@@ -172,13 +172,13 @@ function renderSummary() {
   el.innerHTML = `
     <div class="obj-card">
       <div><span class="muted">Объект</span><b>${esc((store.objInfo && store.objInfo.name) || PROFILE.name || T.object)}</b><span class="muted">${esc(listParts())}</span></div>
-      <div class="obj-card-a"><button class="btn ghost small" data-objdlg="list">Сменить${on > 1 ? ` (${on})` : ''}</button><button class="btn small" data-objdlg="new">+ Новый объект</button></div>
+      <div class="obj-card-a">${on > 1 ? `<button class="btn ghost small" data-objdlg="list">Сменить (${on})</button>` : ''}${store.finLocked ? '' : '<button class="btn small" data-objdlg="new">+ Новый объект</button>'}</div>
     </div>
     ${PROFILE.type !== 'mkd' ? '' : `<div class="renders" aria-label="Проект — тендерные визуализации">
       ${[1, 2, 3].map((i) => `<button class="rthumb" data-r="${i}"><img src="assets/renders/render-${i}.jpg" alt="Проектная визуализация ${i}" loading="lazy"></button>`).join('')}
       <span class="rcap">Проект — как будет выглядеть</span>
     </div>`}
-    ${BY_EXPENSES && store.connected ? `<details class="fold obj-track"><summary>📐 Вести ход работ по объектам — добавить листы объёмов</summary>
+    ${BY_EXPENSES && store.connected && !store.finLocked ? `<details class="fold obj-track"><summary>📐 Вести ход работ по объектам — добавить листы объёмов</summary>
       <p class="muted small-note">Сейчас в таблице только расходы. Для каждого объекта (${esc(SECTIONS.join(', '))}) появится лист «Объект …»: помещения × виды работ, объём и выполнено по неделям. Расходы не меняются.</p>
       <label>Помещения или зоны<input id="apLevels" value="Кухня, Санузел, Комната 1, Коридор"></label>
       <button class="btn small" type="button" id="apGo">Добавить листы объёмов</button></details>` : ''}
@@ -1155,7 +1155,7 @@ function renderObjects() {
   $('#objList').innerHTML = list.map((o) => `<li class="${o.id === cur ? 'on' : ''}">
     <button type="button" class="obj-item" data-obj="${esc(o.id)}"><b>${esc(o.name)}</b><span class="muted">${esc([o.type, o.note].filter(Boolean).join(' · '))}</span></button>
     <a class="btn ghost small" href="https://docs.google.com/spreadsheets/d/${esc(o.id)}/edit" target="_blank" rel="noopener" title="Открыть таблицу">↗</a>
-    ${o === list[0] ? '' : `<button type="button" class="btn ghost small" data-unlink="${esc(o.id)}" title="Убрать из списка (таблица останется на Диске)">✕</button>`}</li>`).join('');
+    ${o === list[0] || store.finLocked ? '' : `<button type="button" class="btn ghost small" data-unlink=""${esc(o.id)}" title="Убрать из списка (таблица останется на Диске)">✕</button>`}</li>`).join('');
   $('#objList').querySelectorAll('[data-unlink]').forEach((b) => b.onclick = async () => {
     const o = list.find((x) => x.id === b.dataset.unlink);
     if (!(await ask([`Убрать «${o.name}» из списка объектов?`], 'Сама таблица останется на Google Диске — её можно подключить снова по ссылке.'))) return;
@@ -1218,3 +1218,42 @@ $('#noAdd').onclick = () => busy($('#noAdd'), 'Проверяю…', async () =>
   const res = await store.post({ action: 'addObject', url });
   switchTo(res.id, res.already ? 'Эта таблица уже подключена — открываю' : `✓ Подключено${res.added && res.added.length ? ' · добавлены листы: ' + res.added.join(', ') : ''}`);
 });
+
+// ---------- вид для рабочих / вход руководителя ----------
+/** Без входа — без финансов: вкладка «Финансы» становится замком, управление объектами скрыто */
+function applyRole() {
+  const locked = store.finLocked;
+  document.body.classList.toggle('worker', locked);
+  const tab = document.querySelector('.tabs [data-tab="money"]');
+  if (tab) { tab.querySelector('i').textContent = locked ? '🔒' : '₽'; tab.title = locked ? 'Финансы — вход руководителя' : ''; }
+  if (locked && state.tab === 'money') setTab('summary');
+  $('#finState').textContent = !store.connected ? 'Таблица не подключена.' : locked ? 'Сейчас — вид для рабочих: финансов нет. Войдите, чтобы открыть финансы и управление объектами.' : 'Вы вошли как руководитель на этом устройстве.';
+  $('#finActs').innerHTML = !store.connected ? '' : locked ? '<button class="btn" type="button" id="finIn">🔒 Войти по паролю</button>'
+    : '<button class="btn ghost" type="button" id="finPass">Сменить пароль</button><button class="btn ghost" type="button" id="finOut">Выйти — вид для рабочих</button>';
+  const i = $('#finIn'); if (i) i.onclick = () => { $('#settings').close(); openLogin(); };
+  const o = $('#finOut'); if (o) o.onclick = () => { store.logout(); $('#settings').close(); toast('Вид для рабочих: финансы скрыты'); };
+  const pw = $('#finPass'); if (pw) pw.onclick = async () => {
+    const r = await editDialog('Новый пароль руководителя', [{ label: 'Пароль (не короче 4 символов)', type: 'text', value: '' }], 'Вход на других устройствах будет сброшен.');
+    if (!r) return;
+    try { await store.changeFinPassword(r[0]); toast('✓ Пароль изменён'); } catch (e) { toast(e.message, true); }
+  };
+}
+function openLogin() {
+  $('#loginPass').value = ''; $('#loginErr').hidden = true;
+  $('#loginDlg').showModal(); setTimeout(() => $('#loginPass').focus(), 50);
+}
+$('#loginForm').onsubmit = async (e) => {
+  if (e.submitter && e.submitter.value === 'no') return;
+  e.preventDefault();
+  const b = $('#loginGo'); b.disabled = true;
+  try { await store.login($('#loginPass').value); $('#loginDlg').close(); toast('✓ Вы вошли как руководитель'); setTab('money'); }
+  catch (err) { $('#loginErr').textContent = err.message; $('#loginErr').hidden = false; }
+  finally { b.disabled = false; }
+};
+// нажатие на «🔒 Финансы» без входа — окно пароля
+document.querySelector('.tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tab="money"]');
+  if (b && store.finLocked) { e.stopImmediatePropagation(); openLogin(); }
+}, true);
+store.on((w) => { if (w === 'data') applyRole(); });
+applyRole();

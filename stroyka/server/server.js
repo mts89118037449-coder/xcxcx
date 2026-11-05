@@ -228,6 +228,49 @@ function send(res, code, obj, headers = {}) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*', ...headers });
   res.end(JSON.stringify(obj));
 }
+// ------------------------------------------------------------------ вход руководителя: финансы и управление объектами
+// Без входа сервер отдаёт данные без денег (вид для рабочих) и не принимает финансовые правки.
+const FIN_FILE = path.join(DATA, 'fin-access.json');
+function finAccess() {
+  let a = readJson(FIN_FILE, null);
+  if (!a || !a.password || !a.secret) {
+    a = { password: String(crypto.randomInt(100000, 999999)), secret: crypto.randomBytes(24).toString('hex') };
+    writeJsonAtomic(FIN_FILE, a);
+    try { fs.chmodSync(FIN_FILE, 0o600); } catch { /* */ }
+    log(`Пароль руководителя: ${a.password} (посмотреть или сменить: stroyka fin-password [новый])`);
+  }
+  return a;
+}
+const finSig = (exp, secret) => crypto.createHmac('sha256', secret).update(String(exp)).digest('hex').slice(0, 40);
+function finIssue() { const exp = Date.now() + 30 * 864e5; return `${exp}.${finSig(exp, finAccess().secret)}`; }
+function finOk(req) {
+  const [exp, sig] = String(req.headers['x-fin'] || '').split('.');
+  if (!exp || !sig || !(Number(exp) > Date.now())) return false;
+  const good = finSig(exp, finAccess().secret);
+  return sig.length === good.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(good));
+}
+const FIN_SHEETS = /^(счета|расходы|для рп|оплаты глоракс|личн|формула оплаты|номинированн|чеки)/i;
+const ADMIN_ACTIONS = new Set(['newObject', 'copyTemplate', 'addObject', 'removeObject', 'addParts', 'restore']);
+/** Нужна ли для правки роль руководителя */
+function needsFin(body) {
+  const a = body && body.action;
+  if (/Expense$/.test(a || '') || ADMIN_ACTIONS.has(a)) return true;
+  if ((a === 'setCell' || a === 'addRow') && FIN_SHEETS.test(String(body.s || '').trim())) return true;
+  return false;
+}
+/** Данные для рабочих: без расходов, договора, авансов, личных; стоимость работ — только как относительный вес */
+function stripFin(d) {
+  if (!d || typeof d !== 'object' || !d.fin) return d;
+  const out = { ...d, finLocked: true, fin: { expenses: [], advances: [], income: [], nominated: [], personal: [], tools: d.fin.tools || [], contract: [], summary: null } };
+  if (Array.isArray(d.checks)) out.checks = d.checks.filter((c) => /по уровням|этаж/i.test(c.name || ''));
+  if (d.extra && Array.isArray(d.extra.volumes)) {
+    const max = Math.max(0, ...d.extra.volumes.map((v) => v.cost || 0));
+    out.extra = { ...d.extra, volumes: d.extra.volumes.map((v) => ({ ...v, cost: max ? Math.round(((v.cost || 0) / max) * 1000) / 1000 : 0 })) };
+  }
+  return out;
+}
+const loginTries = new Map();   // ip → [время попыток]: не больше 8 в 10 минут
+
 function checkToken(t) {
   if (TOKEN && String(t || '') !== TOKEN) throw Object.assign(new Error('Неверный токен'), { code: 403 });
 }
@@ -243,31 +286,52 @@ function readBody(req) {
 async function handleApi(req, res, url) {
   syncFromDisk();
   try {
-    if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'GET, POST' }); return res.end(); }
+    if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type, X-Fin', 'Access-Control-Allow-Methods': 'GET, POST' }); return res.end(); }
     if (req.method === 'GET') {
       const p = Object.fromEntries(url.searchParams);
       checkToken(p.token);
+      const fin = finOk(req);
       if (MODE === 'proxy' && GOOGLE) {
         try {
           const obj = /^[\w-]{20,80}$/.test(p.obj || '') ? p.obj : '';   // выбранный объект (таблица объёмов)
           const q = { action: p.action === 'version' ? 'version' : 'all', ...(obj ? { obj } : {}) };
           const data = await googleFetch(q);
           if (p.action !== 'version' && data.ok) { writeJsonAtomic(mirrorFile(obj), data); if (!obj) mirrorAt = new Date(); }
-          return send(res, 200, data);
+          return send(res, 200, fin ? data : stripFin(data));
         } catch {
           // копии таблицы ещё нет (скрипт ждёт «Разрешить») — отдаём снимок из db.json
           const obj = /^[\w-]{20,80}$/.test(p.obj || '') ? p.obj : '';
           const m = readJson(mirrorFile(obj), null) || { ...db, ok: true };
-          return send(res, 200, p.action === 'version' ? { ok: true, v: m.v } : { ...m, ok: true, stale: true, staleAt: mirrorAt && mirrorAt.toISOString() });
+          return send(res, 200, p.action === 'version' ? { ok: true, v: m.v } : (fin ? (x) => x : stripFin)({ ...m, ok: true, stale: true, staleAt: mirrorAt && mirrorAt.toISOString() }));
         }
       }
       if (p.action === 'version') return send(res, 200, { ok: true, v: db.v });
+      if (p.action === 'backups' && !fin) throw Object.assign(new Error('Нужен вход руководителя'), { code: 403 });
       if (p.action === 'backups') return send(res, 200, { ok: true, files: fs.readdirSync(BACKUPS).filter((f) => f.endsWith('.gz')).sort().reverse().slice(0, 100) });
-      return send(res, 200, { ok: true, ...db });
+      return send(res, 200, fin ? { ok: true, ...db } : stripFin({ ok: true, ...db }));
     }
     if (req.method === 'POST') {
       const body = JSON.parse((await readBody(req)) || '{}');
       checkToken(body.token);
+      if (body.action === 'login') {   // вход руководителя по паролю
+        const ip = String(req.headers['x-real-ip'] || req.socket.remoteAddress || '');
+        const now = Date.now(), tries = (loginTries.get(ip) || []).filter((t) => now - t < 600000);
+        if (tries.length >= 8) throw Object.assign(new Error('Слишком много попыток — подождите 10 минут'), { code: 429 });
+        tries.push(now); loginTries.set(ip, tries);
+        const a = finAccess();
+        const ok = String(body.password || '').trim().length > 0 && crypto.timingSafeEqual(crypto.createHash('sha256').update(String(body.password || '').trim()).digest(), crypto.createHash('sha256').update(a.password).digest());
+        if (!ok) throw Object.assign(new Error('Неверный пароль'), { code: 403 });
+        loginTries.delete(ip);
+        return send(res, 200, { ok: true, fin: finIssue() });
+      }
+      if (body.action === 'finPassword') {   // смена пароля руководителем: все остальные входы сбрасываются
+        if (!finOk(req)) throw Object.assign(new Error('Нужен вход руководителя'), { code: 403 });
+        const np = String(body.password || '').trim();
+        if (np.length < 4) throw new Error('Пароль — не короче 4 символов');
+        writeJsonAtomic(FIN_FILE, { password: np, secret: crypto.randomBytes(24).toString('hex') });
+        return send(res, 200, { ok: true, fin: finIssue() });
+      }
+      if (needsFin(body) && !finOk(req)) throw Object.assign(new Error('Это действие доступно руководителю — войдите по паролю'), { code: 403 });
       if (MODE === 'proxy' && GOOGLE) {
         if (body.action === 'restore') throw new Error('В режиме proxy восстановление делается в Google-таблице; переключитесь на standalone');
         try {
@@ -308,6 +372,7 @@ async function handleStatic(req, res, url) {
 }
 
 function serve() {
+  finAccess();   // пароль руководителя создаётся при первом запуске
   const srv = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname === '/api' || url.pathname === '/api/') return handleApi(req, res, url);
@@ -324,6 +389,10 @@ function serve() {
 // ------------------------------------------------------------------ CLI
 const [cmd, arg] = process.argv.slice(2);
 if (!cmd || cmd === 'serve') serve();
+else if (cmd === 'fin-password') {   // stroyka fin-password — показать; stroyka fin-password НОВЫЙ — сменить
+  if (arg) { if (String(arg).length < 4) { console.error('Пароль — не короче 4 символов'); process.exit(1); } writeJsonAtomic(FIN_FILE, { password: String(arg), secret: crypto.randomBytes(24).toString('hex') }); console.log('Пароль руководителя изменён. Все входы на устройствах сброшены.'); }
+  else console.log('Пароль руководителя: ' + finAccess().password);
+}
 else if (cmd === 'backup') { console.log('Бэкап:', backup('manual')); }
 else if (cmd === 'list') { for (const f of fs.readdirSync(BACKUPS).sort()) console.log(f, (fs.statSync(path.join(BACKUPS, f)).size / 1024).toFixed(0) + ' КБ'); }
 else if (cmd === 'restore') {
