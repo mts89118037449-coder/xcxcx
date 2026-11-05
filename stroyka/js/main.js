@@ -20,6 +20,7 @@ const state = {
   money: 'contract',
   expCat: 'all',
   expPart: 'all',
+  stockTab: (() => { try { return localStorage.getItem('stroyka.stk') || 'stock'; } catch { return 'stock'; } })(),
   sum: (() => { try { return localStorage.getItem('stroyka.sum') || 'main'; } catch { return 'main'; } })(),
   expQuery: '',
   expLimit: 40,
@@ -805,8 +806,17 @@ function renderStock() {
   const byFloor = {};
   for (const p of pv) { const k = `${p.section}|${p.floor}`; (byFloor[k] ||= []).push(p); }
   const floors = Object.keys(byFloor).sort((a, b) => { const [s1, f1] = a.split('|'), [s2, f2] = b.split('|'); return s1.localeCompare(s2) || f2 - f1; });
-  el.innerHTML = `
-    <div class="kpis3">
+  // «Склад» — подвкладки: на складе, подача по этажам, расхождения, инвентаризация, инструмент
+  const subs = [
+    ['stock', 'На складе', st.length ? `<em class="cnt">${st.length}</em>` : ''],
+    ...(floors.length ? [['feed', 'Подача по ' + T.levelsDat, '']] : []),
+    ...(dis.length ? [['dis', 'Расхождения', `<em class="cnt bad">${dis.length}</em>`]] : []),
+    ...(inv.length ? [['inv', 'Инвентаризация', `<em class="cnt">${inv.length}</em>`]] : []),
+    ['tools', 'Инструмент', tools.length ? `<em class="cnt">${tools.length}</em>` : ''],
+  ];
+  if (!subs.some(([k]) => k === state.stockTab)) state.stockTab = 'stock';
+  const body = {
+    stock: `    <div class="kpis3">
       <div><span>Материал на складе</span><b>${fmtN(st.reduce((a, r) => a + Math.max(0, r.left), 0))} пал.</b></div>
       <div><span>Расхождений</span><b>${dis.length}</b></div>
       <div><span>Инструмент</span><b>${tools.length} поз.</b></div>
@@ -816,15 +826,23 @@ function renderStock() {
       ${st.map((r) => `<tr><td title="${esc(r.names.join(' · '))}">${esc(r.material)}</td><td>${fmtN(r.in)}</td><td>${fmtN(r.out)}</td><td><b class="${r.left < 0 ? 'neg' : ''}">${fmtN(r.left)}</b></td></tr>`).join('')}
     </tbody></table></div>
     <p class="muted small-note">Паллеты, по листу «Движение материалов» (VUP CORE). Отрицательный остаток — подачу записали, а поступление нет: стоит сверить.</p>` : '<p class="muted">Нет движений материала.</p>'}
-    ${inv.length ? `<h3>Инвентаризация склада</h3><ul class="totals">${inv.map((x) => `<li><span>${esc(x.material)} <em class="muted">${x.date ? shortDate(x.date) : ''}</em></span><b class="num">${fmtN(x.qty)} ${esc(x.unit)}</b></li>`).join('')}</ul>` : ''}
     <div class="add-row"><button class="btn" data-add="move-in">+ Материал приехал</button><button class="btn ghost" data-add="move-feed">+ Подача ${LAYOUT === 'stack' ? 'на этаж' : 'в ' + T.levelAcc}</button></div>
-    ${dis.length ? `<h3>Расхождения <span class="muted">· требуют сверки</span></h3><ul class="remarks">${dis.map((d) => `<li class="late"><div><b>${T.part} ${esc(d.section)}, ${d.floor} эт. · ${esc(d.material)}</b><div class="muted">План ${fmtN(d.plan)}, учтено ${fmtN(d.fact)} — не хватает ${fmtN(d.diff)} пал.</div></div><div class="r-meta"><span>${ev(esc(d.status), { b: 'U', s: 'Стройка · контроль расхождений', r: d.row, f: 'status', raw: d.status, expect: d.status, type: 'text', label: `Расхождение ${d.material}, ${d.floor} эт.: статус`, options: ['Требуется сверка', 'Сверено', 'Исправлено'], prop: 'status', list: 'extra.discrepancies' })}</span></div></li>`).join('')}</ul>` : ''}
-    ${floors.length ? `<h3>План подачи · по ${T.levelsDat}</h3>${floors.map((k) => { const [sec, fl] = k.split('|'); const rows = byFloor[k]; return `<div class="planbox"><div class="planh"><b>${T.part} ${sec} · ${fl} этаж</b>${store.floorStatusOf(sec, +fl).map((x) => `<span class="chip-ok">${esc(x.status)}</span>`).join('')}</div>
+`,
+    feed: `    ${floors.length ? `<h3>План подачи · по ${T.levelsDat}</h3>${floors.map((k) => { const [sec, fl] = k.split('|'); const rows = byFloor[k]; return `<div class="planbox"><div class="planh"><b>${T.part} ${sec} · ${fl} этаж</b>${store.floorStatusOf(sec, +fl).map((x) => `<span class="chip-ok">${esc(x.status)}</span>`).join('')}</div>
       <table class="voltab"><tbody>${rows.map((p) => `<tr><td>${esc(p.key)}</td><td>план ${ev(fmtN(p.pallets), { b: 'U', s: 'Стройка · план', r: p.row, f: 'pallets', raw: p.pallets, expect: p.pallets, type: 'number', label: `План ${p.key}, ${p.zone}: паллет`, prop: 'pallets', list: 'extra.plan' })}</td><td>подано ${fmtN(p.fed)}</td><td><b class="${p.fed < p.pallets ? 'neg' : 'okc'}">${p.fed >= p.pallets ? '✓' : '−' + fmtN(p.pallets - p.fed)}</b></td></tr>`).join('')}</tbody></table></div>`; }).join('')}` : ''}
-    <h3>Инструмент <span class="muted">· лист «УЧЁТ ИНСТРУМЕНТА»${tools[0] && tools[0].date ? ', на ' + shortDate(tools[0].date) : ''}</span></h3>
+`,
+    dis: `    ${dis.length ? `<h3>Расхождения <span class="muted">· требуют сверки</span></h3><ul class="remarks">${dis.map((d) => `<li class="late"><div><b>${T.part} ${esc(d.section)}, ${d.floor} эт. · ${esc(d.material)}</b><div class="muted">План ${fmtN(d.plan)}, учтено ${fmtN(d.fact)} — не хватает ${fmtN(d.diff)} пал.</div></div><div class="r-meta"><span>${ev(esc(d.status), { b: 'U', s: 'Стройка · контроль расхождений', r: d.row, f: 'status', raw: d.status, expect: d.status, type: 'text', label: `Расхождение ${d.material}, ${d.floor} эт.: статус`, options: ['Требуется сверка', 'Сверено', 'Исправлено'], prop: 'status', list: 'extra.discrepancies' })}</span></div></li>`).join('')}</ul>` : ''}
+`,
+    inv: `    ${inv.length ? `<h3>Инвентаризация склада</h3><ul class="totals">${inv.map((x) => `<li><span>${esc(x.material)} <em class="muted">${x.date ? shortDate(x.date) : ''}</em></span><b class="num">${fmtN(x.qty)} ${esc(x.unit)}</b></li>`).join('')}</ul>` : ''}
+`,
+    tools: `    <h3>Инструмент <span class="muted">· лист «УЧЁТ ИНСТРУМЕНТА»${tools[0] && tools[0].date ? ', на ' + shortDate(tools[0].date) : ''}</span></h3>
     <ul class="totals tools">${tools.map((x) => `<li><span>${ev(esc(x.name), { b: 'G', s: 'УЧЁТ ИНСТРУМЕНТА ', r: x.row, f: 'name', raw: x.name, expect: x.name, type: 'text', label: 'Инструмент: наименование', prop: 'name', list: 'fin.tools' })}</span><b class="num">${ev(esc(x.qty || '—'), { b: 'G', s: 'УЧЁТ ИНСТРУМЕНТА ', r: x.row, f: 'qty', raw: x.qty, expect: x.qty, type: 'text', label: `${x.name}: количество`, prop: 'qty', list: 'fin.tools' })}</b></li>`).join('') || '<li class="muted">Нет данных</li>'}</ul>
     <button class="btn" data-add="tool">+ Инструмент</button>
-  `;
+`,
+  }[state.stockTab];
+  el.innerHTML = `<div class="subtabs" role="tablist">${subs.map(([k, t, c]) => `<button role="tab" data-stk="${k}" class="${state.stockTab === k ? 'on' : ''}">${esc(t)}${c}</button>`).join('')}</div>
+    <div class="subbody">${body}</div>`;
+  el.querySelectorAll('[data-stk]').forEach((b) => b.onclick = () => { state.stockTab = b.dataset.stk; try { localStorage.setItem('stroyka.stk', state.stockTab); } catch { /* */ } renderStock(); el.scrollTop = 0; if (mobile.matches) scrollTo({ top: 0 }); });
 }
 
 // ---------- добавление строк в таблицы ----------
@@ -873,7 +891,7 @@ function renderMoney() {
   const has = { contract: store.fin.contract.length, exp: true, adv: store.fin.advances.length, sup: true, inc: store.fin.income.length, pers: store.fin.personal.length };
   const views = [['contract', 'Договор'], ['exp', 'Расходы'], ['adv', 'Авансы'], ['sup', 'Поставки'], ['inc', 'Поступления'], ['pers', 'Личные']].filter(([k]) => has[k]);
   if (!views.some(([k]) => k === state.money)) state.money = views[0][0];
-  const head = `<div class="money-seg" role="tablist">${views.map(([k, t]) => `<button data-mv="${k}" class="chip ${state.money === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+  const head = `<div class="subtabs" role="tablist">${views.map(([k, t]) => `<button role="tab" data-mv="${k}" class="${state.money === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   let body = '';
   const fin = store.fin;
 
