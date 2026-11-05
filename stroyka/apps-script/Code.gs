@@ -366,6 +366,7 @@ function readExtra_() {
     brigades: safe_(readBrigades_),
     handbook: safe_(readHandbook_),
     orders: safe_(readOrders_),
+    materials: safe_(readMaterials_),
     gpr: safe_(readGpr_),
     acts: MODE === 'book' ? [] : safe_(readActs_),
   };
@@ -614,6 +615,7 @@ const EDITABLE = {
   'G|Замечания': { date: 2, section: 3, level: 4, text: 5, who: 6, due: 7, status: 8, done: 9, note: 10 },
   'G|Документы': { cell: 0, section: 1, level: 2, work: 3, is: 4, aosr: 5, rem: 6 },
   'V|*': { total: 5, accepted: 14, week: 0, contractor: 3, handover: 1 },   // «Расценка» (L) — формула из «Справочника», её не трогаем
+  'V|Материалы': { cell: 0, name: 1, work: 2, pcs: 3, len: 4, thick: 5, height: 6, m3: 7, src: 10 },
   'V|Справочник': { cell: 0, name: 1, phone: 7, people: 8, type: 9, section: 10 },   // любой лист-часть таблицы объёмов
   'U|Движение материалов': { date: 3, type: 4, material: 5, zone: 6, pallets: 7, doc: 9, status: 10, comment: 14 },
   'U|Стройка · ход работ': { section: 3, floor: 4, brigade: 5, stage: 6, start: 7, end: 8, status: 9, workers: 10 },
@@ -1655,4 +1657,21 @@ function dateStrict_(v) {
   if (!m) return '';
   const y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
   return y + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+}
+
+/** «Материалы» таблицы объёмов: нормы пересчёта поддонов в м² стены и м³ (шт на поддоне × размер камня или м³ на поддоне) */
+function readMaterials_() {
+  const book = MODE === 'book' ? ss_() : SpreadsheetApp.openById(CUR_V);
+  const sh = book.getSheetByName('Материалы');
+  if (!sh || sh.getLastRow() < 2) return [];
+  const w = Math.min(sh.getLastColumn(), 12);
+  const h = sh.getRange(1, 1, 1, w).getDisplayValues()[0].map(function (x) { return String(x).toLowerCase(); });
+  const c = function (re) { return h.findIndex(function (x) { return re.test(x); }); };
+  const C = { name: c(/^материал/), work: c(/вид работ/), pcs: c(/шт/), len: c(/длина/), thick: c(/толщин/), height: c(/высот/), m3in: c(/м³.*если/), m3: c(/м³.*итог/), m2: c(/м².*поддон/), src: c(/источник/) };
+  return sh.getRange(2, 1, sh.getLastRow() - 1, w).getDisplayValues().map(function (r, i) {
+    const name = C.name >= 0 ? String(r[C.name]).trim() : '';
+    if (!name) return null;
+    const g = function (k) { return C[k] >= 0 ? num_(r[C[k]]) : 0; };
+    return { row: i + 2, name: name, work: C.work >= 0 ? String(r[C.work]).trim() : '', pcs: g('pcs'), len: g('len'), thick: g('thick'), height: g('height'), m3in: g('m3in'), m3: g('m3'), m2: g('m2'), src: C.src >= 0 ? String(r[C.src]).trim() : '', cols: { pcs: C.pcs + 1, len: C.len + 1, thick: C.thick + 1, height: C.height + 1, m3in: C.m3in + 1 } };
+  }).filter(Boolean);
 }

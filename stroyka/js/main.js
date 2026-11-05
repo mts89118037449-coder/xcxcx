@@ -357,6 +357,7 @@ function floorHtml() {
       <button type="button" class="sub-h" aria-expanded="${open}"><b>${esc(w)}</b><span class="bar"><i style="width:${v || 0}%"></i></span><span class="val-ro">${pct(v)}</span><em class="cat-chev">›</em></button>
       ${open ? `<div class="sub-b">${body}</div>` : ''}</div>`;
   }).join('');
+  const weekBtn = works.some((w) => store.volumeGroup(s, f, w)) ? `<div class="add-row"><button class="btn small" type="button" data-week="${esc(s)}|${f}">📏 Внести объём за неделю</button></div>` : '';
   const worksSum = works.length ? (works.length > 3 ? `${works.length} видов · ${pct(fv)}` : works.map((w) => `${esc(w.split(' ')[0])} ${pct(store.get(s, f, w))}`).join(' · ')) : 'нет данных';
 
   // 2. Замечания: поручения АСГ с упоминанием этажа + замечания по АОСР из листа «Таблица»
@@ -392,6 +393,8 @@ function floorHtml() {
   const mv = store.movesTo(s, f);
   const mvBody = mv.length ? `<ul class="totals">${mv.map((m) => `<li><span>${esc(m.material)}${m.date ? ` <em class="muted">${m.dateExact ? '' : '≈ '}${shortDate(m.date)}</em>` : ''}</span><b class="num">${ev(fmtN(m.pallets) + ' пал.', { b: 'U', s: 'Движение материалов', r: m.row, f: 'pallets', raw: m.pallets, expect: m.pallets, type: 'number', label: `${m.material} → ${m.zone}: паллет`, prop: 'pallets', list: 'extra.moves' })}</b></li>`).join('')}</ul>` : '';
   const pal = mv.reduce((a, m) => a + (m.pallets || 0), 0);
+  const palQ = mv.map((m) => store.palletsTo(m.material, m.pallets || 0)).filter(Boolean);
+  const palM = palQ.length ? Object.entries(palQ.reduce((a, c) => ((a[c.unit] = (a[c.unit] || 0) + c.qty), a), {})).map(([u, q]) => `≈ ${fmtN(Math.round(q))} ${u}`).join(', ') : '';
 
   // 5. Люди и бригады (VUP CORE · ход работ)
   const wl = store.worklogOf(s, f);
@@ -416,7 +419,7 @@ function floorHtml() {
     </div>
     <div class="big floor-big">${fv == null ? '<span class="nodata">нет данных</span>' : pct(fv)}<span class="muted"> ${fl}, ${T.partL} ${esc(s)}</span></div>
     <div class="cats">
-      ${cat('works', '▥', 'Работы', worksSum, works.length ? workHtml : '')}
+      ${cat('works', '▥', 'Работы', worksSum, works.length ? weekBtn + workHtml : '')}
       ${cat('remarks', '!', 'Замечания и поручения', remN + ordOpen ? `<span class="err-t">${remN + ordOpen} открыт.</span>` : (rem.length || aosrRem.length || ords.length) ? 'открытых нет' : 'нет', (rem.length || aosrRem.length || ords.length || canAddRem) ? remBodyFull : '', remN + ordOpen ? 'warn' : '')}
       ${(() => { const g = store.scheduleOf(s, f); if (!g) return '';
         const gs = (row) => ({ b: 'G', s: 'ГПР', r: row.row, f: 'received', raw: row.received || '', expect: row.received ? row.received.split('-').reverse().join('.') : '', type: 'date', label: `${row.name}: этаж передан (факт)`, prop: 'received', list: 'extra.gpr' });
@@ -429,7 +432,7 @@ function floorHtml() {
           ${g.shift ? `<p class="muted small-note">Этаж передан на ${g.shift} дн. позже графика — срок сдвинут.</p>` : ''}`;
         return cat('plan', '📅', 'График (ГПР)', sum, body, g.lag > 7 ? 'warn' : ''); })()}
       ${cat('docs', '▤', 'Документы', (docRows.length ? `ИС ${isN}/${docRows.length} · АОСР ${aoN}/${docRows.length}` : 'нет строки в «Таблице»') + (acts.length ? ` · актов ${acts.length}` : ''), docsBody)}
-      ${cat('mat', '▣', 'Материал', mv.length ? `${mv.length} подач · ${fmtN(pal)} пал.` : 'нет', mvBody)}
+      ${cat('mat', '▣', 'Материал', mv.length ? `${mv.length} подач · ${fmtN(pal)} пал.${palM ? ' · ' + palM : ''}` : 'нет', mvBody)}
       ${cat('people', '👷', 'Люди и бригады', wl.length ? `${wl.length} в работе${ppl ? ' · ' + fmtN(ppl) + ' чел.' : ''}` : brig.length ? `${brig.length} бригад · ${fmtN(brigN)} чел.` : 'нет', wlFull)}
       ${cat('status', '◉', 'Статус', st.length ? esc(st[0].status) : 'нет', stBody)}
     </div>
@@ -809,6 +812,7 @@ function renderStock() {
   // «Склад» — подвкладки: на складе, подача по этажам, расхождения, инвентаризация, инструмент
   const subs = [
     ['stock', 'На складе', st.length ? `<em class="cnt">${st.length}</em>` : ''],
+    ...((store.extra.materials || []).length ? [['need', 'Потребность', '']] : []),
     ...(floors.length ? [['feed', 'Подача по ' + T.levelsDat, '']] : []),
     ...(dis.length ? [['dis', 'Расхождения', `<em class="cnt bad">${dis.length}</em>`]] : []),
     ...(inv.length ? [['inv', 'Инвентаризация', `<em class="cnt">${inv.length}</em>`]] : []),
@@ -822,12 +826,13 @@ function renderStock() {
       <div><span>Инструмент</span><b>${tools.length} поз.</b></div>
     </div>
     <h3>Материал на складе <span class="muted">· поступило − подано на объект</span></h3>
-    ${st.length ? `<div class="tablewrap"><table class="voltab stock"><thead><tr><th>Материал</th><th>Поступило</th><th>Подано</th><th>Остаток</th></tr></thead><tbody>
-      ${st.map((r) => `<tr><td title="${esc(r.names.join(' · '))}">${esc(r.material)}</td><td>${fmtN(r.in)}</td><td>${fmtN(r.out)}</td><td><b class="${r.left < 0 ? 'neg' : ''}">${fmtN(r.left)}</b></td></tr>`).join('')}
+    ${st.length ? `<div class="tablewrap"><table class="voltab stock"><thead><tr><th>Материал</th><th>Поступило</th><th>Подано</th><th>Остаток</th><th>≈ хватит на</th></tr></thead><tbody>
+      ${st.map((r) => `<tr><td title="${esc(r.names.join(' · '))}">${esc(r.material)}</td><td>${fmtN(r.in)}</td><td>${fmtN(r.out)}</td><td><b class="${r.left < 0 ? 'neg' : ''}">${fmtN(r.left)}</b></td><td>${(() => { const c = store.palletsTo(r.material, Math.max(0, r.left)); return c ? `${fmtN(Math.round(c.qty * 10) / 10)} ${esc(c.unit)}` : '<span class="muted">нет нормы</span>'; })()}</td></tr>`).join('')}
     </tbody></table></div>
     <p class="muted small-note">Паллеты, по листу «Движение материалов» (VUP CORE). Отрицательный остаток — подачу записали, а поступление нет: стоит сверить.</p>` : '<p class="muted">Нет движений материала.</p>'}
     <div class="add-row"><button class="btn" data-add="move-in">+ Материал приехал</button><button class="btn ghost" data-add="move-feed">+ Подача ${LAYOUT === 'stack' ? 'на этаж' : 'в ' + T.levelAcc}</button></div>
 `,
+    need: needHtml(),
     feed: `    ${floors.length ? `<h3>План подачи · по ${T.levelsDat}</h3>${floors.map((k) => { const [sec, fl] = k.split('|'); const rows = byFloor[k]; return `<div class="planbox"><div class="planh"><b>${T.part} ${sec} · ${fl} этаж</b>${store.floorStatusOf(sec, +fl).map((x) => `<span class="chip-ok">${esc(x.status)}</span>`).join('')}</div>
       <table class="voltab"><tbody>${rows.map((p) => `<tr><td>${esc(p.key)}</td><td>план ${ev(fmtN(p.pallets), { b: 'U', s: 'Стройка · план', r: p.row, f: 'pallets', raw: p.pallets, expect: p.pallets, type: 'number', label: `План ${p.key}, ${p.zone}: паллет`, prop: 'pallets', list: 'extra.plan' })}</td><td>подано ${fmtN(p.fed)}</td><td><b class="${p.fed < p.pallets ? 'neg' : 'okc'}">${p.fed >= p.pallets ? '✓' : '−' + fmtN(p.pallets - p.fed)}</b></td></tr>`).join('')}</tbody></table></div>`; }).join('')}` : ''}
 `,
@@ -843,6 +848,21 @@ function renderStock() {
   el.innerHTML = `<div class="subtabs" role="tablist">${subs.map(([k, t, c]) => `<button role="tab" data-stk="${k}" class="${state.stockTab === k ? 'on' : ''}">${esc(t)}${c}</button>`).join('')}</div>
     <div class="subbody">${body}</div>`;
   el.querySelectorAll('[data-stk]').forEach((b) => b.onclick = () => { state.stockTab = b.dataset.stk; try { localStorage.setItem('stroyka.stk', state.stockTab); } catch { /* */ } renderStock(); el.scrollTop = 0; if (mobile.matches) scrollTo({ top: 0 }); });
+}
+
+/** «Склад» → «Потребность»: осталось сделать → сколько поддонов → сколько есть → сколько заказать; нормы правятся тут же */
+function needHtml() {
+  const mats = store.extra.materials || [];
+  const ms = (m, k, lbl) => ev(m[k] ? fmtN(m[k]) : '—', { b: 'V', s: 'Материалы', r: m.row, f: 'cell', c: m.cols[k], raw: m[k] || '', expect: m[k] || '', type: 'number', label: `${m.name}: ${lbl}` });
+  const secs = SECTIONS.map((s) => [s, store.demand(s)]).filter(([, d]) => d.length);
+  return `${secs.map(([s, d]) => `<h3>${esc(T.part)} ${esc(s)}</h3>${d.map((w) => `<div class="planbox"><div class="planh"><b>${esc(w.work)}</b><span class="muted">осталось ${fmtN(Math.round(w.left * 10) / 10)} из ${fmtN(Math.round(w.total))} ${esc(w.unit)}</span></div>
+      <table class="voltab"><tbody>${w.mats.map((m) => `<tr><td>${esc(m.name)}</td><td>${m.need != null ? `нужно <b>${fmtN(Math.ceil(m.need))}</b> пал.` : '<span class="muted">нет нормы</span>'}</td><td class="muted">на складе ${fmtN(m.onSite)}</td><td>${m.need != null ? (Math.ceil(m.need) - m.onSite > 0 ? `<span class="err-t">заказать ${fmtN(Math.ceil(m.need) - m.onSite)}</span>` : '<span class="okc">хватает</span>') : ''}</td></tr>`).join('')}</tbody></table>
+      ${w.mats.length > 1 ? '<p class="muted small-note">Несколько материалов на один вид работ — потребность указана, если делать всё этим материалом.</p>' : ''}</div>`).join('')}`).join('') || '<p class="muted">Нет видов работ с нормами материала.</p>'}
+    <h3>Нормы: сколько в одном поддоне <span class="muted">· «Выполнение» → «Материалы»</span></h3>
+    <div class="tablewrap"><table class="voltab"><thead><tr><th>Материал</th><th>Шт/под.</th><th>Длина, мм</th><th>Высота, мм</th><th>Толщина, мм</th><th>м³/под. (если без размеров)</th><th>= м²/под.</th><th>= м³/под.</th></tr></thead><tbody>
+    ${mats.map((m) => `<tr><td>${esc(m.name)}<div class="muted">${esc(m.work)}</div></td><td>${ms(m, 'pcs', 'шт на поддоне')}</td><td>${ms(m, 'len', 'длина камня, мм')}</td><td>${ms(m, 'height', 'высота камня, мм')}</td><td>${ms(m, 'thick', 'толщина стены, мм')}</td><td>${ms(m, 'm3in', 'м³ на поддоне')}</td><td><b>${m.m2 ? fmtN(Math.round(m.m2 * 100) / 100) : '—'}</b></td><td><b>${m.m3 ? fmtN(Math.round(m.m3 * 1000) / 1000) : '—'}</b></td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="muted small-note">Заполните шт на поддоне и размер камня (или м³ на поддоне из накладной) — таблица сама посчитает м² и м³, а приложение — потребность и остаток в м².</p>`;
 }
 
 // ---------- добавление строк в таблицы ----------
@@ -1439,3 +1459,54 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
 }, true);
 store.on((w) => { if (w === 'data') applyRole(); });
 applyRole();
+
+// ---------- быстрый ввод: «＋» и объём за неделю одной формой ----------
+const thisWeek = () => thisMonday();
+/** Объём за неделю по всем видам работ этажа — одной формой, запись пачкой */
+async function openWeekForm(sec, fl) {
+  const wk = thisWeek();
+  const items = store.extra.volumes.filter((v) => String(v.section) === String(sec) && v.floor === fl && v.weekCols && v.weekCols[wk]);
+  if (!items.length) { toast('Для этого ' + T.levelGen + ' в «Выполнении» нет колонки текущей недели', true); return; }
+  if (!store.canEditBook('V')) { toast('Только просмотр: нет прав на запись в «Выполнение»', true); return; }
+  const res = await editDialog(`Объём за неделю с ${shortDate(wk)} · ${T.part} ${sec}, ${floorName(fl).toLowerCase()}`,
+    items.map((it) => ({ label: `${it.work}${it.contractor ? ' · ' + it.contractor : ''} (всего ${fmtN(it.total)}, сделано ${fmtN(it.done)})`, type: 'number', value: (it.weekly || {})[wk] || '' })),
+    'Пустое поле — без изменений. Запишется в «Выполнение» в колонку текущей недели; «Выполнено» таблица пересчитает сама.');
+  if (!res) return;
+  const changes = items.map((it, i) => ({ it, v: String(res[i]).trim(), old: (it.weekly || {})[wk] || 0 })).filter((x) => x.v !== '' && Number(x.v.replace(',', '.')) !== Number(x.old));
+  if (!changes.length) { toast('Изменений нет'); return; }
+  if (!(await ask(changes.map((x) => `${x.it.work}: ${fmtN(x.old)} → ${x.v}`), `«Выполнение», лист «${changes[0].it.sheet}», неделя с ${shortDate(wk)}.`))) return;
+  for (const x of changes) store.setCell({ b: 'V', s: x.it.sheet, r: x.it.row, f: 'week', c: x.it.weekCols[wk], expect: x.old || '', label: `${x.it.work}, ${floorName(fl).toLowerCase()}, с. ${sec}: за неделю с ${shortDate(wk)}`, prop: '', list: 'extra.volumes' }, x.v);
+  toast(`Отправлено строк: ${changes.length}`);
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-week]'); if (!b) return;
+  const [sec, fl] = b.dataset.week.split('|'); openWeekForm(sec, +fl);
+});
+/** «＋» — меню частых записей */
+function fabItems() {
+  const boss = !store.finLocked;
+  return [
+    ['people', '👷', 'Люди вышли сегодня'],
+    ['week', '📏', `Объём за неделю · ${T.part} ${state.section}, ${floorName(state.floor).toLowerCase()}`],
+    ['move-in', '🚚', 'Материал приехал'],
+    ['move-feed', '⬆', `Подача материала ${LAYOUT === 'stack' ? 'на этаж' : 'в ' + T.levelAcc}`],
+    ...(boss ? [['order', '📌', 'Поручение рабочим'], ['brigade', '🧱', 'Бригада'], ['expense', '₽', 'Расход']] : []),
+  ];
+}
+const fabMenu = $('#fabMenu');
+$('#fab').onclick = (e) => {
+  e.stopPropagation();
+  if (!fabMenu.hidden) { fabMenu.hidden = true; return; }
+  fabMenu.innerHTML = `<div class="fab-h">Добавить</div>` + fabItems().map(([k, i, t]) => `<button type="button" role="menuitem" data-fab="${k}"><i>${i}</i>${esc(t)}</button>`).join('');
+  fabMenu.hidden = false;
+};
+document.addEventListener('click', (e) => { if (!fabMenu.hidden && !fabMenu.contains(e.target) && e.target !== $('#fab')) fabMenu.hidden = true; });
+fabMenu.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-fab]'); if (!b) return;
+  fabMenu.hidden = true;
+  const k = b.dataset.fab;
+  if (k === 'people') { setTab('calendar'); state.day = isoToday(); renderCalendar(); const t = document.querySelector('#addType [data-t="Люди"]'); if (t) t.click(); document.querySelector('#addForm')?.scrollIntoView({ behavior: 'smooth' }); return; }
+  if (k === 'week') { openWeekForm(state.section, state.floor); return; }
+  if (k === 'expense') { state.money = 'exp'; setTab('money'); setTimeout(() => { const d = document.querySelector('#tab-money .add-exp'); if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth' }); } }, 50); return; }
+  const t = document.createElement('button'); t.dataset.add = k; t.hidden = true; document.body.appendChild(t); t.click(); t.remove();
+});

@@ -562,7 +562,7 @@ export class Store {
   /** Данные других таблиц: «Выполнение» (объёмы) и «VUP CORE» (материалы, ход работ, статусы этажей) */
   setExtra(x) {
     const e = x || {};
-    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '', brigades: e.brigades || [], acts: e.acts || [], handbook: e.handbook || { contractors: [], norms: {}, works: [] }, orders: e.orders || [], gpr: e.gpr || [] };
+    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '', brigades: e.brigades || [], acts: e.acts || [], handbook: e.handbook || { contractors: [], norms: {}, works: [] }, orders: e.orders || [], gpr: e.gpr || [], materials: e.materials || [] };
     this.vol = new Map();
     setWorkMap(e.structure && e.structure.workMap);
     const groups = this.extra.volumes.filter((v) => v.total > 0 && v.floor != null).map((v) => workGroup(v.work, Number(v.floor))).filter(Boolean);
@@ -750,6 +750,40 @@ export class Store {
   journalOn(date) { return this.allJournal().filter((j) => j.date === date); }
   peopleOn(date, section) {
     return this.allJournal().filter((j) => j.date === date && j.type === 'Люди' && (!section || j.section === section)).reduce((a, j) => a + j.qty, 0);
+  }
+  // ---------- материалы: пересчёт поддонов в м² / м³ и потребность ----------
+  /** Норма материала из листа «Материалы» (по ключу материала, как в учёте подач) */
+  normOf(material) {
+    const k = materialKey(material);
+    return (this.extra.materials || []).find((m) => materialKey(m.name) === k) || null;
+  }
+  /** Поддоны → объём в единицах вида работ (м² стены или м³) */
+  palletsTo(material, pallets) {
+    const n = this.normOf(material);
+    if (!n) return null;
+    const unit = workUnit(n.work) || 'м²';
+    const per = /м³|м3|куб/.test(unit) ? n.m3 : n.m2;
+    return per ? { qty: pallets * per, unit, per } : null;
+  }
+  /** Потребность по секции: сколько осталось сделать по каждому виду работ и сколько это поддонов каждого подходящего материала */
+  demand(section) {
+    const stock = this.stock();
+    const out = [];
+    const works = [...new Set((this.extra.materials || []).map((m) => m.work).filter(Boolean))];
+    for (const w of works) {
+      const vols = this.extra.volumes.filter((v) => String(v.section) === String(section) && v.work === w);
+      if (!vols.length) continue;
+      const left = vols.reduce((a, v) => a + Math.max(0, v.total - Math.min(v.done || 0, v.total)), 0);
+      const total = vols.reduce((a, v) => a + v.total, 0);
+      const unit = workUnit(w);
+      const mats = (this.extra.materials || []).filter((m) => m.work === w).map((m) => {
+        const per = /м³|м3|куб/.test(unit) ? m.m3 : m.m2;
+        const st = stock.find((r) => r.material === materialKey(m.name));
+        return { ...m, per, need: per ? left / per : null, onSite: st ? Math.max(0, st.left) : 0 };
+      });
+      out.push({ work: w, unit, total, left, mats });
+    }
+    return out;
   }
   /** Склад по VUP CORE: поступления минус подачи на этажи, по материалам (паллеты) */
   stock() {

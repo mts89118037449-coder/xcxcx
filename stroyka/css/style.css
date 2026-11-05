@@ -571,3 +571,11 @@ body.worker [data-csv="expenses"] { display: none; }
 .subbody { padding-bottom: 8px; }
 @media (max-width: 900px) { .subtabs { position: static; } }
 .hand td { vertical-align: top; font-size: 12px; } .hand th { font-size: 12px; } .okc { color: var(--green); }
+/* «＋» быстрый ввод */
+.fab { position: fixed; right: 18px; bottom: 22px; z-index: 35; width: 54px; height: 54px; border-radius: 50%; border: 0; background: var(--green); color: #fff; font-size: 28px; line-height: 1; box-shadow: 0 6px 20px rgba(0,0,0,.25); cursor: pointer; }
+.fab-menu { position: fixed; right: 18px; bottom: 86px; z-index: 36; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.25); padding: 6px; min-width: 250px; max-width: calc(100vw - 36px); }
+.fab-menu .fab-h { font-size: 11px; text-transform: uppercase; color: var(--muted); padding: 6px 10px; letter-spacing: .05em; }
+.fab-menu button { all: unset; box-sizing: border-box; display: flex; gap: 10px; align-items: center; width: 100%; padding: 11px 10px; border-radius: 10px; cursor: pointer; font-size: 14px; color: var(--ink); }
+.fab-menu button:hover { background: var(--panel-2); }
+.fab-menu i { font-style: normal; width: 22px; text-align: center; }
+@media (max-width: 900px) { .fab { bottom: calc(76px + env(safe-area-inset-bottom)); right: 14px; } .fab-menu { bottom: calc(140px + env(safe-area-inset-bottom)); right: 14px; } body.sheet-open .fab { display: none; } }
