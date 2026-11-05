@@ -20,6 +20,7 @@ const state = {
   money: 'contract',
   expCat: 'all',
   expPart: 'all',
+  sum: (() => { try { return localStorage.getItem('stroyka.sum') || 'main'; } catch { return 'main'; } })(),
   expQuery: '',
   expLimit: 40,
 };
@@ -145,20 +146,45 @@ function render() {
 }
 
 // ---------- KPI поверх сцены ----------
-function renderKpis() {
+/** Люди на объекте: по секциям из журнала; если записано только общее число — оно; иначе — численность бригад */
+function peopleNow() {
   const today = isoToday();
-  const lastPeople = (s) => {
-    const dates = store.allJournal().filter((j) => j.type === 'Люди' && j.section === s && j.date <= today).map((j) => j.date).sort();
-    const d = dates[dates.length - 1];
-    return d ? { n: store.peopleOn(d, s), d } : null;
-  };
+  const ppl = store.allJournal().filter((j) => j.type === 'Люди' && j.date <= today);
+  const last = (pred) => { const d = ppl.filter(pred).map((j) => j.date).sort().pop(); return d ? { d, n: ppl.filter((j) => j.date === d && pred(j)).reduce((a, j) => a + j.qty, 0) } : null; };
+  const bySec = Object.fromEntries(SECTIONS.map((s) => [s, last((j) => j.section === s)]));
+  const general = last((j) => !SECTIONS.includes(j.section));
+  const lastDay = ppl.map((j) => j.date).sort().pop() || '';
+  const dayTotal = lastDay ? ppl.filter((j) => j.date === lastDay).reduce((a, j) => a + j.qty, 0) : 0;
+  const br = store.brigadeStats();
+  const isItr = (b) => /итр/i.test(b.type || '') || /^итр/i.test(b.name);
+  const brSec = Object.fromEntries(SECTIONS.map((s) => [s, br.filter((b) => !isItr(b) && b.section === s).reduce((a, b) => a + (b.people || 0), 0)]));
+  const brShared = br.filter((b) => !isItr(b) && !SECTIONS.includes(b.section)).reduce((a, b) => a + (b.people || 0), 0);
+  const itr = br.filter(isItr).reduce((a, b) => a + (b.people || 0), 0);
+  const brTotal = br.reduce((a, b) => a + (b.people || 0), 0);
+  return { bySec, general, lastDay, dayTotal, brSec, brShared, itr, brTotal, total: dayTotal || brTotal };
+}
+function renderKpis() {
+  const P = peopleNow();
   $('#kpis').innerHTML = SECTIONS.map((s) => {
-    const p = lastPeople(s);
+    const p = P.bySec[s];
+    const useGen = P.general && (!p || P.general.d > p.d);   // общая запись свежее — показываем её
+    const line = useGen ? `на объекте ${P.general.n} чел. · ${shortDate(P.general.d)}`
+      : p ? `${p.n} чел. · ${shortDate(p.d)}`
+      : P.brSec[s] ? `по бригадам ${P.brSec[s]} чел.` : P.brTotal ? `бригады: ${P.brTotal} чел. на объекте` : 'людей нет в журнале';
     return `<div class="kpi"><div class="kpi-h">${T.part} ${s}</div>
       <div class="kpi-v">${pct(store.sectionValue(s, state.metric))}</div>
       <div class="bar"><i style="width:${store.sectionValue(s, state.metric) || 0}%"></i></div>
-      <div class="kpi-s">${p ? `${p.n} чел. · ${shortDate(p.d)}` : 'людей нет в журнале'}</div></div>`;
+      <div class="kpi-s">${line}</div></div>`;
   }).join('');
+}
+/** Подвкладка «Люди»: последний день по журналу, по секциям и общее; численность бригад и ИТР */
+function peopleBlock(P) {
+  const rows = SECTIONS.map((s) => `<div class="row-kv"><span>${esc(T.part)} ${esc(s)}</span><b>${P.bySec[s] ? `${P.bySec[s].n} чел. <span class="muted">· ${shortDate(P.bySec[s].d)}</span>` : '<span class="muted">не указано</span>'}</b></div>`).join('');
+  return `<h3>Вышли на работу ${P.lastDay ? `<span class="muted">· последний день в журнале ${shortDate(P.lastDay)}</span>` : ''}</h3>
+    <div class="gpr-card">${rows}
+      ${P.general ? `<div class="row-kv"><span>Без секции (общее)</span><b>${P.general.n} чел. <span class="muted">· ${shortDate(P.general.d)}</span></b></div>` : ''}
+      <div class="row-kv"><span><b>Всего за ${P.lastDay ? shortDate(P.lastDay) : '—'}</b></span><b>${P.dayTotal || '—'}</b></div></div>
+    <div class="add-row"><button class="btn small" type="button" data-goto-people>+ Люди вышли сегодня</button></div>`;
 }
 
 // ---------- Сводка ----------
@@ -169,16 +195,26 @@ function renderSummary() {
   const works = WORKS;
   const fcols = SECTIONS.length === 2 && LAYOUT === 'stack' ? '' : `grid-template-columns: ${LAYOUT === 'stack' ? '22px' : 'minmax(64px, auto)'} repeat(${SECTIONS.length}, minmax(0, 1fr))`;
   const on = store.objects.length;
-  el.innerHTML = `
-    <div class="obj-card">
-      <div><span class="muted">Объект</span><b>${esc((store.objInfo && store.objInfo.name) || PROFILE.name || T.object)}</b><span class="muted">${esc(listParts())}</span></div>
-      <div class="obj-card-a">${on > 1 ? `<button class="btn ghost small" data-objdlg="list">Сменить (${on})</button>` : ''}${store.finLocked ? '' : '<button class="btn small" data-objdlg="new">+ Новый объект</button>'}</div>
-    </div>
-    ${PROFILE.type !== 'mkd' ? '' : `<div class="renders" aria-label="Проект — тендерные визуализации">
+  // «Обзор» — подвкладки вместо длинной ленты
+  const ordersOpen = (store.extra.orders || []).filter((o) => store.isOpenOrder(o));
+  const lateN = ordersOpen.filter((o) => o.due && o.due < today).length + open.filter((r) => ruToIso(r.due) && ruToIso(r.due) < today).length;
+  const sched = SECTIONS.map((x) => store.sectionSchedule(x)).filter(Boolean);
+  const lag = sched.length ? Math.max(...sched.map((x) => x.lagAdjusted || 0)) : 0;
+  const ppl = peopleNow();
+  const subs = [
+    ['main', 'Сводка', ''],
+    ['tasks', 'Поручения', ordersOpen.length + open.length ? `<em class="${lateN ? 'cnt bad' : 'cnt'}">${ordersOpen.length + open.length}</em>` : ''],
+    ...(sched.length ? [['plan', 'График', lag ? `<em class="${lag > 14 ? 'cnt bad' : 'cnt'}">−${lag} дн</em>` : '']] : []),
+    ['people', 'Люди', ppl.total ? `<em class="cnt">${ppl.total}</em>` : ''],
+    ['floors', T.levels, ''],
+    ['data', 'Сверка', (store.checks || []).some((c) => !c.ok) ? '<em class="cnt bad">!</em>' : ''],
+  ];
+  if (!subs.some(([k]) => k === state.sum)) state.sum = 'main';
+  const body = {
+    main: `    ${PROFILE.type !== 'mkd' ? '' : `<div class="renders" aria-label="Проект — тендерные визуализации">
       ${[1, 2, 3].map((i) => `<button class="rthumb" data-r="${i}"><img src="assets/renders/render-${i}.jpg" alt="Проектная визуализация ${i}" loading="lazy"></button>`).join('')}
       <span class="rcap">Проект — как будет выглядеть</span>
     </div>`}
-    ${ordersBlock()}
     ${BY_EXPENSES && store.connected && !store.finLocked ? `<details class="fold obj-track"><summary>📐 Вести ход работ по объектам — добавить листы объёмов</summary>
       <p class="muted small-note">Сейчас в таблице только расходы. Для каждого объекта (${esc(SECTIONS.join(', '))}) появится лист «Объект …»: помещения × виды работ, объём и выполнено по неделям. Расходы не меняются.</p>
       <label>Помещения или зоны<input id="apLevels" value="Кухня, Санузел, Комната 1, Коридор"></label>
@@ -197,7 +233,16 @@ function renderSummary() {
     ${(() => { const D = store.contractValue('D'), E = store.contractValue('E'); if (!D || !E) return ''; const p = E / D * 100; return `<button class="contract-card" data-goto="money">
       <span>Выполнено по договору</span><b>${p.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%</b>
       <div class="bar"><i style="width:${p}%"></i></div><em>${rubShort(E)} из ${rubShort(D)} ₽</em></button>`; })()}
-    <h3>По ${T.levelsDat} <span class="muted">· ${state.metric === 'avg' ? 'все работы' : state.metric.toLowerCase()}</span></h3>
+`,
+    tasks: `${ordersBlock()}
+    <h3>Протоколы генподрядчика <span class="muted">· открыто ${open.length}</span></h3>
+    <ul class="remarks">
+      ${open.map((r) => remarkHtml(r, true)).join('') || '<li class="muted">Нет открытых поручений</li>'}
+    </ul>
+`,
+    plan: `${gprBlock()}`,
+    people: `${peopleBlock(ppl)}${brigadeBlock()}`,
+    floors: `    <h3>По ${T.levelsDat} <span class="muted">· ${state.metric === 'avg' ? 'все работы' : state.metric.toLowerCase()}</span></h3>
     <div class="facade" role="grid">
       ${(LAYOUT === 'stack' ? [...FLOORS].reverse() : FLOORS).map((f) => `
         <div class="f-row" style="${fcols}">
@@ -210,15 +255,18 @@ function renderSummary() {
         </div>`).join('')}
       <div class="f-row f-foot" style="${fcols}">${SECTIONS.length !== 2 || LAYOUT !== 'stack' ? '<span></span>' : ''}${SECTIONS.map((s) => `<span>${T.part} ${esc(s)}</span>`).join(SECTIONS.length === 2 && LAYOUT === 'stack' ? '<span></span>' : '')}</div>
     </div>
-    ${gprBlock()}
-    ${brigadeBlock()}
-    <h3>Открытые поручения <span class="muted">· ${open.length}</span></h3>
-    <ul class="remarks">
-      ${open.map((r) => remarkHtml(r, true)).join('') || '<li class="muted">Нет открытых поручений</li>'}
-    </ul>
-    ${checksHtml()}
-    ${sourcesHtml()}
-  `;
+`,
+    data: `${checksHtml()}${sourcesHtml()}`,
+  }[state.sum];
+  el.innerHTML = `
+    <div class="obj-card">
+      <div><span class="muted">Объект</span><b>${esc((store.objInfo && store.objInfo.name) || PROFILE.name || T.object)}</b><span class="muted">${esc(listParts())}</span></div>
+      <div class="obj-card-a">${on > 1 ? `<button class="btn ghost small" data-objdlg="list">Сменить (${on})</button>` : ''}${store.finLocked ? '' : '<button class="btn small" data-objdlg="new">+ Новый объект</button>'}</div>
+    </div>
+    <div class="subtabs" role="tablist">${subs.map(([k, t, c]) => `<button role="tab" data-sub="${k}" class="${state.sum === k ? 'on' : ''}">${esc(t)}${c}</button>`).join('')}</div>
+    <div class="subbody">${body}</div>`;
+  el.querySelectorAll('[data-goto-people]').forEach((b) => b.onclick = () => { setTab('calendar'); const t = document.querySelector('#addType [data-t="Люди"]'); if (t) t.click(); document.querySelector('#addForm')?.scrollIntoView({ behavior: 'smooth' }); });
+  el.querySelectorAll('[data-sub]').forEach((b) => b.onclick = () => { state.sum = b.dataset.sub; try { localStorage.setItem('stroyka.sum', state.sum); } catch { /* */ } renderSummary(); el.scrollTop = 0; if (mobile.matches) scrollTo({ top: 0 }); });
   el.querySelectorAll('.f-cell').forEach((b) => b.onclick = () => openFloor(b.dataset.s, +b.dataset.f));
   el.querySelectorAll('[data-r]').forEach((b) => b.onclick = () => { $('#renderImg').src = `assets/renders/render-${b.dataset.r}.jpg`; $('#renderDlg').showModal(); });
   const ap = $('#apGo', el);

@@ -560,3 +560,13 @@ body.worker [data-csv="expenses"] { display: none; }
 .row-kv span { color: var(--muted); }
 .gpr-bar { position: relative; overflow: visible; margin: 6px 0 8px; height: 8px; }
 .gpr-bar em { position: absolute; top: -4px; width: 2px; height: 16px; background: var(--ink); transform: translateX(-1px); }
+/* подвкладки «Обзора» */
+.subtabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: 8px -2px 4px; padding: 2px; position: sticky; top: 0; z-index: 2; background: var(--panel); }
+.subtabs::-webkit-scrollbar { display: none; }
+.subtabs button { all: unset; flex: none; cursor: pointer; padding: 7px 12px; border-radius: 999px; font-size: 13px; color: var(--muted); border: 1px solid var(--line); background: var(--panel-2); display: inline-flex; align-items: center; gap: 6px; }
+.subtabs button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.subtabs .cnt { font-style: normal; font-size: 11px; padding: 0 6px; border-radius: 999px; background: var(--line); color: var(--ink); }
+.subtabs .cnt.bad { background: var(--red); color: #fff; }
+.subtabs button.on .cnt { background: rgba(255,255,255,.2); color: inherit; }
+.subbody { padding-bottom: 8px; }
+@media (max-width: 900px) { .subtabs { position: static; } }
