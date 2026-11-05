@@ -581,8 +581,12 @@ export class Store {
     const rows = (this.extra.gpr || []).filter((g) => String(g.section) === String(section) && g.floor === floor);
     if (!rows.length) return null;
     const today = isoToday();
+    const ho = this.handoverOf(section, floor);
     const items = rows.map((r) => {
-      const shift = r.shift || 0, s2 = addDays(r.start, shift), e2 = r.end2 || addDays(r.end, shift);
+      // передача этажа: из «Выполнения» (столбец A), иначе из листа «ГПР»
+      const received = (ho && ho.date) || r.received || '';
+      const shift = received ? Math.max(0, dayDiff(r.start, received)) : (r.shift || 0);
+      const s2 = addDays(r.start, shift), e2 = addDays(r.end, shift);
       const dur = Math.max(1, dayDiff(s2, e2));
       const fact = this.gprFact(section, floor, r.work);
       const expected = Math.max(0, Math.min(100, (dayDiff(s2, today) / dur) * 100));
@@ -590,13 +594,22 @@ export class Store {
       if (fact != null && fact >= 99.5) status = 'готово';
       else if (today < s2) status = 'по графику ещё не начат';
       else { lag = dayDiff(addDays(s2, Math.round(((fact || 0) / 100) * dur)), today); status = lag <= 0 ? 'в графике' : lag <= 7 ? 'небольшое отставание' : 'отставание'; }
-      return { ...r, s2, e2, fact, expected, lag, status };
+      return { ...r, received, shift, s2, e2, fact, expected, lag, status };
     });
     const worst = items.filter((x) => x.lag != null).sort((a, b) => b.lag - a.lag)[0];
     const main = items.find((x) => /кладк/i.test(x.work)) || items[0];
     return { rows: items, start: items.map((x) => x.start).sort()[0], s2: items.map((x) => x.s2).sort()[0], e2: items.map((x) => x.e2).sort().pop(),
-      shift: Math.max(0, ...items.map((x) => x.shift || 0)), received: items.map((x) => x.received).filter(Boolean).sort()[0] || '',
+      shift: Math.max(0, ...items.map((x) => x.shift || 0)), received: items.map((x) => x.received).filter(Boolean).sort()[0] || '', handover: ho,
       fact: main.fact, expected: main.expected, lag: worst ? worst.lag : null, status: items.every((x) => x.status === 'готово') ? 'готово' : worst ? worst.status : main.status };
+  }
+  /** Дата передачи этажа из «Выполнения» (столбец A первой строки этажа) и где её писать */
+  handoverOf(section, floor) {
+    const items = this.extra.volumes.filter((v) => String(v.section) === String(section) && v.floor === floor);
+    const it = items.find((v) => v.handover) || items[0];
+    if (!it) return null;
+    const m = String(it.handover || '').match(/(\d{1,2})\.(\d{1,2})\.(\d{2,4})/);
+    const iso = m ? `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
+    return { date: iso, raw: it.handover || '', sheet: it.sheet, row: it.floorRow || it.row };
   }
   /** Факт по строке ГПР: кладка → наружные стены + перегородки, обстройка шахт → инженерка, надстройка → кровля; иначе — раздел по названию */
   gprFact(section, floor, work) {
@@ -643,7 +656,7 @@ export class Store {
   brigadeStats() {
     const map = new Map();
     const get = (name) => { const k = norm(name); if (!map.has(k)) map.set(k, { name: String(name).trim(), rows: [], people: 0, rates: {}, phone: '', type: '', section: '', works: '', note: '', sheetRow: 0 }); return map.get(k); };
-    for (const c of this.extra.handbook.contractors || []) Object.assign(get(c.name), { rates: c.rates, phone: c.phone, hbRow: c.row });
+    for (const c of this.extra.handbook.contractors || []) Object.assign(get(c.name), { rates: c.rates, phone: c.phone, hbRow: c.row, people: c.people || 0, type: c.type || '', section: c.section || '' });
     for (const b of this.extra.brigades || []) Object.assign(get(b.name), { people: b.people, type: b.type, section: b.section, works: b.works, note: b.note, sheetRow: b.row });
     for (const v of this.extra.volumes) if (v.contractor && v.total > 0) get(v.contractor).rows.push(v);
     return [...map.values()].map((b) => {

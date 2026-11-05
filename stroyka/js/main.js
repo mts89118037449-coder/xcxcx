@@ -298,7 +298,8 @@ function floorHtml() {
             return `<tr><td>${esc(it.work)}${it.due ? `<div class="muted">срок ${esc(it.due)}${it.status ? ' · ' + esc(it.status) : ''}</div>` : ''}</td><td>${who}</td><td>${vs('total', it.total, 'общий объём')}</td><td>${vs('accepted', it.accepted, 'принято по КС-6а')}</td>
               <td>${col ? vs('week', wv, `за неделю с ${shortDate(wk)}`, { c: col, prop: '' }) : '<span class="muted">нет колонки</span>'}</td>
               <td><b>${fmtN(it.done)}</b> <span class="muted">${Math.round(it.done / it.total * 100)}%</span></td>
-              ${money ? `<td>${ev(rate ? fmtN(rate) : '—', { b: 'V', s: it.sheet, r: it.row, f: 'rate', raw: it.rate || '', expect: it.rate || '', type: 'number', label: `${it.work}, ${fl}, с. ${s}: расценка, ₽`, prop: 'rate', list: 'extra.volumes' })}${!it.rate && rate ? '<div class="muted">из справочника</div>' : ''}</td><td>${rate ? rub(Math.min(it.done, it.total) * rate) : '—'}</td>` : ''}</tr>`;
+              ${money ? `<td>${(() => { const hb = store.extra.handbook || {}; const c = (hb.contractors || []).find((x) => x.name.trim().toLowerCase() === String(it.contractor || '').trim().toLowerCase()); const col = hb.workCol && hb.workCol[it.work];
+                return c && col ? ev(rate ? fmtN(rate) : 'задать', { b: 'V', s: 'Справочник', r: c.row, f: 'cell', c: col, raw: c.rates[it.work] || '', expect: c.rates[it.work] || '', type: 'number', label: `Расценка «${c.name}» — ${it.work}, ₽ за ед. (для всех этажей)` }) : (rate ? fmtN(rate) : `<span class="muted">${it.contractor ? '—' : 'назначьте исполнителя'}</span>`); })()}</td><td>${rate ? rub(Math.min(it.done, it.total) * rate) : '—'}</td>` : ''}</tr>`;
           }).join('')}
         </tbody></table></div>
         <p class="muted small-note">«Выполнено» таблица считает сама из принятого и недельных объёмов — поэтому меняется через них.</p>`
@@ -373,7 +374,8 @@ function floorHtml() {
         const sum = g.status === 'готово' ? 'готово' : g.lag > 0 ? `<span class="${g.lag > 7 ? 'err-t' : ''}">отставание ≈ ${g.lag} дн.</span>` : g.status;
         const body = `<ul class="totals">${g.rows.map((r) => `<li><span><b>${esc(r.work)}</b><div class="muted">план ${shortDate(r.start)} – ${shortDate(r.end)}${r.shift ? ` · с учётом передачи до ${shortDate(r.e2)}` : ''}</div>
             <div class="muted">должно быть ${Math.round(r.expected)}% · факт ${r.fact == null ? '—' : Math.round(r.fact) + '%'} · ${r.lag > 0 ? `<span class="${r.lag > 7 ? 'err-t' : ''}">отстаём ≈ ${r.lag} дн.</span>` : esc(r.status)}</div></span>
-            <span class="muted">передан: ${store.finLocked ? (r.received ? shortDate(r.received) : '—') : ev(r.received ? shortDate(r.received) : 'отметить', gs(r))}</span></li>`).join('')}</ul>
+            ${g.handover ? '' : `<span class="muted">передан: ${store.finLocked ? (r.received ? shortDate(r.received) : '—') : ev(r.received ? shortDate(r.received) : 'отметить', gs(r))}</span>`}</li>`).join('')}</ul>
+          ${g.handover ? `<div class="row-kv"><span>Этаж передан (факт) <em class="muted">· «Выполнение», столбец A</em></span><b>${store.finLocked ? (g.handover.date ? shortDate(g.handover.date) : '—') : ev(g.handover.date ? shortDate(g.handover.date) : 'отметить', { b: 'V', s: g.handover.sheet, r: g.handover.row, f: 'handover', raw: g.handover.date || '', expect: g.handover.raw || '', type: 'date', label: `${T.part} ${s}, ${fl}: дата передачи этажа`, prop: 'handover', list: 'extra.volumes' })}</b></div>` : ''}
           ${g.shift ? `<p class="muted small-note">Этаж передан на ${g.shift} дн. позже графика — срок сдвинут.</p>` : ''}`;
         return cat('plan', '📅', 'График (ГПР)', sum, body, g.lag > 7 ? 'warn' : ''); })()}
       ${cat('docs', '▤', 'Документы', (docRows.length ? `ИС ${isN}/${docRows.length} · АОСР ${aoN}/${docRows.length}` : 'нет строки в «Таблице»') + (acts.length ? ` · актов ${acts.length}` : ''), docsBody)}
@@ -431,13 +433,16 @@ function brigadeBlock() {
   const n = br.filter((b) => !isItr(b)).reduce((a, b) => a + (b.people || 0), 0), itr = br.filter(isItr).reduce((a, b) => a + (b.people || 0), 0);
   const assigned = br.some((b) => b.rows.length);
   const fl = (b) => { const by = {}; for (const k of b.floors) { const [sec, f] = k.split('|'); (by[sec] ||= []).push(+f); } return Object.entries(by).map(([sec, fs]) => `${T.partShort}${sec}: ${fs.sort((x, y) => x - y).map(floorShort).join(', ')}`).join(' · '); };
-  const bs = (b) => ({ b: 'G', s: 'Бригады', r: b.sheetRow, f: 'people', raw: b.people || '', expect: b.people || '', type: 'number', label: `Бригада «${b.name}»: человек`, prop: 'people', list: 'extra.brigades' });
+  const hb = store.extra.handbook || {};
+  const bs = (b) => (b.hbRow && hb.cols && hb.cols.people > 0
+    ? { b: 'V', s: 'Справочник', r: b.hbRow, f: 'cell', c: hb.cols.people, raw: b.people || '', expect: b.people || '', type: 'number', label: `Бригада «${b.name}»: человек` }
+    : { b: 'G', s: 'Бригады', r: b.sheetRow, f: 'people', raw: b.people || '', expect: b.people || '', type: 'number', label: `Бригада «${b.name}»: человек`, prop: 'people', list: 'extra.brigades' });
   return `<h3>Бригады <span class="muted">· ${fmtN(n)} чел.${itr || br.some(isItr) ? ` + ИТР ${itr ? fmtN(itr) : '?'} = ${fmtN(n + itr)}` : ''}</span></h3>
     <ul class="totals brig">${br.map((b) => `<li><span><b>${esc(b.name)}</b>${b.type ? ` <em class="chip-s">${esc(b.type)}</em>` : ''}
       ${b.rows.length ? `<div class="muted">${esc(fl(b))}</div><div class="muted">${b.byWork.map((w) => `${esc(cleanW(w.work))} ${fmtN(w.done)}/${fmtN(w.total)} ${esc(unitOf(w.work))}`).join(' · ')}</div>` : b.works ? `<div class="muted">${esc(b.works)}</div>` : ''}
       ${!store.finLocked && b.earned != null ? `<div class="muted">выполнено на <b>${rub(b.earned)}</b>${Object.keys(b.rates).length ? ' · расценки: ' + Object.entries(b.rates).map(([w, r]) => `${esc(cleanW(w))} ${fmtN(r)} ₽`).join(', ') : ''}</div>` : ''}
       ${b.phone ? `<div class="muted"><a href="tel:${esc(b.phone.replace(/[^+\d]/g, ''))}">${esc(b.phone)}</a></div>` : ''}${b.note ? `<div class="muted">${esc(b.note)}</div>` : ''}</span>
-      <b class="num">${b.sheetRow ? ev(b.people ? fmtN(b.people) + ' чел.' : '<span class="err-t">уточнить</span>', bs(b)) : (b.people ? fmtN(b.people) + ' чел.' : '')}</b></li>`).join('')}</ul>
+      <b class="num">${b.sheetRow || b.hbRow ? ev(b.people ? fmtN(b.people) + ' чел.' : '<span class="err-t">уточнить</span>', bs(b)) : (b.people ? fmtN(b.people) + ' чел.' : '')}</b></li>`).join('')}</ul>
     ${assigned ? '' : `<p class="muted small-note">В «Выполнении» у строк объёмов не указан «Исполнитель» — назначьте бригаду на этаже (Работы → вид работ → «Исполнитель»), и здесь появится, где она работает и сколько сделала.</p>`}
     <div class="add-row"><button class="btn ghost small" data-add="brigade">+ Бригада</button></div>`;
 }
@@ -766,7 +771,9 @@ document.addEventListener('click', async (e) => {
   const today = isoToday();
   const defs = {
     order: { book: 'G', sheet: 'Поручения', title: 'Поручение от руководителя', fixed: { date: today, status: 'В работе' }, fields: [['text', 'Что сделать', 'text', ''], ['who', 'Кому (бригада)', 'text', ''], ['section', `${T.part || 'Часть'} (можно пусто)`, 'text', state.tab === 'floor' ? state.section : ''], ['level', `${T.level} (можно пусто)`, 'text', state.tab === 'floor' ? (LAYOUT === 'stack' ? String(state.floor) : floorName(state.floor)) : ''], ['due', 'Срок', 'date', '']] },
-    brigade: { book: 'G', sheet: 'Бригады', title: 'Новая бригада', fields: [['name', 'Бригада (бригадир)', 'text', ''], ['people', 'Человек', 'number', ''], ['type', 'Тип: свои / наёмные', 'text', 'свои'], ['section', `${T.part || 'Часть'} (пусто — все)`, 'text', ''], ['works', 'Виды работ', 'text', '']] },
+    brigade: (store.extra.handbook || {}).cols && store.extra.handbook.cols.people > 0
+      ? { book: 'V', sheet: 'Справочник', title: 'Новая бригада («Выполнение» → «Справочник»)', fields: [['name', 'Бригада (бригадир)', 'text', ''], ['people', 'Человек', 'number', ''], ['type', 'Тип: свои / наёмные / ИТР', 'text', 'свои'], ['section', `${T.part || 'Часть'} (пусто — все)`, 'text', ''], ['phone', 'Телефон / примечание', 'text', '']] }
+      : { book: 'G', sheet: 'Бригады', title: 'Новая бригада', fields: [['name', 'Бригада (бригадир)', 'text', ''], ['people', 'Человек', 'number', ''], ['type', 'Тип: свои / наёмные', 'text', 'свои'], ['section', `${T.part || 'Часть'} (пусто — все)`, 'text', ''], ['works', 'Виды работ', 'text', '']] },
     remark: { book: 'G', sheet: 'Замечания', title: `Замечание: ${T.partL} ${state.section}, ${floorName(state.floor).toLowerCase()}`, fixed: { date: today, section: state.section, level: LAYOUT === 'stack' ? (state.floor === 0 ? 'Подвал' : state.floor === ROOF ? 'Кровля' : String(state.floor)) : floorName(state.floor), status: 'В работе' }, fields: [['text', 'Замечание', 'text', ''], ['who', 'Ответственный', 'text', ''], ['due', 'Срок', 'date', '']] },
     tool: { book: 'G', sheet: 'УЧЁТ ИНСТРУМЕНТА ', title: 'Новый инструмент', fields: [['name', 'Наименование', 'text', ''], ['qty', 'Количество', 'text', '']] },
     personal: { book: 'G', sheet: 'Личные расходы', title: 'Новый личный расход', fields: [['date', 'Дата', 'date', today], ['name', 'Наименование', 'text', ''], ['sum', 'Сумма, ₽', 'number', ''], ['who', 'Плательщик', 'text', ''], ['note', 'Примечание', 'text', '']] },

@@ -393,6 +393,8 @@ function canEdit_(id) {
     const me = Session.getEffectiveUser().getEmail();
     const f = DriveApp.getFileById(id);
     ok = f.getOwner().getEmail() === me || f.getEditors().some(function (u) { return u.getEmail() === me; });
+    // доступ «любой, у кого есть ссылка — редактор» в списке редакторов не виден
+    if (!ok) { try { const acc = f.getSharingAccess(), perm = f.getSharingPermission(); ok = (acc === DriveApp.Access.ANYONE_WITH_LINK || acc === DriveApp.Access.ANYONE) && perm === DriveApp.Permission.EDIT; } catch (e2) { /* */ } }
   } catch (e) { ok = false; }
   cache.put(k, ok ? '1' : '0', 300);
   return ok;
@@ -411,18 +413,18 @@ function readVolumes_() {
     for (let c = 14; c < w; c++) { const d = ddmmyy_(head[c]); if (d) weeks.push([c, d]); }
     const weekCols = {}; weeks.forEach(function (wk) { weekCols[wk[1]] = wk[0] + 1; });
     const rows = sh.getRange(3, 1, sh.getLastRow() - 2, w).getDisplayValues();
-    let floor = null;
+    let floor = null, floorRow = 0;
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (/итого/i.test(r[0] + r[1] + r[3])) break;
-      if (String(r[1]).trim() !== '') floor = levelKey_(r[1]);
+      if (String(r[1]).trim() !== '') { floor = levelKey_(r[1]); floorRow = i + 3; }
       const work = String(r[3]).trim();
       if (floor === null || !work) continue;
       const total = num_(r[4]);
       if (!total) continue;
       const weekly = {};
       weeks.forEach(function (wk) { const v = num_(r[wk[0]]); if (v) weekly[wk[1]] = v; });
-      out.push({ row: i + 3, sheet: sh.getName(), weekCols: weekCols, section: sec, floor: floor, work: work, total: total, cost: (num_(r[11]) * total) || num_(r[12]) || 0, rate: num_(r[11]), money: num_(r[12]), done: num_(r[7]), accepted: num_(r[13]), status: String(r[10]).trim(), due: String(r[9]).trim(), handover: String(r[0]).trim(), contractor: String(r[2]).trim(), weekly: weekly });
+      out.push({ row: i + 3, sheet: sh.getName(), weekCols: weekCols, section: sec, floor: floor, work: work, total: total, cost: (num_(r[11]) * total) || num_(r[12]) || 0, rate: num_(r[11]), money: num_(r[12]), done: num_(r[7]), accepted: num_(r[13]), status: String(r[10]).trim(), due: String(r[9]).trim(), handover: String(r[0]).trim(), floorRow: floorRow, contractor: String(r[2]).trim(), weekly: weekly });
     }
   });
   return out;
@@ -611,7 +613,8 @@ const EDITABLE = {
   'G|Расходы': { date: 3, cat: 4, who: 5, basis: 6, note: 7, sum: 8 },
   'G|Замечания': { date: 2, section: 3, level: 4, text: 5, who: 6, due: 7, status: 8, done: 9, note: 10 },
   'G|Документы': { cell: 0, section: 1, level: 2, work: 3, is: 4, aosr: 5, rem: 6 },
-  'V|*': { total: 5, accepted: 14, week: 0, contractor: 3, handover: 1, rate: 12 },   // любой лист-часть таблицы объёмов
+  'V|*': { total: 5, accepted: 14, week: 0, contractor: 3, handover: 1 },   // «Расценка» (L) — формула из «Справочника», её не трогаем
+  'V|Справочник': { cell: 0, name: 1, phone: 7, people: 8, type: 9, section: 10 },   // любой лист-часть таблицы объёмов
   'U|Движение материалов': { date: 3, type: 4, material: 5, zone: 6, pallets: 7, doc: 9, status: 10, comment: 14 },
   'U|Стройка · ход работ': { section: 3, floor: 4, brigade: 5, stage: 6, start: 7, end: 8, status: 9, workers: 10 },
   'U|Стройка · статусы этажей': { section: 1, floor: 2, status: 3, date: 4, source: 5, comment: 6 },
@@ -625,6 +628,7 @@ function cellValue_(field, v) {
   if (v === '' || v == null) return '';
   if (DATE_FIELDS.test(field)) { const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : String(v); }
   if (NUM_FIELDS.test(field)) { const n = num_(v); if (isNaN(n)) throw new Error('Нужно число'); return n; }
+  if (field === 'cell' && /^-?[\d\s\u00a0]+([.,]\d+)?$/.test(String(v).trim())) return num_(v);   // число в ячейку справочника — числом (формулы считают)
   return String(v);
 }
 /** Шапки листов самостоятельного объекта — для создания при первой записи */
@@ -1595,17 +1599,22 @@ function readHandbook_() {
   const head = v[hr];
   let end = head.length;
   for (let c = 1; c < head.length; c++) if (!String(head[c]).trim()) { end = c; break; }
-  const phoneCol = head.findIndex(function (x, c) { return c > 0 && c < end && /телефон|примеч|контакт/i.test(x); });
+  const find = function (re) { return head.findIndex(function (x, c) { return c > 0 && c < end && re.test(String(x)); }); };
+  const phoneCol = find(/телефон|примеч|контакт/i), peopleCol = find(/человек|числен|чел\.?$/i), typeCol = find(/^\s*тип/i), secCol = find(/секци|^\s*част|корпус/i);
+  const meta = [phoneCol, peopleCol, typeCol, secCol];
   const workCols = [];
-  for (let c = 1; c < end; c++) if (c !== phoneCol) workCols.push(c);
+  for (let c = 1; c < end; c++) if (meta.indexOf(c) < 0) workCols.push(c);
   out.works = workCols.map(function (c) { return String(head[c]).trim(); });
+  out.workCol = {}; workCols.forEach(function (c) { out.workCol[String(head[c]).trim()] = c + 1; });
+  out.cols = { phone: phoneCol + 1, people: peopleCol + 1, type: typeCol + 1, section: secCol + 1 };
   for (let i = hr + 1; i < n; i++) {
     const name = String(v[i][0]).trim();
     if (!name) continue;
     if (/^(пуст|новых)/i.test(name)) continue;
     const rates = {};
     workCols.forEach(function (c) { const x = num_(v[i][c]); if (x) rates[String(head[c]).trim()] = x; });
-    out.contractors.push({ row: i + 1, name: name, rates: rates, phone: phoneCol >= 0 ? String(v[i][phoneCol]).trim() : '' });
+    out.contractors.push({ row: i + 1, name: name, rates: rates, phone: phoneCol >= 0 ? String(v[i][phoneCol]).trim() : '',
+      people: peopleCol >= 0 ? num_(v[i][peopleCol]) : 0, type: typeCol >= 0 ? String(v[i][typeCol]).trim() : '', section: secCol >= 0 ? secId_(v[i][secCol]) : '' });
   }
   // нормативы: столбец «Вид работ» правее таблицы исполнителей, рядом «Срок, дней»
   const nc = head.findIndex(function (x, c) { return c >= end && /вид работ/i.test(x); });

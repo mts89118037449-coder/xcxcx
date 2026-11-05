@@ -261,6 +261,8 @@ function needsFin(body) {
   const sheet = String(body.s || '').trim();
   if (sheet === 'Поручения' && (a === 'addRow' || (a === 'setCell' && !/^(status|done)$/.test(String(body.f || ''))))) return true;
   if (sheet === 'ГПР' && (a === 'addRow' || a === 'setCell')) return true;   // график и даты передачи этажей
+  if (sheet === 'Справочник' && (a === 'addRow' || (a === 'setCell' && body.f === 'cell'))) return true;   // бригады и расценки «Выполнения»
+  if (a === 'setCell' && body.f === 'handover') return true;   // дата передачи этажа
   return false;
 }
 /** Данные для рабочих: без расходов, договора, авансов, личных; стоимость работ — только как относительный вес */
