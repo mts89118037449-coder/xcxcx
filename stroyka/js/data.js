@@ -337,6 +337,10 @@ const LS = {
 };
 
 const key = (s, f, w) => `${s}|${f}|${w}`;
+const dayMs = 864e5;
+const isoN = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+export function dayDiff(a, b) { return Math.round((isoN(b) - isoN(a)) / dayMs); }
+export function addDays(d, n) { const t = new Date(isoN(d) + n * dayMs); return t.toISOString().slice(0, 10); }
 const norm = (x) => String(x || '').trim().toLowerCase().replace(/\s+/g, ' ');
 /** Процент раздела: по стоимости строк, если есть; при одной единице измерения — по объёму; иначе среднее строк (метры кабеля и штуки розеток не складываются) */
 function groupPct(g) {
@@ -350,6 +354,7 @@ function groupPct(g) {
 /** Ключи уровней из таблиц → номера уровней приложения (один раз, при загрузке) */
 function mapFloors(e) {
   if (!e) return;
+  for (const k of ['orders', 'gpr']) for (const v of e[k] || []) if (v && 'level' in v) v.floor = v.level === null || v.level === '' ? null : fromKey(v.level);
   for (const k of ['volumes', 'floorStatus', 'worklog', 'moves', 'plan', 'discrepancies', 'acts']) for (const v of e[k] || []) if (v && 'floor' in v) v.floor = fromKey(v.floor);
 }
 
@@ -549,7 +554,7 @@ export class Store {
   /** Данные других таблиц: «Выполнение» (объёмы) и «VUP CORE» (материалы, ход работ, статусы этажей) */
   setExtra(x) {
     const e = x || {};
-    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '', brigades: e.brigades || [], acts: e.acts || [], handbook: e.handbook || { contractors: [], norms: {}, works: [] } };
+    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '', brigades: e.brigades || [], acts: e.acts || [], handbook: e.handbook || { contractors: [], norms: {}, works: [] }, orders: e.orders || [], gpr: e.gpr || [] };
     this.vol = new Map();
     setWorkMap(e.structure && e.structure.workMap);
     const groups = this.extra.volumes.filter((v) => v.total > 0 && v.floor != null).map((v) => workGroup(v.work, Number(v.floor))).filter(Boolean);
@@ -566,6 +571,67 @@ export class Store {
     }
     for (const fl of this.vol.values()) for (const g of Object.values(fl)) g.pct = groupPct(g);
   }
+  // ---------- поручения руководителя ----------
+  isOpenOrder(o) { return !/выполн|отмен/i.test(o.status || '') && !o.done; }
+  ordersFor(section, floor) { return (this.extra.orders || []).filter((o) => String(o.section) === String(section) && o.floor === floor); }
+
+  // ---------- ГПР: план против факта ----------
+  /** Этаж по графику: плановые даты, передача этажа (сдвиг), ожидаемый и фактический %, отставание в днях */
+  scheduleOf(section, floor) {
+    const rows = (this.extra.gpr || []).filter((g) => String(g.section) === String(section) && g.floor === floor);
+    if (!rows.length) return null;
+    const today = isoToday();
+    const items = rows.map((r) => {
+      const shift = r.shift || 0, s2 = addDays(r.start, shift), e2 = r.end2 || addDays(r.end, shift);
+      const dur = Math.max(1, dayDiff(s2, e2));
+      const fact = this.gprFact(section, floor, r.work);
+      const expected = Math.max(0, Math.min(100, (dayDiff(s2, today) / dur) * 100));
+      let lag = null, status;
+      if (fact != null && fact >= 99.5) status = 'готово';
+      else if (today < s2) status = 'по графику ещё не начат';
+      else { lag = dayDiff(addDays(s2, Math.round(((fact || 0) / 100) * dur)), today); status = lag <= 0 ? 'в графике' : lag <= 7 ? 'небольшое отставание' : 'отставание'; }
+      return { ...r, s2, e2, fact, expected, lag, status };
+    });
+    const worst = items.filter((x) => x.lag != null).sort((a, b) => b.lag - a.lag)[0];
+    const main = items.find((x) => /кладк/i.test(x.work)) || items[0];
+    return { rows: items, start: items.map((x) => x.start).sort()[0], s2: items.map((x) => x.s2).sort()[0], e2: items.map((x) => x.e2).sort().pop(),
+      shift: Math.max(0, ...items.map((x) => x.shift || 0)), received: items.map((x) => x.received).filter(Boolean).sort()[0] || '',
+      fact: main.fact, expected: main.expected, lag: worst ? worst.lag : null, status: items.every((x) => x.status === 'готово') ? 'готово' : worst ? worst.status : main.status };
+  }
+  /** Факт по строке ГПР: кладка → наружные стены + перегородки, обстройка шахт → инженерка, надстройка → кровля; иначе — раздел по названию */
+  gprFact(section, floor, work) {
+    const w = String(work || '').toLowerCase();
+    const groups = /шахт/.test(w) ? ['Инженерка'] : /кровл|надстрой/.test(w) ? ['Кровля'] : /кладк/.test(w) && PROFILE.type === 'mkd' ? ['Наружные стены', 'Перегородки'] : [workGroup(work, floor)];
+    const vals = groups.map((g) => this.get(section, floor, g)).filter((v) => v != null);
+    if (vals.length) return vals.reduce((a, v) => a + v, 0) / vals.length;
+    return this.floorValue(section, floor, 'avg');
+  }
+  /** Секция по графику: какие этажи должны идти сейчас, что фактически, максимальное отставание и сдвиги передачи */
+  sectionSchedule(section) {
+    const floors = [...new Set((this.extra.gpr || []).filter((g) => String(g.section) === String(section) && g.floor != null).map((g) => g.floor))].sort((a, b) => a - b);
+    if (!floors.length) return null;
+    const today = isoToday();
+    const sch = floors.map((f) => ({ f, ...this.scheduleOf(section, f) }));
+    const now = sch.filter((x) => x.s2 <= today && today <= x.e2).map((x) => x.f);
+    const shouldDone = sch.filter((x) => x.e2 < today).map((x) => x.f);
+    const done = sch.filter((x) => x.fact != null && x.fact >= 90).map((x) => x.f);
+    const doneByPlan = sch.filter((x) => x.e2 < today).length;
+    const inWork = sch.filter((x) => x.fact != null && x.fact > 0 && x.fact < 90).map((x) => x.f);
+    const late = sch.filter((x) => x.lag != null && x.lag > 0);
+    const worst = late.sort((a, b) => b.lag - a.lag)[0] || null;
+    const shifted = sch.filter((x) => x.shift > 0);
+    const end = (this.extra.gpr || []).filter((g) => String(g.section) === String(section)).map((g) => g.end2 || g.end).sort().pop();
+    // накопленный график секции: сколько % (по стоимости, иначе по длительности) должно быть сделано к дате — против факта
+    const items = sch.flatMap((x) => x.rows || []);
+    const wsum = items.reduce((a, r) => a + (r.cost || r.days || 1), 0) || 1;
+    const planAt = (d, adj) => items.reduce((a, r) => { const s0 = adj ? r.s2 : r.start, e0 = adj ? r.e2 : r.end; const k = Math.max(0, Math.min(1, dayDiff(s0, d) / Math.max(1, dayDiff(s0, e0)))); return a + k * (r.cost || r.days || 1); }, 0) / wsum * 100;
+    const factPct = items.reduce((a, r) => a + ((r.fact || 0) / 100) * (r.cost || r.days || 1), 0) / wsum * 100;
+    const lagBy = (adj) => { const first = items.map((r) => (adj ? r.s2 : r.start)).sort()[0]; if (!first) return 0; let d = today; while (d > first && planAt(d, adj) > factPct + 0.05) d = addDays(d, -1); return Math.max(0, dayDiff(d, today)); };
+    const planPct = planAt(today, false), planPctAdj = planAt(today, true);
+    const lagContract = lagBy(false), lagAdjusted = lagBy(true);
+    return { planPct, planPctAdj, factPct, lagContract, lagAdjusted, floors, sch, now, shouldDone, doneByPlan, done, inWork, worst, maxLag: worst ? worst.lag : 0, shifted, maxShift: Math.max(0, ...sch.map((x) => x.shift || 0)), end };
+  }
+
   /** Расценка строки объёма: из самой строки («Расценка») или из «Справочника» по исполнителю и виду работ */
   rateOf(v) {
     if (v.rate) return v.rate;

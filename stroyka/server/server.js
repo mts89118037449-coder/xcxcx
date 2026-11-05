@@ -257,6 +257,10 @@ function needsFin(body) {
   if (/Expense$/.test(a || '') || ADMIN_ACTIONS.has(a)) return true;
   if ((a === 'setCell' || a === 'addRow') && FIN_SHEETS.test(String(body.s || '').trim())) return true;
   if (a === 'setCell' && /^(rate|money|sum|price)$/.test(String(body.f || ''))) return true;   // расценки и деньги
+  // поручения руководителя: создаёт и меняет руководитель, рабочие только отмечают выполнение
+  const sheet = String(body.s || '').trim();
+  if (sheet === 'Поручения' && (a === 'addRow' || (a === 'setCell' && !/^(status|done)$/.test(String(body.f || ''))))) return true;
+  if (sheet === 'ГПР' && (a === 'addRow' || a === 'setCell')) return true;   // график и даты передачи этажей
   return false;
 }
 /** Данные для рабочих: без расходов, договора, авансов, личных; стоимость работ — только как относительный вес */
@@ -268,6 +272,7 @@ function stripFin(d) {
     const max = Math.max(0, ...d.extra.volumes.map((v) => v.cost || 0));
     out.extra = { ...d.extra, volumes: d.extra.volumes.map((v) => ({ ...v, cost: max ? Math.round(((v.cost || 0) / max) * 1000) / 1000 : 0, rate: 0, money: 0 })) };
   }
+  if (out.extra && Array.isArray(out.extra.gpr)) out.extra = { ...out.extra, gpr: out.extra.gpr.map((g) => ({ ...g, cost: 0 })) };
   if (out.extra && out.extra.handbook) out.extra = { ...out.extra, handbook: { ...out.extra.handbook, contractors: (out.extra.handbook.contractors || []).map((c) => ({ ...c, rates: {} })) } };
   return out;
 }

@@ -365,6 +365,8 @@ function readExtra_() {
     sources: safe_(sourcesInfo_),
     brigades: safe_(readBrigades_),
     handbook: safe_(readHandbook_),
+    orders: safe_(readOrders_),
+    gpr: safe_(readGpr_),
     acts: MODE === 'book' ? [] : safe_(readActs_),
   };
 }
@@ -603,6 +605,8 @@ const EDITABLE = {
   'G|Замечания АСГ': { due1: 10, due2: 11, due3: 12, due4: 13, due5: 14, due6: 15, due7: 16, status: 20, done: 21, note: 24 },
   'G|Таблица': { cell: 0 },
   'G|Бригады': { name: 1, people: 2, type: 3, section: 4, works: 5, note: 6 },
+  'G|Поручения': { date: 2, section: 3, level: 4, text: 5, who: 6, due: 7, status: 8, done: 9, note: 10 },
+  'G|ГПР': { received: 10, note: 13 },
   // самостоятельный объект (шаблон «Стройка · объект»)
   'G|Расходы': { date: 3, cat: 4, who: 5, basis: 6, note: 7, sum: 8 },
   'G|Замечания': { date: 2, section: 3, level: 4, text: 5, who: 6, due: 7, status: 8, done: 9, note: 10 },
@@ -614,7 +618,7 @@ const EDITABLE = {
   'U|Стройка · план': { pallets: 5, comment: 8 },
   'U|Стройка · контроль расхождений': { status: 7, note: 9 },
 };
-const DATE_FIELDS = /^(date|done|start|end|due\d?)$/;
+const DATE_FIELDS = /^(date|done|start|end|due\d?|received|handover)$/;
 const NUM_FIELDS = /^(sum|qty|pallets|workers|total|accepted|week|value|people|rate)$/;
 
 function cellValue_(field, v) {
@@ -625,13 +629,14 @@ function cellValue_(field, v) {
 }
 /** Шапки листов самостоятельного объекта — для создания при первой записи */
 const BOOK_SHEETS = {
+  'Поручения': ['№', 'Дата', 'Часть', 'Уровень', 'Поручение', 'Кому (бригада)', 'Срок', 'Статус', 'Выполнено', 'Примечание'],
   'Бригады': ['Бригада', 'Человек', 'Тип', 'Часть', 'Виды работ', 'Примечание'],
   'Замечания': ['№', 'Дата', 'Часть', 'Уровень', 'Замечание', 'Ответственный', 'Срок', 'Статус', 'Выполнено', 'Примечание'],
   'Документы': ['Часть', 'Уровень', 'Вид работ', 'ИС', 'АОСР', 'Замечания по АОСР'],
 };
 function sheetFor_(b, s) {
   const id = BOOKS[b];
-  if (b === 'G' && MODE !== 'book' && s === 'Бригады' && !ss_().getSheetByName(s)) { const sh0 = ss_().insertSheet(s); headRow_(sh0, BOOK_SHEETS['Бригады']); } if (!id) throw new Error('Неизвестная таблица');
+  if (b === 'G' && MODE !== 'book' && (s === 'Бригады' || s === 'Поручения') && !ss_().getSheetByName(s)) { const sh0 = ss_().insertSheet(s); headRow_(sh0, BOOK_SHEETS[s]); } if (!id) throw new Error('Неизвестная таблица');
   if ((b !== 'G' || MODE === 'book') && !canEdit_(id)) throw new Error('Нет прав на запись в эту таблицу — нужен доступ «Редактор»');
   let sh = SpreadsheetApp.openById(id).getSheetByName(s);
   if (!sh && MODE === 'book' && b === 'G' && BOOK_SHEETS[s]) { sh = ss_().insertSheet(s); headRow_(sh, BOOK_SHEETS[s]); }   // лист появится при первой записи
@@ -1606,4 +1611,39 @@ function readHandbook_() {
   const nc = head.findIndex(function (x, c) { return c >= end && /вид работ/i.test(x); });
   if (nc >= 0) for (let i = hr + 1; i < n; i++) { const k = String(v[i][nc]).trim(), d = num_(v[i][nc + 1]); if (k && d) out.norms[k] = d; }
   return out;
+}
+
+/** «Поручения» руководителя (свои, не из протоколов генподрядчика): видны всем, рабочие отмечают выполнение */
+function readOrders_() {
+  const sh = ss_().getSheetByName('Поручения');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return rowsOf_(sh, 2, 10)
+    .filter(function (r) { return String(r[4]).trim(); })
+    .map(function (r) { return { row: r.row, n: r[0], date: dateStrict_(r[1]), section: secId_(r[2]), level: levelKey_(r[3]), text: String(r[4]).trim(), who: String(r[5]).trim(), due: dateStrict_(r[6]), status: String(r[7]).trim(), done: dateStrict_(r[8]), note: String(r[9]).trim(), sheet: 'Поручения' }; });
+}
+/** «ГПР» — график производства работ: план по этажам + «Этаж передан (факт)» → сдвиг и окончание с учётом передачи */
+function readGpr_() {
+  const sh = ss_().getSheetByName('ГПР');
+  if (!sh || sh.getLastRow() < 2) return [];
+  const h = sh.getRange(1, 1, 1, Math.min(sh.getLastColumn(), 20)).getDisplayValues()[0].map(function (x) { return String(x).toLowerCase(); });
+  const c = function (re, d) { const i = h.findIndex(function (x) { return re.test(x); }); return i >= 0 ? i : d; };
+  const C = { n: c(/^№/, 0), name: c(/^работа|наименов/, 1), sec: c(/секци|част/, 2), lvl: c(/^этаж|уровень|помещ/, 3), work: c(/вид работ/, 4), cost: c(/стоимост/, 5), start: c(/начало/, 6), end: c(/^окончание \(план|^окончание$/, 7), days: c(/дней/, 8), rec: c(/передан/, 9), shift: c(/сдвиг/, 10), end2: c(/с учётом|с учетом/, 11), note: c(/примеч/, 12) };
+  const w = Math.max.apply(null, Object.keys(C).map(function (k) { return C[k]; })) + 1;
+  return sh.getRange(2, 1, sh.getLastRow() - 1, w).getDisplayValues().map(function (r, i) {
+    if (!String(r[C.name]).trim() || !dateStrict_(r[C.start])) return null;
+    return { row: i + 2, n: r[C.n], name: String(r[C.name]).trim(), section: secId_(r[C.sec]), level: levelKey_(r[C.lvl]), work: String(r[C.work]).trim(), cost: num_(r[C.cost]),
+      start: dateStrict_(r[C.start]), end: dateStrict_(r[C.end]), days: num_(r[C.days]), received: dateStrict_(r[C.rec]), shift: num_(r[C.shift]), end2: dateStrict_(r[C.end2]) || dateStrict_(r[C.end]), note: String(r[C.note] || '').trim() };
+  }).filter(Boolean);
+}
+
+/** Дата как есть (план, срок): ДД.ММ.ГГГГ / ДД.ММ.ГГ / ГГГГ-ММ-ДД / Date — без «подгонки» года, будущие даты допустимы */
+function dateStrict_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, tz_(), 'yyyy-MM-dd');
+  const t = String(v || '').trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  m = t.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{2}|\d{4})$/);
+  if (!m) return '';
+  const y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+  return y + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
 }

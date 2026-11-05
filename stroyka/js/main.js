@@ -1,4 +1,4 @@
-import { Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, BY_EXPENSES, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText } from './data.js';
+import { dayDiff, Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, BY_EXPENSES, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText } from './data.js';
 import { BuildingScene } from './scene.js';
 import { UnitsScene } from './scene-units.js';
 
@@ -178,6 +178,7 @@ function renderSummary() {
       ${[1, 2, 3].map((i) => `<button class="rthumb" data-r="${i}"><img src="assets/renders/render-${i}.jpg" alt="Проектная визуализация ${i}" loading="lazy"></button>`).join('')}
       <span class="rcap">Проект — как будет выглядеть</span>
     </div>`}
+    ${ordersBlock()}
     ${BY_EXPENSES && store.connected && !store.finLocked ? `<details class="fold obj-track"><summary>📐 Вести ход работ по объектам — добавить листы объёмов</summary>
       <p class="muted small-note">Сейчас в таблице только расходы. Для каждого объекта (${esc(SECTIONS.join(', '))}) появится лист «Объект …»: помещения × виды работ, объём и выполнено по неделям. Расходы не меняются.</p>
       <label>Помещения или зоны<input id="apLevels" value="Кухня, Санузел, Комната 1, Коридор"></label>
@@ -209,6 +210,7 @@ function renderSummary() {
         </div>`).join('')}
       <div class="f-row f-foot" style="${fcols}">${SECTIONS.length !== 2 || LAYOUT !== 'stack' ? '<span></span>' : ''}${SECTIONS.map((s) => `<span>${T.part} ${esc(s)}</span>`).join(SECTIONS.length === 2 && LAYOUT === 'stack' ? '<span></span>' : '')}</div>
     </div>
+    ${gprBlock()}
     ${brigadeBlock()}
     <h3>Открытые поручения <span class="muted">· ${open.length}</span></h3>
     <ul class="remarks">
@@ -319,8 +321,11 @@ function floorHtml() {
     ${aosrRem.length ? `<div class="kv-list">${aosrRem.map((x) => `<div class="kv"><span>По АОСР · ${esc(x.w.toLowerCase())}</span>${ev(esc(x.d[s].rem || 'нет'), dspec(x.d, 'rem', x.d[s].rem, 'Замечания по АОСР'))}</div>`).join('')}</div>` : ''}
     ${rem.length > openRem.length ? `<details class="done-list"><summary>Выполненные · ${rem.length - openRem.length}</summary><ul class="remarks">${rem.filter((r) => !store.isOpenRemark(r)).map((r) => remarkHtml(r)).join('')}</ul></details>` : ''}` : '';
   const remN = openRem.length + aosrOpen;
+  const ords = store.ordersFor(s, f);
+  const ordOpen = ords.filter((o) => store.isOpenOrder(o)).length;
   const canAddRem = store.objInfo && store.objInfo.mode === 'book';
-  const remBodyFull = (remBody || (canAddRem ? '<p class="muted small-note">Замечаний нет.</p>' : '')) + (canAddRem ? '<div class="add-row"><button class="btn small" data-add="remark">+ Замечание</button></div>' : '');
+  const ordHtml = ords.length ? `<h4 class="sub-h4">📌 От руководителя</h4><ul class="remarks">${ords.map(orderHtml).join('')}</ul>` : '';
+  const remBodyFull = ordHtml + (remBody || (canAddRem ? '<p class="muted small-note">Замечаний нет.</p>' : '')) + (canAddRem ? '<div class="add-row"><button class="btn small" data-add="remark">+ Замечание</button></div>' : '');
 
   // 3. Документы ИС / АОСР
   const isN = docRows.filter((x) => x.d[s].is).length, aoN = docRows.filter((x) => x.d[s].aosr).length;
@@ -362,7 +367,15 @@ function floorHtml() {
     <div class="big floor-big">${fv == null ? '<span class="nodata">нет данных</span>' : pct(fv)}<span class="muted"> ${fl}, ${T.partL} ${esc(s)}</span></div>
     <div class="cats">
       ${cat('works', '▥', 'Работы', worksSum, works.length ? workHtml : '')}
-      ${cat('remarks', '!', 'Замечания', remN ? `<span class="err-t">${remN} открыт.</span>` : (rem.length || aosrRem.length) ? 'открытых нет' : 'нет', remBodyFull, remN ? 'warn' : '')}
+      ${cat('remarks', '!', 'Замечания и поручения', remN + ordOpen ? `<span class="err-t">${remN + ordOpen} открыт.</span>` : (rem.length || aosrRem.length || ords.length) ? 'открытых нет' : 'нет', (rem.length || aosrRem.length || ords.length || canAddRem) ? remBodyFull : '', remN + ordOpen ? 'warn' : '')}
+      ${(() => { const g = store.scheduleOf(s, f); if (!g) return '';
+        const gs = (row) => ({ b: 'G', s: 'ГПР', r: row.row, f: 'received', raw: row.received || '', expect: row.received ? row.received.split('-').reverse().join('.') : '', type: 'date', label: `${row.name}: этаж передан (факт)`, prop: 'received', list: 'extra.gpr' });
+        const sum = g.status === 'готово' ? 'готово' : g.lag > 0 ? `<span class="${g.lag > 7 ? 'err-t' : ''}">отставание ≈ ${g.lag} дн.</span>` : g.status;
+        const body = `<ul class="totals">${g.rows.map((r) => `<li><span><b>${esc(r.work)}</b><div class="muted">план ${shortDate(r.start)} – ${shortDate(r.end)}${r.shift ? ` · с учётом передачи до ${shortDate(r.e2)}` : ''}</div>
+            <div class="muted">должно быть ${Math.round(r.expected)}% · факт ${r.fact == null ? '—' : Math.round(r.fact) + '%'} · ${r.lag > 0 ? `<span class="${r.lag > 7 ? 'err-t' : ''}">отстаём ≈ ${r.lag} дн.</span>` : esc(r.status)}</div></span>
+            <span class="muted">передан: ${store.finLocked ? (r.received ? shortDate(r.received) : '—') : ev(r.received ? shortDate(r.received) : 'отметить', gs(r))}</span></li>`).join('')}</ul>
+          ${g.shift ? `<p class="muted small-note">Этаж передан на ${g.shift} дн. позже графика — срок сдвинут.</p>` : ''}`;
+        return cat('plan', '📅', 'График (ГПР)', sum, body, g.lag > 7 ? 'warn' : ''); })()}
       ${cat('docs', '▤', 'Документы', (docRows.length ? `ИС ${isN}/${docRows.length} · АОСР ${aoN}/${docRows.length}` : 'нет строки в «Таблице»') + (acts.length ? ` · актов ${acts.length}` : ''), docsBody)}
       ${cat('mat', '▣', 'Материал', mv.length ? `${mv.length} подач · ${fmtN(pal)} пал.` : 'нет', mvBody)}
       ${cat('people', '👷', 'Люди и бригады', wl.length ? `${wl.length} в работе${ppl ? ' · ' + fmtN(ppl) + ' чел.' : ''}` : brig.length ? `${brig.length} бригад · ${fmtN(brigN)} чел.` : 'нет', wlFull)}
@@ -371,15 +384,55 @@ function floorHtml() {
     <p class="hint-line">Нажмите категорию, чтобы развернуть. Значения со значком ✎ записываются прямо в ячейку таблицы.</p>`;
 }
 
+/** Поручение руководителя: текст, кому, где, срок; рабочие отмечают «Выполнено» */
+function orderHtml(o) {
+  const today = isoToday();
+  const late = store.isOpenOrder(o) && o.due && o.due < today;
+  const sp = (f, raw, type, label, extra = {}) => ({ b: 'G', s: 'Поручения', r: o.row, f, raw, expect: raw, type, label: `Поручение «${o.text.slice(0, 40)}»: ${label}`, prop: f, list: 'extra.orders', ...extra });
+  const where = [o.section ? `${T.partShort}${o.section}` : '', o.floor != null ? floorShort(o.floor) + (LAYOUT === 'stack' && o.floor > 0 && o.floor !== ROOF ? ' эт.' : '') : ''].filter(Boolean).join(' · ');
+  return `<li class="${store.isOpenOrder(o) ? (late ? 'late' : '') : 'done'} order"><div><b>${esc(o.text)}</b>
+    <div class="muted">${o.who ? '👷 ' + esc(o.who) + ' · ' : ''}${where ? esc(where) + ' · ' : ''}${ev(esc(o.status || 'В работе'), sp('status', o.status || 'В работе', 'text', 'статус', { options: ['В работе', 'Выполнено', 'Отменено'] }))}</div>
+    ${where && o.section && o.floor != null ? `<span class="r-go"><button type="button" class="chip-go" data-floor="${esc(o.section)}|${o.floor}">открыть ${esc(where)} ›</button></span>` : ''}</div>
+    <div class="r-meta">${o.due ? `<span class="${late ? 'err-t' : ''}">срок ${shortDate(o.due)}${late ? ' · просрочено' : ''}</span>` : ''}</div></li>`;
+}
+function ordersBlock() {
+  const list = (store.extra.orders || []).filter((o) => store.isOpenOrder(o)).sort((a, b) => (a.due || '9').localeCompare(b.due || '9'));
+  const all = (store.extra.orders || []).length;
+  if (!all && store.finLocked) return '';
+  return `<div class="orders-box"><h3>📌 Поручения руководителя <span class="muted">· ${list.length ? list.length + ' в работе' : 'нет открытых'}</span></h3>
+    ${list.length ? `<ul class="remarks">${list.map(orderHtml).join('')}</ul>` : ''}
+    ${store.finLocked ? '' : '<div class="add-row"><button class="btn small" data-add="order">+ Поручение</button></div>'}</div>`;
+}
+/** ГПР по секциям: что должно идти сейчас, что по факту, отставание и задержки передачи этажей */
+function gprBlock() {
+  const rows = SECTIONS.map((s) => [s, store.sectionSchedule(s)]).filter(([, x]) => x);
+  if (!rows.length) return '';
+  const rng = (fs) => { if (!fs.length) return '—'; const a = Math.min(...fs), b = Math.max(...fs); return a === b ? floorShort(a) : `${floorShort(a)}–${floorShort(b)}`; };
+  return `<h3>График (ГПР)</h3><div class="gpr-cards">${rows.map(([s, x]) => `<div class="gpr-card ${x.lagAdjusted > 14 ? 'bad' : x.lagAdjusted > 0 ? 'warn' : 'ok'}">
+      <div class="card-h">${esc(T.part)} ${esc(s)}</div>
+      <div class="row-kv"><span>К сегодня по графику</span><b>${Math.round(x.planPct)}%</b></div>
+      <div class="row-kv"><span>Сделано по факту</span><b>${Math.round(x.factPct)}%</b></div>
+      <div class="bar gpr-bar"><i style="width:${Math.min(100, x.factPct)}%"></i><em style="left:${Math.min(100, x.planPct)}%"></em></div>
+      <div class="row-kv"><span>Отставание по договору</span><b class="${x.lagContract > 14 ? 'err-t' : ''}">${x.lagContract ? '≈ ' + x.lagContract + ' дн.' : 'нет'}</b></div>
+      <div class="row-kv"><span>С учётом поздней передачи этажей</span><b class="${x.lagAdjusted > 14 ? 'err-t' : ''}">${x.lagAdjusted ? '≈ ' + x.lagAdjusted + ' дн.' : 'нет'}</b></div>
+      <div class="row-kv"><span>По графику сейчас</span><b>${x.now.length ? esc(rng(x.now)) + (LAYOUT === 'stack' ? ' эт.' : '') : x.shouldDone.length >= x.floors.length ? 'всё по графику завершено' : '—'}</b></div>
+      <div class="row-kv"><span>Готово этажей</span><b>${x.done.length} <span class="muted">из ${x.doneByPlan} по графику</span></b></div>
+      <div class="row-kv"><span>В работе</span><b>${esc(rng(x.inWork))}</b></div>
+      <div class="row-kv"><span>Сильнее всего отстаёт</span><b class="${x.maxLag > 7 ? 'err-t' : ''}">${x.maxLag > 0 ? '≈ ' + x.maxLag + ' дн.' + (x.worst ? ` · ${esc(floorShort(x.worst.f))}${LAYOUT === 'stack' ? ' эт.' : ''}` : '') : 'нет'}</b></div>
+      <div class="row-kv"><span>Этажи переданы позже</span><b>${x.shifted.length ? `${x.shifted.length} шт., до +${x.maxShift} дн.` : '<span class="muted">не отмечено</span>'}</b></div>
+      <div class="row-kv"><span>Окончание по графику</span><b>${x.end ? shortDate(x.end) : '—'}</b></div></div>`).join('')}</div>
+    <p class="muted small-note">«К сегодня по графику» — доля всего графика (по стоимости этапов), которая уже должна быть сделана; отставание — на сколько дней факт позади графика. «С учётом поздней передачи» — если в листе «ГПР» отмечено, что этаж получили позже, срок сдвигается: эта часть задержки не наша.</p>`;
+}
 /** Бригады в «Обзоре»: кто, сколько человек, где работает, сколько сделал (и на какую сумму — у руководителя) */
 function brigadeBlock() {
   const br = store.brigadeStats();
   if (!br.length) return '';
-  const n = br.reduce((a, b) => a + (b.people || 0), 0);
+  const isItr = (b) => /итр/i.test(b.type || '') || /^итр/i.test(b.name);
+  const n = br.filter((b) => !isItr(b)).reduce((a, b) => a + (b.people || 0), 0), itr = br.filter(isItr).reduce((a, b) => a + (b.people || 0), 0);
   const assigned = br.some((b) => b.rows.length);
   const fl = (b) => { const by = {}; for (const k of b.floors) { const [sec, f] = k.split('|'); (by[sec] ||= []).push(+f); } return Object.entries(by).map(([sec, fs]) => `${T.partShort}${sec}: ${fs.sort((x, y) => x - y).map(floorShort).join(', ')}`).join(' · '); };
   const bs = (b) => ({ b: 'G', s: 'Бригады', r: b.sheetRow, f: 'people', raw: b.people || '', expect: b.people || '', type: 'number', label: `Бригада «${b.name}»: человек`, prop: 'people', list: 'extra.brigades' });
-  return `<h3>Бригады <span class="muted">· ${fmtN(n)} чел.</span></h3>
+  return `<h3>Бригады <span class="muted">· ${fmtN(n)} чел.${itr || br.some(isItr) ? ` + ИТР ${itr ? fmtN(itr) : '?'} = ${fmtN(n + itr)}` : ''}</span></h3>
     <ul class="totals brig">${br.map((b) => `<li><span><b>${esc(b.name)}</b>${b.type ? ` <em class="chip-s">${esc(b.type)}</em>` : ''}
       ${b.rows.length ? `<div class="muted">${esc(fl(b))}</div><div class="muted">${b.byWork.map((w) => `${esc(cleanW(w.work))} ${fmtN(w.done)}/${fmtN(w.total)} ${esc(unitOf(w.work))}`).join(' · ')}</div>` : b.works ? `<div class="muted">${esc(b.works)}</div>` : ''}
       ${!store.finLocked && b.earned != null ? `<div class="muted">выполнено на <b>${rub(b.earned)}</b>${Object.keys(b.rates).length ? ' · расценки: ' + Object.entries(b.rates).map(([w, r]) => `${esc(cleanW(w))} ${fmtN(r)} ₽`).join(', ') : ''}</div>` : ''}
@@ -549,6 +602,7 @@ function renderCalendar() {
   const maxPeople = Math.max(1, ...Array.from({ length: days }, (_, i) => store.peopleOn(iso(i + 1))));
   const dueMap = {};
   for (const r of store.remarks) { const d = ruToIso(r.due); if (d && store.isOpenRemark(r)) (dueMap[d] ||= []).push(r); }
+  for (const o of store.extra.orders || []) if (o.due && store.isOpenOrder(o)) (dueMap[o.due] ||= []).push({ short: '📌 ' + o.text, section: o.section });
 
   const cells = [];
   for (let i = 0; i < startDow; i++) cells.push('<div class="c-cell empty"></div>');
@@ -711,6 +765,7 @@ document.addEventListener('click', async (e) => {
   const k = b.dataset.add;
   const today = isoToday();
   const defs = {
+    order: { book: 'G', sheet: 'Поручения', title: 'Поручение от руководителя', fixed: { date: today, status: 'В работе' }, fields: [['text', 'Что сделать', 'text', ''], ['who', 'Кому (бригада)', 'text', ''], ['section', `${T.part || 'Часть'} (можно пусто)`, 'text', state.tab === 'floor' ? state.section : ''], ['level', `${T.level} (можно пусто)`, 'text', state.tab === 'floor' ? (LAYOUT === 'stack' ? String(state.floor) : floorName(state.floor)) : ''], ['due', 'Срок', 'date', '']] },
     brigade: { book: 'G', sheet: 'Бригады', title: 'Новая бригада', fields: [['name', 'Бригада (бригадир)', 'text', ''], ['people', 'Человек', 'number', ''], ['type', 'Тип: свои / наёмные', 'text', 'свои'], ['section', `${T.part || 'Часть'} (пусто — все)`, 'text', ''], ['works', 'Виды работ', 'text', '']] },
     remark: { book: 'G', sheet: 'Замечания', title: `Замечание: ${T.partL} ${state.section}, ${floorName(state.floor).toLowerCase()}`, fixed: { date: today, section: state.section, level: LAYOUT === 'stack' ? (state.floor === 0 ? 'Подвал' : state.floor === ROOF ? 'Кровля' : String(state.floor)) : floorName(state.floor), status: 'В работе' }, fields: [['text', 'Замечание', 'text', ''], ['who', 'Ответственный', 'text', ''], ['due', 'Срок', 'date', '']] },
     tool: { book: 'G', sheet: 'УЧЁТ ИНСТРУМЕНТА ', title: 'Новый инструмент', fields: [['name', 'Наименование', 'text', ''], ['qty', 'Количество', 'text', '']] },
