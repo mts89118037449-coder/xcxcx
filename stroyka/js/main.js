@@ -1,4 +1,4 @@
-import { dayDiff, addDays, Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, BY_EXPENSES, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText, levelsIn, sectionsIn, levelsText } from './data.js';
+import { dayDiff, addDays, Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, BY_EXPENSES, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText, levelsIn, sectionsIn, levelsText, isPeopleItem } from './data.js';
 import { BuildingScene } from './scene.js';
 import { UnitsScene } from './scene-units.js';
 
@@ -28,6 +28,19 @@ const state = {
 const CAT_COLORS = { 'Материалы': '#2e9e57', 'Работы': '#1f6feb', 'Услуги': '#d08a00', 'Логистика': '#8b5cf6', 'Прочее': '#8a8780' };
 const rub = (n) => Math.round(n).toLocaleString('ru-RU') + ' ₽';
 const rubShort = (n) => n >= 1e6 ? (n / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' млн' : n >= 1e3 ? Math.round(n / 1e3) + ' тыс' : Math.round(n) + ' ₽';
+
+// ---------- подвкладки: прокрутка ленты не сбрасывается при перерисовке ----------
+const tabsScroll = {};
+document.addEventListener('scroll', (e) => { const t = e.target; if (t && t.classList && t.classList.contains('subtabs')) tabsScroll[(t.closest('[id]') || {}).id || ''] = t.scrollLeft; }, true);
+new MutationObserver(() => {
+  document.querySelectorAll('.subtabs:not([data-kept])').forEach((t) => {
+    t.dataset.kept = '1';
+    const k = (t.closest('[id]') || {}).id || '';
+    if (tabsScroll[k]) t.scrollLeft = tabsScroll[k];
+    const on = t.querySelector('.on');
+    if (on) { const l = on.offsetLeft - t.offsetLeft; if (l < t.scrollLeft) t.scrollLeft = l - 8; else if (l + on.offsetWidth > t.scrollLeft + t.clientWidth) t.scrollLeft = l + on.offsetWidth - t.clientWidth + 8; }
+  });
+}).observe(document.body, { childList: true, subtree: true });
 
 // ---------- тема ----------
 try { const t = localStorage.getItem('stroyka.theme'); if (t) document.documentElement.dataset.theme = t; } catch { /* */ }
@@ -188,6 +201,27 @@ function peopleBlock(P) {
     <div class="add-row"><button class="btn small" type="button" data-goto-people>+ Люди вышли сегодня</button></div>`;
 }
 
+/** Требования генподрядчика по численности: что требуют (из протокола) и сколько вышло по журналу */
+function peopleDemandsBlock(P) {
+  const list = store.peopleRemarks().filter((r) => store.isOpenRemark(r));
+  if (!list.length) return '';
+  const now = (s) => (P.bySec[s] ? P.bySec[s].n : null);
+  return `<h3>Требования генподрядчика по людям <span class="muted">· ${list.length}</span></h3>
+    <div class="gpr-cards">${list.map((r) => {
+      const sec = sectionsIn(r.section)[0] || '';
+      const need = +((`${r.short} ${r.note || ''}`.match(/до\s*(\d+)\s*чел/i) || [])[1] || 0);
+      const cur = sec ? now(sec) : null;
+      const bad = need && cur != null && cur < need;
+      return `<div class="gpr-card ${bad ? 'bad' : need && cur != null ? '' : 'warn'}"><b>${esc(r.short)}</b>
+        ${sec ? `<div class="row-kv"><span>${esc(T.part)}</span><b>${esc(sec)}</b></div>` : ''}
+        ${need ? `<div class="row-kv"><span>Требуют</span><b>${need} чел.</b></div>` : ''}
+        <div class="row-kv"><span>Вышло по журналу</span><b>${cur != null ? `${cur} чел. <span class="muted">· ${shortDate(P.bySec[sec].d)}</span>` : '<span class="muted">не записано</span>'}</b></div>
+        ${need && cur != null ? `<div class="row-kv"><span>${bad ? 'Не хватает' : 'Выполнено'}</span><b class="${bad ? 'err-t' : 'okc'}">${bad ? need - cur + ' чел.' : '✓'}</b></div>` : ''}
+        <div class="row-kv"><span>Срок</span><b>${esc(r.due || '—')}${ruToIso(r.due) && ruToIso(r.due) < isoToday() ? ' <span class="err-t">просрочено</span>' : ''}</b></div>
+        ${r.note ? `<p class="muted small-note">${esc(r.note)}</p>` : ''}</div>`;
+    }).join('')}</div>`;
+}
+
 // ---------- Сводка ----------
 function renderSummary() {
   const el = $('#tab-summary');
@@ -245,7 +279,7 @@ function renderSummary() {
 `,
     plan: `${gprBlock()}`,
     stats: analyticsBlock(),
-    people: `${peopleBlock(ppl)}${brigadeBlock()}`,
+    people: `${peopleBlock(ppl)}${peopleDemandsBlock(ppl)}${brigadeBlock()}`,
     floors: `    <h3>По ${T.levelsDat} <span class="muted">· ${state.metric === 'avg' ? 'все работы' : state.metric.toLowerCase()}</span></h3>
     <div class="facade" role="grid">
       ${(LAYOUT === 'stack' ? [...FLOORS].reverse() : FLOORS).map((f) => `
@@ -732,10 +766,10 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidd
 function remarkHtml(r, links = false) {
   const sec = SECTIONS.includes(String(r.section)) ? String(r.section) : null;
   const lv = r.levelText !== undefined ? levelsIn(r.levelText) : null;
-  const fls = links && sec ? (lv === 'all' ? [] : lv || floorsInText(r.short + ' ' + r.text)) : [];
+  const fls = links && sec && !isPeopleItem(r) ? (lv === 'all' ? [] : lv || floorsInText(r.short + ' ' + r.text)) : [];
   const go = fls.length ? `<span class="r-go">${fls.slice(0, 6).map((f) => `<button type="button" class="chip-go" data-floor="${esc(sec)}|${f}" title="Открыть">${T.partShort}${esc(sec)} · ${esc(floorShort(f))}${LAYOUT === 'stack' ? ' эт.' : ''} ›</button>`).join('')}${fls.length > 6 ? '…' : ''}</span>` : '';
   const spec = (f, raw, type, label, extra = {}) => ({ b: 'G', s: r.sheet || 'Замечания АСГ', r: r.row, f, raw, expect: raw, type, label: `${r.short}: ${label}`, prop: f === 'status' ? 'status' : f === 'done' ? 'done' : '', list: 'remarks', ...extra });
-  return `<li class="${store.isOpenRemark(r) ? 'late' : 'done'}"><div><b>${esc(r.short)}</b>${r.tp ? ` <span class="chip-tp">${esc(r.tp)}</span>` : ''}${lv === 'all' ? ` <span class="muted">· все ${esc(T.levelsL)}</span>` : ''}
+  return `<li class="${store.isOpenRemark(r) ? 'late' : 'done'}"><div><b>${esc(r.short)}</b>${r.tp ? ` <span class="chip-tp">${esc(r.tp)}</span>` : ''}${lv === 'all' && !isPeopleItem(r) ? ` <span class="muted">· все ${esc(T.levelsL)}</span>` : ''}
     <div class="muted">${r.row ? ev(esc(r.status || 'статус'), spec('status', r.status, 'text', 'статус по протоколу', { options: ['В работе', 'Срыв сроков', 'Выполнено'] })) : esc(r.status)}${r.note ? ' · ' + esc(r.note) : ''}</div>${go}</div>
     <div class="r-meta"><span>срок ${esc(r.due)}</span>${r.row ? `<span>выполнено: ${ev(esc(r.done || '—'), spec('done', ruToIso(r.done) || '', 'date', 'дата выполнения'))}</span>` : ''}</div></li>`;
 }

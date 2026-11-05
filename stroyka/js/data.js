@@ -410,6 +410,11 @@ export function materialKey(name) {
 }
 
 /** Запись относится к части и уровню: по столбцам «Секция»/«Этаж» (можно «4, 5», «7–9», «Все»), иначе — старым способом */
+/** Замечание/поручение про численность людей — к этажам не относится, показывается отдельно */
+export function isPeopleItem(r) {
+  if (r.tp) return /^люд|численн|персонал/i.test(r.tp);
+  return /количеств\S* людей|численност|людей на секц|\d+\s*чел(?![а-яё])/i.test(`${r.short || ''} ${r.text || ''}`);
+}
 function placeMatch(secText, levelText, section, floor, fallback) {
   const lv = levelsIn(levelText);
   if (lv === null) return fallback();
@@ -626,7 +631,7 @@ export class Store {
   }
   // ---------- поручения руководителя ----------
   isOpenOrder(o) { return !/выполн|отмен/i.test(o.status || '') && !o.done; }
-  ordersFor(section, floor) { return (this.extra.orders || []).filter((o) => placeMatch(o.sectionText ?? o.section, o.levelText, section, floor, () => String(o.section) === String(section) && o.floor === floor)); }
+  ordersFor(section, floor) { return (this.extra.orders || []).filter((o) => !isPeopleItem(o) && placeMatch(o.sectionText ?? o.section, o.levelText, section, floor, () => String(o.section) === String(section) && o.floor === floor)); }
 
   // ---------- ГПР: план против факта ----------
   /** Этаж по графику: плановые даты, передача этажа (сдвиг), ожидаемый и фактический %, отставание в днях */
@@ -774,8 +779,10 @@ export class Store {
   }
   remarksFor(section, floor) {
     // у самостоятельного объекта уровень замечания указан явно; у Glorax — ищется в тексте («6 эт.»)
-    return this.remarks.filter((r) => placeMatch(r.section, r.levelText, section, floor, () => String(r.section) === section && (r.floor !== undefined ? r.floor === floor : floorsInText(r.short + ' ' + r.text).includes(floor))));
+    return this.remarks.filter((r) => !isPeopleItem(r) && placeMatch(r.section, r.levelText, section, floor, () => String(r.section) === section && (r.floor !== undefined ? r.floor === floor : floorsInText(r.short + ' ' + r.text).includes(floor))));
   }
+  /** Требования генподрядчика по людям (не по этажам): «Увеличить количество людей. Секция 4» */
+  peopleRemarks() { return this.remarks.filter((r) => isPeopleItem(r)); }
   isOpenRemark(r) { return !/выполнено/i.test(r.status || '') && !r.done; }
   /** Журнал + записи из «VUP CORE» (только чтение): поставки/подачи материала и рабочие по ходу работ */
   allJournal() {
