@@ -1,4 +1,4 @@
-import { dayDiff, addDays, Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, BY_EXPENSES, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText } from './data.js';
+import { dayDiff, addDays, Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, BY_EXPENSES, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText, levelsIn, sectionsIn, levelsText } from './data.js';
 import { BuildingScene } from './scene.js';
 import { UnitsScene } from './scene-units.js';
 
@@ -241,6 +241,7 @@ function renderSummary() {
     <ul class="remarks">
       ${open.map((r) => remarkHtml(r, true)).join('') || '<li class="muted">Нет открытых поручений</li>'}
     </ul>
+    ${store.remarks.some((r) => r.levelText !== undefined) || (store.objInfo && store.objInfo.mode === 'book') ? '<div class="add-row"><button class="btn small" data-add="remark">+ Замечание генподрядчика</button></div>' : ''}
 `,
     plan: `${gprBlock()}`,
     stats: analyticsBlock(),
@@ -513,7 +514,7 @@ function floorHtml() {
   const remN = openRem.length + aosrOpen;
   const ords = store.ordersFor(s, f);
   const ordOpen = ords.filter((o) => store.isOpenOrder(o)).length;
-  const canAddRem = store.objInfo && store.objInfo.mode === 'book';
+  const canAddRem = (store.objInfo && store.objInfo.mode === 'book') || store.remarks.some((r) => r.levelText !== undefined);
   const ordHtml = ords.length ? `<h4 class="sub-h4">📌 От руководителя</h4><ul class="remarks">${ords.map(orderHtml).join('')}</ul>` : '';
   const remBodyFull = ordHtml + (remBody || (canAddRem ? '<p class="muted small-note">Замечаний нет.</p>' : '')) + (canAddRem ? '<div class="add-row"><button class="btn small" data-add="remark">+ Замечание</button></div>' : '');
 
@@ -583,10 +584,12 @@ function orderHtml(o) {
   const today = isoToday();
   const late = store.isOpenOrder(o) && o.due && o.due < today;
   const sp = (f, raw, type, label, extra = {}) => ({ b: 'G', s: 'Поручения', r: o.row, f, raw, expect: raw, type, label: `Поручение «${o.text.slice(0, 40)}»: ${label}`, prop: f, list: 'extra.orders', ...extra });
-  const where = [o.section ? `${T.partShort}${o.section}` : '', o.floor != null ? floorShort(o.floor) + (LAYOUT === 'stack' && o.floor > 0 && o.floor !== ROOF ? ' эт.' : '') : ''].filter(Boolean).join(' · ');
-  return `<li class="${store.isOpenOrder(o) ? (late ? 'late' : '') : 'done'} order"><div><b>${esc(o.text)}</b>
+  const multi = /[,–\-]|все/i.test(`${o.sectionText || ''} ${o.levelText || ''}`);
+  const where = multi ? [o.sectionText ? (/^все/i.test(o.sectionText) ? `все ${T.partsL}` : `${T.partShort} ${o.sectionText}`) : '', o.levelText ? (/^все/i.test(o.levelText) ? `все ${T.levelsL}` : `${o.levelText}${LAYOUT === 'stack' ? ' эт.' : ''}`) : ''].filter(Boolean).join(' · ')
+    : [o.section ? `${T.partShort}${o.section}` : '', o.floor != null ? floorShort(o.floor) + (LAYOUT === 'stack' && o.floor > 0 && o.floor !== ROOF ? ' эт.' : '') : ''].filter(Boolean).join(' · ');
+  return `<li class="${store.isOpenOrder(o) ? (late ? 'late' : '') : 'done'} order"><div><b>${esc(o.text)}</b>${o.tp ? ` <span class="chip-tp">${esc(o.tp)}</span>` : ''}
     <div class="muted">${o.who ? '👷 ' + esc(o.who) + ' · ' : ''}${where ? esc(where) + ' · ' : ''}${ev(esc(o.status || 'В работе'), sp('status', o.status || 'В работе', 'text', 'статус', { options: ['В работе', 'Выполнено', 'Отменено'] }))}</div>
-    ${where && o.section && o.floor != null ? `<span class="r-go"><button type="button" class="chip-go" data-floor="${esc(o.section)}|${o.floor}">открыть ${esc(where)} ›</button></span>` : ''}</div>
+    ${!multi && where && o.section && o.floor != null ? `<span class="r-go"><button type="button" class="chip-go" data-floor="${esc(o.section)}|${o.floor}">открыть ${esc(where)} ›</button></span>` : ''}</div>
     <div class="r-meta">${o.due ? `<span class="${late ? 'err-t' : ''}">срок ${shortDate(o.due)}${late ? ' · просрочено' : ''}</span>` : ''}</div></li>`;
 }
 function ordersBlock() {
@@ -728,10 +731,11 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidd
 /** Поручение с редактируемыми статусом и датой выполнения */
 function remarkHtml(r, links = false) {
   const sec = SECTIONS.includes(String(r.section)) ? String(r.section) : null;
-  const fls = links && sec ? floorsInText(r.short + ' ' + r.text) : [];
+  const lv = r.levelText !== undefined ? levelsIn(r.levelText) : null;
+  const fls = links && sec ? (lv === 'all' ? [] : lv || floorsInText(r.short + ' ' + r.text)) : [];
   const go = fls.length ? `<span class="r-go">${fls.slice(0, 6).map((f) => `<button type="button" class="chip-go" data-floor="${esc(sec)}|${f}" title="Открыть">${T.partShort}${esc(sec)} · ${esc(floorShort(f))}${LAYOUT === 'stack' ? ' эт.' : ''} ›</button>`).join('')}${fls.length > 6 ? '…' : ''}</span>` : '';
   const spec = (f, raw, type, label, extra = {}) => ({ b: 'G', s: r.sheet || 'Замечания АСГ', r: r.row, f, raw, expect: raw, type, label: `${r.short}: ${label}`, prop: f === 'status' ? 'status' : f === 'done' ? 'done' : '', list: 'remarks', ...extra });
-  return `<li class="${store.isOpenRemark(r) ? 'late' : 'done'}"><div><b>${esc(r.short)}</b>
+  return `<li class="${store.isOpenRemark(r) ? 'late' : 'done'}"><div><b>${esc(r.short)}</b>${r.tp ? ` <span class="chip-tp">${esc(r.tp)}</span>` : ''}${lv === 'all' ? ` <span class="muted">· все ${esc(T.levelsL)}</span>` : ''}
     <div class="muted">${r.row ? ev(esc(r.status || 'статус'), spec('status', r.status, 'text', 'статус по протоколу', { options: ['В работе', 'Срыв сроков', 'Выполнено'] })) : esc(r.status)}${r.note ? ' · ' + esc(r.note) : ''}</div>${go}</div>
     <div class="r-meta"><span>срок ${esc(r.due)}</span>${r.row ? `<span>выполнено: ${ev(esc(r.done || '—'), spec('done', ruToIso(r.done) || '', 'date', 'дата выполнения'))}</span>` : ''}</div></li>`;
 }
@@ -744,20 +748,103 @@ function ev(display, spec) {
   if (!can) return `<span class="ro-v">${display}</span>`;   // нельзя менять — просто значение, без значков
   return `<button type="button" class="ev" data-edit="${esc(JSON.stringify(spec))}" title="Изменить в таблице">${display}<i aria-hidden="true">✎</i></button>`;
 }
-function editDialog(title, fields, where) {
+function editDialog(title, fields, where, init) {
   const dlg = $('#editDlg');
   $('#edTitle').textContent = title;
   $('#edWhere').textContent = where || '';
-  $('#edFields').innerHTML = fields.map((x, i) => `<label>${esc(x.label)}${x.options
-    ? `<select id="ed${i}">${x.options.map((o) => `<option ${String(o) === String(x.value) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
-    : `<input id="ed${i}" type="${x.type === 'number' ? 'number' : x.type === 'date' ? 'date' : 'text'}" step="any" value="${esc(x.value ?? '')}">`}
+  $('#edFields').innerHTML = fields.map((x, i) => x.multi
+    ? `<div class="fld"><span>${esc(x.label)}</span><div class="chips pick" id="ed${i}">${x.all ? `<button type="button" class="chip" data-all>${esc(x.all)}</button>` : ''}${x.multi.map((o) => `<button type="button" class="chip" data-v="${esc(o.v)}">${esc(o.label ?? o.v)}</button>`).join('')}</div></div>`
+    : x.type === 'check' ? `<label class="chk"><input id="ed${i}" type="checkbox" ${x.value ? 'checked' : ''}> ${esc(x.label)}</label>`
+    : `<label>${esc(x.label)}${x.options
+    ? `<select id="ed${i}">${x.options.map((o) => { const v = typeof o === 'object' ? o.v : o, l = typeof o === 'object' ? o.label : o; return `<option value="${esc(v)}" ${String(v) === String(x.value) ? 'selected' : ''}>${esc(l)}</option>`; }).join('')}</select>`
+    : `<input id="ed${i}" type="${x.type === 'number' ? 'number' : x.type === 'date' ? 'date' : 'text'}" step="any" value="${esc(x.value ?? '')}"${x.list ? ` list="edl${i}"` : ''}>${x.list ? `<datalist id="edl${i}">${x.list.map((o) => `<option value="${esc(o)}">`).join('')}</datalist>` : ''}`}
     ${x.was !== undefined ? `<small class="muted">Сейчас в таблице: ${esc(x.was === '' ? 'пусто' : x.was)}</small>` : ''}</label>`).join('');
+  // множественный выбор: чипы, «Все» — выбрать/снять все
+  const syncAll = (box) => { const a = box.querySelector('[data-all]'); if (a) a.classList.toggle('on', [...box.querySelectorAll('[data-v]')].every((c) => c.classList.contains('on'))); };
+  const setMulti = (i, vals) => { const box = $('#ed' + i); if (!box) return; const all = vals === 'all'; box.querySelectorAll('[data-v]').forEach((c) => c.classList.toggle('on', all || (vals || []).map(String).includes(c.dataset.v))); syncAll(box); };
+  fields.forEach((x, i) => {
+    if (!x.multi) return;
+    const box = $('#ed' + i);
+    box.onclick = (e) => {
+      const c = e.target.closest('.chip'); if (!c) return;
+      if (c.dataset.all !== undefined) { const on = !c.classList.contains('on'); box.querySelectorAll('[data-v]').forEach((d) => d.classList.toggle('on', on)); }
+      else { if (x.single) box.querySelectorAll('[data-v]').forEach((d) => d !== c && d.classList.remove('on')); c.classList.toggle('on'); }
+      syncAll(box); x.onChange && x.onChange(readOne(i));
+    };
+    setMulti(i, x.value);
+  });
+  const readOne = (i) => {
+    const x = fields[i], el = $('#ed' + i);
+    if (x.multi) { const on = [...el.querySelectorAll('[data-v].on')].map((c) => c.dataset.v); return { list: on, all: on.length && on.length === x.multi.length }; }
+    return x.type === 'check' ? el.checked : el.value;
+  };
+  init && init({ set: (i, v) => { const x = fields[i]; if (x.multi) setMulti(i, v); else if (x.type === 'check') $('#ed' + i).checked = !!v; else $('#ed' + i).value = v ?? ''; }, get: readOne });
   return new Promise((resolve) => {
     dlg.returnValue = '';
-    dlg.onclose = () => resolve(dlg.returnValue === 'yes' ? fields.map((x, i) => $('#ed' + i).value) : null);
+    dlg.onclose = () => resolve(dlg.returnValue === 'yes' ? fields.map((x, i) => readOne(i)) : null);
     dlg.showModal();
     setTimeout(() => $('#ed0')?.focus(), 50);
   });
+}
+// ---------- поручения и замечания: выбор из списков, шаблоны ----------
+const TP_LIST = ['Кладка', 'Газоблок', 'Кирпич', 'Кровля', 'Окна', 'Шахты', 'Фасад', 'Инженерка', 'Ограждения / ОТ', 'Мусор', 'Люди', 'Документы', 'Прочее'];
+const tpList = () => [...new Set([...TP_LIST, ...store.remarks.map((r) => r.tp), ...(store.extra.orderTemplates || []).map((t) => t.tp), ...(store.extra.orders || []).map((o) => o.tp)].filter(Boolean))];
+const levelOpts = () => (LAYOUT === 'stack' ? FLOORS : FLOORS).map((f) => ({ v: String(f), label: LAYOUT === 'stack' ? floorShort(f) === 'П' ? 'Подвал' : floorShort(f) === 'К' ? 'Кровля' : floorShort(f) : floorName(f) }));
+const secOpts = () => SECTIONS.map((x) => ({ v: x, label: `${T.partShort} ${x}` }));
+/** выбор чипов → текст в таблицу: «Все», «4, 5», «7–9, 12» */
+const multiText = (m, levels) => (!m || !m.list.length ? '' : m.all ? 'Все' : levels ? levelsText(m.list.map(Number)) : m.list.join(', '));
+const here = () => (state.tab === 'floor' ? { sec: [state.section], lvl: [String(state.floor)] } : { sec: [], lvl: [] });
+async function addOrder() {
+  const today = isoToday();
+  const tpls = store.extra.orderTemplates || [];
+  const names = [...new Set(store.brigadeStats().map((b) => b.name).filter(Boolean))];
+  const h = here();
+  const fields = [
+    { label: 'Шаблон', options: [{ v: '', label: tpls.length ? '— выбрать типовое поручение —' : '— шаблонов пока нет —' }, ...tpls.map((t, i) => ({ v: String(i), label: t.text }))], value: '' },
+    { label: 'Что сделать', type: 'text', value: '' },
+    { label: 'Кому (можно несколько)', multi: names.map((n) => ({ v: n })), all: 'Все бригады', value: [] },
+    { label: `${T.part}`, multi: secOpts(), all: 'Все', value: h.sec },
+    { label: `${T.levels}`, multi: levelOpts(), all: 'Все', value: h.lvl },
+    { label: 'ТП (что: кровля, окна, шахты, мусор…)', options: ['', ...tpList()], value: '' },
+    { label: 'Срок', type: 'date', value: '' },
+    { label: 'Сохранить как шаблон', type: 'check', value: false },
+  ];
+  const res = await editDialog('Поручение от руководителя', fields, `Новая строка в таблице ${BOOK.G}, лист «Поручения». Рабочие увидят его на своих ${T.levelsDat}.`, (d) => {
+    $('#ed0').onchange = () => { const t = tpls[+$('#ed0').value]; if (!t) return; d.set(1, t.text); d.set(2, /^все/i.test(t.who) ? 'all' : t.who.split(/[,;]+/).map((x) => x.trim())); if (t.tp) d.set(5, t.tp); d.set(6, addDays(today, t.days || 0)); };
+  });
+  if (!res) return;
+  if (!String(res[1]).trim()) { toast('Не написано, что сделать', true); return; }
+  const values = { date: today, status: 'В работе', text: res[1], who: res[2].all ? 'Все' : res[2].list.join(', '), section: multiText(res[3]), level: multiText(res[4], true), tp: res[5], due: res[6] };
+  store.addRow('G', 'Поручения', values, 'Поручение: ' + values.text);
+  if (res[7]) store.addRow('G', 'Шаблоны поручений', { text: values.text, who: values.who, days: values.due ? Math.max(0, dayDiff(today, values.due)) : '', tp: values.tp }, 'Шаблон поручения: ' + values.text);
+}
+/** Замечание / поручение генподрядчика — в «Замечания АСГ» (или «Замечания» самостоятельного объекта) */
+async function addRemark() {
+  const today = isoToday();
+  const book = store.objInfo && store.objInfo.mode === 'book';
+  const h = here();
+  const whoList = [...new Set(store.remarks.map((r) => r.who).filter(Boolean))];
+  const srcList = [...new Set(store.remarks.map((r) => r.src).filter(Boolean))].slice(-5).reverse();
+  const fields = [
+    ...(book ? [] : [{ label: 'Раздел', options: ['Замечания', 'Поручения подрядчику', 'Охрана труда (SAREX)'], value: 'Замечания' },
+      { label: 'Источник (протокол)', type: 'text', value: srcList[0] || `Протокол от ${today.split('-').reverse().join('.')}`, list: srcList }]),
+    { label: 'Замечание', type: 'text', value: '' },
+    { label: T.part, multi: secOpts(), all: 'Все', value: h.sec },
+    { label: T.levels, multi: levelOpts(), all: 'Все', value: h.lvl },
+    { label: 'ТП (кровля, окна, шахты, мусор…)', options: ['', ...tpList()], value: '' },
+    { label: 'Ответственный', type: 'text', value: whoList[whoList.length - 1] || '', list: whoList },
+    { label: 'Срок', type: 'date', value: '' },
+  ];
+  const sheet = book ? 'Замечания' : 'Замечания АСГ';
+  const res = await editDialog('Замечание генподрядчика', fields, `Новая строка в таблице ${BOOK.G}, лист «${sheet}».`);
+  if (!res) return;
+  const o = book ? 0 : 2;
+  if (!String(res[o]).trim()) { toast('Не написано замечание', true); return; }
+  const lv = multiText(res[o + 2], true), sec = multiText(res[o + 1]);
+  const values = book
+    ? { date: today, status: 'В работе', text: res[o], section: sec, level: lv, who: res[o + 4], due: res[o + 5] }
+    : { n: Math.max(0, ...store.remarks.map((r) => parseInt(r.n, 10) || 0)) + 1, razdel: res[0], src: res[1], text: res[o], short: `${res[o]}`.slice(0, 60), section: sec, level: lv, tp: res[o + 3], who: res[o + 4], issued: today, due1: res[o + 5], status: 'В работе' };
+  store.addRow('G', sheet, values, 'Замечание: ' + res[o]);
 }
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-edit]'); if (!b) return;
@@ -998,16 +1085,20 @@ function needHtml() {
       <table class="voltab"><tbody>${w.mats.map((m) => `<tr><td>${esc(m.name)}${m.supplier ? ` <span class="muted">· ${esc(m.supplier)}</span>` : ''}</td><td>${m.need != null ? `нужно <b>${fmtN(Math.ceil(m.need))}</b> пал.` : '<span class="muted">нет нормы</span>'}</td><td class="muted">на складе ${fmtN(m.onSite)}</td><td>${m.need != null ? (Math.ceil(m.need) - m.onSite > 0 ? `<span class="err-t">заказать ${fmtN(Math.ceil(m.need) - m.onSite)}</span>` : '<span class="okc">хватает</span>') : ''}</td></tr>`).join('')}</tbody></table>
       ${w.mats.length > 1 ? '<p class="muted small-note">Несколько материалов на один вид работ — потребность указана, если делать всё этим материалом.</p>' : ''}</div>`).join('')}`).join('') || '<p class="muted">Нет видов работ с нормами материала.</p>'}
     <h3>Нормы: сколько в одном поддоне <span class="muted">· «Выполнение» → «Материалы»</span></h3>
-    <div class="tablewrap"><table class="voltab"><thead><tr><th>Материал</th><th>Шт/под.</th><th>Длина, мм</th><th>Высота, мм</th><th>Толщина, мм</th><th>м³/под. (если без размеров)</th><th>= м²/под.</th><th>= м³/под.</th></tr></thead><tbody>
-    ${mats.map((m) => `<tr><td>${esc(m.name)}${m.supplier ? ` · <b>${esc(m.supplier)}</b>` : ''}<div class="muted">${esc(m.work)}${m.price && !store.finLocked ? ` · ${fmtN(m.price)} ₽/м³` : ''}</div></td><td>${ms(m, 'pcs', 'шт на поддоне')}</td><td>${ms(m, 'len', 'длина камня, мм')}</td><td>${ms(m, 'height', 'высота камня, мм')}</td><td>${ms(m, 'thick', 'толщина стены, мм')}</td><td>${ms(m, 'm3in', 'м³ на поддоне')}</td><td><b>${m.m2 ? fmtN(Math.round(m.m2 * 100) / 100) : '—'}</b></td><td><b>${m.m3 ? fmtN(Math.round(m.m3 * 1000) / 1000) : '—'}</b></td></tr>`).join('')}
+    <div class="tablewrap"><table class="voltab"><thead><tr><th>Материал</th><th>Шт/под.</th><th>Длина, мм</th><th>Высота, мм</th><th>Толщина, мм</th><th>Шт в 1 м² (паспорт)</th><th>м³/под. (если без размеров)</th><th>= м²/под.</th><th>= м³/под.</th></tr></thead><tbody>
+    ${mats.map((m) => `<tr><td>${esc(m.name)}${m.supplier ? ` · <b>${esc(m.supplier)}</b>` : ''}<div class="muted">${esc(m.work)}${m.price && !store.finLocked ? ` · ${fmtN(m.price)} ₽/м³` : ''}</div></td><td>${ms(m, 'pcs', 'шт на поддоне')}</td><td>${ms(m, 'len', 'длина камня, мм')}</td><td>${ms(m, 'height', 'высота камня, мм')}</td><td>${ms(m, 'thick', 'толщина стены, мм')}</td><td>${m.cols.perM2 > 0 ? ms(m, 'perM2', 'шт в 1 м² стены (паспорт)') : '—'}</td><td>${ms(m, 'm3in', 'м³ на поддоне')}</td><td><b>${m.m2 ? fmtN(Math.round(m.m2 * 100) / 100) : '—'}</b></td><td><b>${m.m3 ? fmtN(Math.round(m.m3 * 1000) / 1000) : '—'}</b></td></tr>`).join('')}
     </tbody></table></div>
-    <p class="muted small-note">Заполните шт на поддоне и размер камня (или м³ на поддоне из накладной) — таблица сама посчитает м² и м³, а приложение — потребность и остаток в м².</p>`;
+    <p class="muted small-note">Заполните шт на поддоне и размер камня из паспорта качества (лучше и «шт в 1 м²» — с учётом швов), или м³ на поддоне из накладной — таблица сама посчитает м² и м³, а приложение — потребность и остаток в м².</p>`;
 }
 
 // ---------- добавление строк в таблицы ----------
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-add]'); if (!b) return;
   const k = b.dataset.add;
+  if (k === 'order' || k === 'remark') {
+    if (!store.canEditBook('G')) { toast(`Только просмотр: нет прав на запись в ${BOOK.G}.`, true); return; }
+    return k === 'order' ? addOrder() : addRemark();
+  }
   const today = isoToday();
   const defs = {
     order: { book: 'G', sheet: 'Поручения', title: 'Поручение от руководителя', fixed: { date: today, status: 'В работе' }, fields: [['text', 'Что сделать', 'text', ''], ['who', 'Кому (бригада)', 'text', ''], ['section', `${T.part || 'Часть'} (можно пусто)`, 'text', state.tab === 'floor' ? state.section : ''], ['level', `${T.level} (можно пусто)`, 'text', state.tab === 'floor' ? (LAYOUT === 'stack' ? String(state.floor) : floorName(state.floor)) : ''], ['due', 'Срок', 'date', '']] },

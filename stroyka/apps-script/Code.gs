@@ -338,11 +338,42 @@ function readRemarks_() {
   if (!sh) return [];
   const last = sh.getLastRow();
   if (last < 6) return [];
-  return rowsOf_(sh, 6, 24)
-    .filter(function (r) { return r[4] || r[5]; })
+  const C = remarkCols_(sh);
+  const g = function (r, k) { return C[k] ? r[C[k] - 1] : ''; };
+  return rowsOf_(sh, 6, C.width)
+    .filter(function (r) { return g(r, 'text') || g(r, 'short'); })
     .map(function (r) {
-      return { row: r.row, due1: r[9], n: r[0], text: r[4], short: r[5] || r[4], section: String(r[6]), who: r[7], due: r[16] || r[9], moves: r[17], status: r[19], done: r[20], state: r[22], note: r[23] };
+      const due = g(r, 'cur') || g(r, 'due1');
+      const o = { row: r.row, due1: g(r, 'due1'), n: g(r, 'n'), text: g(r, 'text'), short: g(r, 'short') || g(r, 'text'), section: String(g(r, 'section')), who: g(r, 'who'), due: due, moves: g(r, 'moves'), status: g(r, 'status'), done: g(r, 'done'), state: g(r, 'state'), note: g(r, 'note'), razdel: g(r, 'razdel'), src: g(r, 'src') };
+      if (C.level) { o.levelText = String(g(r, 'level')).trim(); o.tp = String(g(r, 'tp')).trim(); }
+      return o;
     });
+}
+/** «Замечания АСГ»: номера столбцов по шапке (строка 5) — столбцы можно добавлять и переставлять */
+let REMARK_COLS_ = null;
+function remarkCols_(sh) {
+  if (REMARK_COLS_) return REMARK_COLS_;
+  const w = Math.min(sh.getLastColumn(), 40);
+  const h = sh.getRange(5, 1, 1, w).getDisplayValues()[0].map(function (x) { return String(x).trim().toLowerCase(); });
+  const c = function (re, d) { const i = h.findIndex(function (x) { return re.test(x); }); return i >= 0 ? i + 1 : d; };
+  const C = { n: c(/^№/, 1), src: c(/^источник/, 2), razdel: c(/^раздел/, 3), code: c(/шифр|пункт/, 4), text: c(/^поручение или|^замечание$/, 5), short: c(/^кратко/, 6), section: c(/^секци|^часть/, 7),
+    level: c(/^этаж|^уровень/, 0), tp: c(/^тп$|^тип/, 0), who: c(/^ответствен/, 8), issued: c(/^выдано/, 9), cur: c(/текущий срок/, 17), moves: c(/^переносов/, 18), repeat: c(/^повтор/, 19),
+    status: c(/^статус/, 20), done: c(/^дата выполн/, 21), state: c(/^состояние/, 23), note: c(/^примечан/, 24) };
+  for (let k = 1; k <= 7; k++) C['due' + k] = c(new RegExp('^срок ' + k + '(?![0-9])'), 9 + k);
+  C.width = w;
+  REMARK_COLS_ = C;
+  return C;
+}
+/** Поля листа, которые можно писать из приложения (у «Замечаний АСГ» — по шапке) */
+function editMap_(b, s) {
+  if (b === 'G' && s === 'Замечания АСГ' && MODE !== 'book') {
+    const sh = ss_().getSheetByName(s);
+    if (!sh) return null;
+    const C = remarkCols_(sh), m = {};
+    ['n', 'src', 'razdel', 'code', 'text', 'short', 'section', 'level', 'tp', 'who', 'issued', 'due1', 'due2', 'due3', 'due4', 'due5', 'due6', 'due7', 'status', 'done', 'note'].forEach(function (k) { if (C[k]) m[k] = C[k]; });
+    return m;
+  }
+  return EDITABLE[b + '|' + s] || (b === 'V' && isPartSheet_(s) ? EDITABLE['V|*'] : null);
 }
 
 // ---------------------------------------------------------------- другие таблицы
@@ -366,6 +397,7 @@ function readExtra_() {
     brigades: safe_(readBrigades_),
     handbook: safe_(readHandbook_),
     orders: safe_(readOrders_),
+    orderTemplates: safe_(readOrderTemplates_),
     materials: safe_(readMaterials_),
     gpr: safe_(readGpr_),
     acts: MODE === 'book' ? [] : safe_(readActs_),
@@ -608,7 +640,8 @@ const EDITABLE = {
   'G|Замечания АСГ': { due1: 10, due2: 11, due3: 12, due4: 13, due5: 14, due6: 15, due7: 16, status: 20, done: 21, note: 24 },
   'G|Таблица': { cell: 0 },
   'G|Бригады': { name: 1, people: 2, type: 3, section: 4, works: 5, note: 6 },
-  'G|Поручения': { date: 2, section: 3, level: 4, text: 5, who: 6, due: 7, status: 8, done: 9, note: 10 },
+  'G|Поручения': { date: 2, section: 3, level: 4, text: 5, who: 6, due: 7, status: 8, done: 9, note: 10, tp: 11 },
+  'G|Шаблоны поручений': { text: 1, who: 2, days: 3, tp: 4 },
   'G|ГПР': { received: 10, note: 13 },
   // самостоятельный объект (шаблон «Стройка · объект»)
   'G|Расходы': { date: 3, cat: 4, who: 5, basis: 6, note: 7, sum: 8 },
@@ -623,8 +656,8 @@ const EDITABLE = {
   'U|Стройка · план': { pallets: 5, comment: 8 },
   'U|Стройка · контроль расхождений': { status: 7, note: 9 },
 };
-const DATE_FIELDS = /^(date|done|start|end|due\d?|received|handover)$/;
-const NUM_FIELDS = /^(sum|qty|pallets|workers|total|accepted|week|value|people|rate)$/;
+const DATE_FIELDS = /^(date|done|start|end|due\d?|received|handover|issued)$/;
+const NUM_FIELDS = /^(sum|qty|pallets|workers|total|accepted|week|value|people|rate|days|n)$/;
 
 function cellValue_(field, v) {
   if (v === '' || v == null) return '';
@@ -635,14 +668,15 @@ function cellValue_(field, v) {
 }
 /** Шапки листов самостоятельного объекта — для создания при первой записи */
 const BOOK_SHEETS = {
-  'Поручения': ['№', 'Дата', 'Часть', 'Уровень', 'Поручение', 'Кому (бригада)', 'Срок', 'Статус', 'Выполнено', 'Примечание'],
+  'Поручения': ['№', 'Дата', 'Часть', 'Уровень', 'Поручение', 'Кому (бригада)', 'Срок', 'Статус', 'Выполнено', 'Примечание', 'ТП'],
+  'Шаблоны поручений': ['Поручение', 'Кому (бригада или «Все»)', 'Срок, дней', 'ТП'],
   'Бригады': ['Бригада', 'Человек', 'Тип', 'Часть', 'Виды работ', 'Примечание'],
   'Замечания': ['№', 'Дата', 'Часть', 'Уровень', 'Замечание', 'Ответственный', 'Срок', 'Статус', 'Выполнено', 'Примечание'],
   'Документы': ['Часть', 'Уровень', 'Вид работ', 'ИС', 'АОСР', 'Замечания по АОСР'],
 };
 function sheetFor_(b, s) {
   const id = BOOKS[b];
-  if (b === 'G' && MODE !== 'book' && (s === 'Бригады' || s === 'Поручения') && !ss_().getSheetByName(s)) { const sh0 = ss_().insertSheet(s); headRow_(sh0, BOOK_SHEETS[s]); } if (!id) throw new Error('Неизвестная таблица');
+  if (b === 'G' && MODE !== 'book' && (s === 'Бригады' || s === 'Поручения' || s === 'Шаблоны поручений') && !ss_().getSheetByName(s)) { const sh0 = ss_().insertSheet(s); headRow_(sh0, BOOK_SHEETS[s]); } if (!id) throw new Error('Неизвестная таблица');
   if ((b !== 'G' || MODE === 'book') && !canEdit_(id)) throw new Error('Нет прав на запись в эту таблицу — нужен доступ «Редактор»');
   let sh = SpreadsheetApp.openById(id).getSheetByName(s);
   if (!sh && MODE === 'book' && b === 'G' && BOOK_SHEETS[s]) { sh = ss_().insertSheet(s); headRow_(sh, BOOK_SHEETS[s]); }   // лист появится при первой записи
@@ -652,7 +686,7 @@ function sheetFor_(b, s) {
 
 /** {b, s, r, f, c?, value, expect} → запись в ячейку с проверками: поле разрешено, не формула, не изменилось в таблице */
 function setCell_(q) {
-  const map = EDITABLE[q.b + '|' + q.s] || (q.b === 'V' && isPartSheet_(q.s) ? EDITABLE['V|*'] : null);
+  const map = editMap_(q.b, q.s);
   if (!map || !(q.f in map)) throw new Error('Это поле не редактируется из приложения');
   let col = map[q.f];
   const sh = sheetFor_(q.b, q.s);
@@ -678,19 +712,24 @@ function setCell_(q) {
 
 /** {b, s, values:{поле: значение}} → новая строка в конце списка */
 function addRow_(q) {
-  const map = EDITABLE[q.b + '|' + q.s];
+  const map = q.b === 'V' && isPartSheet_(q.s) ? null : editMap_(q.b, q.s);
   if (!map) throw new Error('В этот лист нельзя добавлять строки из приложения');
   const sh = sheetFor_(q.b, q.s);
   let last = sh.getLastRow();
   // первая пустая строка после последней заполненной в колонке A/B (листы бывают с предзаполненными категориями)
-  const vals = sh.getRange(1, 1, last, 2).getDisplayValues();
+  const vals = sh.getRange(1, 1, Math.max(1, last), 2).getDisplayValues();
   while (last > 1 && !vals[last - 1][0] && !vals[last - 1][1]) last--;
   const row = last + 1;
   const width = Math.max.apply(null, Object.keys(map).map(function (k) { return map[k]; }).concat([1]));
-  const line = sh.getRange(row, 1, 1, width).getValues()[0];
-  Object.keys(q.values || {}).forEach(function (k) { if (map[k]) line[map[k] - 1] = cellValue_(k, q.values[k]); });
-  if (q.b === 'U' && !line[0]) line[0] = 'APP-' + Utilities.formatDate(new Date(), tz_(), 'yyyyMMdd-HHmmss');
-  sh.getRange(row, 1, 1, width).setValues([line]);
+  const v = q.values || {};
+  if (q.b === 'U' && !v.id) sh.getRange(row, 1).setValue('APP-' + Utilities.formatDate(new Date(), tz_(), 'yyyyMMdd-HHmmss'));
+  // пишем только свои ячейки: соседние столбцы бывают формулами-массивами из шапки
+  Object.keys(v).forEach(function (k) {
+    if (!map[k] || v[k] === '' || v[k] == null) return;
+    const cell = sh.getRange(row, map[k]);
+    cell.setValue(cellValue_(k, v[k]));
+    if (DATE_FIELDS.test(k) && cell.getValue() instanceof Date) cell.setNumberFormat('dd.MM.yyyy');
+  });
   SpreadsheetApp.flush();
   return { sheet: q.s, row: row, check: { display: sh.getRange(row, 1, 1, width).getDisplayValues()[0].join(' | ') } };
 }
@@ -1628,9 +1667,16 @@ function readHandbook_() {
 function readOrders_() {
   const sh = ss_().getSheetByName('Поручения');
   if (!sh || sh.getLastRow() < 2) return [];
-  return rowsOf_(sh, 2, 10)
+  return rowsOf_(sh, 2, 11)
     .filter(function (r) { return String(r[4]).trim(); })
-    .map(function (r) { return { row: r.row, n: r[0], date: dateStrict_(r[1]), section: secId_(r[2]), level: levelKey_(r[3]), text: String(r[4]).trim(), who: String(r[5]).trim(), due: dateStrict_(r[6]), status: String(r[7]).trim(), done: dateStrict_(r[8]), note: String(r[9]).trim(), sheet: 'Поручения' }; });
+    .map(function (r) { return { row: r.row, n: r[0], date: dateStrict_(r[1]), section: secId_(r[2]), sectionText: String(r[2]).trim(), level: levelKey_(r[3]), levelText: String(r[3]).trim(), tp: String(r[10] || '').trim(), text: String(r[4]).trim(), who: String(r[5]).trim(), due: dateStrict_(r[6]), status: String(r[7]).trim(), done: dateStrict_(r[8]), note: String(r[9]).trim(), sheet: 'Поручения' }; });
+}
+/** «Шаблоны поручений»: типовые поручения руководителя — текст, кому, срок в днях, ТП */
+function readOrderTemplates_() {
+  const sh = ss_().getSheetByName('Шаблоны поручений');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return rowsOf_(sh, 2, 4).filter(function (r) { return String(r[0]).trim(); })
+    .map(function (r) { return { row: r.row, text: String(r[0]).trim(), who: String(r[1]).trim(), days: num_(r[2]) || 0, tp: String(r[3]).trim() }; });
 }
 /** «ГПР» — график производства работ: план по этажам + «Этаж передан (факт)» → сдвиг и окончание с учётом передачи */
 function readGpr_() {
@@ -1667,11 +1713,11 @@ function readMaterials_() {
   const w = Math.min(sh.getLastColumn(), 16);
   const h = sh.getRange(1, 1, 1, w).getDisplayValues()[0].map(function (x) { return String(x).toLowerCase(); });
   const c = function (re) { return h.findIndex(function (x) { return re.test(x); }); };
-  const C = { name: c(/^материал/), work: c(/вид работ/), pcs: c(/шт/), len: c(/длина/), thick: c(/толщин/), height: c(/высот/), m3in: c(/м³.*если/), m3: c(/м³.*итог/), m2: c(/м².*поддон/), src: c(/источник/), supplier: c(/поставщ|производ/), price: c(/цена/) };
+  const C = { name: c(/^материал/), work: c(/вид работ/), pcs: c(/^шт на поддон|^шт\b|^шт$/), perM2: c(/в 1 м²|в 1 м2|на 1 м²/), len: c(/длина/), thick: c(/толщин/), height: c(/высот/), m3in: c(/м³.*если/), m3: c(/м³.*итог/), m2: c(/м².*поддон/), src: c(/источник/), supplier: c(/поставщ|производ/), price: c(/цена/) };
   return sh.getRange(2, 1, sh.getLastRow() - 1, w).getDisplayValues().map(function (r, i) {
     const name = C.name >= 0 ? String(r[C.name]).trim() : '';
     if (!name) return null;
     const g = function (k) { return C[k] >= 0 ? num_(r[C[k]]) : 0; };
-    return { row: i + 2, name: name, work: C.work >= 0 ? String(r[C.work]).trim() : '', pcs: g('pcs'), len: g('len'), thick: g('thick'), height: g('height'), m3in: g('m3in'), m3: g('m3'), m2: g('m2'), src: C.src >= 0 ? String(r[C.src]).trim() : '', supplier: C.supplier >= 0 ? String(r[C.supplier]).trim() : '', price: g('price'), cols: { pcs: C.pcs + 1, len: C.len + 1, thick: C.thick + 1, height: C.height + 1, m3in: C.m3in + 1, price: C.price + 1 } };
+    return { row: i + 2, name: name, work: C.work >= 0 ? String(r[C.work]).trim() : '', pcs: g('pcs'), len: g('len'), thick: g('thick'), height: g('height'), m3in: g('m3in'), m3: g('m3'), m2: g('m2'), src: C.src >= 0 ? String(r[C.src]).trim() : '', supplier: C.supplier >= 0 ? String(r[C.supplier]).trim() : '', price: g('price'), perM2: g('perM2'), cols: { perM2: C.perM2 + 1, pcs: C.pcs + 1, len: C.len + 1, thick: C.thick + 1, height: C.height + 1, m3in: C.m3in + 1, price: C.price + 1 } };
   }).filter(Boolean);
 }

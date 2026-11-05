@@ -260,7 +260,8 @@ function needsFin(body) {
   // поручения руководителя: создаёт и меняет руководитель, рабочие только отмечают выполнение
   const sheet = String(body.s || '').trim();
   if (sheet === 'Поручения' && (a === 'addRow' || (a === 'setCell' && !/^(status|done)$/.test(String(body.f || ''))))) return true;
-  if (sheet === 'ГПР' && (a === 'addRow' || a === 'setCell')) return true;   // график и даты передачи этажей
+  if (sheet === 'ГПР' && (a === 'addRow' || a === 'setCell')) return true;
+  if (sheet === 'Шаблоны поручений') return true;   // типовые поручения ведёт руководитель   // график и даты передачи этажей
   if (sheet === 'Справочник' && (a === 'addRow' || (a === 'setCell' && body.f === 'cell'))) return true;   // бригады и расценки «Выполнения»
   if (a === 'setCell' && body.f === 'handover') return true;   // дата передачи этажа
   return false;

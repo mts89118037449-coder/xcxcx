@@ -285,6 +285,41 @@ export function estimateFromDocs(docs) {
 }
 
 /** Номера этажей, упомянутые в тексте замечания: «6 эт.», «2–5 эт.», «8–9 этаж», «1 по 15 этаж». */
+/** «7–9, 12», «Все», «Кровля», «Подвал»/«ТП» → уровни приложения; null — не указано, 'all' — все */
+export function levelsIn(text) {
+  const t = String(text ?? '').trim();
+  if (!t) return null;
+  if (/^все/i.test(t)) return 'all';
+  const out = new Set();
+  for (const tok of t.split(/[,;]+/).map((x) => x.trim()).filter(Boolean)) {
+    if (LAYOUT !== 'stack') { const i = fromKey(tok); if (i != null) out.add(i); else floorsInText(tok).forEach((f) => out.add(f)); continue; }
+    const r = tok.match(/^(\d{1,2})\s*(?:[–\-—]|по)\s*(\d{1,2})/);
+    if (r) { for (let i = +r[1]; i <= +r[2]; i++) out.add(i); continue; }
+    if (/^(подвал|тп|техпод)/i.test(tok)) { out.add(0); continue; }
+    if (/^кровл/i.test(tok)) { out.add(ROOF); continue; }
+    const n = parseInt(tok, 10); if (Number.isFinite(n)) out.add(n);
+  }
+  return [...out];
+}
+/** «4, 5», «Секция 4», «Все» → список частей */
+export function sectionsIn(text) {
+  const t = String(text ?? '').trim();
+  if (!t) return [];
+  if (/^все/i.test(t)) return SECTIONS.slice();
+  return t.split(/[,;]+/).map((x) => x.trim().replace(/^[а-яё.]+\s+/i, '')).filter((x) => SECTIONS.includes(x));
+}
+/** Уровни в столбце «Этаж» компактно: [7,8,9,12] → «7–9, 12» */
+export function levelsText(list) {
+  if (LAYOUT !== 'stack') return list.map((f) => floorName(f)).join(', ');
+  const name = (f) => (f === 0 ? 'Подвал' : f === ROOF ? 'Кровля' : String(f));
+  const a = [...list].sort((x, y) => x - y), out = [];
+  for (let i = 0; i < a.length; i++) {
+    let j = i; while (j + 1 < a.length && a[j + 1] === a[j] + 1 && a[j + 1] !== ROOF && a[i] !== 0) j++;
+    out.push(j - i >= 2 ? `${a[i]}–${a[j]}` : j > i ? `${name(a[i])}, ${name(a[j])}` : name(a[i]));
+    i = j;
+  }
+  return out.join(', ');
+}
 export function floorsInText(text) {
   const s = String(text || '');
   if (LAYOUT !== 'stack') { const t = s.toLowerCase(); return LEVELS.map((l, i) => (l.label.length >= 3 && t.includes(l.label.toLowerCase()) ? i : -1)).filter((i) => i >= 0); }
@@ -374,6 +409,14 @@ export function materialKey(name) {
   return String(name || '').trim();
 }
 
+/** Запись относится к части и уровню: по столбцам «Секция»/«Этаж» (можно «4, 5», «7–9», «Все»), иначе — старым способом */
+function placeMatch(secText, levelText, section, floor, fallback) {
+  const lv = levelsIn(levelText);
+  if (lv === null) return fallback();
+  const secs = sectionsIn(secText);
+  if (!secs.includes(String(section))) return false;
+  return lv === 'all' ? levelsOf(section).includes(floor) : lv.includes(floor);
+}
 export class Store {
   constructor() {
     const cfg = LS.get('stroyka.cfg', {});
@@ -564,7 +607,7 @@ export class Store {
   /** Данные других таблиц: «Выполнение» (объёмы) и «VUP CORE» (материалы, ход работ, статусы этажей) */
   setExtra(x) {
     const e = x || {};
-    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '', brigades: e.brigades || [], acts: e.acts || [], handbook: e.handbook || { contractors: [], norms: {}, works: [] }, orders: e.orders || [], gpr: e.gpr || [], materials: e.materials || [] };
+    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '', brigades: e.brigades || [], acts: e.acts || [], handbook: e.handbook || { contractors: [], norms: {}, works: [] }, orders: e.orders || [], orderTemplates: e.orderTemplates || [], gpr: e.gpr || [], materials: e.materials || [] };
     this.vol = new Map();
     setWorkMap(e.structure && e.structure.workMap);
     const groups = this.extra.volumes.filter((v) => v.total > 0 && v.floor != null).map((v) => workGroup(v.work, Number(v.floor))).filter(Boolean);
@@ -583,7 +626,7 @@ export class Store {
   }
   // ---------- поручения руководителя ----------
   isOpenOrder(o) { return !/выполн|отмен/i.test(o.status || '') && !o.done; }
-  ordersFor(section, floor) { return (this.extra.orders || []).filter((o) => String(o.section) === String(section) && o.floor === floor); }
+  ordersFor(section, floor) { return (this.extra.orders || []).filter((o) => placeMatch(o.sectionText ?? o.section, o.levelText, section, floor, () => String(o.section) === String(section) && o.floor === floor)); }
 
   // ---------- ГПР: план против факта ----------
   /** Этаж по графику: плановые даты, передача этажа (сдвиг), ожидаемый и фактический %, отставание в днях */
@@ -731,7 +774,7 @@ export class Store {
   }
   remarksFor(section, floor) {
     // у самостоятельного объекта уровень замечания указан явно; у Glorax — ищется в тексте («6 эт.»)
-    return this.remarks.filter((r) => String(r.section) === section && (r.floor !== undefined ? r.floor === floor : floorsInText(r.short + ' ' + r.text).includes(floor)));
+    return this.remarks.filter((r) => placeMatch(r.section, r.levelText, section, floor, () => String(r.section) === section && (r.floor !== undefined ? r.floor === floor : floorsInText(r.short + ' ' + r.text).includes(floor))));
   }
   isOpenRemark(r) { return !/выполнено/i.test(r.status || '') && !r.done; }
   /** Журнал + записи из «VUP CORE» (только чтение): поставки/подачи материала и рабочие по ходу работ */
