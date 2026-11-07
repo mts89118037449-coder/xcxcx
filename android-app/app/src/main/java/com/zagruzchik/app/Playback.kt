@@ -43,10 +43,44 @@ object Playback {
             .setArtist(if (parts.size == 2) parts[0] else null)
             .setAlbumTitle(album)
             .build()
-        return MediaItem.Builder().setUri(Uri.parse(f.uri)).setMediaId(f.uri).setMediaMetadata(meta).build()
+        return MediaItem.Builder().setUri(Uri.parse(f.uri)).setMediaId(f.uri)
+            .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(f.uri)).build())
+            .setMediaMetadata(meta).build()
     }
 
     fun isVideo(f: SavedFile) = f.mime.startsWith("video")
+
+    const val EXTRA_AUDIO_URL = "audioUrl"
+
+    /**
+     * Слушать/смотреть, пока идёт загрузка: играем прямо из интернета по ссылке, которую дал yt-dlp.
+     * Для видео с двумя потоками (картинка + звук) вторую ссылку передаём проигрывателю — он склеит их сам.
+     */
+    fun playStream(ctx: Context, job: Job) {
+        val urls = job.stream
+        if (urls.isEmpty()) return
+        val video = job.kind == Kind.VIDEO
+        val main = urls.first()
+        val extras = android.os.Bundle().apply { if (urls.size > 1) putString(EXTRA_AUDIO_URL, urls[1]) }
+        val parts = job.title.split(" — ", limit = 2)
+        val item = MediaItem.Builder()
+            .setUri(main)
+            .setMediaId(main)
+            .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(main)).setExtras(extras).build())
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(if (parts.size == 2) parts[1] else job.title)
+                    .setArtist(if (parts.size == 2) parts[0] else job.site)
+                    .build()
+            )
+            .build()
+        controller(ctx) { c ->
+            c.setMediaItem(item)
+            c.prepare()
+            c.play()
+        }
+        if (video) ctx.startActivity(Intent(ctx, PlayerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
 
     /** Играть очередь: [files] с позиции [start]. Видео сразу открывает экран проигрывателя. */
     fun play(ctx: Context, files: List<Pair<SavedFile, String?>>, start: Int) {

@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
+import java.io.File
 import java.util.concurrent.Executors
 
 object Notifications {
@@ -45,7 +46,9 @@ object Notifications {
 /** Скачивает по очереди в фоне. Ход загрузки показывается в приложении (через [Jobs]). */
 class DownloadService : Service() {
 
-    private val executor = Executors.newSingleThreadExecutor()
+    /** До трёх ссылок качаются одновременно. */
+    private val executor = Executors.newFixedThreadPool(PARALLEL_JOBS)
+    private var running = 0
     private val main = Handler(Looper.getMainLooper())
     private val nm by lazy { getSystemService(NotificationManager::class.java) }
 
@@ -55,10 +58,11 @@ class DownloadService : Service() {
         startForeground(Notifications.FOREGROUND_ID, Notifications.foreground(this, activeCount()), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         val job = intent?.getStringExtra(EXTRA_JOB)?.let { Jobs.get(it) }
         if (job == null) {
-            if (activeCount() == 0) stopSelf(startId)
+            if (running == 0) stopSelf(startId)
             return START_NOT_STICKY
         }
         val token = Jobs.token(job.id)
+        running++
         executor.execute { runJob(job.id, job.url, job.format, job.hint, token, startId) }
         return START_NOT_STICKY
     }
@@ -70,8 +74,18 @@ class DownloadService : Service() {
         Jobs.update(id, save = true) { status = Status.RUNNING; progress = 0f; detail = "Подключаюсь…"; error = "" }
         var lastUpdate = 0L
         try {
+            val published = java.util.Collections.synchronizedList(mutableListOf<SavedFile>())
             val result = Downloader.download(this, url, format, id, token, object : DownloadListener {
                 override fun onTitle(title: String) = Jobs.update(id, save = true) { this.title = title }
+                override fun onStream(urls: List<String>) = Jobs.update(id) { stream = urls }
+                // Готовый трек альбома сразу в «Загрузки» — его уже можно слушать.
+                override fun onFile(file: File, subfolder: String?) {
+                    val name = file.name
+                    val (uri, mime) = Storage.publish(this@DownloadService, file, subfolder)
+                    published += SavedFile(uri.toString(), name, mime)
+                    val snapshot = published.toList()
+                    Jobs.update(id, save = true) { files = snapshot }
+                }
                 override fun onProgress(percent: Float, detail: String) {
                     val now = System.currentTimeMillis()
                     if (now - lastUpdate < 250) return // не чаще 4 раз в секунду
@@ -83,7 +97,7 @@ class DownloadService : Service() {
                 }
             }, hint)
             Jobs.update(id) { progress = 100f; detail = "Сохраняю в «Загрузки»…" }
-            val saved = result.files.map { f ->
+            val saved = published.toList() + result.files.map { f ->
                 val name = f.name
                 val (uri, mime) = Storage.publish(this, f, result.subfolder)
                 SavedFile(uri.toString(), name, mime)
@@ -91,6 +105,7 @@ class DownloadService : Service() {
             Jobs.update(id, save = true) {
                 status = Status.DONE
                 files = saved
+                stream = emptyList()
                 detail = buildString {
                     append(if (saved.size == 1) saved.first().name else "${saved.size} файл(ов)")
                     result.subfolder?.let { append(" · папка «$it»") }
@@ -108,11 +123,14 @@ class DownloadService : Service() {
         }
     }
 
-    private fun finish(id: String, startId: Int) {
+    private fun finish(id: String, @Suppress("UNUSED_PARAMETER") startId: Int) {
         main.post {
             Jobs.forget(id)
+            Jobs.update(id) { stream = emptyList() }
+            running--
             if (activeCount() > 0) nm.notify(Notifications.FOREGROUND_ID, Notifications.foreground(this, activeCount()))
-            stopSelf(startId)
+            // Загрузки идут параллельно, поэтому останавливаемся, только когда закончились все.
+            if (running <= 0) stopSelf()
         }
     }
 
@@ -122,6 +140,7 @@ class DownloadService : Service() {
     }
 
     companion object {
+        private const val PARALLEL_JOBS = 3
         const val EXTRA_JOB = "job"
         const val EXTRA_URL = "url"
 

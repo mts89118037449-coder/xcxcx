@@ -33,15 +33,18 @@ object Links {
     fun defaultFormat(url: String) = if (Music.isMusic(url) || url.contains("bandcamp.com")) Format.MP3 else Format.BEST
 }
 
-/** Позволяет остановить загрузку: помечаем отмену и убиваем текущий процесс yt-dlp. */
+/** Позволяет остановить загрузку: помечаем отмену и убиваем все запущенные процессы yt-dlp (у альбома их несколько). */
 class CancelToken {
     @Volatile var cancelled = false
         private set
-    @Volatile var processId: String? = null
+    private val processes = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    fun attach(id: String) { processes += id }
+    fun detach(id: String) { processes -= id }
 
     fun cancel() {
         cancelled = true
-        processId?.let { runCatching { YoutubeDL.getInstance().destroyProcessById(it) } }
+        processes.toList().forEach { runCatching { YoutubeDL.getInstance().destroyProcessById(it) } }
     }
 }
 
@@ -51,12 +54,24 @@ class CancelledError : Exception("Отменено")
 interface DownloadListener {
     fun onTitle(title: String)
     fun onProgress(percent: Float, detail: String)
+
+    /** Прямая ссылка на поток — можно слушать/смотреть, не дожидаясь конца загрузки. У видео их бывает две: картинка и звук. */
+    fun onStream(urls: List<String>) {}
+
+    /** Трек альбома готов — его можно сразу сохранить в «Загрузки» и слушать. */
+    fun onFile(file: File, subfolder: String?) {}
 }
 
 object Downloader {
 
-    /** Результат: готовые файлы во временной папке и подпапка в «Загрузках» (для альбомов). */
+    /**
+     * Результат: файлы, которые ещё надо сохранить, и подпапка в «Загрузках» (для альбомов).
+     * Треки альбома сохраняются по мере готовности через [DownloadListener.onFile], поэтому здесь их нет.
+     */
     class Result(val files: List<File>, val subfolder: String? = null, val failed: Int = 0)
+
+    /** Сколько треков альбома качать одновременно. */
+    private const val PARALLEL_TRACKS = 3
 
     private val DESTINATION = Regex("""Destination: (.+)$""")
     private val SPEED = Regex("""of\s+~?\s*([\d.]+\w+)\s+at\s+([\d.]+\w+/s)(?:\s+ETA\s+(\S+))?""")
@@ -95,8 +110,9 @@ object Downloader {
     private fun downloadDirect(url: String, format: Format, dir: File, jobId: String, ctx: Context, token: CancelToken, ui: DownloadListener): Result {
         val request = baseRequest(url, dir, ctx, format)
         request.addOption("-o", "%(title).80B [%(id)s].%(ext)s")
+        requestStream(request)
         var titled = false
-        execute(request, jobId, token) { p, line ->
+        execute(request, jobId, token, onStream = ui::onStream) { p, line ->
             if (!titled) DESTINATION.find(line)?.let {
                 titled = true
                 ui.onTitle(File(it.groupValues[1]).nameWithoutExtension.replace(Regex("""\.f\d+$"""), "").replace(Regex("""\s*\[[^\]]+]$"""), "").trim())
@@ -127,27 +143,50 @@ object Downloader {
     private fun downloadMusic(item: MusicItem, dir: File, jobId: String, ctx: Context, token: CancelToken, ui: DownloadListener): Result {
         val n = item.tracks.size
         ui.onTitle(if (n > 1) "${item.name} ($n)" else item.tracks.first().label)
-        var failed = 0
-        var lastError: UserError? = null
-        item.tracks.forEachIndexed { i, t ->
-            if (token.cancelled) throw CancelledError()
-            val prefix = if (n > 1) "${i + 1}/$n: ${t.label}" else ""
-            ui.onProgress(i * 100f / n, listOf(prefix, "ищу лучший вариант…").filter { it.isNotEmpty() }.joinToString(" · "))
-            try {
-                downloadTrack(t, item, dir, ctx, "$jobId-$i", token) { source, p, line ->
-                    val detail = listOf(prefix, source, speed(line)).filter { it.isNotEmpty() }.joinToString(" · ")
-                    ui.onProgress((i + p.coerceIn(0f, 100f) / 100f) * 100f / n, detail)
-                }
-            } catch (e: UserError) {
-                if (token.cancelled) throw CancelledError()
-                if (n == 1) throw e
-                failed++
-                lastError = e
-            }
+        val subfolder = if (n > 1) safeName(item.name) else null
+        val progress = FloatArray(n)
+        val done = java.util.concurrent.atomic.AtomicInteger(0)
+        val failed = java.util.concurrent.atomic.AtomicInteger(0)
+        val errors = java.util.Collections.synchronizedList(mutableListOf<UserError>())
+
+        fun report(detail: String) {
+            val total = synchronized(progress) { progress.sum() } / n
+            val head = if (n > 1) "готово ${done.get()} из $n" else ""
+            ui.onProgress(total, listOf(head, detail).filter { it.isNotEmpty() }.joinToString(" · "))
         }
-        val files = audios(dir)
-        if (files.isEmpty()) throw lastError ?: UserError("Не удалось скачать ни одного трека.")
-        return Result(files, subfolder = if (n > 1) safeName(item.name) else null, failed = failed)
+
+        // Треки альбома качаются параллельно, каждый в своей папке — чтобы не перепутать файлы.
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(if (n > 1) PARALLEL_TRACKS else 1)
+        try {
+            val tasks = item.tracks.mapIndexed { i, t ->
+                pool.submit {
+                    if (token.cancelled) return@submit
+                    val trackDir = File(dir, "t$i").apply { mkdirs() }
+                    try {
+                        report(if (n > 1) "ищу: ${t.label}" else "ищу лучший вариант…")
+                        downloadTrack(t, item, trackDir, ctx, "$jobId-$i", token, stream = n == 1, ui = ui) { source, p, line ->
+                            synchronized(progress) { progress[i] = p.coerceIn(0f, 100f) }
+                            report(listOf(if (n > 1) t.label else "", source, speed(line)).filter { it.isNotEmpty() }.joinToString(" · "))
+                        }
+                        synchronized(progress) { progress[i] = 100f }
+                        done.incrementAndGet()
+                        audios(trackDir).forEach { ui.onFile(it, subfolder) }
+                        report("")
+                    } catch (e: UserError) {
+                        if (!token.cancelled) {
+                            failed.incrementAndGet()
+                            errors += e
+                        }
+                    }
+                }
+            }
+            tasks.forEach { runCatching { it.get() } }
+        } finally {
+            pool.shutdownNow()
+        }
+        if (token.cancelled) throw CancelledError()
+        if (done.get() == 0) throw errors.firstOrNull() ?: UserError("Не удалось скачать ни одного трека.")
+        return Result(emptyList(), subfolder = subfolder, failed = failed.get())
     }
 
     private val AUDIO_EXT = setOf("mp3", "m4a", "opus", "ogg", "webm", "aac", "flac")
@@ -157,16 +196,13 @@ object Downloader {
     internal class Candidate(val url: String, val title: String, val author: String, val duration: Int, val source: String)
 
     /**
-     * Ищет трек в нескольких источниках и выбирает лучший вариант сам:
-     * тот же исполнитель и название, длительность ±несколько секунд, без «clean»/ремиксов/каверов/превью.
-     */
-    /**
      * Скачивает трек, перебирая варианты: до 3 лучших из каждого источника по очереди.
      * Если вариант не скачивается (DRM у платных треков SoundCloud, недоступен в регионе,
      * YouTube просит вход) — берём следующий, а не сдаёмся.
      */
     private fun downloadTrack(
         t: Track, item: MusicItem, dir: File, ctx: Context, id: String, token: CancelToken,
+        stream: Boolean, ui: DownloadListener,
         progress: (source: String, percent: Float, line: String) -> Unit,
     ) {
         val ytm = "https://music.youtube.com/search?q=" + Http.enc(t.query) + "#songs"
@@ -186,7 +222,8 @@ object Downloader {
                 if (token.cancelled) throw CancelledError()
                 val before = dir.listFiles().orEmpty().toSet()
                 try {
-                    execute(trackRequest(c.url, t, item, dir, ctx), "$id-${attempt++}", token) { p, line -> progress(c.source, p, line) }
+                    val req = trackRequest(c.url, t, item, dir, ctx).also { if (stream) requestStream(it) }
+                    execute(req, "$id-${attempt++}", token, onStream = ui::onStream) { p, line -> progress(c.source, p, line) }
                     if (audios(dir).any { it !in before }) return
                     problems += "$name: файл не появился"
                 } catch (e: UserError) {
@@ -249,6 +286,7 @@ object Downloader {
     private fun baseRequest(source: String, dir: File, ctx: Context, format: Format) = YoutubeDLRequest(source).apply {
         addOption("--no-playlist")
         addOption("--no-mtime")
+        addOption("-N", "4") // фрагменты потока качаются в 4 потока — заметно быстрее для HLS/DASH
         addOption("--embed-metadata")
         addOption("-P", dir.absolutePath)
         Cookies.file(ctx).takeIf { it.exists() }?.let { addOption("--cookies", it.absolutePath) }
@@ -277,18 +315,41 @@ object Downloader {
 
     private fun safeName(s: String) = s.replace(Regex("""[\\/:*?"<>|\u0000-\u001F]"""), "_").trim().take(120).ifEmpty { "Без названия" }
 
-    private fun execute(request: YoutubeDLRequest, id: String, token: CancelToken, cb: (Float, String) -> Unit) {
-        token.processId = id
-        if (token.cancelled) throw CancelledError()
+    /** Просим yt-dlp сразу перед загрузкой напечатать прямые ссылки на поток (для «Слушать сейчас»). */
+    private fun requestStream(r: YoutubeDLRequest) {
+        r.addOption("--print", "before_dl:$STREAM_TAG\t%(urls)j")
+        r.addOption("--progress") // --print иначе выключает строки прогресса
+    }
+
+    private const val STREAM_TAG = "STREAM"
+
+    private fun execute(
+        request: YoutubeDLRequest, id: String, token: CancelToken,
+        onStream: ((List<String>) -> Unit)? = null,
+        cb: (Float, String) -> Unit,
+    ) {
+        token.attach(id)
+        if (token.cancelled) {
+            token.detach(id)
+            throw CancelledError()
+        }
         try {
-            YoutubeDL.getInstance().execute(request, processId = id, redirectErrorStream = false) { p, _, line -> cb(p, line) }
+            YoutubeDL.getInstance().execute(request, processId = id, redirectErrorStream = false) { p, _, line ->
+                if (line.startsWith("$STREAM_TAG\t")) {
+                    val urls = runCatching { org.json.JSONTokener(line.substringAfter('\t')).nextValue() as String }.getOrNull()
+                        ?.lines()?.map { it.trim() }?.filter { it.startsWith("http") }
+                    if (!urls.isNullOrEmpty()) onStream?.invoke(urls)
+                } else {
+                    cb(p, line)
+                }
+            }
         } catch (e: YoutubeDL.CanceledException) {
             throw CancelledError()
         } catch (e: YoutubeDLException) {
             if (token.cancelled) throw CancelledError()
             throw UserError(explain(e.message.orEmpty()))
         } finally {
-            token.processId = null
+            token.detach(id)
         }
     }
 

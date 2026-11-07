@@ -463,9 +463,16 @@ class MainActivity : AppCompatActivity() {
 
             val finished = job.status == Status.FAILED || job.status == Status.CANCELLED
             btnCancel.isVisible = job.active
-            btnOpen.isVisible = job.status == Status.DONE
+            // Слушать/смотреть можно уже во время загрузки: по ссылке на поток или готовые треки альбома.
+            val canPlayNow = job.status == Status.RUNNING && job.playable
+            btnOpen.isVisible = job.status == Status.DONE || canPlayNow
             btnExternal.isVisible = job.status == Status.DONE
-            (btnOpen as MaterialButton).text = if (job.kind == Kind.MUSIC) "Слушать" else "Смотреть"
+            (btnOpen as MaterialButton).text = when {
+                canPlayNow && job.kind == Kind.MUSIC -> if (job.files.isNotEmpty()) "Слушать готовое" else "Слушать сейчас"
+                canPlayNow -> "Смотреть сейчас"
+                job.kind == Kind.MUSIC -> "Слушать"
+                else -> "Смотреть"
+            }
             btnShare.isVisible = job.status == Status.DONE
             btnDelete.isVisible = job.status == Status.DONE
             btnRetry.isVisible = finished
@@ -481,7 +488,7 @@ class MainActivity : AppCompatActivity() {
                 DownloadService.enqueue(this@MainActivity, job.url, job.format, job.hint)
             }
             btnRemove.setOnClickListener { Jobs.remove(job.id) }
-            card.setOnClickListener { if (job.status == Status.DONE) play(job) }
+            card.setOnClickListener { if (job.status == Status.DONE || canPlayNow) play(job) }
         }
     }
 
@@ -490,6 +497,12 @@ class MainActivity : AppCompatActivity() {
      * Видео: только это видео, сразу на весь экран.
      */
     private fun play(job: Job) {
+        if (job.status == Status.RUNNING) {
+            // Альбом: играем уже скачанные треки. Одиночный трек/видео: поток из интернета.
+            if (job.files.isNotEmpty()) Playback.play(this, job.files.map { it to job.album }, 0)
+            else Playback.playStream(this, job)
+            return
+        }
         if (job.kind == Kind.VIDEO) {
             Playback.play(this, job.files.map { it to null }, 0)
             return

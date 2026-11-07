@@ -32,6 +32,12 @@ class Job(
 ) {
     val active get() = status == Status.QUEUED || status == Status.RUNNING
 
+    /** Прямые ссылки на поток, пока идёт загрузка (не сохраняются: живут несколько часов). */
+    var stream: List<String> = emptyList()
+
+    /** Можно ли уже слушать/смотреть: есть готовые треки альбома или ссылка на поток. */
+    val playable get() = files.isNotEmpty() || stream.isNotEmpty()
+
     val kind: Kind
         get() = when {
             files.isNotEmpty() -> if (files.all { it.mime.startsWith("audio") }) Kind.MUSIC else Kind.VIDEO
