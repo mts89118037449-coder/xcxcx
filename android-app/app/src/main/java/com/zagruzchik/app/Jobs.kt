@@ -32,6 +32,16 @@ class Job(
 ) {
     val active get() = status == Status.QUEUED || status == Status.RUNNING
 
+    /** Найденные ссылки на песню в сервисах: имя сервиса → ссылка. Сохраняются, чтобы второй раз открывать сразу. */
+    var links: Map<String, String> = emptyMap()
+
+    /** Песня этой загрузки: «Исполнитель — Название» из заголовка. */
+    fun track(): Track {
+        val parts = title.split(" — ", limit = 2)
+        return if (parts.size == 2) Track(parts[1].trim(), parts[0].trim())
+        else Music.hintTrack(title) ?: Track(title, "")
+    }
+
     /** Прямые ссылки на поток, пока идёт загрузка (не сохраняются: живут несколько часов). */
     var stream: List<String> = emptyList()
 
@@ -146,6 +156,7 @@ object Jobs {
             arr.put(JSONObject().apply {
                 put("id", j.id); put("url", j.url); put("format", j.format.name); put("title", j.title)
                 put("status", j.status.name); put("error", j.error); put("createdAt", j.createdAt); put("hint", j.hint ?: "")
+                put("links", JSONObject(j.links))
                 put("files", JSONArray().apply {
                     j.files.forEach { put(JSONObject().put("uri", it.uri).put("name", it.name).put("mime", it.mime)) }
                 })
@@ -177,6 +188,7 @@ object Jobs {
                 createdAt = o.optLong("createdAt"),
                 hint = o.optString("hint").takeIf { it.isNotEmpty() },
             )
+            o.optJSONObject("links")?.let { l -> job.links = l.keys().asSequence().associateWith { l.getString(it) } }
             // Приложение закрыли посреди загрузки — показываем, что её надо повторить.
             if (job.active) {
                 job.status = Status.FAILED

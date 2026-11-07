@@ -42,6 +42,17 @@ fun siteBadge(name: String): Badge = when (name) {
     else -> Badge(name.take(1), Color.GRAY)
 }
 
+/** Короткое название — для компактных кнопок на карточках. */
+val Service.short: String
+    get() = when (this) {
+        Service.YANDEX -> "Яндекс"
+        Service.VK -> "VK"
+        Service.APPLE -> "Apple"
+        Service.YOUTUBE_MUSIC -> "YT Music"
+        Service.ZAYCEV -> "Зайцев"
+        else -> title
+    }
+
 /** Название сервиса в предложном падеже: «Открыть в Яндекс Музыке». */
 val Service.inTitle: String
     get() = when (this) {

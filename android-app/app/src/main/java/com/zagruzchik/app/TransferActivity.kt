@@ -25,7 +25,9 @@ class TransferActivity : AppCompatActivity() {
 
     private val pool = Executors.newFixedThreadPool(4)
     private val main = Handler(Looper.getMainLooper())
-    private lateinit var url: String
+    /** Ссылка, которой поделились. Может не быть — тогда песня задана названием и исполнителем (из загрузок или проигрывателя). */
+    private var url: String? = null
+    private var givenTrack: Track? = null
     private var hint: String? = null
 
     private lateinit var cover: ShapeableImageView
@@ -48,8 +50,10 @@ class TransferActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_transfer)
-        url = intent.getStringExtra(EXTRA_URL) ?: return finish()
+        url = intent.getStringExtra(EXTRA_URL)
         hint = intent.getStringExtra(EXTRA_HINT)
+        givenTrack = intent.getStringExtra(EXTRA_TITLE)?.let { Track(it, intent.getStringExtra(EXTRA_ARTIST).orEmpty()) }
+        if (url == null && givenTrack == null) return finish()
 
         findViewById<MaterialToolbar>(R.id.toolbar).setNavigationOnClickListener { finish() }
         cover = findViewById(R.id.cover)
@@ -61,7 +65,7 @@ class TransferActivity : AppCompatActivity() {
         services = findViewById(R.id.services)
         bottomBar = findViewById(R.id.bottomBar)
         openMine = findViewById(R.id.openMine)
-        sourceView.text = Describe.of(url)
+        sourceView.text = url?.let { Describe.of(it) } ?: "Из загрузок"
 
         // Карточка песни: картинка + все ссылки одним сообщением.
         findViewById<View>(R.id.shareAll).setOnClickListener {
@@ -72,8 +76,10 @@ class TransferActivity : AppCompatActivity() {
             val t = track ?: return@setOnClickListener
             copy(Transfer.shareText(t, Transfer.ORDER.mapNotNull { links[it] }), "Все ссылки скопированы")
         }
+        findViewById<View>(R.id.mp3).isVisible = url != null && givenTrack == null
         findViewById<View>(R.id.mp3).setOnClickListener {
-            DownloadService.enqueue(this, url, Format.MP3, hint)
+            val u = url ?: return@setOnClickListener
+            DownloadService.enqueue(this, u, Format.MP3, hint)
             startActivity(
                 Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_SHOW_JOBS, true)
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -86,14 +92,17 @@ class TransferActivity : AppCompatActivity() {
     private fun load() {
         pool.execute {
             try {
-                val item = Music.resolve(url, hint)
+                val given = givenTrack
+                val item = if (given != null) MusicItem("track", given.label, listOf(given), url?.let { Service.of(it) })
+                else Music.resolve(url!!, hint)
                 val first = item.tracks.first()
                 // Для альбома или плейлиста ищем сам альбом: «Исполнитель Название альбома».
                 val t = if (item.type == "track") Transfer.enrich(first) else Track(item.name, first.artist, cover = first.cover)
                 main.post { showTrack(t, item) }
                 for (s in Transfer.ORDER) {
-                    if (s == item.source && item.type == "track") {
-                        main.post { setLink(Transfer.Link(s, url, true), original = true) }
+                    val original = url
+                    if (s == item.source && item.type == "track" && original != null) {
+                        main.post { setLink(Transfer.Link(s, original, true), original = true) }
                         continue
                     }
                     pool.execute {
@@ -121,9 +130,9 @@ class TransferActivity : AppCompatActivity() {
         titleView.text = t.title
         artistView.text = t.artist
         sourceView.text = when (item.type) {
-            "album" -> "Альбом · ${item.tracks.size} треков · ${item.source.title}"
-            "playlist" -> "Плейлист · ${item.tracks.size} треков · ${item.source.title}"
-            else -> "Из ${item.source.title}"
+            "album" -> "Альбом · ${item.tracks.size} треков · ${item.source?.title.orEmpty()}"
+            "playlist" -> "Плейлист · ${item.tracks.size} треков · ${item.source?.title.orEmpty()}"
+            else -> item.source?.let { "Из ${it.title}" } ?: "Из загрузок"
         }
         // Сразу показываем все сервисы с крутилкой, ссылки подставляются по мере ответа.
         services.removeAllViews()
@@ -201,6 +210,17 @@ class TransferActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_URL = "url"
         const val EXTRA_HINT = "hint"
+        const val EXTRA_TITLE = "title"
+        const val EXTRA_ARTIST = "artist"
+
+        /** «Где послушать» для конкретной песни — из загрузок или проигрывателя. */
+        fun openTrack(ctx: android.content.Context, t: Track, url: String? = null) {
+            ctx.startActivity(
+                Intent(ctx, TransferActivity::class.java)
+                    .putExtra(EXTRA_TITLE, t.title).putExtra(EXTRA_ARTIST, t.artist).putExtra(EXTRA_URL, url)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
 
         fun open(activity: Activity, url: String, hint: String?) {
             activity.startActivity(

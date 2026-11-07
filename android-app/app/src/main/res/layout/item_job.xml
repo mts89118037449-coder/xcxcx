@@ -76,6 +76,17 @@
             app:trackCornerRadius="4dp"
             app:trackThickness="6dp" />
 
+        <!-- «Слушать в:» — сервисы для этой песни, установленные на телефоне выделены -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/servicesRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="8dp"
+            android:visibility="gone"
+            app:chipSpacingHorizontal="6dp"
+            app:chipSpacingVertical="6dp" />
+
         <LinearLayout
             android:id="@+id/actions"
             android:layout_width="match_parent"

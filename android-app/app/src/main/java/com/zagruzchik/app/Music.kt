@@ -17,7 +17,7 @@ data class Track(
 }
 
 /** Трек, альбом или плейлист. */
-data class MusicItem(val type: String, val name: String, val tracks: List<Track>, val source: Service)
+data class MusicItem(val type: String, val name: String, val tracks: List<Track>, val source: Service?)
 
 /** Музыкальные сервисы: откуда можно взять ссылку и куда сделать трансфер. */
 enum class Service(val title: String, val packages: List<String>) {

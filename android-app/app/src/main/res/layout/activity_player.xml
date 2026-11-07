@@ -61,5 +61,13 @@
                 android:textAppearance="?attr/textAppearanceBodyMedium"
                 android:textColor="#CCFFFFFF" />
         </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/playerWhere"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Где послушать"
+            app:icon="@drawable/ic_link" />
     </LinearLayout>
 </FrameLayout>

@@ -39,6 +39,12 @@ class PlayerActivity : AppCompatActivity() {
         subtitle = findViewById(R.id.playerSubtitle)
         topBar = findViewById(R.id.playerTop)
         findViewById<View>(R.id.playerBack).setOnClickListener { finish() }
+        // Ссылки на эту песню во всех сервисах (установленные — первыми).
+        findViewById<View>(R.id.playerWhere).setOnClickListener {
+            val m = controller?.mediaMetadata ?: return@setOnClickListener
+            val title = m.title?.toString() ?: return@setOnClickListener
+            TransferActivity.openTrack(this, Track(title, m.artist?.toString().orEmpty()))
+        }
         view.setShowShuffleButton(true)
         view.setRepeatToggleModes(Player.REPEAT_MODE_ALL or Player.REPEAT_MODE_ONE)
         view.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> topBar.isVisible = v == View.VISIBLE })
@@ -72,6 +78,7 @@ class PlayerActivity : AppCompatActivity() {
     private fun updateMode() {
         val c = controller ?: return
         val video = c.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)
+        findViewById<View>(R.id.playerWhere).isVisible = !video
         view.controllerShowTimeoutMs = if (video) 3000 else 0
         view.controllerHideOnTouch = video
         if (!video) view.showController()

@@ -127,6 +127,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        installedCache = null // могли поставить/удалить приложение или сменить «мой сервис»
         Jobs.listen(listener)
         refreshJobs()
         refreshSummary()
@@ -425,6 +426,8 @@ class MainActivity : AppCompatActivity() {
         private val btnDelete: View = v.findViewById(R.id.btnDelete)
         private val btnRemove: View = v.findViewById(R.id.btnRemove)
         private val btnExternal: View = v.findViewById(R.id.btnExternal)
+        // ChipGroup переносит «таблетки» на следующую строку, если не влезают.
+        private val servicesRow: ViewGroup = v.findViewById(R.id.servicesRow)
 
         fun bind(job: Job) {
             title.text = job.title
@@ -461,6 +464,8 @@ class MainActivity : AppCompatActivity() {
                 if (!indeterminate) progress.setProgressCompat((job.progress * 10).toInt(), true)
             }
 
+            bindServices(job)
+
             val finished = job.status == Status.FAILED || job.status == Status.CANCELLED
             btnCancel.isVisible = job.active
             // Слушать/смотреть можно уже во время загрузки: по ссылке на поток или готовые треки альбома.
@@ -489,6 +494,96 @@ class MainActivity : AppCompatActivity() {
             }
             btnRemove.setOnClickListener { Jobs.remove(job.id) }
             card.setOnClickListener { if (job.status == Status.DONE || canPlayNow) play(job) }
+        }
+
+        /**
+         * «Слушать в:» для скачанной музыки. Установленные приложения — первыми и выделены цветом,
+         * дальше «Все сервисы» — полный экран «Где послушать».
+         */
+        private fun bindServices(job: Job) {
+            val show = job.status == Status.DONE && job.kind == Kind.MUSIC
+            servicesRow.isVisible = show
+            servicesRow.removeAllViews()
+            if (!show) return
+            servicesRow.addView(TextView(this@MainActivity).apply {
+                text = "Слушать в:"
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelMedium)
+                setTextColor(MaterialColors.getColor(this, M.attr.colorOnSurfaceVariant))
+                setPadding(0, dp(9), dp(2), 0)
+            })
+            installedOrder().take(4).forEach { s ->
+                servicesRow.addView(servicePill(s.short, s, highlighted = true) { openIn(job, s) })
+            }
+            servicesRow.addView(servicePill("Ещё", null, highlighted = false) {
+                if (job.files.size > 1) TransferActivity.open(this@MainActivity, job.url, job.hint)
+                else TransferActivity.openTrack(this@MainActivity, job.track(), job.url.takeIf { Music.isMusic(it) || Service.of(it) != null })
+            })
+        }
+    }
+
+    /** Мой сервис первым, потом остальные установленные. Считаем один раз при открытии экрана. */
+    private var installedCache: List<Service>? = null
+    private fun installedOrder(): List<Service> = installedCache ?: run {
+        val mine = Installed.preferred(this)
+        Installed.all(this).filter { it in Transfer.ORDER }.sortedBy { if (it == mine) 0 else Transfer.ORDER.indexOf(it) + 1 }
+    }.also { installedCache = it }
+
+    /** Кнопка-«таблетка» сервиса: кружок с буквой и название. Установленные — с заливкой. */
+    private fun servicePill(label: String, service: Service?, highlighted: Boolean, onClick: () -> Unit): View {
+        val pill = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(if (service != null) 4 else 12), dp(4), dp(12), dp(4))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                if (highlighted) setColor(MaterialColors.getColor(this@MainActivity, M.attr.colorSecondaryContainer, 0))
+                else setStroke(dp(1), MaterialColors.getColor(this@MainActivity, M.attr.colorOutline, 0))
+            }
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36))
+            isClickable = true
+            foreground = getDrawable(android.R.drawable.list_selector_background)
+            setOnClickListener { onClick() }
+        }
+        if (service != null) {
+            pill.addView(TextView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(6) }
+                gravity = android.view.Gravity.CENTER
+                textSize = 11f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setBackgroundResource(R.drawable.bg_circle)
+                showBadge(service.badge)
+            })
+        }
+        pill.addView(TextView(this).apply {
+            text = label
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelLarge)
+            setTextColor(MaterialColors.getColor(this, if (highlighted) M.attr.colorOnSecondaryContainer else M.attr.colorOnSurface))
+        })
+        return pill
+    }
+
+    /**
+     * Открыть песню из загрузок в сервисе. Ссылку ищем один раз (точную, если сервис позволяет)
+     * и запоминаем в загрузке, второй раз открывается сразу.
+     */
+    private fun openIn(job: Job, s: Service) {
+        job.links[s.name]?.let { Installed.open(this, s, it); return }
+        if (job.files.size > 1) { // альбом — открываем поиск альбома в сервисе
+            Installed.open(this, s, s.searchUrl(job.album ?: job.title))
+            return
+        }
+        if (Service.of(job.url) == s) { // скачано из этого же сервиса — исходная ссылка
+            Installed.open(this, s, job.url)
+            return
+        }
+        snack("Ищу в ${s.inTitle}…")
+        thread {
+            val t = runCatching { Transfer.enrich(job.track()) }.getOrDefault(job.track())
+            val link = Transfer.find(s, t, Downloader::youtubeId)
+            runOnUiThread {
+                Jobs.update(job.id, save = true) { links = links + (s.name to link.url) }
+                if (!isDestroyed) Installed.open(this, s, link.url)
+            }
         }
     }
 
