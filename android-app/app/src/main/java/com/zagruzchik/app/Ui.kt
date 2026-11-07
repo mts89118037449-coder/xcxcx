@@ -3,7 +3,6 @@ package com.zagruzchik.app
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -14,10 +13,14 @@ import android.widget.TextView
 
 fun Context.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+/** Цвет из темы. TypedArray.getColor правильно раскрывает и обычные цвета, и списки цветов (как textColorPrimary). */
 fun Context.themeColor(attr: Int): Int {
-    val tv = TypedValue()
-    theme.resolveAttribute(attr, tv, true)
-    return tv.data
+    val a = obtainStyledAttributes(intArrayOf(attr))
+    try {
+        return a.getColor(0, Color.GRAY)
+    } finally {
+        a.recycle()
+    }
 }
 
 val ACCENT = Color.parseColor("#0E7490")
@@ -31,6 +34,7 @@ fun Context.text(s: String, sizeSp: Float = 15f, bold: Boolean = false, muted: B
     text = s
     textSize = sizeSp
     if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+    setTextColor(themeColor(android.R.attr.textColorPrimary))
     if (muted) alpha = 0.7f
     setPadding(0, dp(4), 0, dp(4))
 }

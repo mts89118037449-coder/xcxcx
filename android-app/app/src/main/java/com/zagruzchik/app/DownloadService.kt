@@ -72,18 +72,27 @@ class DownloadService : Service() {
         val title = "Скачиваю (${format.label})"
         try {
             nm.notify(Notifications.FOREGROUND_ID, Notifications.progress(this, title, url, -1))
-            val files = Downloader.download(this, url, format, jobId) { p, line ->
+            val result = Downloader.download(this, url, format, jobId) { p, line ->
                 val now = System.currentTimeMillis()
                 if (now - lastUpdate > 700) {
                     lastUpdate = now
-                    val text = if (p > 0) "${p.toInt()}%" else line.take(80)
+                    val text = when {
+                        line.startsWith("Трек") || line.startsWith("Читаю") -> line.take(90)
+                        p > 0 -> "${p.toInt()}%"
+                        else -> line.take(90)
+                    }
                     nm.notify(Notifications.FOREGROUND_ID, Notifications.progress(this, title, text, if (p > 0) p.toInt() else -1))
                 }
             }
             nm.notify(Notifications.FOREGROUND_ID, Notifications.progress(this, "Сохраняю в «Загрузки»", "", -1))
-            val saved = files.map { Storage.publish(this, it) }
-            val first = files.first().name
-            val text = if (files.size == 1) first else "$first и ещё ${files.size - 1}"
+            val names = result.files.map { it.name }
+            val saved = result.files.map { Storage.publish(this, it, result.subfolder) }
+            var text = when {
+                result.subfolder != null -> "${names.size} трек(ов) → Загрузки/${Storage.FOLDER}/${result.subfolder}"
+                names.size == 1 -> names.first()
+                else -> "${names.first()} и ещё ${names.size - 1}"
+            }
+            if (result.failed > 0) text += "\nНе нашлось: ${result.failed}"
             notifyResult(resultId, "Скачано ✓", text, openFile(saved.first().first, saved.first().second))
         } catch (e: Exception) {
             Log.e("Zagruzchik", "download failed: $url", e)

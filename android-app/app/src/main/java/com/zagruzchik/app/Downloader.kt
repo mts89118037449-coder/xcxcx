@@ -5,8 +5,8 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
-import android.text.Html
 import android.webkit.MimeTypeMap
+import org.json.JSONObject
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLException
 import com.yausername.youtubedl_android.YoutubeDLRequest
@@ -35,76 +35,173 @@ object Links {
 }
 
 /**
- * Spotify отдаёт музыку только в зашифрованном виде, поэтому берём название и исполнителя
- * со страницы трека и ищем этот же трек на YouTube.
+ * Spotify отдаёт музыку только в зашифрованном виде, поэтому берём список треков
+ * (название + исполнитель) со страницы Spotify и ищем каждый трек на YouTube.
+ * Работает для треков, альбомов и плейлистов.
  */
 object Spotify {
-    fun isSpotify(url: String) = url.contains("spotify.com/") || url.contains("spotify.link/")
-    fun isTrack(url: String) = url.contains("/track/") || url.contains("spotify.link/")
+    data class Track(val title: String, val artist: String)
+    data class Item(val type: String, val name: String, val tracks: List<Track>)
 
-    fun searchQuery(url: String): String {
+    private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36"
+    private const val DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
+    private val ID_RE = Regex("""(track|album|playlist)/([A-Za-z0-9]+)""")
+
+    fun isSpotify(url: String) = url.contains("spotify.com/") || url.contains("spotify.link/")
+
+    private fun get(url: String): String {
         val conn = URL(url).openConnection() as HttpURLConnection
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36")
+        conn.setRequestProperty("User-Agent", UA)
         conn.connectTimeout = 15_000
         conn.readTimeout = 15_000
-        val page = conn.inputStream.bufferedReader().use { it.readText() }
-        fun meta(name: String) = Regex("""og:$name" content="([^"]*)"""").find(page)?.groupValues?.get(1)
-            ?.let { Html.fromHtml(it, Html.FROM_HTML_MODE_LEGACY).toString() }
-        val title = meta("title") ?: throw UserError("Не удалось прочитать трек Spotify")
-        val artist = meta("description")?.substringBefore(" · ").orEmpty()
-        return "$artist - $title".trim(' ', '-')
+        return conn.inputStream.bufferedReader().use { it.readText() }
+    }
+
+    /**
+     * Короткие ссылки spotify.link для телефона ведут в приложение Spotify (intent://),
+     * поэтому притворяемся компьютером и сами смотрим, куда ведёт перенаправление.
+     */
+    private fun expandShortLink(url: String): String {
+        var current = url
+        repeat(5) {
+            val conn = URL(current).openConnection() as HttpURLConnection
+            conn.instanceFollowRedirects = false
+            conn.setRequestProperty("User-Agent", DESKTOP_UA)
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 15_000
+            val location = conn.getHeaderField("Location")
+            if (location == null) {
+                val body = runCatching { conn.inputStream.bufferedReader().use { it.readText() } }.getOrDefault("")
+                conn.disconnect()
+                return body
+            }
+            conn.disconnect()
+            if (ID_RE.containsMatchIn(location)) return location
+            val next = runCatching { URL(URL(current), location).toString() }.getOrNull() ?: return location // intent:// и т.п.
+            if (!next.startsWith("http")) return location
+            current = next
+        }
+        return current
+    }
+
+    private fun clean(s: String) = s.replace('\u00A0', ' ').replace(Regex("\\s+"), " ").trim()
+
+    fun resolve(url: String): Item {
+        val m = ID_RE.find(url) ?: ID_RE.find(expandShortLink(url))
+            ?: throw UserError("Не понял ссылку Spotify. Нужна ссылка на трек, альбом или плейлист.")
+        val (type, id) = m.destructured
+
+        val page = get("https://open.spotify.com/embed/$type/$id")
+        val json = Regex("""<script id="__NEXT_DATA__" type="application/json">(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
+            .find(page)?.groupValues?.get(1) ?: throw UserError("Spotify не отдал данные. Попробуйте позже.")
+        val e = JSONObject(json).getJSONObject("props").getJSONObject("pageProps")
+            .getJSONObject("state").getJSONObject("data").getJSONObject("entity")
+        val name = clean(e.optString("name", e.optString("title")))
+
+        if (type == "track") {
+            val artists = e.optJSONArray("artists")
+            val artist = (0 until (artists?.length() ?: 0)).joinToString(", ") { artists!!.getJSONObject(it).optString("name") }
+            return Item(type, name, listOf(Track(name, clean(artist))))
+        }
+        val list = e.optJSONArray("trackList") ?: throw UserError("В этом $type нет треков")
+        val tracks = (0 until list.length()).map {
+            val t = list.getJSONObject(it)
+            Track(clean(t.optString("title")), clean(t.optString("subtitle")))
+        }.filter { it.title.isNotEmpty() }
+        if (tracks.isEmpty()) throw UserError("Spotify не показал треки. Возможно, плейлист закрытый.")
+        return Item(type, name, tracks)
     }
 }
 
 object Downloader {
 
-    /** Скачивает ссылку и возвращает готовые файлы (во временной папке приложения). */
-    fun download(ctx: Context, url: String, requested: Format, jobId: String, onProgress: (Float, String) -> Unit): List<File> {
+    /** Результат: готовые файлы во временной папке и подпапка в «Загрузках» (для альбомов). */
+    class Result(val files: List<File>, val subfolder: String? = null, val failed: Int = 0)
+
+    /** Скачивает ссылку. onProgress получает общий процент (0–100) и короткий текст. */
+    fun download(ctx: Context, url: String, format: Format, jobId: String, onProgress: (Float, String) -> Unit): Result {
         App.awaitReady()
-
-        var source = url
-        var format = requested
-        if (Spotify.isSpotify(url)) {
-            if (!Spotify.isTrack(url)) throw UserError("Spotify: поддерживаются только ссылки на отдельные треки")
-            val query = Spotify.searchQuery(url)
-            onProgress(0f, "Spotify: $query")
-            source = "ytsearch1:$query audio"
-            format = Format.MP3
-        }
-
         val dir = File(ctx.cacheDir, "dl/$jobId").apply { deleteRecursively(); mkdirs() }
-        val request = YoutubeDLRequest(source).apply {
-            addOption("--no-playlist")
-            addOption("--no-mtime")
-            addOption("--embed-metadata")
-            addOption("-P", dir.absolutePath)
-            addOption("-o", "%(title).80B [%(id)s].%(ext)s")
-            Cookies.file(ctx).takeIf { it.exists() }?.let { addOption("--cookies", it.absolutePath) }
-            when (format) {
-                Format.BEST -> {
-                    addOption("-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b")
-                    addOption("--merge-output-format", "mp4")
+        if (Spotify.isSpotify(url)) return downloadSpotify(url, dir, jobId, ctx, onProgress)
+
+        val request = baseRequest(url, dir, ctx, format)
+        request.addOption("-o", "%(title).80B [%(id)s].%(ext)s")
+        execute(request, jobId) { p, line -> onProgress(p, line) }
+        return Result(collect(dir))
+    }
+
+    private fun downloadSpotify(url: String, dir: File, jobId: String, ctx: Context, onProgress: (Float, String) -> Unit): Result {
+        onProgress(0f, "Читаю Spotify…")
+        val item = Spotify.resolve(url)
+        val n = item.tracks.size
+        var failed = 0
+        var lastError: UserError? = null
+        item.tracks.forEachIndexed { i, t ->
+            val label = if (t.artist.isEmpty()) t.title else "${t.artist} — ${t.title}"
+            onProgress(i * 100f / n, if (n > 1) "Трек ${i + 1}/$n: $label" else label)
+            val request = baseRequest("ytsearch1:${t.artist} - ${t.title} audio", dir, ctx, Format.MP3).apply {
+                addOption("-o", "${safeName(label)}.%(ext)s")
+                // Теги MP3 — как в Spotify, а не как в названии ролика на YouTube.
+                tag(this, "title", t.title)
+                tag(this, "track", t.title)
+                if (t.artist.isNotEmpty()) tag(this, "artist", t.artist)
+                if (item.type == "album") tag(this, "album", item.name)
+            }
+            try {
+                execute(request, "$jobId-$i") { p, _ ->
+                    onProgress((i + p.coerceIn(0f, 100f) / 100f) * 100f / n, if (n > 1) "Трек ${i + 1}/$n: $label" else label)
                 }
-                Format.P720 -> {
-                    addOption("-f", "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/bv*[height<=720]+ba/b[height<=720]/b")
-                    addOption("--merge-output-format", "mp4")
-                }
-                Format.MP3 -> {
-                    addOption("-x")
-                    addOption("--audio-format", "mp3")
-                    addOption("--audio-quality", "0")
-                }
+            } catch (e: UserError) {
+                if (n == 1) throw e
+                failed++
+                lastError = e
             }
         }
+        val files = dir.listFiles().orEmpty().filter { it.isFile && it.extension == "mp3" }
+        if (files.isEmpty()) throw lastError ?: UserError("Не удалось скачать ни одного трека.")
+        return Result(files, subfolder = if (n > 1) safeName(item.name) else null, failed = failed)
+    }
 
-        try {
-            YoutubeDL.getInstance().execute(request, processId = jobId, redirectErrorStream = false) { progress, _, line ->
-                onProgress(progress, line)
+    private fun baseRequest(source: String, dir: File, ctx: Context, format: Format) = YoutubeDLRequest(source).apply {
+        addOption("--no-playlist")
+        addOption("--no-mtime")
+        addOption("--embed-metadata")
+        addOption("-P", dir.absolutePath)
+        Cookies.file(ctx).takeIf { it.exists() }?.let { addOption("--cookies", it.absolutePath) }
+        when (format) {
+            Format.BEST -> {
+                addOption("-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b")
+                addOption("--merge-output-format", "mp4")
             }
+            Format.P720 -> {
+                addOption("-f", "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/bv*[height<=720]+ba/b[height<=720]/b")
+                addOption("--merge-output-format", "mp4")
+            }
+            Format.MP3 -> {
+                addOption("-x")
+                addOption("--audio-format", "mp3")
+                addOption("--audio-quality", "0")
+            }
+        }
+    }
+
+    /** Записывает в тег готовое значение (двоеточия и % экранируются по правилам yt-dlp). */
+    private fun tag(r: YoutubeDLRequest, field: String, value: String) {
+        val literal = value.replace("%", "%%").replace(":", "\\:")
+        r.addOption("--parse-metadata", "pre_process:$literal:(?P<$field>.+)")
+    }
+
+    private fun safeName(s: String) = s.replace(Regex("""[\\/:*?"<>|\u0000-\u001F]"""), "_").trim().take(120).ifEmpty { "Без названия" }
+
+    private fun execute(request: YoutubeDLRequest, id: String, cb: (Float, String) -> Unit) {
+        try {
+            YoutubeDL.getInstance().execute(request, processId = id, redirectErrorStream = false) { p, _, line -> cb(p, line) }
         } catch (e: YoutubeDLException) {
             throw UserError(explain(e.message.orEmpty()))
         }
+    }
 
+    private fun collect(dir: File): List<File> {
         val files = dir.listFiles().orEmpty()
             .filter { it.isFile && !it.name.endsWith(".part") && !it.name.endsWith(".ytdl") && !it.name.endsWith(".temp") }
         if (files.isEmpty()) throw UserError("Файл не найден после загрузки. Попробуйте другой формат.")
@@ -132,13 +229,13 @@ object Downloader {
 object Storage {
     const val FOLDER = "Загрузчик"
 
-    fun publish(ctx: Context, file: File): Pair<Uri, String> {
+    fun publish(ctx: Context, file: File, subfolder: String? = null): Pair<Uri, String> {
         val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
         val resolver = ctx.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/$FOLDER")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/$FOLDER" + (subfolder?.let { "/$it" } ?: ""))
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
