@@ -399,6 +399,11 @@ function mapFloors(e) {
 /** «СКЦ 160 мм / ПОЛИГРАН 160 ПГ C50», «ПОЛИГРАН 160» → «СКЦ 160»; «Газобетон 100 мм · КСМ» → «Газобетон 100» */
 /** «СТД Петрович (БЦК)» → ['стд', 'петрович', 'бцк']: слова поставщика для поиска в накладной */
 function supplierWords(sup) { return norm(sup).split(/[^a-zа-яё0-9]+/).filter((w) => w.length >= 3).map((w) => w.slice(0, 7)); }
+/** «Пара перчаток», «перчатки 2 пары» → один ключ; «Диск алмазный 230» = «алмазный диск 230» */
+export function consKey(name) {
+  return String(name || '').toLowerCase().replace(/ё/g, 'е').replace(/[×*х](?=\d)|(?<=\d)[×*х]/g, 'x').split(/[^a-zа-я0-9x.]+/)
+    .filter((w) => w && !/^(пара|пары|пар|шт|штук|с|и|для)$/.test(w)).map((w) => (/^\d/.test(w) ? w : w.slice(0, 5))).sort().join(' ');
+}
 export function materialKey(name) {
   const s = String(name || '').toLowerCase();
   const size = (s.match(/(\d{2,3})\s*(?:мм|пг|\b)/) || [])[1];
@@ -613,7 +618,7 @@ export class Store {
   /** Данные других таблиц: «Выполнение» (объёмы) и «VUP CORE» (материалы, ход работ, статусы этажей) */
   setExtra(x) {
     const e = x || {};
-    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '', brigades: e.brigades || [], acts: e.acts || [], handbook: e.handbook || { contractors: [], norms: {}, works: [] }, orders: e.orders || [], orderTemplates: e.orderTemplates || [], gpr: e.gpr || [], materials: e.materials || [] };
+    this.extra = { volumes: e.volumes || [], moves: e.moves || [], worklog: e.worklog || [], floorStatus: e.floorStatus || [], plan: e.plan || [], discrepancies: e.discrepancies || [], inventory: e.inventory || [], sources: e.sources || [], structure: e.structure || null, objects: e.objects || [], object: e.object || '', template: e.template || '', registry: e.registry || '', brigades: e.brigades || [], acts: e.acts || [], handbook: e.handbook || { contractors: [], norms: {}, works: [] }, orders: e.orders || [], orderTemplates: e.orderTemplates || [], consumables: e.consumables || [], gpr: e.gpr || [], materials: e.materials || [] };
     this.vol = new Map();
     setWorkMap(e.structure && e.structure.workMap);
     const groups = this.extra.volumes.filter((v) => v.total > 0 && v.floor != null).map((v) => workGroup(v.work, Number(v.floor))).filter(Boolean);
@@ -843,6 +848,45 @@ export class Store {
       out.push({ work: w, unit, total, left, mats });
     }
     return out;
+  }
+  // ---------- расходники: средний расход, остаток, на сколько хватит, что заказать ----------
+  /** weeks — на сколько недель вперёд считать потребность */
+  consumables(weeks = 4) {
+    const rows = (this.extra.consumables || []).filter((r) => r.name);
+    if (!rows.length) return null;
+    const today = isoToday();
+    const isOut = (r) => /выдач|выдал|расход/i.test(r.type), isIn = (r) => /приход|поступ|купл/i.test(r.type), isInv = (r) => /остат|пересч|инвент/i.test(r.type),
+      isReq = (r) => /заявк|потреб|заказ/i.test(r.type), isBack = (r) => /возвр/i.test(r.type), isLent = (r) => /занял|в долг|долг|одолж/i.test(`${r.note} ${r.type}`);
+    const outs = rows.filter((r) => isOut(r) && r.date);
+    const start = outs.map((r) => r.date).sort()[0] || today;
+    const days = Math.max(7, dayDiff(start, today) + 1);   // период учёта: с первой выдачи (не меньше недели)
+    const items = new Map();
+    for (const r of rows) {
+      const k = consKey(r.name);
+      if (!items.has(k)) items.set(k, { key: k, name: r.name, unit: r.unit || 'шт', rows: [], who: {}, used: 0, lent: {}, back: {} });
+      const it = items.get(k); it.rows.push(r); if (r.unit && !it.unit) it.unit = r.unit;
+      if (isOut(r) && isLent(r)) it.lent[r.who || '—'] = (it.lent[r.who || '—'] || 0) + r.qty;
+      else if (isOut(r)) { it.used += r.qty; it.who[r.who || 'не указано'] = (it.who[r.who || 'не указано'] || 0) + r.qty; }
+      if (isBack(r)) it.back[r.who || '—'] = (it.back[r.who || '—'] || 0) + r.qty;
+    }
+    const list = [...items.values()].map((it) => {
+      const perWeek = (it.used / days) * 7;
+      // остаток: последний пересчёт + приход и возвраты после него − выдачи после него
+      const inv = it.rows.filter((r) => isInv(r) && r.date).sort((a, b) => a.date.localeCompare(b.date)).pop();
+      const after = (r) => !inv || (r.date && r.date > inv.date);
+      let stock = null;
+      if (inv || it.rows.some(isIn)) stock = (inv ? inv.qty : 0) + it.rows.filter((r) => (isIn(r) || isBack(r)) && after(r)).reduce((a, r) => a + r.qty, 0) - it.rows.filter((r) => isOut(r) && after(r)).reduce((a, r) => a + r.qty, 0);
+      const req = it.rows.filter((r) => isReq(r)).sort((a, b) => (a.date || '').localeCompare(b.date || '')).pop() || null;
+      const daysLeft = stock != null && perWeek > 0 ? Math.max(0, stock) / (perWeek / 7) : null;
+      const owed = Object.entries(it.lent).map(([who, q]) => [who, q - (it.back[who] || 0)]).filter(([, q]) => q > 0);
+      return { ...it, perWeek, stock, inv, req, daysLeft, reqWeeks: req && perWeek > 0 ? req.qty / perWeek : null,
+        need: Math.max(0, Math.ceil(perWeek * weeks - Math.max(0, stock || 0))), owed,
+        who: Object.entries(it.who).sort((a, b) => b[1] - a[1]) };
+    }).sort((a, b) => (b.perWeek - a.perWeek) || a.name.localeCompare(b.name, 'ru'));
+    // кто сколько берёт: по получателям, в неделю
+    const byWho = {};
+    for (const r of rows) if (isOut(r) && !isLent(r)) { const w = r.who || 'не указано'; ((byWho[w] ||= {})[r.name] ||= 0); byWho[w][r.name] += r.qty; }
+    return { start, days, weeks, list, byWho: Object.entries(byWho).map(([who, m]) => ({ who, items: Object.entries(m).sort((a, b) => b[1] - a[1]), total: Object.values(m).reduce((a, q) => a + q, 0) })).sort((a, b) => b.total - a.total) };
   }
   // ---------- аналитика ----------
   /** Прошедшие недели из «Выполнения» (даты в шапке столбцов O…) */

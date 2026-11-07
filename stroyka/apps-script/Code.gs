@@ -398,6 +398,7 @@ function readExtra_() {
     handbook: safe_(readHandbook_),
     orders: safe_(readOrders_),
     orderTemplates: safe_(readOrderTemplates_),
+    consumables: safe_(readConsumables_),
     materials: safe_(readMaterials_),
     gpr: safe_(readGpr_),
     acts: MODE === 'book' ? [] : safe_(readActs_),
@@ -642,6 +643,7 @@ const EDITABLE = {
   'G|Бригады': { name: 1, people: 2, type: 3, section: 4, works: 5, note: 6 },
   'G|Поручения': { date: 2, section: 3, level: 4, text: 5, who: 6, due: 7, status: 8, done: 9, note: 10, tp: 11 },
   'G|Шаблоны поручений': { text: 1, who: 2, days: 3, tp: 4 },
+  'G|Расходники': { date: 1, type: 2, who: 3, name: 4, qty: 5, unit: 6, note: 7 },
   'G|ГПР': { received: 10, note: 13 },
   // самостоятельный объект (шаблон «Стройка · объект»)
   'G|Расходы': { date: 3, cat: 4, who: 5, basis: 6, note: 7, sum: 8 },
@@ -670,13 +672,14 @@ function cellValue_(field, v) {
 const BOOK_SHEETS = {
   'Поручения': ['№', 'Дата', 'Часть', 'Уровень', 'Поручение', 'Кому (бригада)', 'Срок', 'Статус', 'Выполнено', 'Примечание', 'ТП'],
   'Шаблоны поручений': ['Поручение', 'Кому (бригада или «Все»)', 'Срок, дней', 'ТП'],
+  'Расходники': ['Дата', 'Тип', 'Кому / от кого', 'Наименование', 'Кол-во', 'Ед.', 'Примечание'],
   'Бригады': ['Бригада', 'Человек', 'Тип', 'Часть', 'Виды работ', 'Примечание'],
   'Замечания': ['№', 'Дата', 'Часть', 'Уровень', 'Замечание', 'Ответственный', 'Срок', 'Статус', 'Выполнено', 'Примечание'],
   'Документы': ['Часть', 'Уровень', 'Вид работ', 'ИС', 'АОСР', 'Замечания по АОСР'],
 };
 function sheetFor_(b, s) {
   const id = BOOKS[b];
-  if (b === 'G' && MODE !== 'book' && (s === 'Бригады' || s === 'Поручения' || s === 'Шаблоны поручений') && !ss_().getSheetByName(s)) { const sh0 = ss_().insertSheet(s); headRow_(sh0, BOOK_SHEETS[s]); } if (!id) throw new Error('Неизвестная таблица');
+  if (b === 'G' && MODE !== 'book' && (s === 'Бригады' || s === 'Поручения' || s === 'Шаблоны поручений' || s === 'Расходники') && !ss_().getSheetByName(s)) { const sh0 = ss_().insertSheet(s); headRow_(sh0, BOOK_SHEETS[s]); } if (!id) throw new Error('Неизвестная таблица');
   if ((b !== 'G' || MODE === 'book') && !canEdit_(id)) throw new Error('Нет прав на запись в эту таблицу — нужен доступ «Редактор»');
   let sh = SpreadsheetApp.openById(id).getSheetByName(s);
   if (!sh && MODE === 'book' && b === 'G' && BOOK_SHEETS[s]) { sh = ss_().insertSheet(s); headRow_(sh, BOOK_SHEETS[s]); }   // лист появится при первой записи
@@ -1672,6 +1675,13 @@ function readOrders_() {
     .map(function (r) { return { row: r.row, n: r[0], date: dateStrict_(r[1]), section: secId_(r[2]), sectionText: String(r[2]).trim(), level: levelKey_(r[3]), levelText: String(r[3]).trim(), tp: String(r[10] || '').trim(), text: String(r[4]).trim(), who: String(r[5]).trim(), due: dateStrict_(r[6]), status: String(r[7]).trim(), done: dateStrict_(r[8]), note: String(r[9]).trim(), sheet: 'Поручения' }; });
 }
 /** «Шаблоны поручений»: типовые поручения руководителя — текст, кому, срок в днях, ТП */
+/** «Расходники»: выдача, приход, остаток (пересчёт), заявка, возврат — для среднего расхода и потребности */
+function readConsumables_() {
+  const sh = ss_().getSheetByName('Расходники');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return rowsOf_(sh, 2, 7).filter(function (r) { return String(r[3]).trim() && String(r[1]).trim(); })
+    .map(function (r) { return { row: r.row, date: dateStrict_(r[0]), type: String(r[1]).trim(), who: String(r[2]).trim(), name: String(r[3]).trim(), qty: num_(r[4]) || 0, unit: String(r[5]).trim(), note: String(r[6]).trim() }; });
+}
 function readOrderTemplates_() {
   const sh = ss_().getSheetByName('Шаблоны поручений');
   if (!sh || sh.getLastRow() < 2) return [];

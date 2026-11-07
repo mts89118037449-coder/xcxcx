@@ -1,4 +1,4 @@
-import { dayDiff, addDays, Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, BY_EXPENSES, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText, levelsIn, sectionsIn, levelsText, isPeopleItem } from './data.js';
+import { dayDiff, addDays, Store, SECTIONS, FLOORS, ROOF, TOP, LAYOUT, PROFILE, T, WORKS, BY_EXPENSES, levelsOf, floorName, floorShort, ruToIso, isoToday, EXPENSE_CATS, floorsInText, levelsIn, sectionsIn, levelsText, isPeopleItem, consKey } from './data.js';
 import { BuildingScene } from './scene.js';
 import { UnitsScene } from './scene-units.js';
 
@@ -1076,6 +1076,7 @@ function renderStock() {
     ...(floors.length ? [['feed', 'Подача по ' + T.levelsDat, '']] : []),
     ...(dis.length ? [['dis', 'Расхождения', `<em class="cnt bad">${dis.length}</em>`]] : []),
     ...(inv.length ? [['inv', 'Инвентаризация', `<em class="cnt">${inv.length}</em>`]] : []),
+    ['cons', 'Расходники', (store.extra.consumables || []).length ? `<em class="cnt">${new Set(store.extra.consumables.map((r) => r.name)).size}</em>` : ''],
     ['tools', 'Инструмент', tools.length ? `<em class="cnt">${tools.length}</em>` : ''],
   ];
   if (!subs.some(([k]) => k === state.stockTab)) state.stockTab = 'stock';
@@ -1104,11 +1105,69 @@ function renderStock() {
     <ul class="totals tools">${tools.map((x) => `<li><span>${ev(esc(x.name), { b: 'G', s: 'УЧЁТ ИНСТРУМЕНТА ', r: x.row, f: 'name', raw: x.name, expect: x.name, type: 'text', label: 'Инструмент: наименование', prop: 'name', list: 'fin.tools' })}</span><b class="num">${ev(esc(x.qty || '—'), { b: 'G', s: 'УЧЁТ ИНСТРУМЕНТА ', r: x.row, f: 'qty', raw: x.qty, expect: x.qty, type: 'text', label: `${x.name}: количество`, prop: 'qty', list: 'fin.tools' })}</b></li>`).join('') || '<li class="muted">Нет данных</li>'}</ul>
     <button class="btn" data-add="tool">+ Инструмент</button>
 `,
+    cons: consHtml(),
   }[state.stockTab];
   el.innerHTML = `<div class="subtabs" role="tablist">${subs.map(([k, t, c]) => `<button role="tab" data-stk="${k}" class="${state.stockTab === k ? 'on' : ''}">${esc(t)}${c}</button>`).join('')}</div>
     <div class="subbody">${body}</div>`;
   el.querySelectorAll('[data-stk]').forEach((b) => b.onclick = () => { state.stockTab = b.dataset.stk; try { localStorage.setItem('stroyka.stk', state.stockTab); } catch { /* */ } renderStock(); el.scrollTop = 0; if (mobile.matches) scrollTo({ top: 0 }); });
 }
+
+// ---------- расходники: средний расход и потребность ----------
+let consWeeks = (() => { try { return +localStorage.getItem('stroyka.consw') || 4; } catch { return 4; } })();
+const fmtQ = (n) => fmtN(Math.round(n * 10) / 10);
+function consHtml() {
+  const C = store.consumables(consWeeks);
+  const btns = `<div class="add-row cons-add"><button class="btn small" data-cons="Выдача">+ Выдал</button><button class="btn small ghost" data-cons="Приход">+ Приход</button><button class="btn small ghost" data-cons="Остаток">+ Пересчёт остатка</button><button class="btn small ghost" data-cons="Заявка">+ Заявка</button><button class="btn small ghost" data-cons="Возврат">+ Вернули</button></div>`;
+  if (!C) return `<p class="muted">Записей нет. Лист «Расходники» в «Glorax_Учёт»: дата, тип (Выдача / Приход / Остаток / Заявка / Возврат), кому, наименование, кол-во.</p>${btns}`;
+  const noStock = C.list.every((x) => x.stock == null);
+  const lent = C.list.filter((x) => x.owed.length);
+  const wk = (w) => (w == null ? '—' : w >= 52 ? 'больше года' : w >= 8 ? `${Math.round(w / 4.3)} мес.` : `${fmtQ(w)} нед.`);
+  return `${btns}
+    <div class="kpis3"><div><span>Учёт выдачи</span><b>${C.days} дн.</b></div><div><span>Позиций</span><b>${C.list.length}</b></div><div><span>Заявок</span><b>${C.list.filter((x) => x.req).length}</b></div></div>
+    <h3>Средний расход и потребность <span class="muted">· с ${shortDate(C.start)}</span></h3>
+    <div class="chips cw"><span class="muted">Потребность на</span>${[2, 4, 8].map((w) => `<button type="button" class="chip ${consWeeks === w ? 'on' : ''}" data-consw="${w}">${w} нед.</button>`).join('')}</div>
+    <div class="tablewrap"><table class="voltab"><thead><tr><th>Наименование</th><th>Расход в неделю</th><th>Остаток</th><th>Хватит на</th><th>Заявка</th><th>Нужно на ${consWeeks} нед.</th></tr></thead><tbody>
+    ${C.list.map((x) => `<tr><td>${esc(x.name)}${x.who.length ? `<div class="muted">${x.who.slice(0, 3).map(([w, q]) => `${esc(w)} ${fmtQ(q)}`).join(' · ')}</div>` : ''}</td>
+      <td>${x.perWeek ? `<b>${fmtQ(x.perWeek)}</b> ${esc(x.unit)}` : '<span class="muted">не выдавали</span>'}</td>
+      <td>${x.stock != null ? `<b class="${x.stock <= 0 ? 'neg' : ''}">${fmtQ(x.stock)}</b> ${esc(x.unit)}${x.inv ? `<div class="muted">пересчёт ${shortDate(x.inv.date)}</div>` : ''}` : '<span class="muted">?</span>'}</td>
+      <td>${x.daysLeft != null ? `<span class="${x.daysLeft < 7 ? 'err-t' : x.daysLeft < 14 ? 'warn-t' : 'okc'}">${x.daysLeft < 1 ? 'закончилось' : Math.floor(x.daysLeft) + ' дн.'}</span>` : '—'}</td>
+      <td>${x.req ? `${fmtQ(x.req.qty)} ${esc(x.req.unit || x.unit)}<div class="muted">${x.reqWeeks != null ? 'хватит на ' + wk(x.reqWeeks) : 'расхода ещё нет'}</div>` : '—'}</td>
+      <td>${x.perWeek ? `<b>${fmtN(x.need)}</b> ${esc(x.unit)}${x.stock == null ? '<div class="muted">без учёта остатка</div>' : ''}` : '—'}</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="muted small-note">Расход в неделю = выдано ÷ дней учёта × 7 (одолженное другим организациям не считается расходом). ${noStock ? '<b>Остаток пока неизвестен:</b> раз в неделю делайте «Пересчёт остатка» (или записывайте «Приход» при покупке) — тогда приложение покажет, на сколько дней хватит, и вычтет остаток из потребности.' : 'Остаток = последний пересчёт + приход и возвраты − выдачи после него.'} Заявка — «не значит, что закончилось»: видно, на сколько недель её хватит при нынешнем расходе.</p>
+    ${lent.length ? `<h3>Одолжили — должны вернуть</h3><ul class="totals">${lent.flatMap((x) => x.owed.map(([w, q]) => `<li><span>${esc(w)} · ${esc(x.name)}</span><b>${fmtQ(q)} ${esc(x.unit)}</b></li>`)).join('')}</ul>` : ''}
+    ${C.byWho.length ? `<h3>Кто сколько берёт <span class="muted">· за ${C.days} дн.</span></h3><ul class="totals">${C.byWho.map((w) => `<li><span>${esc(w.who)}<div class="muted">${w.items.map(([n, q]) => `${esc(n)} ${fmtQ(q)}`).join(' · ')}</div></span><b>${fmtQ(w.total)}</b></li>`).join('')}</ul>` : ''}`;
+}
+async function addCons(type) {
+  const today = isoToday();
+  const rows = store.extra.consumables || [];
+  const names = [...new Set(rows.map((r) => r.name))];
+  const who = [...new Set([...store.brigadeStats().map((b) => b.name), ...rows.map((r) => r.who)].filter(Boolean))];
+  const title = { 'Выдача': 'Выдал расходники', 'Приход': 'Приход расходников', 'Остаток': 'Пересчёт остатка', 'Заявка': 'Заявка (потребность)', 'Возврат': 'Вернули' }[type] || type;
+  const fields = [
+    { label: 'Наименование', type: 'text', value: '', list: names },
+    { label: type === 'Остаток' ? 'Сколько есть сейчас' : 'Количество', type: 'number', value: type === 'Выдача' ? 1 : '' },
+    { label: 'Ед.', type: 'text', value: 'шт', list: ['шт', 'пара', 'уп', 'м', 'л', 'кг', 'компл'] },
+    ...(type === 'Выдача' || type === 'Возврат' ? [{ label: type === 'Выдача' ? 'Кому' : 'Кто вернул', type: 'text', value: '', list: who }] : type === 'Приход' ? [{ label: 'От кого (магазин, поставщик)', type: 'text', value: '' }] : []),
+    { label: 'Дата', type: 'date', value: today },
+    ...(type === 'Выдача' ? [{ label: 'Одолжили (другая организация, должны вернуть)', type: 'check', value: false }] : []),
+    { label: 'Примечание', type: 'text', value: '' },
+  ];
+  const res = await editDialog(title, fields, `Новая строка в таблице ${BOOK.G}, лист «Расходники».`, (d) => {
+    const nm = $('#ed0'); nm.onchange = () => { const r = [...rows].reverse().find((x) => consKey(x.name) === consKey(nm.value)); if (r && r.unit) d.set(2, r.unit); };
+  });
+  if (!res) return;
+  if (!String(res[0]).trim() || !(Number(res[1]) >= 0) || res[1] === '') { toast('Нужны наименование и количество', true); return; }
+  const hasWho = type === 'Выдача' || type === 'Возврат' || type === 'Приход';
+  const i = hasWho ? 4 : 3;
+  const lentNote = type === 'Выдача' && res[i + 1] ? 'одолжили — в долг' : '';
+  const note = [lentNote, res[res.length - 1]].filter(Boolean).join('; ');
+  store.addRow('G', 'Расходники', { date: res[i], type, who: hasWho ? res[3] : '', name: String(res[0]).trim(), qty: res[1], unit: res[2], note }, `${title}: ${res[0]} — ${res[1]} ${res[2]}`);
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-cons]'); if (b) { if (!store.canEditBook('G')) { toast(`Только просмотр: нет прав на запись в ${BOOK.G}.`, true); return; } addCons(b.dataset.cons); return; }
+  const w = e.target.closest('[data-consw]'); if (w) { consWeeks = +w.dataset.consw; try { localStorage.setItem('stroyka.consw', consWeeks); } catch { /* */ } renderStock(); }
+});
 
 /** «Склад» → «Потребность»: осталось сделать → сколько поддонов → сколько есть → сколько заказать; нормы правятся тут же */
 function needHtml() {
@@ -1754,6 +1813,7 @@ function fabItems() {
   const boss = !store.finLocked;
   return [
     ['people', '👷', 'Люди вышли сегодня'],
+    ['cons', '🧤', 'Выдал расходники (перчатки, диски…)'],
     ['week', '📏', `Объём за неделю · ${T.part} ${state.section}, ${floorName(state.floor).toLowerCase()}`],
     ['move-in', '🚚', 'Материал приехал'],
     ['move-feed', '⬆', `Подача материала ${LAYOUT === 'stack' ? 'на этаж' : 'в ' + T.levelAcc}`],
@@ -1774,6 +1834,7 @@ fabMenu.addEventListener('click', (e) => {
   const k = b.dataset.fab;
   if (k === 'people') { setTab('calendar'); state.day = isoToday(); renderCalendar(); const t = document.querySelector('#addType [data-t="Люди"]'); if (t) t.click(); document.querySelector('#addForm')?.scrollIntoView({ behavior: 'smooth' }); return; }
   if (k === 'week') { openWeekForm(state.section, state.floor); return; }
+  if (k === 'cons') { addCons('Выдача'); return; }
   if (k === 'expense') { state.money = 'exp'; setTab('money'); setTimeout(() => { const d = document.querySelector('#tab-money .add-exp'); if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth' }); } }, 50); return; }
   const t = document.createElement('button'); t.dataset.add = k; t.hidden = true; document.body.appendChild(t); t.click(); t.remove();
 });
