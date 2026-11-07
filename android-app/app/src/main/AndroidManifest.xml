@@ -19,6 +19,16 @@
         <package android:name="com.zvooq.openplay" />
         <package android:name="deezer.android.app" />
         <package android:name="com.soundcloud.android" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="org.telegram.messenger.web" />
+        <package android:name="org.thunderdog.challegram" />
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+        <package android:name="ru.oneme.app" />
+        <package android:name="com.vk.im" />
+        <package android:name="com.viber.voip" />
+        <package android:name="com.discord" />
+        <package android:name="org.thoughtcrime.securesms" />
     </queries>
 
     <application
@@ -86,6 +96,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <activity
+            android:name=".NowPlayingActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
 
         <activity
             android:name=".PlayerActivity"

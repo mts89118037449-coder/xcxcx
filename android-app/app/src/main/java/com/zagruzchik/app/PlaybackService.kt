@@ -38,7 +38,7 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true) // пауза, если выдернули наушники
             .build()
         val open = PendingIntent.getActivity(
-            this, 0, Intent(this, PlayerActivity::class.java),
+            this, 0, Intent(this, NowPlayingActivity::class.java), // для видео он сам переключит на PlayerActivity
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         session = MediaSession.Builder(this, player)

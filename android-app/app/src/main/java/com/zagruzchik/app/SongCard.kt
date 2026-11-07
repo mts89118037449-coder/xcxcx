@@ -87,19 +87,23 @@ object SongCard {
         return bmp
     }
 
-    /** Отправить карточку (картинка + текст со ссылками) в мессенджер. */
-    fun share(ctx: Context, t: Track, cover: Bitmap?, links: List<Transfer.Link>) {
+    /** Сообщение-карточка: картинка + текст со ссылками. Без выбора приложения — его добавляет вызывающий. */
+    fun intent(ctx: Context, t: Track, cover: Bitmap?, links: List<Transfer.Link>): Intent {
         val text = Transfer.shareText(t, links)
         val dir = File(ctx.cacheDir, "share").apply { mkdirs() }
         val file = File(dir, "song.png")
         file.outputStream().use { render(t, cover, links.map { it.service }).compress(Bitmap.CompressFormat.PNG, 100, it) }
         val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", file)
-        val send = Intent(Intent.ACTION_SEND)
+        return Intent(Intent.ACTION_SEND)
             .setType("image/png")
             .putExtra(Intent.EXTRA_STREAM, uri)
             .putExtra(Intent.EXTRA_TEXT, text)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        ctx.startActivity(Intent.createChooser(send, "Отправить карточку песни").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    /** Отправить карточку (картинка + текст со ссылками) — с выбором приложения. */
+    fun share(ctx: Context, t: Track, cover: Bitmap?, links: List<Transfer.Link>) {
+        ctx.startActivity(Intent.createChooser(intent(ctx, t, cover, links), "Отправить карточку песни").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     private fun drawText(c: Canvas, text: String, y: Float, size: Float, color: Int, bold: Boolean, maxLines: Int): Float {

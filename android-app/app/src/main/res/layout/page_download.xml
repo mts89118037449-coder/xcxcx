@@ -17,21 +17,21 @@
             style="?attr/textInputOutlinedStyle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Ссылка на видео или песню"
+            android:hint="Ссылка или название песни"
             app:boxCornerRadiusBottomEnd="16dp"
             app:boxCornerRadiusBottomStart="16dp"
             app:boxCornerRadiusTopEnd="16dp"
             app:boxCornerRadiusTopStart="16dp"
             app:endIconMode="clear_text"
-            app:helperText="Вставьте ссылку или нажмите «Поделиться» в любом приложении"
-            app:startIconDrawable="@drawable/ic_link">
+            app:helperText="Вставьте ссылку или напишите, что найти"
+            app:startIconDrawable="@drawable/ic_search">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:imeOptions="actionGo"
-                android:inputType="textUri"
+                android:inputType="text"
                 android:maxLines="1" />
         </com.google.android.material.textfield.TextInputLayout>
 
@@ -43,6 +43,45 @@
             android:layout_marginTop="8dp"
             android:text="Вставить из буфера"
             app:icon="@drawable/ic_content_paste" />
+
+        <!-- Результаты поиска по названию -->
+        <LinearLayout
+            android:id="@+id/searchBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <com.google.android.material.progressindicator.LinearProgressIndicator
+                android:id="@+id/searchProgress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:indeterminate="true"
+                app:trackCornerRadius="4dp" />
+
+            <TextView
+                android:id="@+id/searchEmpty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/searchResults"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
+
+        <!-- Всё для ссылки: формат, скачать, слушать -->
+        <LinearLayout
+            android:id="@+id/linkSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
 
         <TextView
             android:layout_width="wrap_content"
@@ -99,12 +138,24 @@
             app:iconGravity="textStart" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/listen"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="8dp"
+            android:text="Слушать сразу"
+            android:visibility="gone"
+            app:cornerRadius="20dp"
+            app:icon="@drawable/ic_play_arrow"
+            app:iconGravity="textStart" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/transfer"
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginTop="8dp"
-            android:text="Ссылки в других сервисах"
+            android:text="Где послушать"
             android:visibility="gone"
             app:cornerRadius="20dp"
             app:icon="@drawable/ic_link"
@@ -186,5 +237,6 @@
             android:text="Видео: YouTube, TikTok, VK, X, Instagram, Snapchat, Яндекс, Дзен, Rutube, файлы Discord.\nМузыка: Spotify, Яндекс Музыка, Apple Music, Deezer, VK, SoundCloud.\nИ ещё ~1800 сайтов."
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorOnSurfaceVariant" />
+        </LinearLayout>
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

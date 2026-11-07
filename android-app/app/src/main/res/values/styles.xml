@@ -78,6 +78,11 @@
         <item name="cornerSize">14dp</item>
     </style>
 
+    <style name="NowPlayingCoverShape">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">24dp</item>
+    </style>
+
     <style name="CoverShape">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">20dp</item>

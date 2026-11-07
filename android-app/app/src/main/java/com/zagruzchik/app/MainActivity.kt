@@ -48,6 +48,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var input: TextInputEditText
     private lateinit var formats: MaterialButtonToggleGroup
     private lateinit var transferBtn: MaterialButton
+    private lateinit var listenBtn: MaterialButton
+    private lateinit var linkSection: View
+    private lateinit var searchBox: View
+    private lateinit var searchResults: LinearLayout
+    private var searchSeq = 0
+    private val searchRun = Runnable { runSearch() }
     private lateinit var activeCard: MaterialCardView
     private lateinit var activeTitle: TextView
     private lateinit var activeProgress: LinearProgressIndicator
@@ -189,6 +195,13 @@ class MainActivity : AppCompatActivity() {
         input = findViewById(R.id.input)
         formats = findViewById(R.id.formats)
         transferBtn = findViewById(R.id.transfer)
+        listenBtn = findViewById(R.id.listen)
+        linkSection = findViewById(R.id.linkSection)
+        searchBox = findViewById(R.id.searchBox)
+        searchResults = findViewById(R.id.searchResults)
+        listenBtn.setOnClickListener {
+            Links.extract(input.text.toString())?.let { Playback.playLink(this, it, input.text.toString()) }
+        }
         activeCard = findViewById(R.id.activeCard)
         activeTitle = findViewById(R.id.activeTitle)
         activeProgress = findViewById(R.id.activeProgress)
@@ -196,7 +209,9 @@ class MainActivity : AppCompatActivity() {
         FormatPicker.setup(formats, null)
         input.doAfterTextChanged { onLinkChanged() }
         input.setOnEditorActionListener { _, action, _ ->
-            if (action == EditorInfo.IME_ACTION_GO) download()
+            if (action == EditorInfo.IME_ACTION_GO) {
+                if (Links.extract(input.text.toString()) != null) download() else hideKeyboard()
+            }
             true
         }
         // Крестик в поле: запоминаем ссылку, чтобы она не подставлялась из буфера снова.
@@ -212,16 +227,73 @@ class MainActivity : AppCompatActivity() {
         activeCard.setOnClickListener { showPage(R.id.nav_jobs) }
     }
 
+    /**
+     * Поле одно на всё: ссылка — показываем, что это, и кнопки «Скачать»/«Слушать»;
+     * просто текст — ищем песни по названию.
+     */
     private fun onLinkChanged() {
-        val url = Links.extract(input.text.toString())
+        val text = input.text?.toString().orEmpty()
+        val url = Links.extract(text)
         inputLayout.error = null
+        val searching = url == null && text.trim().length >= 2
+        linkSection.isVisible = !searching
+        searchBox.isVisible = searching
+        input.removeCallbacks(searchRun)
         inputLayout.helperText = when {
-            input.text.isNullOrBlank() -> "Вставьте ссылку или нажмите «Поделиться» в любом приложении"
-            url == null -> "Это не похоже на ссылку"
+            text.isBlank() -> "Вставьте ссылку или напишите, что найти"
+            searching -> "Поиск песен · нажмите ▶, чтобы слушать сразу"
+            url == null -> "Напишите хотя бы пару букв"
             else -> Describe.of(url)
         }
+        if (searching) {
+            findViewById<View>(R.id.searchProgress).isVisible = true
+            input.postDelayed(searchRun, 450) // ждём, пока человек допечатает
+            return
+        }
         FormatPicker.setup(formats, url)
-        transferBtn.isVisible = url != null && (Music.isMusic(url) || Service.of(url) == Service.YOUTUBE)
+        val music = url != null && (Music.isMusic(url) || Service.of(url) == Service.YOUTUBE)
+        transferBtn.isVisible = music
+        listenBtn.isVisible = url != null && Music.isMusic(url)
+        if (url != null && Music.isMusic(url)) Playback.prefetchLink(url, text) // к нажатию «Слушать» уже готово
+    }
+
+    private fun runSearch() {
+        val q = input.text?.toString()?.trim().orEmpty()
+        val seq = ++searchSeq
+        thread {
+            val found = runCatching { MusicSearch.search(q) }.getOrDefault(emptyList())
+            runOnUiThread { if (seq == searchSeq) showResults(q, found) }
+        }
+    }
+
+    private fun showResults(q: String, found: List<Track>) {
+        findViewById<View>(R.id.searchProgress).isVisible = false
+        val empty = findViewById<TextView>(R.id.searchEmpty)
+        empty.isVisible = found.isEmpty()
+        empty.text = "Ничего не нашлось по «$q». Попробуйте иначе или вставьте ссылку."
+        searchResults.removeAllViews()
+        // Первые три — начинаем готовить заранее, чтобы ▶ срабатывал быстро.
+        found.take(3).forEach { Streams.prefetch(it) }
+        found.forEach { t ->
+            val row = layoutInflater.inflate(R.layout.item_search, searchResults, false)
+            Images.into(row.findViewById(R.id.srCover), t.cover, R.drawable.ic_music_note)
+            row.findViewById<TextView>(R.id.srTitle).text = t.title
+            val d = if (t.durationSec > 0) " · %d:%02d".format(t.durationSec / 60, t.durationSec % 60) else ""
+            row.findViewById<TextView>(R.id.srSub).text = t.artist + d
+            val play = View.OnClickListener { hideKeyboard(); Playback.playTrack(this, t, t.url) }
+            row.setOnClickListener(play)
+            row.findViewById<View>(R.id.srPlay).setOnClickListener(play)
+            row.findViewById<View>(R.id.srDownload).setOnClickListener {
+                val u = t.url ?: return@setOnClickListener snack("Эту песню можно только послушать")
+                DownloadService.enqueue(this, u, Format.MP3, t.label)
+                snack("Скачиваю «${t.title}»")
+            }
+            searchResults.addView(row)
+        }
+    }
+
+    private fun hideKeyboard() {
+        getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.hideSoftInputFromWindow(input.windowToken, 0)
     }
 
     // Android разрешает читать буфер обмена, только когда окно в фокусе.
@@ -270,7 +342,7 @@ class MainActivity : AppCompatActivity() {
     private fun download() {
         val url = Links.extract(input.text.toString())
         if (url == null) {
-            inputLayout.error = "Вставьте ссылку"
+            inputLayout.error = "Вставьте ссылку или выберите песню из поиска"
             return
         }
         DownloadService.enqueue(this, url, FormatPicker.selected(formats), input.text.toString())
@@ -634,7 +706,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupMiniPlayer() {
         mini = findViewById(R.id.miniPlayer)
-        mini.setOnClickListener { startActivity(Intent(this, PlayerActivity::class.java)) }
+        mini.setOnClickListener { startActivity(Intent(this, NowPlayingActivity::class.java)) }
         findViewById<View>(R.id.miniPlay).setOnClickListener {
             controller?.let { if (it.isPlaying) it.pause() else it.play() }
         }

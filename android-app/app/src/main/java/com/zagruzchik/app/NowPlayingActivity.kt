@@ -1,0 +1,277 @@
+package com.zagruzchik.app
+
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.drawable.GradientDrawable
+import android.os.Bundle
+import android.view.View
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.graphics.ColorUtils
+import androidx.core.view.isVisible
+import androidx.media3.common.C
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.color.MaterialColors
+import com.google.android.material.imageview.ShapeableImageView
+import com.google.android.material.slider.Slider
+import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.R as M
+
+/**
+ * Экран «Сейчас играет» для музыки: большая обложка, фон в цвет обложки, перемотка,
+ * управление и три главных действия — скачать, сервисы, отправить.
+ * Видео показывается в [PlayerActivity].
+ */
+class NowPlayingActivity : AppCompatActivity() {
+
+    private var controller: MediaController? = null
+    private lateinit var cover: ShapeableImageView
+    private lateinit var title: TextView
+    private lateinit var artist: TextView
+    private lateinit var source: TextView
+    private lateinit var seek: Slider
+    private lateinit var pos: TextView
+    private lateinit var dur: TextView
+    private lateinit var play: MaterialButton
+    private lateinit var shuffle: MaterialButton
+    private lateinit var repeat: MaterialButton
+    private lateinit var download: MaterialButton
+    private lateinit var loading: View
+    private lateinit var status: TextView
+    private lateinit var retry: View
+    private var coverBitmap: Bitmap? = null
+    private var coverKey: Any? = null
+    private var seeking = false
+
+    private val listener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) = render()
+    }
+    private val pendingListener = { render() }
+    private val ticker = object : Runnable {
+        override fun run() {
+            updateProgress()
+            seek.postDelayed(this, 500)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_now_playing)
+        cover = findViewById(R.id.npCover)
+        title = findViewById(R.id.npTitle)
+        artist = findViewById(R.id.npArtist)
+        source = findViewById(R.id.npSource)
+        seek = findViewById(R.id.npSeek)
+        pos = findViewById(R.id.npPos)
+        dur = findViewById(R.id.npDur)
+        play = findViewById(R.id.npPlay)
+        shuffle = findViewById(R.id.npShuffle)
+        repeat = findViewById(R.id.npRepeat)
+        download = findViewById(R.id.npDownload)
+        loading = findViewById(R.id.npLoading)
+        status = findViewById(R.id.npStatus)
+        retry = findViewById(R.id.npRetry)
+
+        // Обложка — квадрат по меньшей стороне свободного места.
+        val box = findViewById<View>(R.id.npCoverBox)
+        val frame = findViewById<View>(R.id.npCoverFrame)
+        box.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
+            val side = minOf(r - l, b - t)
+            if (frame.layoutParams.width != side) frame.post { frame.layoutParams = frame.layoutParams.apply { width = side; height = side } }
+        }
+
+        findViewById<View>(R.id.npClose).setOnClickListener { finish() }
+        play.setOnClickListener { controller?.let { if (it.isPlaying) it.pause() else { if (it.playbackState == Player.STATE_ENDED) it.seekTo(0); it.play() } } }
+        findViewById<View>(R.id.npPrev).setOnClickListener { controller?.seekToPrevious() }
+        findViewById<View>(R.id.npNext).setOnClickListener { controller?.seekToNext() }
+        shuffle.setOnClickListener { controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
+        repeat.setOnClickListener {
+            controller?.let {
+                it.repeatMode = when (it.repeatMode) {
+                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                    else -> Player.REPEAT_MODE_OFF
+                }
+            }
+        }
+        seek.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
+            override fun onStartTrackingTouch(slider: Slider) { seeking = true }
+            override fun onStopTrackingTouch(slider: Slider) {
+                seeking = false
+                controller?.let { c -> if (c.duration > 0) c.seekTo((slider.value / 1000f * c.duration).toLong()) }
+            }
+        })
+        seek.addOnChangeListener { _, value, fromUser ->
+            val d = controller?.duration ?: 0
+            if (fromUser && d > 0) pos.text = time((value / 1000f * d).toLong())
+        }
+        retry.setOnClickListener { Playback.Pending.track?.let { Playback.playTrack(this, it) } }
+        val share = View.OnClickListener { share() }
+        findViewById<View>(R.id.npShare).setOnClickListener(share)
+        findViewById<View>(R.id.npShareTop).setOnClickListener(share)
+        findViewById<View>(R.id.npWhere).setOnClickListener {
+            currentTrack()?.let { TransferActivity.openTrack(this, it, extras()?.getString(Playback.X_SOURCE_URL)) }
+        }
+        download.setOnClickListener { downloadCurrent() }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        Playback.Pending.listen(pendingListener)
+        Playback.controller(this) { c ->
+            controller = c
+            c.addListener(listener)
+            render()
+        }
+        render()
+        seek.post(ticker)
+    }
+
+    override fun onStop() {
+        Playback.Pending.unlisten(pendingListener)
+        controller?.removeListener(listener)
+        controller = null
+        seek.removeCallbacks(ticker)
+        super.onStop()
+    }
+
+    private fun extras(): Bundle? = controller?.mediaMetadata?.extras
+
+    /** Пока поток готовится — показываем песню из запроса, когда заиграла — из проигрывателя. */
+    private fun showingPending(): Boolean {
+        val p = Playback.Pending
+        return p.track != null && (p.loading || p.error != null)
+    }
+
+    private fun currentTrack(): Track? {
+        if (showingPending()) return Playback.Pending.track
+        val m = controller?.mediaMetadata ?: return null
+        val t = m.title?.toString() ?: return null
+        return Track(t, m.artist?.toString().orEmpty(), cover = m.artworkUri?.toString())
+    }
+
+    private fun render() {
+        val c = controller
+        // Видео — на отдельный экран.
+        if (c != null && !showingPending() && c.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) {
+            startActivity(Intent(this, PlayerActivity::class.java))
+            finish()
+            return
+        }
+        val pending = showingPending()
+        val p = Playback.Pending
+        loading.isVisible = pending
+        if (pending) {
+            val t = p.track!!
+            title.text = t.title
+            artist.text = t.artist
+            source.text = if (p.error != null) "Не получилось включить" else "Ищу, где послушать: SoundCloud, YouTube Music, YouTube"
+            status.text = p.error ?: "Готовлю…"
+            findViewById<View>(R.id.npSpinner).isVisible = p.error == null
+            retry.isVisible = p.error != null
+            setCover(t.cover ?: LinkCache.get(t)?.track?.cover, null)
+        } else if (c != null && c.mediaItemCount > 0) {
+            val m = c.mediaMetadata
+            title.text = m.title ?: "Без названия"
+            artist.text = listOfNotNull(m.artist, m.albumTitle).joinToString(" · ")
+            val src = m.extras?.getString(Playback.X_SOURCE)
+            source.text = when {
+                src == null -> ""
+                src == "Скачано" -> "Из загрузок"
+                else -> "Играет из $src · без скачивания"
+            }
+            setCover(m.artworkUri?.toString(), m.artworkData)
+        }
+        val playing = c?.isPlaying == true
+        play.setIconResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play_arrow)
+        play.contentDescription = if (playing) "Пауза" else "Играть"
+        play.isEnabled = !pending
+        shuffle.alpha = if (c?.shuffleModeEnabled == true) 1f else 0.45f
+        repeat.alpha = if (c?.repeatMode == Player.REPEAT_MODE_OFF || c == null) 0.45f else 1f
+        repeat.setIconResource(if (c?.repeatMode == Player.REPEAT_MODE_ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat)
+        val local = extras()?.getString(Playback.X_LOCAL_URI) != null && !pending
+        download.isEnabled = !local && !pending
+        download.text = if (local) "Скачано" else "Скачать"
+        download.setIconResource(if (local) R.drawable.ic_check_circle else R.drawable.ic_download)
+        updateProgress()
+        // Ссылки для «Отправить» готовим сразу, пока песня играет.
+        currentTrack()?.let { LinkCache.prefetch(it, extras()?.getString(Playback.X_SOURCE_URL)) }
+    }
+
+    private fun setCover(url: String?, data: ByteArray?) {
+        val key: Any? = data?.contentHashCode() ?: url
+        if (key == coverKey && coverBitmap != null) return
+        coverKey = key
+        if (data != null) {
+            BitmapFactory.decodeByteArray(data, 0, data.size)?.let { applyCover(it); return }
+        }
+        if (url == null) {
+            coverBitmap = null
+            cover.setImageResource(R.drawable.player_artwork)
+            paintBackground(null)
+            return
+        }
+        Images.load(url) { if (coverKey == key) applyCover(it) }
+    }
+
+    private fun applyCover(b: Bitmap) {
+        coverBitmap = b
+        cover.setImageBitmap(b)
+        paintBackground(b)
+    }
+
+    /** Фон: цвет обложки сверху, плавно уходящий в обычный фон. */
+    private fun paintBackground(b: Bitmap?) {
+        val surface = MaterialColors.getColor(cover, M.attr.colorSurface)
+        val top = if (b == null) surface else ColorUtils.blendARGB(Images.dominant(b), surface, 0.45f)
+        findViewById<View>(R.id.npBackground).background =
+            GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(top, surface, surface))
+    }
+
+    private fun updateProgress() {
+        val c = controller ?: return
+        if (showingPending()) {
+            seek.value = 0f; pos.text = "0:00"; dur.text = "0:00"; return
+        }
+        val d = c.duration
+        if (d > 0 && !seeking) {
+            seek.value = (c.currentPosition * 1000f / d).coerceIn(0f, 1000f)
+            pos.text = time(c.currentPosition)
+        }
+        dur.text = if (d > 0) time(d) else "0:00"
+    }
+
+    private fun time(ms: Long): String {
+        val s = ms / 1000
+        return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
+    }
+
+    private fun share() {
+        val t = currentTrack() ?: return
+        val x = extras()
+        val local = x?.getString(Playback.X_LOCAL_URI)?.let {
+            SongShareSheet.LocalFile(it, x.getString(Playback.X_LOCAL_MIME) ?: "audio/mpeg", x.getString(Playback.X_LOCAL_NAME) ?: "песня")
+        }
+        SongShareSheet.show(this, t, x?.getString(Playback.X_SOURCE_URL), local, coverBitmap)
+    }
+
+    /** Скачать то, что звучит сейчас: по странице потока — без повторного поиска. */
+    private fun downloadCurrent() {
+        val x = extras() ?: return
+        val url = x.getString(Playback.X_PAGE_URL) ?: x.getString(Playback.X_SOURCE_URL) ?: return
+        val t = currentTrack()
+        DownloadService.enqueue(this, url, Format.MP3, t?.label)
+        Snackbar.make(seek, "Скачиваю «${t?.title ?: "песню"}»", Snackbar.LENGTH_LONG)
+            .setAction("Загрузки") {
+                startActivity(Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_SHOW_JOBS, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            }
+            .show()
+        download.isEnabled = false
+        download.text = "Качаю…"
+    }
+}

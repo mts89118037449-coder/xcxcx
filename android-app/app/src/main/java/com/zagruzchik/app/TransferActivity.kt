@@ -67,14 +67,16 @@ class TransferActivity : AppCompatActivity() {
         openMine = findViewById(R.id.openMine)
         sourceView.text = url?.let { Describe.of(it) } ?: "Из загрузок"
 
-        // Карточка песни: картинка + все ссылки одним сообщением.
+        // «Отправить» — та же панель, что в плеере: мессенджеры в одно нажатие, копировать ссылки и т.д.
         findViewById<View>(R.id.shareAll).setOnClickListener {
             val t = track ?: return@setOnClickListener
-            SongCard.share(this, t, coverBitmap, Transfer.ORDER.mapNotNull { links[it] })
+            SongShareSheet.show(this, t, url, null, coverBitmap)
         }
+        // ▶ — слушать сразу, без скачивания.
         findViewById<View>(R.id.copyAll).setOnClickListener {
             val t = track ?: return@setOnClickListener
-            copy(Transfer.shareText(t, Transfer.ORDER.mapNotNull { links[it] }), "Все ссылки скопированы")
+            val u = url
+            if (givenTrack == null && u != null) Playback.playLink(this, u, hint) else Playback.playTrack(this, t, u)
         }
         findViewById<View>(R.id.mp3).isVisible = url != null && givenTrack == null
         findViewById<View>(R.id.mp3).setOnClickListener {

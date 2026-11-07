@@ -246,12 +246,36 @@ object Downloader {
     private fun search(query: String, source: String): List<Candidate> {
         val r = YoutubeDLRequest(query).apply {
             addOption("--flat-playlist")
+            addOption("--cache-dir", cacheDir())
             addOption("--playlist-end", "8")
             addOption("--no-warnings")
             addOption("--print", "%(url)s\t%(title)s\t%(artist,artists,creator,uploader,channel)s\t%(duration)s")
         }
         val out = runCatching { YoutubeDL.getInstance().execute(r).out }.getOrNull() ?: return emptyList()
         return parseSearch(out, source)
+    }
+
+    /** Кэш yt-dlp (данные SoundCloud, плеер YouTube) — со второго запроса всё заметно быстрее. */
+    private fun cacheDir() = File(App.instance.cacheDir, "yt-dlp").apply { mkdirs() }.absolutePath
+
+    /** Быстрый поиск без разбора каждого результата — для выбора лучшего варианта. */
+    internal fun searchCandidates(query: String, source: String) = search(query, source)
+
+    /** Прямая ссылка на звук для одной страницы (SoundCloud/YouTube). null — не играет (DRM и т.п.). */
+    fun streamOf(pageUrl: String, source: String, title: String): StreamInfo? {
+        val r = YoutubeDLRequest(pageUrl).apply {
+            addOption("--skip-download")
+            addOption("--no-warnings")
+            addOption("--no-playlist")
+            addOption("--cache-dir", cacheDir())
+            addOption("-f", "bestaudio[protocol^=http]/bestaudio[protocol=m3u8_native]/bestaudio")
+            addOption("--print", "%(url)j\t%(thumbnail)j\t%(webpage_url)s")
+        }
+        val out = runCatching { YoutubeDL.getInstance().execute(r).out }.getOrNull() ?: return null
+        val f = out.lines().firstOrNull { it.contains('\t') }?.split('\t') ?: return null
+        fun json(s: String) = runCatching { org.json.JSONTokener(s).nextValue() as? String }.getOrNull()
+        val url = json(f[0])?.takeIf { it.startsWith("http") } ?: return null
+        return StreamInfo(url, f.getOrNull(2)?.takeIf { it.startsWith("http") } ?: pageUrl, source, json(f.getOrElse(1) { "" }), title)
     }
 
     /** Разбирает вывод поиска yt-dlp: «ссылка⇥название⇥автор⇥длительность» по строке на результат. */
@@ -288,6 +312,7 @@ object Downloader {
 
     private fun baseRequest(source: String, dir: File, ctx: Context, format: Format) = YoutubeDLRequest(source).apply {
         addOption("--no-playlist")
+        addOption("--cache-dir", cacheDir())
         addOption("--no-mtime")
         addOption("-N", "4") // фрагменты потока качаются в 4 потока — заметно быстрее для HLS/DASH
         addOption("--embed-metadata")

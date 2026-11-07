@@ -11,6 +11,8 @@ data class Track(
     val durationSec: Int = 0,
     val isrc: String? = null,
     val cover: String? = null,
+    /** Страница трека в каталоге (Deezer/Apple) — по ней трек можно скачать. */
+    val url: String? = null,
 ) {
     val label get() = if (artist.isEmpty()) title else "$artist — $title"
     val query get() = "$artist $title".trim()
@@ -247,6 +249,7 @@ object AppleSource {
     fun track(o: JSONObject) = Track(
         o.optString("trackName"), o.optString("artistName"), o.optInt("trackTimeMillis") / 1000,
         cover = o.optString("artworkUrl100").takeIf { it.isNotEmpty() }?.replace("100x100", "600x600"),
+        url = o.optString("trackViewUrl").takeIf { it.isNotEmpty() }?.substringBefore("&uo="),
     )
 
     fun resolve(url: String): MusicItem {
@@ -274,6 +277,7 @@ object DeezerSource {
         o.optString("title"), o.optJSONObject("artist")?.optString("name").orEmpty(), o.optInt("duration"),
         isrc = o.optString("isrc").takeIf { it.isNotEmpty() },
         cover = o.optJSONObject("album")?.optString("cover_big")?.takeIf { it.isNotEmpty() },
+        url = o.optString("link").takeIf { it.isNotEmpty() },
     )
 
     fun resolve(url: String): MusicItem {

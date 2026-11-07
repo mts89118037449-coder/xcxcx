@@ -56,6 +56,25 @@ class ShareActivity : AppCompatActivity() {
         val download = view.findViewById<MaterialButton>(R.id.download)
         val transfer = view.findViewById<MaterialButton>(R.id.transfer)
         transfer.isVisible = music
+        transfer.text = "Где послушать"
+        // Музыка: главное — «Слушать» (сразу, без скачивания). Песню начинаем готовить уже сейчас.
+        val listen = view.findViewById<MaterialButton>(R.id.listen)
+        listen.isVisible = music
+        if (music) {
+            Playback.prefetchLink(url, shared)
+            view.findViewById<android.view.View>(R.id.formats).isVisible = !Music.needsSearch(url)
+            download.text = "Скачать MP3"
+            download.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                com.google.android.material.color.MaterialColors.getColor(download, com.google.android.material.R.attr.colorSecondaryContainer))
+            download.setTextColor(com.google.android.material.color.MaterialColors.getColor(download, com.google.android.material.R.attr.colorOnSecondaryContainer))
+            download.iconTint = download.textColors
+            listen.setOnClickListener {
+                started = true
+                handler.removeCallbacksAndMessages(null)
+                Playback.playLink(this, url, shared)
+                sheet.dismiss()
+            }
+        }
         // Пришли через быструю кнопку «Скачать» — сразу качаем в формате по умолчанию.
         val quickDownload = intent.getStringExtra(androidx.core.content.pm.ShortcutManagerCompat.EXTRA_SHORTCUT_ID) == Shortcuts.ID_DOWNLOAD
 
