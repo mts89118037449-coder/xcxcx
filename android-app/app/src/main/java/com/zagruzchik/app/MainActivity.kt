@@ -73,6 +73,7 @@ class MainActivity : Activity() {
             addView(text("В любом приложении нажмите «Поделиться» → «Загрузчик». Или вставьте ссылку сюда:", 15f, muted = true))
             addView(inputRow)
             Format.entries.forEach { f -> addView(button(f.label, primary = f == Format.BEST) { download(f) }) }
+            addView(button("🔗 Ссылки в других сервисах", primary = false) { transfer() })
             addView(text("Файлы сохраняются в «Загрузки/${Storage.FOLDER}».", 13f, muted = true))
 
             addView(spacer(24))
@@ -89,7 +90,7 @@ class MainActivity : Activity() {
             addView(button("Выйти из всех аккаунтов", primary = false) { logoutAll() })
 
             addView(spacer(28))
-            addView(text("YouTube, TikTok, Instagram, X, VK, Rutube, SoundCloud, Spotify и ещё ~1800 сайтов.", 13f, muted = true))
+            addView(text("Видео: YouTube, TikTok, VK, X, Instagram, Snapchat, Яндекс, Дзен, Rutube, файлы Discord. Музыка: Spotify, Яндекс Музыка, Apple Music, Deezer, SoundCloud, VK. И ещё ~1800 сайтов.", 13f, muted = true))
         }
         setContentView(ScrollView(this).apply { addView(root) })
 
@@ -160,6 +161,16 @@ class MainActivity : Activity() {
         }
         DownloadService.enqueue(this, url, format)
         input.setText("")
+    }
+
+    private fun transfer() {
+        val url = Links.extract(input.text.toString())
+        when {
+            url == null -> Toast.makeText(this, "Вставьте ссылку на песню", Toast.LENGTH_SHORT).show()
+            !Music.isMusic(url) && Service.of(url) != Service.YOUTUBE ->
+                Toast.makeText(this, "Нужна ссылка на песню: Spotify, Яндекс Музыка, Apple Music, YouTube, VK, Deezer, SoundCloud", Toast.LENGTH_LONG).show()
+            else -> TransferActivity.open(this, url, input.text.toString())
+        }
     }
 
     // ---------- Список загрузок ----------
@@ -243,7 +254,7 @@ class MainActivity : Activity() {
                     Status.FAILED, Status.CANCELLED -> {
                         actions.addView(action("Повторить") {
                             Jobs.remove(job.id)
-                            DownloadService.enqueue(this@MainActivity, job.url, job.format)
+                            DownloadService.enqueue(this@MainActivity, job.url, job.format, job.hint)
                         })
                         actions.addView(action("✕", "Убрать из списка") { Jobs.remove(job.id) })
                     }

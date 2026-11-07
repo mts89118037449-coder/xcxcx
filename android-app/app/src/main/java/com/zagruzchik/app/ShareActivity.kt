@@ -16,17 +16,21 @@ class ShareActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var secondsLeft = 8
     private var url: String = ""
+    private var hint: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        url = Links.extract(intent.getStringExtra(Intent.EXTRA_TEXT) ?: intent.dataString) ?: run {
+        val shared = intent.getStringExtra(Intent.EXTRA_TEXT) ?: intent.dataString
+        hint = shared
+        url = Links.extract(shared) ?: run {
             Toast.makeText(this, "В том, чем поделились, нет ссылки", Toast.LENGTH_LONG).show()
             finish()
             return
         }
 
         val default = Links.defaultFormat(url)
-        val formats = if (Spotify.isSpotify(url)) listOf(Format.MP3) else Format.entries.toList()
+        val music = Music.isMusic(url)
+        val formats = if (Music.needsSearch(url)) listOf(Format.MP3) else Format.entries.toList()
 
         val root = column(22).apply {
             background = GradientDrawable().apply {
@@ -46,10 +50,19 @@ class ShareActivity : Activity() {
             if (f == default) defaultButton = b
             root.addView(b)
         }
+        if (music) {
+            root.addView(button("🔗 Ссылки в других сервисах", primary = false) {
+                handler.removeCallbacksAndMessages(null)
+                TransferActivity.open(this, url, hint)
+                finish()
+            })
+        }
         setContentView(root)
         window.setLayout((resources.displayMetrics.widthPixels * 0.9).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
 
         // Если ничего не нажать, через 8 секунд начнётся загрузка в формате по умолчанию.
+        // Для музыки не торопим: человек мог прийти за ссылками в других сервисах.
+        if (music) return
         val tick = object : Runnable {
             override fun run() {
                 if (secondsLeft == 0) return start(default)
@@ -64,7 +77,7 @@ class ShareActivity : Activity() {
     private fun start(format: Format) {
         handler.removeCallbacksAndMessages(null)
         if (isFinishing) return
-        DownloadService.enqueue(this, url, format)
+        DownloadService.enqueue(this, url, format, hint)
         // Сразу показываем приложение со списком загрузок и прогрессом.
         startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
         finish()

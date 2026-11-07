@@ -25,92 +25,12 @@ class UserError(message: String) : Exception(message)
 
 object Links {
     private val URL_RE = Regex("""https?://[^\s<>"«»]+""")
-    private val MUSIC = listOf("music.youtube.com", "soundcloud.com", "music.yandex", "bandcamp.com", "spotify.com", "spotify.link")
 
     /** Приложения делятся текстом вида «Смотри! https://vm.tiktok.com/…» — достаём только ссылку. */
     fun extract(text: String?): String? =
         text?.let { URL_RE.find(it)?.value?.trimEnd('.', ',', ')', '!', '?') }
 
-    fun defaultFormat(url: String) = if (MUSIC.any { url.contains(it) }) Format.MP3 else Format.BEST
-}
-
-/**
- * Spotify отдаёт музыку только в зашифрованном виде, поэтому берём список треков
- * (название + исполнитель) со страницы Spotify и ищем каждый трек на YouTube.
- * Работает для треков, альбомов и плейлистов.
- */
-object Spotify {
-    data class Track(val title: String, val artist: String)
-    data class Item(val type: String, val name: String, val tracks: List<Track>)
-
-    private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36"
-    private const val DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
-    private val ID_RE = Regex("""(track|album|playlist)/([A-Za-z0-9]+)""")
-
-    fun isSpotify(url: String) = url.contains("spotify.com/") || url.contains("spotify.link/")
-
-    private fun get(url: String): String {
-        val conn = URL(url).openConnection() as HttpURLConnection
-        conn.setRequestProperty("User-Agent", UA)
-        conn.connectTimeout = 15_000
-        conn.readTimeout = 15_000
-        return conn.inputStream.bufferedReader().use { it.readText() }
-    }
-
-    /**
-     * Короткие ссылки spotify.link для телефона ведут в приложение Spotify (intent://),
-     * поэтому притворяемся компьютером и сами смотрим, куда ведёт перенаправление.
-     */
-    private fun expandShortLink(url: String): String {
-        var current = url
-        repeat(5) {
-            val conn = URL(current).openConnection() as HttpURLConnection
-            conn.instanceFollowRedirects = false
-            conn.setRequestProperty("User-Agent", DESKTOP_UA)
-            conn.connectTimeout = 15_000
-            conn.readTimeout = 15_000
-            val location = conn.getHeaderField("Location")
-            if (location == null) {
-                val body = runCatching { conn.inputStream.bufferedReader().use { it.readText() } }.getOrDefault("")
-                conn.disconnect()
-                return body
-            }
-            conn.disconnect()
-            if (ID_RE.containsMatchIn(location)) return location
-            val next = runCatching { URL(URL(current), location).toString() }.getOrNull() ?: return location // intent:// и т.п.
-            if (!next.startsWith("http")) return location
-            current = next
-        }
-        return current
-    }
-
-    private fun clean(s: String) = s.replace('\u00A0', ' ').replace(Regex("\\s+"), " ").trim()
-
-    fun resolve(url: String): Item {
-        val m = ID_RE.find(url) ?: ID_RE.find(expandShortLink(url))
-            ?: throw UserError("Не понял ссылку Spotify. Нужна ссылка на трек, альбом или плейлист.")
-        val (type, id) = m.destructured
-
-        val page = get("https://open.spotify.com/embed/$type/$id")
-        val json = Regex("""<script id="__NEXT_DATA__" type="application/json">(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
-            .find(page)?.groupValues?.get(1) ?: throw UserError("Spotify не отдал данные. Попробуйте позже.")
-        val e = JSONObject(json).getJSONObject("props").getJSONObject("pageProps")
-            .getJSONObject("state").getJSONObject("data").getJSONObject("entity")
-        val name = clean(e.optString("name", e.optString("title")))
-
-        if (type == "track") {
-            val artists = e.optJSONArray("artists")
-            val artist = (0 until (artists?.length() ?: 0)).joinToString(", ") { artists!!.getJSONObject(it).optString("name") }
-            return Item(type, name, listOf(Track(name, clean(artist))))
-        }
-        val list = e.optJSONArray("trackList") ?: throw UserError("В этом $type нет треков")
-        val tracks = (0 until list.length()).map {
-            val t = list.getJSONObject(it)
-            Track(clean(t.optString("title")), clean(t.optString("subtitle")))
-        }.filter { it.title.isNotEmpty() }
-        if (tracks.isEmpty()) throw UserError("Spotify не показал треки. Возможно, плейлист закрытый.")
-        return Item(type, name, tracks)
-    }
+    fun defaultFormat(url: String) = if (Music.isMusic(url) || url.contains("bandcamp.com")) Format.MP3 else Format.BEST
 }
 
 /** Позволяет остановить загрузку: помечаем отмену и убиваем текущий процесс yt-dlp. */
@@ -141,24 +61,28 @@ object Downloader {
     private val DESTINATION = Regex("""Destination: (.+)$""")
     private val SPEED = Regex("""of\s+~?\s*([\d.]+\w+)\s+at\s+([\d.]+\w+/s)(?:\s+ETA\s+(\S+))?""")
 
-    fun download(ctx: Context, url: String, format: Format, jobId: String, token: CancelToken, ui: DownloadListener): Result {
+    fun download(
+        ctx: Context, url: String, format: Format, jobId: String, token: CancelToken, ui: DownloadListener, hint: String? = null,
+    ): Result {
         App.awaitReady()
         if (token.cancelled) throw CancelledError()
+        if (Regex("""discord(app)?\.com/channels/""").containsMatchIn(url)) {
+            throw UserError("Discord: откройте вложение и скопируйте ссылку на сам файл (cdn.discordapp.com/…), а не на сообщение.")
+        }
         val dir = File(ctx.cacheDir, "dl/$jobId").apply { deleteRecursively(); mkdirs() }
         try {
-            if (Spotify.isSpotify(url)) return downloadSpotify(url, dir, jobId, ctx, token, ui)
-
-            val request = baseRequest(url, dir, ctx, format)
-            request.addOption("-o", "%(title).80B [%(id)s].%(ext)s")
-            var titled = false
-            execute(request, jobId, token) { p, line ->
-                if (!titled) DESTINATION.find(line)?.let {
-                    titled = true
-                    ui.onTitle(File(it.groupValues[1]).nameWithoutExtension.replace(Regex("""\.f\d+$"""), "").replace(Regex("""\s*\[[^\]]+]$"""), "").trim())
+            if (Music.needsSearch(url)) return downloadMusic(Music.resolve(url, hint), dir, jobId, ctx, token, ui)
+            if (Service.of(url) == Service.YANDEX) {
+                // Сначала пробуем оригинальный звук Яндекса, если не вышло — тот же трек с YouTube.
+                try {
+                    return downloadDirect(url, Format.MP3, dir, jobId, ctx, token, ui)
+                } catch (e: UserError) {
+                    if (token.cancelled) throw e
+                    dir.listFiles()?.forEach { it.delete() }
+                    return downloadMusic(Music.resolve(url, hint), dir, jobId, ctx, token, ui)
                 }
-                ui.onProgress(p, speed(line))
             }
-            return Result(collect(dir))
+            return downloadDirect(url, format, dir, jobId, ctx, token, ui)
         } catch (e: Exception) {
             if (token.cancelled) {
                 dir.deleteRecursively()
@@ -168,6 +92,31 @@ object Downloader {
         }
     }
 
+    private fun downloadDirect(url: String, format: Format, dir: File, jobId: String, ctx: Context, token: CancelToken, ui: DownloadListener): Result {
+        val request = baseRequest(url, dir, ctx, format)
+        request.addOption("-o", "%(title).80B [%(id)s].%(ext)s")
+        var titled = false
+        execute(request, jobId, token) { p, line ->
+            if (!titled) DESTINATION.find(line)?.let {
+                titled = true
+                ui.onTitle(File(it.groupValues[1]).nameWithoutExtension.replace(Regex("""\.f\d+$"""), "").replace(Regex("""\s*\[[^\]]+]$"""), "").trim())
+            }
+            ui.onProgress(p, speed(line))
+        }
+        return Result(collect(dir))
+    }
+
+    /** Ищет видео на YouTube и возвращает его id (для трансфера). */
+    fun youtubeId(query: String): String? {
+        App.awaitReady()
+        val r = YoutubeDLRequest("ytsearch1:$query").apply {
+            addOption("--flat-playlist")
+            addOption("--print", "id")
+            addOption("--no-warnings")
+        }
+        return runCatching { YoutubeDL.getInstance().execute(r).out.lines().map { it.trim() }.firstOrNull { it.length == 11 } }.getOrNull()
+    }
+
     /** «10.5MiB · 2.3MiB/s · осталось 00:05» из строки прогресса yt-dlp. */
     private fun speed(line: String): String {
         val m = SPEED.find(line) ?: return ""
@@ -175,31 +124,28 @@ object Downloader {
         return listOfNotNull(size, rate, eta.takeIf { it.isNotEmpty() && it != "Unknown" }?.let { "осталось $it" }).joinToString(" · ")
     }
 
-    private fun downloadSpotify(url: String, dir: File, jobId: String, ctx: Context, token: CancelToken, ui: DownloadListener): Result {
-        ui.onProgress(0f, "Читаю Spotify…")
-        val item = Spotify.resolve(url)
+    private fun downloadMusic(item: MusicItem, dir: File, jobId: String, ctx: Context, token: CancelToken, ui: DownloadListener): Result {
         val n = item.tracks.size
-        ui.onTitle(if (n > 1) "${item.name} ($n)" else item.tracks.first().let { if (it.artist.isEmpty()) it.title else "${it.artist} — ${it.title}" })
+        ui.onTitle(if (n > 1) "${item.name} ($n)" else item.tracks.first().label)
         var failed = 0
         var lastError: UserError? = null
         item.tracks.forEachIndexed { i, t ->
             if (token.cancelled) throw CancelledError()
-            val label = if (t.artist.isEmpty()) t.title else "${t.artist} — ${t.title}"
-            val prefix = if (n > 1) "${i + 1}/$n: $label" else ""
+            val prefix = if (n > 1) "${i + 1}/$n: ${t.label}" else ""
             ui.onProgress(i * 100f / n, prefix)
-            val request = baseRequest("ytsearch1:${t.artist} - ${t.title} audio", dir, ctx, Format.MP3).apply {
-                addOption("-o", "${safeName(label)}.%(ext)s")
-                // Теги MP3 — как в Spotify, а не как в названии ролика на YouTube.
-                tag(this, "title", t.title)
-                tag(this, "track", t.title)
-                if (t.artist.isNotEmpty()) tag(this, "artist", t.artist)
-                if (item.type == "album") tag(this, "album", item.name)
+            val before = mp3s(dir).size
+            val progress: (Float, String) -> Unit = { p, line ->
+                val detail = listOf(prefix, speed(line)).filter { it.isNotEmpty() }.joinToString(" · ")
+                ui.onProgress((i + p.coerceIn(0f, 100f) / 100f) * 100f / n, detail)
             }
             try {
-                execute(request, "$jobId-$i", token) { p, line ->
-                    val detail = listOf(prefix, speed(line)).filter { it.isNotEmpty() }.joinToString(" · ")
-                    ui.onProgress((i + p.coerceIn(0f, 100f) / 100f) * 100f / n, detail)
+                // Если известна длительность — берём из первых 5 результатов тот, что совпадает по времени
+                // (так не попадаются часовые версии, клипы с длинным вступлением и т.п.).
+                if (t.durationSec > 0) {
+                    runCatching { execute(trackRequest(t, item, dir, ctx, byDuration = true), "$jobId-$i-d", token, progress) }
+                        .onFailure { if (it is CancelledError) throw it }
                 }
+                if (mp3s(dir).size == before) execute(trackRequest(t, item, dir, ctx, byDuration = false), "$jobId-$i", token, progress)
             } catch (e: UserError) {
                 if (token.cancelled) throw CancelledError()
                 if (n == 1) throw e
@@ -207,9 +153,27 @@ object Downloader {
                 lastError = e
             }
         }
-        val files = dir.listFiles().orEmpty().filter { it.isFile && it.extension == "mp3" }
+        val files = mp3s(dir)
         if (files.isEmpty()) throw lastError ?: UserError("Не удалось скачать ни одного трека.")
         return Result(files, subfolder = if (n > 1) safeName(item.name) else null, failed = failed)
+    }
+
+    private fun mp3s(dir: File) = dir.listFiles().orEmpty().filter { it.isFile && it.extension == "mp3" }
+
+    private fun trackRequest(t: Track, item: MusicItem, dir: File, ctx: Context, byDuration: Boolean): YoutubeDLRequest {
+        val source = if (byDuration) "ytsearch5:${t.query}" else "ytsearch1:${t.query} audio"
+        return baseRequest(source, dir, ctx, Format.MP3).apply {
+            addOption("-o", "${safeName(t.label)}.%(ext)s")
+            if (byDuration) {
+                addOption("--match-filter", "duration >= ${t.durationSec - 15} & duration <= ${t.durationSec + 15}")
+                addOption("--max-downloads", "1")
+            }
+            // Теги MP3 — как в музыкальном сервисе, а не как в названии ролика на YouTube.
+            tag(this, "title", t.title)
+            tag(this, "track", t.title)
+            if (t.artist.isNotEmpty()) tag(this, "artist", t.artist)
+            if (item.type == "album") tag(this, "album", item.name)
+        }
     }
 
     private fun baseRequest(source: String, dir: File, ctx: Context, format: Format) = YoutubeDLRequest(source).apply {

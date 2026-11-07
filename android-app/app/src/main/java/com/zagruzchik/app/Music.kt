@@ -1,0 +1,366 @@
+package com.zagruzchik.app
+
+import android.net.Uri
+import org.json.JSONArray
+import org.json.JSONObject
+
+/** Трек в «нейтральном» виде: по нему ищем этот же трек в других сервисах и на YouTube. */
+data class Track(
+    val title: String,
+    val artist: String,
+    val durationSec: Int = 0,
+    val isrc: String? = null,
+    val cover: String? = null,
+) {
+    val label get() = if (artist.isEmpty()) title else "$artist — $title"
+    val query get() = "$artist $title".trim()
+}
+
+/** Трек, альбом или плейлист. */
+data class MusicItem(val type: String, val name: String, val tracks: List<Track>, val source: Service)
+
+/** Музыкальные сервисы: откуда можно взять ссылку и куда сделать трансфер. */
+enum class Service(val title: String) {
+    SPOTIFY("Spotify"),
+    YANDEX("Яндекс Музыка"),
+    APPLE("Apple Music"),
+    YOUTUBE_MUSIC("YouTube Music"),
+    YOUTUBE("YouTube"),
+    VK("VK Музыка"),
+    DEEZER("Deezer"),
+    SOUNDCLOUD("SoundCloud");
+
+    /** Ссылка на поиск внутри сервиса — когда точную ссылку найти не удалось. */
+    fun searchUrl(q: String): String {
+        val e = Http.enc(q)
+        return when (this) {
+            SPOTIFY -> "https://open.spotify.com/search/${Uri.encode(q)}"
+            YANDEX -> "https://music.yandex.ru/search?text=$e"
+            APPLE -> "https://music.apple.com/us/search?term=$e"
+            YOUTUBE_MUSIC -> "https://music.youtube.com/search?q=$e"
+            YOUTUBE -> "https://www.youtube.com/results?search_query=$e"
+            VK -> "https://vk.com/audio?q=$e"
+            DEEZER -> "https://www.deezer.com/search/${Uri.encode(q)}"
+            SOUNDCLOUD -> "https://soundcloud.com/search/sounds?q=$e"
+        }
+    }
+
+    companion object {
+        fun of(url: String): Service? {
+            val host = runCatching { Uri.parse(url).host.orEmpty().lowercase().removePrefix("www.").removePrefix("m.") }.getOrDefault("")
+            return when {
+                host.endsWith("spotify.com") || host == "spotify.link" -> SPOTIFY
+                host.startsWith("music.yandex.") -> YANDEX
+                host == "music.apple.com" || host == "itunes.apple.com" -> APPLE
+                host == "music.youtube.com" -> YOUTUBE_MUSIC
+                host == "youtube.com" || host == "youtu.be" -> YOUTUBE
+                (host == "vk.com" || host == "vk.ru") && (url.contains("/audio") || url.contains("/music")) -> VK
+                host.endsWith("deezer.com") || host == "deezer.page.link" || host == "link.deezer.com" || host == "dzr.page.link" -> DEEZER
+                host.endsWith("soundcloud.com") || host == "on.soundcloud.com" -> SOUNDCLOUD
+                else -> null
+            }
+        }
+    }
+}
+
+/** Сравнение треков из разных сервисов: тот же ли это трек, а не ремикс или кавер. */
+object Match {
+    private val VERSION_WORDS = listOf(
+        "remix", "live", "cover", "karaoke", "instrumental", "acoustic", "sped up", "slowed", "nightcore", "8d",
+        "mix", "edit", "version", "remaster", "reverb", "bass boosted", "ремикс", "кавер", "минус", "караоке",
+    )
+
+    fun norm(s: String) = s.lowercase()
+        .replace('ё', 'е')
+        .replace(Regex("""[^\p{L}\p{N}]+"""), " ")
+        .trim()
+
+    /** Название без скобок, «feat.» и приписок через дефис. */
+    fun base(title: String) = norm(
+        title.replace(Regex("""\s*[(\[].*?[)\]]"""), "")
+            .replace(Regex("""\s+(feat|ft)\.?\s.*$""", RegexOption.IGNORE_CASE), "")
+            .substringBefore(" - ")
+            .substringBefore(" — ")
+    )
+
+    private fun artists(a: String) = norm(a.replace(Regex("""\b(feat|ft)\b""", RegexOption.IGNORE_CASE), ","))
+        .split(Regex("""\s*(,|&|\band\b|\bи\b|\bx\b)\s*""")).map { it.trim() }.filter { it.isNotEmpty() }
+
+    /** Оценка похожести кандидата на исходный трек; null — точно не он. */
+    fun score(src: Track, title: String, artist: String, durationSec: Int = 0): Int? {
+        val sb = base(src.title)
+        val cb = base(title)
+        if (sb.isEmpty() || cb.isEmpty()) return null
+        if (sb != cb && !norm(title).contains(sb) && !sb.contains(cb)) return null
+        var s = if (norm(title) == norm(src.title)) 3 else if (sb == cb) 2 else 0
+
+        if (src.artist.isNotBlank()) {
+            val a = norm(artist)
+            val hit = artists(src.artist).any { it.isNotEmpty() && (a.contains(it) || it.contains(a) && a.isNotEmpty()) }
+            if (!hit) return null
+            s += 2
+        }
+        val srcLow = norm(src.title)
+        for (w in VERSION_WORDS) if (norm(title).contains(w) && !srcLow.contains(w)) s -= 3
+        // Лишняя приписка в скобках, которой нет у исходного трека («Pianoforte», «Sped Up»…) — скорее всего, другая версия.
+        val extra = Regex("""[(\[]([^)\]]+)[)\]]""").findAll(title).map { norm(it.groupValues[1]) }
+            .filter { it.isNotEmpty() && !srcLow.contains(it) && !it.startsWith("feat") && !it.startsWith("ft ") }
+        if (extra.any()) s -= 3
+        if (src.durationSec > 0 && durationSec > 0) {
+            val d = kotlin.math.abs(src.durationSec - durationSec)
+            s += when {
+                d <= 3 -> 2
+                d <= 10 -> 1
+                d > 30 -> -3
+                else -> 0
+            }
+        }
+        return s
+    }
+
+    fun <T> best(src: Track, items: List<T>, info: (T) -> Triple<String, String, Int>): T? =
+        items.mapNotNull { item -> val (t, a, d) = info(item); score(src, t, a, d)?.let { item to it } }
+            .filter { it.second >= 0 }
+            .maxByOrNull { it.second }?.first
+}
+
+/**
+ * Достаёт треки по ссылке из музыкального сервиса.
+ * [hint] — текст, которым поделились вместе со ссылкой (часто там «Исполнитель — Название»);
+ * используется, если сервис не отдаёт данные (VK Музыка, Яндекс через зарубежный VPN и т.п.).
+ */
+object Music {
+
+    /** Сервисы, где сам звук закрыт: качаем этот же трек с YouTube. */
+    fun needsSearch(url: String) = Service.of(url) in setOf(Service.SPOTIFY, Service.APPLE, Service.DEEZER, Service.VK)
+
+    fun isMusic(url: String) = Service.of(url)?.let { it != Service.YOUTUBE } ?: false
+
+    fun resolve(url: String, hint: String? = null): MusicItem {
+        val service = Service.of(url) ?: throw UserError("Это не ссылка на музыкальный сервис")
+        val item = try {
+            when (service) {
+                Service.SPOTIFY -> SpotifySource.resolve(url)
+                Service.APPLE -> AppleSource.resolve(url)
+                Service.DEEZER -> DeezerSource.resolve(url)
+                Service.YANDEX -> YandexSource.resolve(url)
+                Service.YOUTUBE_MUSIC, Service.YOUTUBE -> YouTubeSource.resolve(url, service)
+                Service.SOUNDCLOUD -> SoundCloudSource.resolve(url)
+                Service.VK -> null
+            }
+        } catch (e: UserError) {
+            if (hintTrack(hint) == null) throw e
+            null
+        } catch (e: Exception) {
+            if (hintTrack(hint) == null) throw UserError("${service.title} не отдал данные о треке (${e.message}). Попробуйте ещё раз или отключите VPN.")
+            null
+        }
+        if (item != null) return item
+        val t = hintTrack(hint) ?: throw UserError(
+            if (service == Service.VK) "VK Музыка не показывает треки без входа. Поделитесь треком прямо из приложения VK — название придёт вместе со ссылкой."
+            else "Не удалось узнать название трека."
+        )
+        return MusicItem("track", t.label, listOf(t), service)
+    }
+
+    /** «Rick Astley — Never Gonna Give You Up https://…» → трек. Убирает ссылки и рекламные фразы сервисов. */
+    fun hintTrack(hint: String?): Track? {
+        if (hint.isNullOrBlank()) return null
+        var t = hint.replace(Regex("""https?://\S+"""), " ")
+        listOf(
+            "Слушайте", "Слушаю", "Послушай", "Послушайте", "на Яндекс Музыке", "в Яндекс Музыке", "Яндекс Музыка", "Яндекс Музыке",
+            "в VK Музыке", "VK Музыка", "ВКонтакте", "on Spotify", "в Spotify", "Spotify", "on Apple Music", "Apple Music",
+            "on Deezer", "Deezer", "Listen to", "Check out", "Трек", "трек",
+        ).forEach { phrase ->
+            // Только целые слова: «трек» не должен вырезаться из «Электрек».
+            t = t.replace(Regex("""(?<!\p{L})""" + Regex.escape(phrase) + """(?!\p{L})""", RegexOption.IGNORE_CASE), " ")
+        }
+        t = t.replace(Regex("""[«»"“”]"""), " ").replace(Regex("""\s+"""), " ").trim(' ', '.', ',', ':', '-', '—', '|', '!')
+        if (t.length < 2) return null
+        val parts = t.split(Regex("""\s+[—–-]\s+"""), limit = 2)
+        return if (parts.size == 2) Track(parts[1].trim(), parts[0].trim()) else Track(t, "")
+    }
+}
+
+// ---------------- Источники ----------------
+
+object SpotifySource {
+    private val ID = Regex("""(track|album|playlist)/([A-Za-z0-9]+)""")
+
+    fun resolve(url: String): MusicItem {
+        val m = ID.find(url) ?: ID.find(Http.expand(url) { ID.containsMatchIn(it) })
+            ?: throw UserError("Не понял ссылку Spotify. Нужна ссылка на трек, альбом или плейлист.")
+        val (type, id) = m.destructured
+        val page = Http.get("https://open.spotify.com/embed/$type/$id")
+        val json = Regex("""<script id="__NEXT_DATA__" type="application/json">(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
+            .find(page)?.groupValues?.get(1) ?: throw UserError("Spotify не отдал данные. Попробуйте позже.")
+        val e = JSONObject(json).getJSONObject("props").getJSONObject("pageProps")
+            .getJSONObject("state").getJSONObject("data").getJSONObject("entity")
+        val name = clean(e.optString("name", e.optString("title")))
+        if (type == "track") {
+            val artists = e.optJSONArray("artists") ?: JSONArray()
+            val artist = (0 until artists.length()).joinToString(", ") { artists.getJSONObject(it).optString("name") }
+            return MusicItem(type, name, listOf(Track(name, clean(artist), e.optInt("duration") / 1000)), Service.SPOTIFY)
+        }
+        val list = e.optJSONArray("trackList") ?: throw UserError("Spotify не показал треки")
+        val tracks = (0 until list.length()).map {
+            val t = list.getJSONObject(it)
+            Track(clean(t.optString("title")), clean(t.optString("subtitle")), t.optInt("duration") / 1000)
+        }.filter { it.title.isNotEmpty() }
+        if (tracks.isEmpty()) throw UserError("Spotify не показал треки. Возможно, плейлист закрытый.")
+        return MusicItem(type, name, tracks, Service.SPOTIFY)
+    }
+
+    private fun clean(s: String) = s.replace(' ', ' ').replace(Regex("\\s+"), " ").trim()
+}
+
+object AppleSource {
+    private val SONG = Regex("""/song/[^/]+/(\d+)""")
+    private val ALBUM = Regex("""/album/(?:[^/]+/)?(\d+)""")
+    private val TRACK_PARAM = Regex("""[?&]i=(\d+)""")
+
+    private fun lookup(id: String, entity: String? = null): JSONArray {
+        // В российском магазине Apple API отвечает 403, поэтому спрашиваем американский.
+        val url = "https://itunes.apple.com/lookup?id=$id&country=us" + (entity?.let { "&entity=$it&limit=200" } ?: "")
+        return Http.json(url).getJSONArray("results")
+    }
+
+    fun track(o: JSONObject) = Track(
+        o.optString("trackName"), o.optString("artistName"), o.optInt("trackTimeMillis") / 1000,
+        cover = o.optString("artworkUrl100").takeIf { it.isNotEmpty() }?.replace("100x100", "600x600"),
+    )
+
+    fun resolve(url: String): MusicItem {
+        val trackId = TRACK_PARAM.find(url)?.groupValues?.get(1) ?: SONG.find(url)?.groupValues?.get(1)
+        if (trackId != null) {
+            val r = lookup(trackId)
+            if (r.length() == 0) throw UserError("Apple Music: трек не найден")
+            val t = track(r.getJSONObject(0))
+            return MusicItem("track", t.label, listOf(t), Service.APPLE)
+        }
+        val albumId = ALBUM.find(url)?.groupValues?.get(1)
+            ?: throw UserError("Apple Music: поддерживаются ссылки на треки и альбомы")
+        val r = lookup(albumId, "song")
+        if (r.length() == 0) throw UserError("Apple Music: альбом не найден")
+        val name = r.getJSONObject(0).optString("collectionName")
+        val tracks = (1 until r.length()).map { r.getJSONObject(it) }.filter { it.optString("wrapperType") == "track" }.map(::track)
+        return MusicItem("album", name, tracks, Service.APPLE)
+    }
+}
+
+object DeezerSource {
+    private val ID = Regex("""(track|album|playlist)/(\d+)""")
+
+    fun track(o: JSONObject) = Track(
+        o.optString("title"), o.optJSONObject("artist")?.optString("name").orEmpty(), o.optInt("duration"),
+        isrc = o.optString("isrc").takeIf { it.isNotEmpty() },
+        cover = o.optJSONObject("album")?.optString("cover_big")?.takeIf { it.isNotEmpty() },
+    )
+
+    fun resolve(url: String): MusicItem {
+        val m = ID.find(url) ?: ID.find(Http.expand(url) { ID.containsMatchIn(it) })
+            ?: throw UserError("Не понял ссылку Deezer")
+        val (type, id) = m.destructured
+        val o = Http.json("https://api.deezer.com/$type/$id")
+        o.optJSONObject("error")?.let { throw UserError("Deezer: ${it.optString("message")}") }
+        if (type == "track") {
+            val t = track(o)
+            return MusicItem(type, t.label, listOf(t), Service.DEEZER)
+        }
+        val data = o.optJSONObject("tracks")?.optJSONArray("data") ?: JSONArray()
+        val cover = o.optString("cover_big").takeIf { it.isNotEmpty() }
+        val tracks = (0 until data.length()).map { track(data.getJSONObject(it)).let { t -> if (t.cover == null) t.copy(cover = cover) else t } }
+        return MusicItem(type, o.optString("title"), tracks, Service.DEEZER)
+    }
+}
+
+object YandexSource {
+    private const val API = "https://api.music.yandex.net"
+    private val TRACK = Regex("""/track/(\d+)""")
+    private val ALBUM = Regex("""/album/(\d+)""")
+    private val PLAYLIST = Regex("""/users/([^/]+)/playlists/(\d+)""")
+
+    fun track(o: JSONObject): Track {
+        val artists = o.optJSONArray("artists") ?: JSONArray()
+        val version = o.optString("version").takeIf { it.isNotEmpty() }?.let { " ($it)" }.orEmpty()
+        return Track(
+            o.optString("title") + version,
+            (0 until artists.length()).joinToString(", ") { artists.getJSONObject(it).optString("name") },
+            o.optInt("durationMs") / 1000,
+            cover = o.optString("coverUri").takeIf { it.isNotEmpty() }?.let { "https://" + it.replace("%%", "400x400") },
+        )
+    }
+
+    fun link(o: JSONObject): String? {
+        val id = o.optString("id").takeIf { it.isNotEmpty() } ?: return null
+        val album = o.optJSONArray("albums")?.optJSONObject(0)?.optString("id")
+        return if (album.isNullOrEmpty()) "https://music.yandex.ru/track/$id" else "https://music.yandex.ru/album/$album/track/$id"
+    }
+
+    private fun api(path: String): JSONObject = try {
+        Http.json("$API$path")
+    } catch (e: Http.HttpError) {
+        if (e.code == 451) throw UserError("Яндекс Музыка недоступна из-за границы. Отключите VPN и попробуйте снова.")
+        throw e
+    }
+
+    fun resolve(url: String): MusicItem {
+        TRACK.find(url)?.let {
+            val r = api("/tracks/${it.groupValues[1]}").getJSONArray("result")
+            if (r.length() == 0) throw UserError("Яндекс Музыка: трек не найден")
+            val t = track(r.getJSONObject(0))
+            return MusicItem("track", t.label, listOf(t), Service.YANDEX)
+        }
+        ALBUM.find(url)?.let {
+            val r = api("/albums/${it.groupValues[1]}/with-tracks").getJSONObject("result")
+            val volumes = r.optJSONArray("volumes") ?: JSONArray()
+            val tracks = (0 until volumes.length()).flatMap { v ->
+                val vol = volumes.getJSONArray(v)
+                (0 until vol.length()).map { i -> track(vol.getJSONObject(i)) }
+            }
+            return MusicItem("album", r.optString("title"), tracks, Service.YANDEX)
+        }
+        PLAYLIST.find(url)?.let {
+            val (owner, kind) = it.destructured
+            val r = api("/users/$owner/playlists/$kind").getJSONObject("result")
+            val list = r.optJSONArray("tracks") ?: JSONArray()
+            val tracks = (0 until list.length()).mapNotNull { i -> list.getJSONObject(i).optJSONObject("track")?.let(::track) }
+            if (tracks.isEmpty()) throw UserError("Яндекс Музыка не показала треки плейлиста")
+            return MusicItem("playlist", r.optString("title"), tracks, Service.YANDEX)
+        }
+        throw UserError("Яндекс Музыка: нужна ссылка на трек, альбом или плейлист")
+    }
+}
+
+object YouTubeSource {
+    private val NOISE = Regex(
+        """\s*[(\[][^)\]]*(official|video|audio|lyric|lyrics|клип|видео|mv|hd|4k|remaster|visualizer|текст)[^)\]]*[)\]]""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun resolve(url: String, service: Service): MusicItem {
+        val id = Regex("""(?:v=|youtu\.be/|shorts/)([\w-]{11})""").find(url)?.groupValues?.get(1)
+            ?: throw UserError("Нужна ссылка на видео или трек YouTube")
+        val o = Http.json("https://www.youtube.com/oembed?format=json&url=" + Http.enc("https://www.youtube.com/watch?v=$id"))
+        var title = o.optString("title").replace(NOISE, "").trim()
+        var artist = o.optString("author_name").removeSuffix(" - Topic").removeSuffix("VEVO").trim()
+        val parts = title.split(Regex("""\s+[—–-]\s+"""), limit = 2)
+        if (parts.size == 2) {
+            artist = parts[0].trim()
+            title = parts[1].trim()
+        }
+        val t = Track(title, artist)
+        return MusicItem("track", t.label, listOf(t), service)
+    }
+}
+
+object SoundCloudSource {
+    fun resolve(url: String): MusicItem {
+        val o = Http.json("https://soundcloud.com/oembed?format=json&url=" + Http.enc(url))
+        val full = o.optString("title")
+        val title = full.substringBeforeLast(" by ").trim()
+        val artist = if (full.contains(" by ")) full.substringAfterLast(" by ").trim() else o.optString("author_name")
+        val t = Track(title, artist, cover = o.optString("thumbnail_url").takeIf { it.isNotEmpty() })
+        return MusicItem("track", t.label, listOf(t), Service.SOUNDCLOUD)
+    }
+}

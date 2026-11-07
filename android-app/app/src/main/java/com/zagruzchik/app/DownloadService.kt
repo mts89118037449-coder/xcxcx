@@ -59,13 +59,13 @@ class DownloadService : Service() {
             return START_NOT_STICKY
         }
         val token = Jobs.token(job.id)
-        executor.execute { runJob(job.id, job.url, job.format, token, startId) }
+        executor.execute { runJob(job.id, job.url, job.format, job.hint, token, startId) }
         return START_NOT_STICKY
     }
 
     private fun activeCount() = Jobs.all.count { it.active }
 
-    private fun runJob(id: String, url: String, format: Format, token: CancelToken, startId: Int) {
+    private fun runJob(id: String, url: String, format: Format, hint: String?, token: CancelToken, startId: Int) {
         if (token.cancelled) return finish(id, startId)
         Jobs.update(id, save = true) { status = Status.RUNNING; progress = 0f; detail = "Подключаюсь…"; error = "" }
         var lastUpdate = 0L
@@ -81,7 +81,7 @@ class DownloadService : Service() {
                         if (detail.isNotEmpty()) this.detail = detail
                     }
                 }
-            })
+            }, hint)
             Jobs.update(id) { progress = 100f; detail = "Сохраняю в «Загрузки»…" }
             val saved = result.files.map { f ->
                 val name = f.name
@@ -126,8 +126,8 @@ class DownloadService : Service() {
         const val EXTRA_URL = "url"
 
         /** Добавляет загрузку в список и запускает её. */
-        fun enqueue(ctx: Context, url: String, format: Format): Job {
-            val job = Jobs.create(url, format)
+        fun enqueue(ctx: Context, url: String, format: Format, hint: String? = null): Job {
+            val job = Jobs.create(url, format, hint)
             ctx.startForegroundService(Intent(ctx, DownloadService::class.java).putExtra(EXTRA_JOB, job.id))
             return job
         }

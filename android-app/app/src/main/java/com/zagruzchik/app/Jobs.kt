@@ -24,6 +24,8 @@ class Job(
     var error: String = "",
     var files: List<SavedFile> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
+    /** Текст, которым поделились вместе со ссылкой: подсказка с названием трека. */
+    val hint: String? = null,
 ) {
     val active get() = status == Status.QUEUED || status == Status.RUNNING
 }
@@ -53,8 +55,8 @@ object Jobs {
     fun listen(l: (Job?) -> Unit) { listeners += l }
     fun unlisten(l: (Job?) -> Unit) { listeners -= l }
 
-    fun create(url: String, format: Format): Job {
-        val job = Job(UUID.randomUUID().toString(), url, format, title = url)
+    fun create(url: String, format: Format, hint: String? = null): Job {
+        val job = Job(UUID.randomUUID().toString(), url, format, title = url, hint = hint?.takeIf { it.isNotBlank() && it.trim() != url })
         list.add(0, job)
         while (list.size > MAX_HISTORY) {
             val old = list.lastOrNull { !it.active } ?: break
@@ -114,7 +116,7 @@ object Jobs {
         list.forEach { j ->
             arr.put(JSONObject().apply {
                 put("id", j.id); put("url", j.url); put("format", j.format.name); put("title", j.title)
-                put("status", j.status.name); put("error", j.error); put("createdAt", j.createdAt)
+                put("status", j.status.name); put("error", j.error); put("createdAt", j.createdAt); put("hint", j.hint ?: "")
                 put("files", JSONArray().apply {
                     j.files.forEach { put(JSONObject().put("uri", it.uri).put("name", it.name).put("mime", it.mime)) }
                 })
@@ -144,6 +146,7 @@ object Jobs {
                     files.getJSONObject(k).let { SavedFile(it.getString("uri"), it.getString("name"), it.getString("mime")) }
                 },
                 createdAt = o.optLong("createdAt"),
+                hint = o.optString("hint").takeIf { it.isNotEmpty() },
             )
             // Приложение закрыли посреди загрузки — показываем, что её надо повторить.
             if (job.active) {
