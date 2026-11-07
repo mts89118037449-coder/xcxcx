@@ -55,6 +55,24 @@ class MainActivity : AppCompatActivity() {
     // Вкладка «Загрузки»
     private val adapter = JobsAdapter()
     private lateinit var jobsEmpty: View
+    private lateinit var kinds: MaterialButtonToggleGroup
+    private lateinit var siteChips: com.google.android.material.chip.ChipGroup
+    private lateinit var playAll: MaterialButton
+    private var kindFilter: Kind? = null
+    private var siteFilter: String? = null
+
+    // Мини-проигрыватель
+    private lateinit var mini: MaterialCardView
+    private var controller: androidx.media3.session.MediaController? = null
+    private val miniTicker = object : Runnable {
+        override fun run() {
+            updateMiniProgress()
+            mini.postDelayed(this, 500)
+        }
+    }
+    private val playerListener = object : androidx.media3.common.Player.Listener {
+        override fun onEvents(player: androidx.media3.common.Player, events: androidx.media3.common.Player.Events) = updateMini()
+    }
 
     // Вкладка «Настройки»
     private lateinit var sites: LinearLayout
@@ -65,7 +83,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingClipAction: String? = null
 
     private val listener: (Job?) -> Unit = { job ->
-        if (job == null) adapter.submit(Jobs.all) else adapter.update(job)
+        if (job == null) refreshJobs() else adapter.update(job)
         refreshSummary()
     }
 
@@ -95,6 +113,7 @@ class MainActivity : AppCompatActivity() {
         setupDownloadPage()
         setupJobsPage()
         setupSettingsPage()
+        setupMiniPlayer()
 
         showPage(savedInstanceState?.getInt("page") ?: R.id.nav_download)
         handleIntent(intent)
@@ -109,13 +128,22 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         Jobs.listen(listener)
-        adapter.submit(Jobs.all)
+        refreshJobs()
         refreshSummary()
+        Playback.controller(this) { c ->
+            controller = c
+            c.addListener(playerListener)
+            updateMini()
+        }
+        mini.post(miniTicker)
         refreshSites()
     }
 
     override fun onStop() {
         Jobs.unlisten(listener)
+        controller?.removeListener(playerListener)
+        controller = null
+        mini.removeCallbacks(miniTicker)
         super.onStop()
     }
 
@@ -273,13 +301,31 @@ class MainActivity : AppCompatActivity() {
             if (p > 0f) activeProgress.setProgressCompat((p * 10).toInt(), true)
         }
         toolbar.menu.findItem(R.id.action_clear)?.isVisible = all.any { !it.active }
-        jobsEmpty.isVisible = all.isEmpty()
     }
 
     // ---------------- Загрузки ----------------
 
     private fun setupJobsPage() {
         jobsEmpty = findViewById(R.id.jobsEmpty)
+        kinds = findViewById(R.id.kinds)
+        siteChips = findViewById(R.id.siteChips)
+        playAll = findViewById(R.id.playAll)
+        kinds.check(R.id.kindAll)
+        kinds.addOnButtonCheckedListener { _, id, checked ->
+            if (!checked) return@addOnButtonCheckedListener
+            kindFilter = when (id) {
+                R.id.kindMusic -> Kind.MUSIC
+                R.id.kindVideo -> Kind.VIDEO
+                else -> null
+            }
+            siteFilter = null
+            refreshJobs()
+        }
+        playAll.setOnClickListener {
+            val queue = adapter.items.filter { it.status == Status.DONE && it.kind == Kind.MUSIC }
+                .flatMap { j -> j.files.map { it to j.album } }
+            Playback.play(this, queue, 0)
+        }
         val list = findViewById<RecyclerView>(R.id.jobsList)
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
@@ -293,8 +339,8 @@ class MainActivity : AppCompatActivity() {
                 return if (job.active) 0 else super.getSwipeDirs(rv, vh)
             }
             override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {
-                val pos = vh.bindingAdapterPosition
-                val job = adapter.items.getOrNull(pos) ?: return
+                val job = adapter.items.getOrNull(vh.bindingAdapterPosition) ?: return
+                val pos = Jobs.all.indexOfFirst { it.id == job.id }
                 Jobs.remove(job.id)
                 Snackbar.make(nav, "Убрано из списка", Snackbar.LENGTH_LONG)
                     .setAnchorView(nav)
@@ -302,6 +348,46 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
         }).attachToRecyclerView(list)
+    }
+
+    /** Пересобрать список с учётом фильтров «Музыка/Видео» и сервиса. */
+    private fun refreshJobs() {
+        val all = Jobs.all
+        val byKind = all.filter { kindFilter == null || it.kind == kindFilter }
+        // Чипы сервисов — только те, что есть в текущей вкладке, с количеством.
+        val counts = byKind.groupingBy { it.site }.eachCount().toList().sortedByDescending { it.second }
+        if (siteFilter != null && counts.none { it.first == siteFilter }) siteFilter = null
+        siteChips.setOnCheckedStateChangeListener(null)
+        siteChips.removeAllViews()
+        fun chip(label: String, value: String?) = com.google.android.material.chip.Chip(this).apply {
+            text = label
+            isCheckable = true
+            isCheckedIconVisible = false
+            isChecked = value == siteFilter
+            tag = value
+            siteChips.addView(this)
+        }
+        chip("Все сервисы · ${byKind.size}", null)
+        counts.forEach { (site, n) -> chip("$site · $n", site) }
+        siteChips.setOnCheckedStateChangeListener { group, ids ->
+            siteFilter = ids.firstOrNull()?.let { group.findViewById<View>(it)?.tag as String? }
+            refreshJobs()
+        }
+        (siteChips.parent as View).isVisible = counts.size > 1
+
+        val shown = byKind.filter { siteFilter == null || it.site == siteFilter }
+        adapter.submit(shown)
+        playAll.isVisible = kindFilter == Kind.MUSIC && shown.any { it.status == Status.DONE }
+        jobsEmpty.isVisible = shown.isEmpty()
+        findViewById<TextView>(R.id.emptyTitle).text = when {
+            all.isEmpty() -> "Пока ничего не скачано"
+            kindFilter == Kind.MUSIC -> "Музыки пока нет"
+            kindFilter == Kind.VIDEO -> "Видео пока нет"
+            else -> "Ничего не найдено"
+        }
+        findViewById<ImageView>(R.id.emptyIcon).setImageResource(
+            when (kindFilter) { Kind.MUSIC -> R.drawable.ic_library_music; Kind.VIDEO -> R.drawable.ic_video_library; else -> R.drawable.ic_download }
+        )
     }
 
     inner class JobsAdapter : RecyclerView.Adapter<JobHolder>() {
@@ -316,7 +402,7 @@ class MainActivity : AppCompatActivity() {
 
         fun update(job: Job) {
             val i = items.indexOfFirst { it.id == job.id }
-            if (i >= 0) notifyItemChanged(i) else submit(Jobs.all)
+            if (i >= 0) notifyItemChanged(i) else refreshJobs()
         }
 
         override fun getItemCount() = items.size
@@ -338,6 +424,7 @@ class MainActivity : AppCompatActivity() {
         private val btnShare: View = v.findViewById(R.id.btnShare)
         private val btnDelete: View = v.findViewById(R.id.btnDelete)
         private val btnRemove: View = v.findViewById(R.id.btnRemove)
+        private val btnExternal: View = v.findViewById(R.id.btnExternal)
 
         fun bind(job: Job) {
             title.text = job.title
@@ -377,13 +464,16 @@ class MainActivity : AppCompatActivity() {
             val finished = job.status == Status.FAILED || job.status == Status.CANCELLED
             btnCancel.isVisible = job.active
             btnOpen.isVisible = job.status == Status.DONE
+            btnExternal.isVisible = job.status == Status.DONE
+            (btnOpen as MaterialButton).text = if (job.kind == Kind.MUSIC) "Слушать" else "Смотреть"
             btnShare.isVisible = job.status == Status.DONE
             btnDelete.isVisible = job.status == Status.DONE
             btnRetry.isVisible = finished
             btnRemove.isVisible = finished
 
             btnCancel.setOnClickListener { Jobs.cancel(job.id) }
-            btnOpen.setOnClickListener { open(job) }
+            btnOpen.setOnClickListener { play(job) }
+            btnExternal.setOnClickListener { open(job) }
             btnShare.setOnClickListener { share(job) }
             btnDelete.setOnClickListener { confirmDelete(job) }
             btnRetry.setOnClickListener {
@@ -391,8 +481,60 @@ class MainActivity : AppCompatActivity() {
                 DownloadService.enqueue(this@MainActivity, job.url, job.format, job.hint)
             }
             btnRemove.setOnClickListener { Jobs.remove(job.id) }
-            card.setOnClickListener { if (job.status == Status.DONE) open(job) }
+            card.setOnClickListener { if (job.status == Status.DONE) play(job) }
         }
+    }
+
+    /**
+     * Играть в приложении. Музыка: очередь — вся готовая музыка в текущем списке, начиная с этой.
+     * Видео: только это видео, сразу на весь экран.
+     */
+    private fun play(job: Job) {
+        if (job.kind == Kind.VIDEO) {
+            Playback.play(this, job.files.map { it to null }, 0)
+            return
+        }
+        val music = adapter.items.filter { it.status == Status.DONE && it.kind == Kind.MUSIC }
+        val queue = music.flatMap { j -> j.files.map { it to j.album } }
+        val start = music.takeWhile { it.id != job.id }.sumOf { it.files.size }
+        Playback.play(this, queue, start)
+    }
+
+    // ---------------- Мини-проигрыватель ----------------
+
+    private fun setupMiniPlayer() {
+        mini = findViewById(R.id.miniPlayer)
+        mini.setOnClickListener { startActivity(Intent(this, PlayerActivity::class.java)) }
+        findViewById<View>(R.id.miniPlay).setOnClickListener {
+            controller?.let { if (it.isPlaying) it.pause() else it.play() }
+        }
+        findViewById<View>(R.id.miniNext).setOnClickListener { controller?.seekToNextMediaItem() }
+    }
+
+    private fun updateMini() {
+        val c = controller
+        val has = c != null && c.mediaItemCount > 0 && c.playbackState != androidx.media3.common.Player.STATE_IDLE
+        mini.isVisible = has
+        if (!has || c == null) return
+        val m = c.mediaMetadata
+        findViewById<TextView>(R.id.miniTitle).text = m.title ?: "Без названия"
+        findViewById<TextView>(R.id.miniArtist).text = listOfNotNull(m.artist, m.albumTitle).joinToString(" · ")
+        findViewById<MaterialButton>(R.id.miniPlay).apply {
+            setIconResource(if (c.isPlaying) R.drawable.ic_pause else R.drawable.ic_play_arrow)
+            contentDescription = if (c.isPlaying) "Пауза" else "Играть"
+        }
+        findViewById<View>(R.id.miniNext).isVisible = c.hasNextMediaItem()
+        val cover = findViewById<com.google.android.material.imageview.ShapeableImageView>(R.id.miniCover)
+        val art = m.artworkData?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
+        if (art != null) cover.setImageBitmap(art) else cover.setImageResource(R.drawable.ic_music_note)
+        updateMiniProgress()
+    }
+
+    private fun updateMiniProgress() {
+        val c = controller ?: return
+        val d = c.duration
+        val p = findViewById<LinearProgressIndicator>(R.id.miniProgress)
+        if (d > 0) p.setProgressCompat((c.currentPosition * 1000 / d).toInt(), false) else p.progress = 0
     }
 
     private fun open(job: Job) {

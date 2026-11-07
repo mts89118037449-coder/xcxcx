@@ -62,6 +62,13 @@ object Describe {
         "vimeo.com" to "Vimeo", "bandcamp.com" to "Bandcamp",
     )
 
+    /** Название сервиса по ссылке — для фильтра загрузок: «YouTube», «TikTok», «Spotify»… */
+    fun site(url: String): String {
+        Service.of(url)?.let { return it.title }
+        val host = runCatching { Uri.parse(url).host.orEmpty().lowercase().removePrefix("www.").removePrefix("m.") }.getOrDefault("")
+        return SITES.firstOrNull { host.endsWith(it.first) || host.contains(it.first) }?.second ?: host.ifEmpty { "Другое" }
+    }
+
     fun of(url: String): String {
         val service = Service.of(url)
         if (service != null && service != Service.YOUTUBE) {
@@ -72,9 +79,7 @@ object Describe {
             }
             return "${service.title} · $kind" + if (Music.needsSearch(url)) " → MP3" else ""
         }
-        val host = runCatching { Uri.parse(url).host.orEmpty().lowercase().removePrefix("www.").removePrefix("m.") }.getOrDefault("")
-        val name = SITES.firstOrNull { host.endsWith(it.first) || host.contains(it.first) }?.second ?: host.ifEmpty { "ссылка" }
-        return "$name · видео"
+        return "${site(url)} · видео"
     }
 }
 

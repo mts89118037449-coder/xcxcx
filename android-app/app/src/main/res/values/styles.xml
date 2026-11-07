@@ -46,6 +46,13 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
+    <style name="PlayerTheme" parent="AppTheme">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
     <style name="SectionTitle">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
@@ -59,6 +66,11 @@
     <style name="MenuText" parent="TextAppearance.Material3.LabelLarge">
         <item name="android:textAllCaps">false</item>
         <item name="textAllCaps">false</item>
+    </style>
+
+    <style name="MiniCoverShape">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">12dp</item>
     </style>
 
     <style name="CoverShape">

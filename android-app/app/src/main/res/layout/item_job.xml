@@ -80,16 +80,18 @@
             android:id="@+id/actions"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="end"
+            android:layout_marginTop="4dp"
+            android:gravity="end|center_vertical"
             android:orientation="horizontal">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnOpen"
-                style="@style/Widget.Material3.Button.TextButton.Icon"
+                style="@style/Widget.Material3.Button.TonalButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Открыть"
-                app:icon="@drawable/ic_open_in_new" />
+                android:layout_marginEnd="4dp"
+                android:text="Слушать"
+                app:icon="@drawable/ic_play_arrow" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnRetry"
@@ -114,6 +116,14 @@
                 android:layout_height="wrap_content"
                 android:contentDescription="Поделиться"
                 app:icon="@drawable/ic_share" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnExternal"
+                style="?attr/materialIconButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="Открыть в другом приложении"
+                app:icon="@drawable/ic_open_in_new" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnDelete"

@@ -11,6 +11,9 @@ import java.util.UUID
 
 enum class Status { QUEUED, RUNNING, DONE, FAILED, CANCELLED }
 
+/** Музыка или видео — для вкладок в «Загрузках». */
+enum class Kind { MUSIC, VIDEO }
+
 class SavedFile(val uri: String, val name: String, val mime: String)
 
 class Job(
@@ -28,6 +31,19 @@ class Job(
     val hint: String? = null,
 ) {
     val active get() = status == Status.QUEUED || status == Status.RUNNING
+
+    val kind: Kind
+        get() = when {
+            files.isNotEmpty() -> if (files.all { it.mime.startsWith("audio") }) Kind.MUSIC else Kind.VIDEO
+            format == Format.MP3 || Music.needsSearch(url) -> Kind.MUSIC
+            else -> Kind.VIDEO
+        }
+
+    /** Сервис, откуда скачано: «YouTube», «Spotify», «TikTok»… */
+    val site: String get() = Describe.site(url)
+
+    /** Альбом/плейлист: в «Загрузки/Загрузчик/<альбом>». Название без счётчика «(18)». */
+    val album: String? get() = if (files.size > 1) title.replace(Regex("""\s*\(\d+\)$"""), "") else null
 }
 
 /**
