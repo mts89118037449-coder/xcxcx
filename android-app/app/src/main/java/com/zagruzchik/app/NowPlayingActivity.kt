@@ -117,6 +117,7 @@ class NowPlayingActivity : AppCompatActivity() {
             currentTrack()?.let { TransferActivity.openTrack(this, it, extras()?.getString(Playback.X_SOURCE_URL)) }
         }
         download.setOnClickListener { downloadCurrent() }
+        setupCastButton(findViewById(R.id.npCast))
     }
 
     override fun onStart() {
@@ -179,7 +180,9 @@ class NowPlayingActivity : AppCompatActivity() {
             title.text = m.title ?: "Без названия"
             artist.text = listOfNotNull(m.artist, m.albumTitle).joinToString(" · ")
             val src = m.extras?.getString(Playback.X_SOURCE)
+            val tv = Cast.deviceName(this)
             source.text = when {
+                tv != null -> "На телевизоре: $tv"
                 src == null -> ""
                 src == "Скачано" -> "Из загрузок"
                 else -> "Играет из $src · без скачивания"

@@ -43,6 +43,13 @@
                 android:textAppearance="?attr/textAppearanceLabelLarge"
                 android:textColor="?attr/colorOnSurfaceVariant" />
 
+            <!-- Транслировать на ТВ / колонку -->
+            <androidx.mediarouter.app.MediaRouteButton
+                android:id="@+id/npCast"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:visibility="gone" />
+
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/npShareTop"
                 style="?attr/materialIconButtonStyle"
@@ -253,6 +260,7 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/npDownload"
+                android:textSize="13sp"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
                 android:insetLeft="0dp"
@@ -270,6 +278,7 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/npWhere"
+                android:textSize="13sp"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
                 android:insetLeft="0dp"
@@ -288,6 +297,7 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/npShare"
+                android:textSize="13sp"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
                 android:insetLeft="0dp"

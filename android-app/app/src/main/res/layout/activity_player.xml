@@ -62,6 +62,12 @@
                 android:textColor="#CCFFFFFF" />
         </LinearLayout>
 
+        <androidx.mediarouter.app.MediaRouteButton
+            android:id="@+id/playerCast"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:visibility="gone" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/playerWhere"
             style="@style/Widget.Material3.Button.TonalButton"

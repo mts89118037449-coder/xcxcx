@@ -11,8 +11,8 @@ android {
         applicationId = "com.zagruzchik.app"
         minSdk = 29 // Android 10+
         targetSdk = 35
-        versionCode = 11
-        versionName = "2.0"
+        versionCode = 12
+        versionName = "3.0"
     }
 
     // Один постоянный ключ, чтобы новые версии ставились поверх старых без удаления.
@@ -64,6 +64,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.4.1") // потоки SoundCloud и др. (.m3u8)
     implementation("androidx.media3:media3-ui:1.4.1")
     implementation("androidx.media3:media3-session:1.4.1")
+    implementation("androidx.media3:media3-cast:1.4.1") // трансляция на ТВ и колонки (Chromecast)
+    implementation("androidx.mediarouter:mediarouter:1.7.0") // кнопка трансляции
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
 }

@@ -39,6 +39,7 @@ class PlayerActivity : AppCompatActivity() {
         subtitle = findViewById(R.id.playerSubtitle)
         topBar = findViewById(R.id.playerTop)
         findViewById<View>(R.id.playerBack).setOnClickListener { finish() }
+        setupCastButton(findViewById(R.id.playerCast))
         // Ссылки на эту песню во всех сервисах (установленные — первыми).
         findViewById<View>(R.id.playerWhere).setOnClickListener {
             val m = controller?.mediaMetadata ?: return@setOnClickListener

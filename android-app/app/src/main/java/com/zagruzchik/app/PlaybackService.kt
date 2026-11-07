@@ -26,6 +26,8 @@ import com.google.common.util.concurrent.ListenableFuture
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
+    private var local: ExoPlayer? = null
+    private var cast: androidx.media3.cast.CastPlayer? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -41,20 +43,57 @@ class PlaybackService : MediaSessionService() {
             this, 0, Intent(this, NowPlayingActivity::class.java), // для видео он сам переключит на PlayerActivity
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        local = player
         session = MediaSession.Builder(this, player)
             .setSessionActivity(open)
             .setCallback(object : MediaSession.Callback {
                 // Адрес файла/потока может не дойти от экрана до проигрывателя — восстанавливаем его.
                 override fun onAddMediaItems(
                     mediaSession: MediaSession, controller: MediaSession.ControllerInfo, mediaItems: MutableList<MediaItem>,
-                ): ListenableFuture<MutableList<MediaItem>> = Futures.immediateFuture(
-                    mediaItems.map { item ->
+                ): ListenableFuture<MutableList<MediaItem>> {
+                    val restored = mediaItems.map { item ->
                         if (item.localConfiguration != null) item
                         else item.buildUpon().setUri(item.requestMetadata.mediaUri ?: Uri.parse(item.mediaId)).build()
-                    }.toMutableList()
-                )
+                    }
+                    // Идёт трансляция — сразу готовим для телевизора.
+                    val ready = if (mediaSession.player === cast) restored.mapNotNull { Cast.castable(this@PlaybackService, it) } else restored
+                    return Futures.immediateFuture(ready.toMutableList())
+                }
             })
             .build()
+        setupCast()
+    }
+
+    /**
+     * Трансляция на ТВ/колонку (Chromecast): когда подключились — переносим очередь и позицию
+     * на телевизор, телефон становится пультом; отключились — играем дальше на телефоне.
+     */
+    private fun setupCast() {
+        val ctx = Cast.context(this) ?: return // нет сервисов Google Play — без трансляции
+        val cp = androidx.media3.cast.CastPlayer(ctx)
+        cast = cp
+        cp.setSessionAvailabilityListener(object : androidx.media3.cast.SessionAvailabilityListener {
+            override fun onCastSessionAvailable() { local?.let { switchPlayer(it, cp) } }
+            override fun onCastSessionUnavailable() { local?.let { switchPlayer(cp, it) } }
+        })
+        if (cp.isCastSessionAvailable) local?.let { switchPlayer(it, cp) }
+    }
+
+    private fun switchPlayer(from: androidx.media3.common.Player, to: androidx.media3.common.Player) {
+        val s = session ?: return
+        if (s.player === to) return
+        val items = (0 until from.mediaItemCount).map { from.getMediaItemAt(it) }
+        val index = from.currentMediaItemIndex
+        val position = from.currentPosition
+        val play = from.playWhenReady
+        from.stop()
+        val prepared = if (to === cast) items.mapNotNull { Cast.castable(this, it) } else items
+        if (prepared.isNotEmpty()) {
+            to.setMediaItems(prepared, index.coerceIn(0, prepared.lastIndex), position)
+            to.playWhenReady = play
+            to.prepare()
+        }
+        s.player = to
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
@@ -66,10 +105,10 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
-        session?.run {
-            player.release()
-            release()
-        }
+        cast?.setSessionAvailabilityListener(null)
+        cast?.release()
+        local?.release()
+        session?.release()
         session = null
         super.onDestroy()
     }
