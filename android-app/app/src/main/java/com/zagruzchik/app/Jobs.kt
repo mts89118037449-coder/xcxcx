@@ -88,6 +88,13 @@ object Jobs {
         changed(null, save = true)
     }
 
+    /** Вернуть убранную из списка загрузку (кнопка «Вернуть» после смахивания). */
+    fun restore(job: Job, index: Int) {
+        if (get(job.id) != null) return
+        list.add(index.coerceIn(0, list.size), job)
+        changed(null, save = true)
+    }
+
     fun clearFinished() {
         list.removeAll { !it.active }
         changed(null, save = true)

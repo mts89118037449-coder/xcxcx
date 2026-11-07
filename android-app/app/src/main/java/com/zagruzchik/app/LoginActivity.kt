@@ -1,17 +1,21 @@
 package com.zagruzchik.app
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.os.Bundle
-import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.LinearLayout
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.snackbar.Snackbar
 
 /** Встроенное окно входа: человек входит на сайт как обычно, а мы сохраняем вход для загрузчика. */
-class LoginActivity : Activity() {
+class LoginActivity : AppCompatActivity() {
 
     private lateinit var site: Cookies.Site
     private lateinit var web: WebView
@@ -20,41 +24,44 @@ class LoginActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         site = Cookies.SITES.getOrNull(intent.getIntExtra(EXTRA_SITE, -1)) ?: return finish()
-        title = "Вход: ${site.name}"
+        setContentView(R.layout.activity_login)
 
-        web = WebView(this).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            webViewClient = WebViewClient()
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
+        toolbar.title = "Вход: ${site.name}"
+        toolbar.setNavigationOnClickListener { finish() }
+        toolbar.inflateMenu(R.menu.login)
+        toolbar.setOnMenuItemClickListener { save(); true }
+
+        val progress = findViewById<LinearProgressIndicator>(R.id.progress)
+        web = findViewById(R.id.web)
+        web.settings.javaScriptEnabled = true
+        web.settings.domStorageEnabled = true
+        web.webViewClient = WebViewClient()
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                progress.isVisible = newProgress < 100
+                progress.setProgressCompat(newProgress, true)
+            }
         }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
 
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val bar = column(12).apply {
-            addView(text("Войдите в аккаунт ${site.name}, затем нажмите кнопку ниже.", 14f))
-            addView(button("Готово — сохранить вход") { save() })
-        }
-        root.addView(bar)
-        root.addView(web)
-        setContentView(root)
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (web.canGoBack()) web.goBack() else finish()
+            }
+        })
         web.loadUrl(site.loginUrl)
     }
 
     private fun save() {
         val n = Cookies.saveFromWebView(this, site)
         if (n == 0) {
-            Toast.makeText(this, "Вход не найден. Сначала войдите в аккаунт на этой странице.", Toast.LENGTH_LONG).show()
+            Snackbar.make(web, "Вход не найден. Сначала войдите в аккаунт на этой странице.", Snackbar.LENGTH_LONG).show()
             return
         }
         Toast.makeText(this, "Вход в ${site.name} сохранён", Toast.LENGTH_SHORT).show()
         finish()
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        if (web.canGoBack()) web.goBack() else super.onBackPressed()
     }
 
     companion object {

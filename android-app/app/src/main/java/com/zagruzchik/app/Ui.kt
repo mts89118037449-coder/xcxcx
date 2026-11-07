@@ -1,74 +1,91 @@
 package com.zagruzchik.app
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
-import android.view.Gravity
-import android.view.View
-import android.widget.Button
-import android.widget.LinearLayout
+import android.net.Uri
 import android.widget.TextView
-
-// Небольшие помощники, чтобы собирать экраны кодом без XML-разметки.
+import com.google.android.material.button.MaterialButtonToggleGroup
 
 fun Context.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-/** Цвет из темы. TypedArray.getColor правильно раскрывает и обычные цвета, и списки цветов (как textColorPrimary). */
-fun Context.themeColor(attr: Int): Int {
-    val a = obtainStyledAttributes(intArrayOf(attr))
-    try {
-        return a.getColor(0, Color.GRAY)
-    } finally {
-        a.recycle()
+/** Кружок с буквой и фирменным цветом сервиса (вместо логотипов). */
+class Badge(val text: String, val color: Int, val textColor: Int = Color.WHITE)
+
+fun TextView.showBadge(b: Badge) {
+    text = b.text
+    setTextColor(b.textColor)
+    backgroundTintList = ColorStateList.valueOf(b.color)
+}
+
+val Service.badge: Badge
+    get() = when (this) {
+        Service.SPOTIFY -> Badge("S", Color.parseColor("#1DB954"))
+        Service.YANDEX -> Badge("Я", Color.parseColor("#FFCC00"), Color.BLACK)
+        Service.APPLE -> Badge("A", Color.parseColor("#FA243C"))
+        Service.YOUTUBE_MUSIC -> Badge("♪", Color.parseColor("#FF0033"))
+        Service.YOUTUBE -> Badge("▶", Color.parseColor("#FF0033"))
+        Service.VK -> Badge("VK", Color.parseColor("#0077FF"))
+        Service.DEEZER -> Badge("D", Color.parseColor("#A238FF"))
+        Service.SOUNDCLOUD -> Badge("SC", Color.parseColor("#FF5500"))
     }
+
+fun siteBadge(name: String): Badge = when (name) {
+    "YouTube" -> Badge("▶", Color.parseColor("#FF0033"))
+    "Instagram" -> Badge("IG", Color.parseColor("#E1306C"))
+    "TikTok" -> Badge("TT", Color.parseColor("#111111"))
+    "X (Twitter)" -> Badge("X", Color.parseColor("#111111"))
+    "ВКонтакте" -> Badge("VK", Color.parseColor("#0077FF"))
+    "Facebook" -> Badge("f", Color.parseColor("#1877F2"))
+    else -> Badge(name.take(1), Color.GRAY)
 }
 
-val ACCENT = Color.parseColor("#0E7490")
+/** Короткое описание ссылки для подсказки под полем: «TikTok · видео», «Spotify · альбом → MP3». */
+object Describe {
+    private val SITES = listOf(
+        "tiktok.com" to "TikTok", "instagram.com" to "Instagram", "x.com" to "X", "twitter.com" to "X",
+        "vk.com" to "VK", "vk.ru" to "VK", "vkvideo.ru" to "VK Видео", "youtube.com" to "YouTube", "youtu.be" to "YouTube",
+        "rutube.ru" to "Rutube", "dzen.ru" to "Дзен", "snapchat.com" to "Snapchat", "reddit.com" to "Reddit",
+        "pinterest." to "Pinterest", "ok.ru" to "Одноклассники", "twitch.tv" to "Twitch", "discordapp.com" to "Discord",
+        "discordapp.net" to "Discord", "discord.com" to "Discord", "yandex.ru" to "Яндекс", "facebook.com" to "Facebook",
+        "vimeo.com" to "Vimeo", "bandcamp.com" to "Bandcamp",
+    )
 
-fun Context.isNight() =
-    (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
-
-/** Цвет текста-ссылок: в тёмной теме светлее, чтобы читался. */
-fun Context.accentText() = if (isNight()) Color.parseColor("#67D4EA") else ACCENT
-
-fun Context.errorText() = if (isNight()) Color.parseColor("#F87171") else Color.parseColor("#DC2626")
-
-fun Context.column(padding: Int = 20) = LinearLayout(this).apply {
-    orientation = LinearLayout.VERTICAL
-    setPadding(dp(padding), dp(padding), dp(padding), dp(padding))
-}
-
-fun Context.text(s: String, sizeSp: Float = 15f, bold: Boolean = false, muted: Boolean = false) = TextView(this).apply {
-    text = s
-    textSize = sizeSp
-    if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
-    setTextColor(themeColor(android.R.attr.textColorPrimary))
-    if (muted) alpha = 0.7f
-    setPadding(0, dp(4), 0, dp(4))
-}
-
-fun Context.button(label: String, primary: Boolean = true, onClick: (View) -> Unit) = Button(this).apply {
-    text = label
-    isAllCaps = false
-    textSize = 16f
-    gravity = Gravity.CENTER
-    minHeight = dp(52)
-    background = GradientDrawable().apply {
-        cornerRadius = dp(14).toFloat()
-        if (primary) setColor(ACCENT) else {
-            setColor(Color.TRANSPARENT)
-            setStroke(dp(1), ACCENT)
+    fun of(url: String): String {
+        val service = Service.of(url)
+        if (service != null && service != Service.YOUTUBE) {
+            val kind = when {
+                url.contains("/album/") && !url.contains("?i=") && !url.contains("/track/") -> "альбом"
+                url.contains("/playlist") -> "плейлист"
+                else -> "трек"
+            }
+            return "${service.title} · $kind" + if (Music.needsSearch(url)) " → MP3" else ""
         }
+        val host = runCatching { Uri.parse(url).host.orEmpty().lowercase().removePrefix("www.").removePrefix("m.") }.getOrDefault("")
+        val name = SITES.firstOrNull { host.endsWith(it.first) || host.contains(it.first) }?.second ?: host.ifEmpty { "ссылка" }
+        return "$name · видео"
     }
-    setTextColor(if (primary) Color.WHITE else themeColor(android.R.attr.textColorPrimary))
-    backgroundTintList = null
-    stateListAnimator = null
-    setOnClickListener(onClick)
-    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        .apply { topMargin = dp(10) }
 }
 
-fun Context.spacer(h: Int) = View(this).apply {
-    layoutParams = LinearLayout.LayoutParams(1, dp(h))
-}
+/** Переключатель «Видео | 720p | MP3». Для музыкальных сервисов без видео оставляет только MP3. */
+object FormatPicker {
+    fun setup(group: MaterialButtonToggleGroup, url: String?) {
+        val onlyMp3 = url != null && Music.needsSearch(url)
+        group.findViewById<android.view.View>(R.id.fmtVideo).isEnabled = !onlyMp3
+        group.findViewById<android.view.View>(R.id.fmt720).isEnabled = !onlyMp3
+        val f = if (url == null) Format.BEST else Links.defaultFormat(url)
+        group.check(idOf(f))
+    }
 
+    fun selected(group: MaterialButtonToggleGroup) = when (group.checkedButtonId) {
+        R.id.fmt720 -> Format.P720
+        R.id.fmtMp3 -> Format.MP3
+        else -> Format.BEST
+    }
+
+    private fun idOf(f: Format) = when (f) {
+        Format.BEST -> R.id.fmtVideo
+        Format.P720 -> R.id.fmt720
+        Format.MP3 -> R.id.fmtMp3
+    }
+}

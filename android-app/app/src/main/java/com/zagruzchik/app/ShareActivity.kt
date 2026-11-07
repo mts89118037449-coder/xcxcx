@@ -1,90 +1,100 @@
 package com.zagruzchik.app
 
-import android.app.Activity
 import android.content.Intent
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.TextUtils
-import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 
-/** Окошко, которое появляется после «Поделиться → Загрузчик». */
-class ShareActivity : Activity() {
+/** «Поделиться → Загрузчик»: снизу выезжает панель с выбором формата. */
+class ShareActivity : AppCompatActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
-    private var secondsLeft = 8
-    private var url: String = ""
-    private var hint: String? = null
+    private var secondsLeft = AUTO_START_SEC
+    private var started = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val shared = intent.getStringExtra(Intent.EXTRA_TEXT) ?: intent.dataString
-        hint = shared
-        url = Links.extract(shared) ?: run {
+        val url = Links.extract(shared) ?: run {
             Toast.makeText(this, "В том, чем поделились, нет ссылки", Toast.LENGTH_LONG).show()
             finish()
             return
         }
-
-        val default = Links.defaultFormat(url)
         val music = Music.isMusic(url)
-        val formats = if (Music.needsSearch(url)) listOf(Format.MP3) else Format.entries.toList()
 
-        val root = column(22).apply {
-            background = GradientDrawable().apply {
-                cornerRadius = dp(24).toFloat()
-                setColor(themeColor(android.R.attr.colorBackground))
+        val sheet = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.sheet_share, null)
+        sheet.setContentView(view)
+        sheet.behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        sheet.behavior.skipCollapsed = true
+
+        view.findViewById<TextView>(R.id.service).text = Describe.of(url)
+        view.findViewById<TextView>(R.id.url).text = url
+        val formats = view.findViewById<MaterialButtonToggleGroup>(R.id.formats)
+        FormatPicker.setup(formats, url)
+        val download = view.findViewById<MaterialButton>(R.id.download)
+        val transfer = view.findViewById<MaterialButton>(R.id.transfer)
+        transfer.isVisible = music
+
+        fun start() {
+            if (started) return
+            started = true
+            handler.removeCallbacksAndMessages(null)
+            DownloadService.enqueue(this, url, FormatPicker.selected(formats), shared)
+            // Открываем приложение на вкладке «Загрузки», чтобы был виден прогресс.
+            startActivity(
+                Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_SHOW_JOBS, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            )
+            sheet.dismiss()
+        }
+
+        download.setOnClickListener { start() }
+        transfer.setOnClickListener {
+            started = true
+            handler.removeCallbacksAndMessages(null)
+            TransferActivity.open(this, url, shared)
+            sheet.dismiss()
+        }
+        // Человек начал выбирать формат — не торопим его таймером.
+        formats.addOnButtonCheckedListener { _, _, _ -> stopCountdown(download) }
+        sheet.setOnDismissListener { finish() }
+        sheet.show()
+
+        // Для видео: если ничего не нажать, загрузка начнётся сама. Для музыки — нет:
+        // человек мог прийти за ссылками в других сервисах.
+        if (!music) {
+            val tick = object : Runnable {
+                override fun run() {
+                    if (secondsLeft == 0) return start()
+                    download.text = "Скачать · $secondsLeft"
+                    secondsLeft--
+                    handler.postDelayed(this, 1000)
+                }
             }
+            handler.post(tick)
         }
-        root.addView(text("Скачать", 20f, bold = true))
-        root.addView(text(url, 13f, muted = true).apply {
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-        })
-
-        var defaultButton: Button? = null
-        for (f in formats) {
-            val b = button(f.label, primary = f == default) { start(f) }
-            if (f == default) defaultButton = b
-            root.addView(b)
-        }
-        if (music) {
-            root.addView(button("🔗 Ссылки в других сервисах", primary = false) {
-                handler.removeCallbacksAndMessages(null)
-                TransferActivity.open(this, url, hint)
-                finish()
-            })
-        }
-        setContentView(root)
-        window.setLayout((resources.displayMetrics.widthPixels * 0.9).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-
-        // Если ничего не нажать, через 8 секунд начнётся загрузка в формате по умолчанию.
-        // Для музыки не торопим: человек мог прийти за ссылками в других сервисах.
-        if (music) return
-        val tick = object : Runnable {
-            override fun run() {
-                if (secondsLeft == 0) return start(default)
-                defaultButton?.text = "${default.label} · $secondsLeft"
-                secondsLeft--
-                handler.postDelayed(this, 1000)
-            }
-        }
-        tick.run()
     }
 
-    private fun start(format: Format) {
+    private fun stopCountdown(download: MaterialButton) {
         handler.removeCallbacksAndMessages(null)
-        if (isFinishing) return
-        DownloadService.enqueue(this, url, format, hint)
-        // Сразу показываем приложение со списком загрузок и прогрессом.
-        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
-        finish()
+        download.text = "Скачать"
     }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    companion object {
+        private const val AUTO_START_SEC = 8
     }
 }

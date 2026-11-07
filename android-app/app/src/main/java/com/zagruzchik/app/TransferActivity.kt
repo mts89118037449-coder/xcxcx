@@ -5,77 +5,77 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.TextUtils
-import android.view.Gravity
 import android.view.View
-import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.imageview.ShapeableImageView
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.snackbar.Snackbar
 import java.net.URL
 import java.util.concurrent.Executors
 
-/**
- * Трансфер: прислали песню в одном сервисе — показываем ссылки на неё во всех остальных.
- */
-class TransferActivity : Activity() {
+/** Трансфер: прислали песню в одном сервисе — показываем ссылки на неё во всех остальных. */
+class TransferActivity : AppCompatActivity() {
 
     private val pool = Executors.newFixedThreadPool(4)
     private val main = Handler(Looper.getMainLooper())
     private lateinit var url: String
     private var hint: String? = null
 
-    private lateinit var cover: ImageView
+    private lateinit var cover: ShapeableImageView
     private lateinit var titleView: TextView
     private lateinit var artistView: TextView
-    private lateinit var status: TextView
-    private lateinit var spinner: ProgressBar
-    private lateinit var rows: LinearLayout
-    private lateinit var actions: LinearLayout
+    private lateinit var sourceView: TextView
+    private lateinit var loading: LinearProgressIndicator
+    private lateinit var errorView: TextView
+    private lateinit var services: LinearLayout
+    private lateinit var bottomBar: View
 
     private var track: Track? = null
     private val links = linkedMapOf<Service, Transfer.Link>()
+    private val rows = mutableMapOf<Service, View>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "Ссылки в других сервисах"
+        setContentView(R.layout.activity_transfer)
         url = intent.getStringExtra(EXTRA_URL) ?: return finish()
         hint = intent.getStringExtra(EXTRA_HINT)
 
-        cover = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            clipToOutline = true
-            background = GradientDrawable().apply { cornerRadius = dp(18).toFloat(); setColor(Color.argb(40, 128, 128, 128)) }
-            layoutParams = LinearLayout.LayoutParams(dp(180), dp(180)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(12) }
-            visibility = View.GONE
-        }
-        titleView = text("", 22f, bold = true).apply { gravity = Gravity.CENTER_HORIZONTAL }
-        artistView = text("", 16f, muted = true).apply { gravity = Gravity.CENTER_HORIZONTAL }
-        status = text("Узнаю, что за трек…", 14f, muted = true).apply { gravity = Gravity.CENTER_HORIZONTAL }
-        spinner = ProgressBar(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(8) }
-        }
-        rows = column(0)
-        actions = column(0).apply { visibility = View.GONE }
+        findViewById<MaterialToolbar>(R.id.toolbar).setNavigationOnClickListener { finish() }
+        cover = findViewById(R.id.cover)
+        titleView = findViewById(R.id.trackTitle)
+        artistView = findViewById(R.id.trackArtist)
+        sourceView = findViewById(R.id.trackSource)
+        loading = findViewById(R.id.loading)
+        errorView = findViewById(R.id.error)
+        services = findViewById(R.id.services)
+        bottomBar = findViewById(R.id.bottomBar)
+        sourceView.text = Describe.of(url)
 
-        val root = column().apply {
-            addView(cover)
-            addView(titleView)
-            addView(artistView)
-            addView(status)
-            addView(spinner)
-            addView(rows)
-            addView(actions)
+        findViewById<View>(R.id.shareAll).setOnClickListener {
+            val t = track ?: return@setOnClickListener
+            val text = Transfer.shareText(t, Transfer.ORDER.mapNotNull { links[it] })
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Поделиться"))
         }
-        setContentView(ScrollView(this).apply { addView(root) })
+        findViewById<View>(R.id.copyAll).setOnClickListener {
+            val t = track ?: return@setOnClickListener
+            copy(Transfer.shareText(t, Transfer.ORDER.mapNotNull { links[it] }), "Все ссылки скопированы")
+        }
+        findViewById<View>(R.id.mp3).setOnClickListener {
+            DownloadService.enqueue(this, url, Format.MP3, hint)
+            startActivity(
+                Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_SHOW_JOBS, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            )
+            finish()
+        }
         load()
     }
 
@@ -89,134 +89,99 @@ class TransferActivity : Activity() {
                 main.post { showTrack(t, item) }
                 for (s in Transfer.ORDER) {
                     if (s == item.source && item.type == "track") {
-                        main.post { addLink(Transfer.Link(s, url, true), original = true) }
+                        main.post { setLink(Transfer.Link(s, url, true), original = true) }
                         continue
                     }
                     pool.execute {
-                        val link = if (item.type == "track") {
-                            Transfer.find(s, t, ::youtubeId)
-                        } else {
-                            Transfer.Link(s, s.searchUrl("${first.artist} ${item.name}".trim()), false)
-                        }
-                        main.post { addLink(link) }
+                        val link = if (item.type == "track") Transfer.find(s, t, Downloader::youtubeId)
+                        else Transfer.Link(s, s.searchUrl("${first.artist} ${item.name}".trim()), false)
+                        main.post { setLink(link) }
                     }
                 }
             } catch (e: Exception) {
                 val msg = (e as? UserError)?.message ?: "Не получилось: ${e.message}"
                 main.post {
-                    spinner.visibility = View.GONE
-                    status.text = msg
-                    status.setTextColor(errorText())
-                    status.alpha = 1f
+                    if (isDestroyed) return@post
+                    loading.isVisible = false
+                    titleView.text = "Трек не найден"
+                    errorView.text = msg
+                    errorView.isVisible = true
                 }
             }
         }
     }
-
-    private fun youtubeId(q: String): String? = Downloader.youtubeId(q)
 
     private fun showTrack(t: Track, item: MusicItem) {
         if (isDestroyed) return
         track = t
         titleView.text = t.title
         artistView.text = t.artist
-        status.text = when (item.type) {
-            "album" -> "Альбом · ${item.tracks.size} треков · из ${item.source.title}"
-            "playlist" -> "Плейлист · ${item.tracks.size} треков · из ${item.source.title}"
+        sourceView.text = when (item.type) {
+            "album" -> "Альбом · ${item.tracks.size} треков · ${item.source.title}"
+            "playlist" -> "Плейлист · ${item.tracks.size} треков · ${item.source.title}"
             else -> "Из ${item.source.title}"
         }
+        // Сразу показываем все сервисы с крутилкой, ссылки подставляются по мере ответа.
+        services.removeAllViews()
+        rows.clear()
+        for (s in Transfer.ORDER) {
+            val row = layoutInflater.inflate(R.layout.item_service, services, false)
+            row.findViewById<TextView>(R.id.badge).showBadge(s.badge)
+            row.findViewById<TextView>(R.id.name).text = s.title
+            row.findViewById<TextView>(R.id.kind).text = "ищу…"
+            row.findViewById<View>(R.id.copy).isVisible = false
+            row.findViewById<View>(R.id.open).isVisible = false
+            rows[s] = row
+            services.addView(row)
+        }
+        loading.isVisible = false
+        bottomBar.isVisible = true
+        findViewById<TextView>(R.id.mp3).text = if (item.tracks.size > 1) "MP3 · ${item.tracks.size}" else "MP3"
         t.cover?.let { c ->
             pool.execute {
                 val bmp = runCatching { URL(c).openStream().use { BitmapFactory.decodeStream(it) } }.getOrNull()
-                main.post { if (bmp != null && !isDestroyed) { cover.setImageBitmap(bmp); cover.visibility = View.VISIBLE } }
+                main.post { if (bmp != null && !isDestroyed) cover.setImageBitmap(bmp) }
             }
         }
-        showActions(item)
     }
 
-    private fun addLink(link: Transfer.Link, original: Boolean = false) {
+    private fun setLink(link: Transfer.Link, original: Boolean = false) {
         if (isDestroyed) return
         links[link.service] = link
-        // Показываем в постоянном порядке, независимо от того, кто ответил первым.
-        rows.removeAllViews()
-        for (s in Transfer.ORDER) links[s]?.let { rows.addView(row(it, original = it.url == url)) }
-        if (links.size == Transfer.ORDER.size) spinner.visibility = View.GONE
-    }
-
-    private fun row(link: Transfer.Link, original: Boolean): View {
-        val name = text(link.service.title, 16f, bold = true)
-        val sub = text(
-            when {
-                original -> "исходная ссылка"
-                link.exact -> "точная ссылка на трек"
-                else -> "поиск в ${link.service.title}"
-            }, 13f, muted = true,
-        )
-        val info = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            addView(name)
-            addView(sub)
+        val row = rows[link.service] ?: return
+        val kind = row.findViewById<TextView>(R.id.kind)
+        kind.text = when {
+            original -> "исходная ссылка"
+            link.exact -> "✓ точная ссылка на трек"
+            else -> "поиск в ${link.service.title}"
         }
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(8), dp(6), dp(8))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(14).toFloat()
-                setStroke(dp(1), Color.argb(60, 128, 128, 128))
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                .apply { topMargin = dp(8) }
-            addView(info)
-            addView(smallAction("Открыть") { open(link.url) })
-            addView(smallAction("Копировать") { copy(link.url, "Ссылка ${link.service.title} скопирована") })
+        row.findViewById<View>(R.id.spinner).isVisible = false
+        row.findViewById<View>(R.id.copy).apply {
+            isVisible = true
+            setOnClickListener { copy(link.url, "Ссылка ${link.service.title} скопирована") }
         }
-    }
-
-    private fun showActions(item: MusicItem) {
-        actions.removeAllViews()
-        actions.addView(spacer(8))
-        actions.addView(button("Поделиться всеми ссылками") {
-            val t = track ?: return@button
-            val all = Transfer.ORDER.mapNotNull { links[it] }
-            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, Transfer.shareText(t, all)), "Поделиться"))
-        })
-        actions.addView(button("Копировать всё", primary = false) {
-            val t = track ?: return@button
-            copy(Transfer.shareText(t, Transfer.ORDER.mapNotNull { links[it] }), "Все ссылки скопированы")
-        })
-        actions.addView(button(if (item.tracks.size > 1) "Скачать MP3 (${item.tracks.size})" else "Скачать MP3", primary = false) {
-            DownloadService.enqueue(this, url, Format.MP3, hint)
-            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
-            finish()
-        })
-        actions.visibility = View.VISIBLE
+        row.findViewById<View>(R.id.open).apply {
+            isVisible = true
+            setOnClickListener { open(link.url) }
+        }
+        row.findViewById<View>(R.id.card).setOnClickListener { open(link.url) }
     }
 
     private fun open(u: String) {
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
         } catch (e: Exception) {
-            Toast.makeText(this, "Нечем открыть ссылку", Toast.LENGTH_SHORT).show()
+            snack("Нечем открыть ссылку")
         }
     }
 
-    private fun copy(text: String, toast: String) {
+    private fun copy(text: String, message: String) {
         getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("ссылка", text))
-        Toast.makeText(this, toast, Toast.LENGTH_SHORT).show()
+        snack(message)
     }
 
-    private fun smallAction(label: String, onClick: () -> Unit) = TextView(this).apply {
-        text = label
-        textSize = 14f
-        setTextColor(accentText())
-        setTypeface(typeface, android.graphics.Typeface.BOLD)
-        setPadding(dp(8), dp(10), dp(8), dp(10))
-        ellipsize = TextUtils.TruncateAt.END
-        isClickable = true
-        background = getDrawable(android.R.drawable.list_selector_background)
-        setOnClickListener { onClick() }
+    private fun snack(text: String) {
+        Snackbar.make(services, text, Snackbar.LENGTH_SHORT).apply { if (bottomBar.isVisible) setAnchorView(bottomBar) }.show()
     }
 
     override fun onDestroy() {

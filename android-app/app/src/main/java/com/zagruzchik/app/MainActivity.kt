@@ -1,107 +1,114 @@
 package com.zagruzchik.app
 
 import android.Manifest
-import android.app.Activity
-import android.app.AlertDialog
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.text.InputType
-import android.text.TextUtils
-import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
-import android.widget.EditText
+import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.color.MaterialColors
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
+import com.yausername.youtubedl_android.YoutubeDL
+import kotlin.concurrent.thread
+import com.google.android.material.R as M
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
 
-    private lateinit var input: EditText
-    private lateinit var accounts: TextView
-    private lateinit var jobsBox: LinearLayout
-    private lateinit var clearFinished: TextView
-    private lateinit var empty: TextView
-    private val views = mutableMapOf<String, JobView>()
+    private lateinit var toolbar: MaterialToolbar
+    private lateinit var nav: BottomNavigationView
+    private lateinit var pages: Map<Int, View>
+
+    // Вкладка «Скачать»
+    private lateinit var inputLayout: TextInputLayout
+    private lateinit var input: TextInputEditText
+    private lateinit var formats: MaterialButtonToggleGroup
+    private lateinit var transferBtn: MaterialButton
+    private lateinit var activeCard: MaterialCardView
+    private lateinit var activeTitle: TextView
+    private lateinit var activeProgress: LinearProgressIndicator
+
+    // Вкладка «Загрузки»
+    private val adapter = JobsAdapter()
+    private lateinit var jobsEmpty: View
+
+    // Вкладка «Настройки»
+    private lateinit var sites: LinearLayout
+
     private val prefs by lazy { getSharedPreferences("app", MODE_PRIVATE) }
 
     private val listener: (Job?) -> Unit = { job ->
-        if (job == null) rebuildJobs() else views[job.id]?.bind(job) ?: rebuildJobs()
+        if (job == null) adapter.submit(Jobs.all) else adapter.update(job)
+        refreshSummary()
+    }
+
+    private val pickCookies = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val n = runCatching { contentResolver.openInputStream(uri)!!.bufferedReader().use { Cookies.import(this, it.readText()) } }.getOrDefault(0)
+        snack(if (n > 0) "Вход сохранён" else "В файле нет данных для входа")
+        refreshSites()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "Загрузчик"
-
-        input = EditText(this).apply {
-            hint = "Вставьте ссылку"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            setSingleLine(true)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val inputRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(input)
-            addView(action("✕", "Очистить поле") { clearInput() })
-            addView(action("Вставить") { pasteFromClipboard(force = true) })
+        setContentView(R.layout.activity_main)
+        toolbar = findViewById(R.id.toolbar)
+        nav = findViewById(R.id.bottomNav)
+        pages = mapOf(
+            R.id.nav_download to findViewById(R.id.pageDownload),
+            R.id.nav_jobs to findViewById(R.id.pageJobs),
+            R.id.nav_settings to findViewById(R.id.pageSettings),
+        )
+        nav.setOnItemSelectedListener { applyPage(it.itemId); true }
+        toolbar.setOnMenuItemClickListener {
+            if (it.itemId == R.id.action_clear) Jobs.clearFinished()
+            true
         }
 
-        accounts = text("", 14f, muted = true)
-        jobsBox = column(0)
-        empty = text("Здесь появятся ваши загрузки.", 14f, muted = true)
-        clearFinished = action("Очистить готовые") { Jobs.clearFinished() }
-        val jobsHeader = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(text("Загрузки", 20f, bold = true).apply {
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            addView(clearFinished)
-        }
+        setupDownloadPage()
+        setupJobsPage()
+        setupSettingsPage()
 
-        val root = column().apply {
-            addView(text("Скачать по ссылке", 22f, bold = true))
-            addView(text("В любом приложении нажмите «Поделиться» → «Загрузчик». Или вставьте ссылку сюда:", 15f, muted = true))
-            addView(inputRow)
-            Format.entries.forEach { f -> addView(button(f.label, primary = f == Format.BEST) { download(f) }) }
-            addView(button("🔗 Ссылки в других сервисах", primary = false) { transfer() })
-            addView(text("Файлы сохраняются в «Загрузки/${Storage.FOLDER}».", 13f, muted = true))
-
-            addView(spacer(24))
-            addView(jobsHeader)
-            addView(empty)
-            addView(jobsBox)
-
-            addView(spacer(28))
-            addView(text("Аккаунты", 20f, bold = true))
-            addView(text("Нужно для Instagram, видео 18+ и приватных публикаций.", 14f, muted = true))
-            addView(accounts)
-            addView(button("Войти в аккаунт", primary = false) { chooseSite() })
-            addView(button("Загрузить файл cookies.txt", primary = false) { pickCookiesFile() })
-            addView(button("Выйти из всех аккаунтов", primary = false) { logoutAll() })
-
-            addView(spacer(28))
-            addView(text("Видео: YouTube, TikTok, VK, X, Instagram, Snapchat, Яндекс, Дзен, Rutube, файлы Discord. Музыка: Spotify, Яндекс Музыка, Apple Music, Deezer, SoundCloud, VK. И ещё ~1800 сайтов.", 13f, muted = true))
-        }
-        setContentView(ScrollView(this).apply { addView(root) })
-
+        showPage(savedInstanceState?.getInt("page") ?: R.id.nav_download)
         handleIntent(intent)
-        askNotificationPermission()
+        if (savedInstanceState == null) askNotificationPermission()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt("page", nav.selectedItemId)
     }
 
     override fun onStart() {
         super.onStart()
         Jobs.listen(listener)
-        rebuildJobs()
+        adapter.submit(Jobs.all)
+        refreshSummary()
+        refreshSites()
     }
 
     override fun onStop() {
@@ -114,29 +121,87 @@ class MainActivity : Activity() {
         handleIntent(intent)
     }
 
-    override fun onResume() {
-        super.onResume()
-        val sites = Cookies.loggedInSites(this)
-        accounts.text = if (sites.isEmpty()) "Вход не выполнен." else "Выполнен вход: ${sites.joinToString(", ")}"
+    private fun handleIntent(intent: Intent?) {
+        intent?.getStringExtra(DownloadService.EXTRA_URL)?.let {
+            input.setText(it)
+            showPage(R.id.nav_download)
+        }
+        if (intent?.getBooleanExtra(EXTRA_SHOW_JOBS, false) == true) showPage(R.id.nav_jobs)
+    }
+
+    /** Переключить вкладку из кода: нижняя панель сама вызовет [applyPage]. */
+    private fun showPage(id: Int) {
+        if (nav.selectedItemId != id) nav.selectedItemId = id else applyPage(id)
+    }
+
+    /** Показать содержимое вкладки. Вызывается нижней панелью при выборе вкладки. */
+    private fun applyPage(id: Int) {
+        pages.forEach { (k, v) -> v.isVisible = k == id }
+        toolbar.title = when (id) {
+            R.id.nav_jobs -> "Загрузки"
+            R.id.nav_settings -> "Настройки"
+            else -> "Загрузчик"
+        }
+        toolbar.menu.clear()
+        if (id == R.id.nav_jobs) toolbar.inflateMenu(R.menu.jobs)
+        refreshSummary()
+    }
+
+    // ---------------- Скачать ----------------
+
+    private fun setupDownloadPage() {
+        inputLayout = findViewById(R.id.inputLayout)
+        input = findViewById(R.id.input)
+        formats = findViewById(R.id.formats)
+        transferBtn = findViewById(R.id.transfer)
+        activeCard = findViewById(R.id.activeCard)
+        activeTitle = findViewById(R.id.activeTitle)
+        activeProgress = findViewById(R.id.activeProgress)
+
+        FormatPicker.setup(formats, null)
+        input.doAfterTextChanged { onLinkChanged() }
+        input.setOnEditorActionListener { _, action, _ ->
+            if (action == EditorInfo.IME_ACTION_GO) download()
+            true
+        }
+        // Крестик в поле: запоминаем ссылку, чтобы она не подставлялась из буфера снова.
+        inputLayout.setEndIconOnClickListener {
+            Links.extract(input.text.toString())?.let { prefs.edit().putString("dismissed", it).apply() }
+            input.setText("")
+        }
+        findViewById<View>(R.id.paste).setOnClickListener { pasteFromClipboard(force = true) }
+        findViewById<View>(R.id.download).setOnClickListener { download() }
+        transferBtn.setOnClickListener {
+            Links.extract(input.text.toString())?.let { TransferActivity.open(this, it, input.text.toString()) }
+        }
+        activeCard.setOnClickListener { showPage(R.id.nav_jobs) }
+    }
+
+    private fun onLinkChanged() {
+        val url = Links.extract(input.text.toString())
+        inputLayout.error = null
+        inputLayout.helperText = when {
+            input.text.isNullOrBlank() -> "Вставьте ссылку или нажмите «Поделиться» в любом приложении"
+            url == null -> "Это не похоже на ссылку"
+            else -> Describe.of(url)
+        }
+        FormatPicker.setup(formats, url)
+        transferBtn.isVisible = url != null && (Music.isMusic(url) || Service.of(url) == Service.YOUTUBE)
     }
 
     // Android разрешает читать буфер обмена, только когда окно в фокусе.
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && input.text.isBlank()) pasteFromClipboard(force = false)
+        if (hasFocus && input.text.isNullOrBlank()) pasteFromClipboard(force = false)
     }
 
-    private fun clipboardUrl(): String? {
+    /** Сам подставляет только новые ссылки: уже скачанные и стёртые крестиком — нет. */
+    private fun pasteFromClipboard(force: Boolean) {
         val clip = getSystemService(ClipboardManager::class.java).primaryClip
         val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
-        return Links.extract(text)
-    }
-
-    /** Сам подставляет только новые ссылки: уже скачанные и стёртые крестиком — не подставляет. */
-    private fun pasteFromClipboard(force: Boolean) {
-        val url = clipboardUrl()
+        val url = Links.extract(text)
         if (url == null) {
-            if (force) Toast.makeText(this, "В буфере обмена нет ссылки", Toast.LENGTH_SHORT).show()
+            if (force) snack("В буфере обмена нет ссылки")
             return
         }
         if (!force && (url == prefs.getString("dismissed", null) || Jobs.all.any { it.url == url })) return
@@ -144,122 +209,160 @@ class MainActivity : Activity() {
         input.setSelection(url.length)
     }
 
-    private fun clearInput() {
-        Links.extract(input.text.toString())?.let { prefs.edit().putString("dismissed", it).apply() }
-        input.setText("")
-    }
-
-    private fun handleIntent(intent: Intent?) {
-        intent?.getStringExtra(DownloadService.EXTRA_URL)?.let { input.setText(it) }
-    }
-
-    private fun download(format: Format) {
+    private fun download() {
         val url = Links.extract(input.text.toString())
         if (url == null) {
-            Toast.makeText(this, "Вставьте ссылку", Toast.LENGTH_SHORT).show()
+            inputLayout.error = "Вставьте ссылку"
             return
         }
-        DownloadService.enqueue(this, url, format)
+        DownloadService.enqueue(this, url, FormatPicker.selected(formats), input.text.toString())
         input.setText("")
+        showPage(R.id.nav_jobs)
     }
 
-    private fun transfer() {
-        val url = Links.extract(input.text.toString())
-        when {
-            url == null -> Toast.makeText(this, "Вставьте ссылку на песню", Toast.LENGTH_SHORT).show()
-            !Music.isMusic(url) && Service.of(url) != Service.YOUTUBE ->
-                Toast.makeText(this, "Нужна ссылка на песню: Spotify, Яндекс Музыка, Apple Music, YouTube, VK, Deezer, SoundCloud", Toast.LENGTH_LONG).show()
-            else -> TransferActivity.open(this, url, input.text.toString())
+    private fun refreshSummary() {
+        val all = Jobs.all
+        val active = all.filter { it.active }
+        nav.getOrCreateBadge(R.id.nav_jobs).apply {
+            isVisible = active.isNotEmpty()
+            number = active.size
         }
-    }
-
-    // ---------- Список загрузок ----------
-
-    private fun rebuildJobs() {
-        val jobs = Jobs.all
-        jobsBox.removeAllViews()
-        views.clear()
-        for (job in jobs) {
-            val v = JobView()
-            v.bind(job)
-            views[job.id] = v
-            jobsBox.addView(v.root)
-        }
-        empty.visibility = if (jobs.isEmpty()) View.VISIBLE else View.GONE
-        clearFinished.visibility = if (jobs.any { !it.active }) View.VISIBLE else View.GONE
-    }
-
-    /** Карточка одной загрузки: название, статус, прогресс и кнопки. */
-    private inner class JobView {
-        val title = text("", 16f, bold = true).apply {
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-        }
-        val status = text("", 13f, muted = true).apply {
-            maxLines = 3
-            ellipsize = TextUtils.TruncateAt.END
-        }
-        val bar = ProgressBar(this@MainActivity, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 1000
-            progressTintList = ColorStateList.valueOf(ACCENT)
-            indeterminateTintList = ColorStateList.valueOf(ACCENT)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(8)).apply { topMargin = dp(6) }
-        }
-        val actions = LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-        }
-        val root = column(14).apply {
-            background = GradientDrawable().apply {
-                cornerRadius = dp(16).toFloat()
-                setStroke(dp(1), Color.argb(60, 128, 128, 128))
+        activeCard.isVisible = active.isNotEmpty()
+        if (active.isNotEmpty()) {
+            val running = active.firstOrNull { it.status == Status.RUNNING }
+            activeTitle.text = when {
+                running == null -> "В очереди: ${active.size}"
+                active.size == 1 -> "Скачиваю: ${running.title}"
+                else -> "Скачиваю ${active.size}: ${running.title}"
             }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                .apply { topMargin = dp(10) }
-            addView(title)
-            addView(status)
-            addView(bar)
-            addView(actions)
+            val p = running?.progress ?: 0f
+            if (activeProgress.isIndeterminate != (p <= 0f)) {
+                activeProgress.isVisible = false
+                activeProgress.isIndeterminate = p <= 0f
+                activeProgress.isVisible = true
+            }
+            if (p > 0f) activeProgress.setProgressCompat((p * 10).toInt(), true)
         }
-        private var shownStatus: Status? = null
+        toolbar.menu.findItem(R.id.action_clear)?.isVisible = all.any { !it.active }
+        jobsEmpty.isVisible = all.isEmpty()
+    }
+
+    // ---------------- Загрузки ----------------
+
+    private fun setupJobsPage() {
+        jobsEmpty = findViewById(R.id.jobsEmpty)
+        val list = findViewById<RecyclerView>(R.id.jobsList)
+        list.layoutManager = LinearLayoutManager(this)
+        list.adapter = adapter
+        list.itemAnimator?.changeDuration = 0 // без мигания при обновлении прогресса
+
+        // Смахнуть завершённую загрузку — убрать из списка (файл остаётся). С возможностью вернуть.
+        ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT) {
+            override fun onMove(rv: RecyclerView, vh: RecyclerView.ViewHolder, t: RecyclerView.ViewHolder) = false
+            override fun getSwipeDirs(rv: RecyclerView, vh: RecyclerView.ViewHolder): Int {
+                val job = adapter.items.getOrNull(vh.bindingAdapterPosition) ?: return 0
+                return if (job.active) 0 else super.getSwipeDirs(rv, vh)
+            }
+            override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {
+                val pos = vh.bindingAdapterPosition
+                val job = adapter.items.getOrNull(pos) ?: return
+                Jobs.remove(job.id)
+                Snackbar.make(nav, "Убрано из списка", Snackbar.LENGTH_LONG)
+                    .setAnchorView(nav)
+                    .setAction("Вернуть") { Jobs.restore(job, pos) }
+                    .show()
+            }
+        }).attachToRecyclerView(list)
+    }
+
+    inner class JobsAdapter : RecyclerView.Adapter<JobHolder>() {
+        var items: List<Job> = emptyList()
+            private set
+
+        @android.annotation.SuppressLint("NotifyDataSetChanged")
+        fun submit(list: List<Job>) {
+            items = list
+            notifyDataSetChanged()
+        }
+
+        fun update(job: Job) {
+            val i = items.indexOfFirst { it.id == job.id }
+            if (i >= 0) notifyItemChanged(i) else submit(Jobs.all)
+        }
+
+        override fun getItemCount() = items.size
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            JobHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_job, parent, false))
+        override fun onBindViewHolder(holder: JobHolder, position: Int) = holder.bind(items[position])
+    }
+
+    inner class JobHolder(v: View) : RecyclerView.ViewHolder(v) {
+        private val card: MaterialCardView = v.findViewById(R.id.card)
+        private val iconBox: View = v.findViewById(R.id.iconBox)
+        private val icon: ImageView = v.findViewById(R.id.icon)
+        private val title: TextView = v.findViewById(R.id.title)
+        private val subtitle: TextView = v.findViewById(R.id.subtitle)
+        private val progress: LinearProgressIndicator = v.findViewById(R.id.progress)
+        private val btnOpen: View = v.findViewById(R.id.btnOpen)
+        private val btnRetry: View = v.findViewById(R.id.btnRetry)
+        private val btnCancel: View = v.findViewById(R.id.btnCancel)
+        private val btnShare: View = v.findViewById(R.id.btnShare)
+        private val btnDelete: View = v.findViewById(R.id.btnDelete)
+        private val btnRemove: View = v.findViewById(R.id.btnRemove)
 
         fun bind(job: Job) {
             title.text = job.title
-            val pct = "${job.progress.toInt()}%"
-            status.text = when (job.status) {
+            val media = if (job.format == Format.MP3) R.drawable.ic_music_note else R.drawable.ic_movie
+            val (iconRes, bg, fg) = when (job.status) {
+                Status.FAILED -> Triple(R.drawable.ic_error_outline, M.attr.colorErrorContainer, M.attr.colorOnErrorContainer)
+                Status.CANCELLED -> Triple(R.drawable.ic_close, M.attr.colorSurfaceContainerHighest, M.attr.colorOnSurfaceVariant)
+                Status.DONE -> Triple(media, M.attr.colorPrimary, M.attr.colorOnPrimary)
+                Status.QUEUED -> Triple(R.drawable.ic_schedule, M.attr.colorSecondaryContainer, M.attr.colorOnSecondaryContainer)
+                Status.RUNNING -> Triple(media, M.attr.colorPrimaryContainer, M.attr.colorOnPrimaryContainer)
+            }
+            icon.setImageResource(iconRes)
+            iconBox.backgroundTintList = ColorStateList.valueOf(MaterialColors.getColor(iconBox, bg))
+            icon.imageTintList = ColorStateList.valueOf(MaterialColors.getColor(icon, fg))
+
+            subtitle.text = when (job.status) {
                 Status.QUEUED -> "${job.format.label} · в очереди"
-                Status.RUNNING -> listOf(if (job.progress > 0) pct else "", job.detail).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { "Начинаю…" }
-                Status.DONE -> "Готово · ${job.detail.ifEmpty { job.format.label }}"
-                Status.FAILED -> "Ошибка: ${job.error}"
+                Status.RUNNING -> listOf(if (job.progress > 0) "${job.progress.toInt()}%" else "", job.detail)
+                    .filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { "Подключаюсь…" }
+                Status.DONE -> job.detail.ifEmpty { "Готово" }
+                Status.FAILED -> job.error
                 Status.CANCELLED -> "Отменено"
             }
-            status.setTextColor(if (job.status == Status.FAILED) errorText() else themeColor(android.R.attr.textColorPrimary))
-            status.alpha = if (job.status == Status.FAILED) 1f else 0.7f
+            subtitle.setTextColor(MaterialColors.getColor(subtitle, if (job.status == Status.FAILED) M.attr.colorError else M.attr.colorOnSurfaceVariant))
 
-            bar.visibility = if (job.active) View.VISIBLE else View.GONE
-            bar.isIndeterminate = job.status == Status.QUEUED || job.progress <= 0f
-            if (!bar.isIndeterminate) bar.setProgress((job.progress * 10).toInt(), true)
-
-            if (shownStatus != job.status) {
-                shownStatus = job.status
-                actions.removeAllViews()
-                when (job.status) {
-                    Status.QUEUED, Status.RUNNING -> actions.addView(action("Отменить") { Jobs.cancel(job.id) })
-                    Status.DONE -> {
-                        actions.addView(action("Открыть") { open(job) })
-                        actions.addView(action("Поделиться") { share(job) })
-                        actions.addView(action("Удалить файл") { confirmDelete(job) })
-                        actions.addView(action("✕", "Убрать из списка") { Jobs.remove(job.id) })
-                    }
-                    Status.FAILED, Status.CANCELLED -> {
-                        actions.addView(action("Повторить") {
-                            Jobs.remove(job.id)
-                            DownloadService.enqueue(this@MainActivity, job.url, job.format, job.hint)
-                        })
-                        actions.addView(action("✕", "Убрать из списка") { Jobs.remove(job.id) })
-                    }
+            progress.isVisible = job.active
+            if (job.active) {
+                val indeterminate = job.status == Status.QUEUED || job.progress <= 0f
+                if (progress.isIndeterminate != indeterminate) {
+                    progress.isVisible = false // индикатор меняет режим только скрытым
+                    progress.isIndeterminate = indeterminate
+                    progress.isVisible = true
                 }
+                if (!indeterminate) progress.setProgressCompat((job.progress * 10).toInt(), true)
             }
+
+            val finished = job.status == Status.FAILED || job.status == Status.CANCELLED
+            btnCancel.isVisible = job.active
+            btnOpen.isVisible = job.status == Status.DONE
+            btnShare.isVisible = job.status == Status.DONE
+            btnDelete.isVisible = job.status == Status.DONE
+            btnRetry.isVisible = finished
+            btnRemove.isVisible = finished
+
+            btnCancel.setOnClickListener { Jobs.cancel(job.id) }
+            btnOpen.setOnClickListener { open(job) }
+            btnShare.setOnClickListener { share(job) }
+            btnDelete.setOnClickListener { confirmDelete(job) }
+            btnRetry.setOnClickListener {
+                Jobs.remove(job.id)
+                DownloadService.enqueue(this@MainActivity, job.url, job.format, job.hint)
+            }
+            btnRemove.setOnClickListener { Jobs.remove(job.id) }
+            card.setOnClickListener { if (job.status == Status.DONE) open(job) }
         }
     }
 
@@ -268,7 +371,7 @@ class MainActivity : Activity() {
         try {
             startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(f.uri), f.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
         } catch (e: Exception) {
-            Toast.makeText(this, "Нет приложения, чтобы открыть этот файл", Toast.LENGTH_SHORT).show()
+            snack("Нет приложения, чтобы открыть этот файл")
         }
     }
 
@@ -286,87 +389,103 @@ class MainActivity : Activity() {
     }
 
     private fun confirmDelete(job: Job) {
-        val what = if (job.files.size == 1) "файл «${job.files.first().name}»" else "${job.files.size} файл(ов)"
-        AlertDialog.Builder(this)
-            .setMessage("Удалить $what с телефона?")
+        val what = if (job.files.size == 1) "«${job.files.first().name}»" else "${job.files.size} файл(ов)"
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Удалить с телефона?")
+            .setMessage("Файл $what будет удалён из «Загрузок».")
+            .setIcon(R.drawable.ic_delete_outline)
             .setPositiveButton("Удалить") { _, _ ->
                 val n = Jobs.deleteFiles(this, job)
-                if (n < job.files.size) Toast.makeText(this, "Часть файлов уже удалена или недоступна", Toast.LENGTH_SHORT).show()
+                snack(if (n < job.files.size) "Часть файлов уже удалена или недоступна" else "Удалено")
             }
             .setNegativeButton("Отмена", null)
             .show()
     }
 
-    /** Небольшая текстовая кнопка цвета акцента. */
-    private fun action(label: String, description: String? = null, onClick: () -> Unit) = TextView(this).apply {
-        text = label
-        textSize = 14f
-        setTextColor(accentText())
-        setTypeface(typeface, android.graphics.Typeface.BOLD)
-        setPadding(dp(10), dp(10), dp(10), dp(10))
-        contentDescription = description ?: label
-        isClickable = true
-        isFocusable = true
-        background = getDrawable(android.R.drawable.list_selector_background) // UseCompatLoadingForDrawables: minSdk 29, не нужно
-        setOnClickListener { onClick() }
+    // ---------------- Настройки ----------------
+
+    private fun engineVersion() = runCatching { YoutubeDL.getInstance().versionName(this) }.getOrNull() ?: "встроенная версия"
+
+    private fun setupSettingsPage() {
+        sites = findViewById(R.id.sites)
+        findViewById<View>(R.id.importCookies).setOnClickListener { cookiesHelp() }
+        findViewById<View>(R.id.logoutAll).setOnClickListener {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Выйти из всех аккаунтов?")
+                .setMessage("Сохранённые входы будут удалены с этого телефона.")
+                .setPositiveButton("Выйти") { _, _ -> Cookies.clear(this); refreshSites() }
+                .setNegativeButton("Отмена", null)
+                .show()
+        }
+        findViewById<TextView>(R.id.folderText).text = "Загрузки / ${Storage.FOLDER}\nАльбомы — в отдельных папках"
+        val info = packageManager.getPackageInfo(packageName, 0)
+        findViewById<TextView>(R.id.versionText).text = "Загрузчик ${info.versionName}"
+        val engine = findViewById<TextView>(R.id.engineText)
+        engine.text = "Движок yt-dlp: ${engineVersion()}. Обновляется сам раз в неделю."
+        findViewById<MaterialButton>(R.id.updateEngine).setOnClickListener { btn ->
+            btn.isEnabled = false
+            snack("Обновляю движок…")
+            thread {
+                val result = runCatching {
+                    App.awaitReady()
+                    YoutubeDL.getInstance().updateYoutubeDL(this, YoutubeDL.UpdateChannel.STABLE)
+                }
+                runOnUiThread {
+                    btn.isEnabled = true
+                    snack(
+                        when {
+                            result.isFailure -> "Не удалось обновить: проверьте интернет"
+                            result.getOrNull() == YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE -> "Уже последняя версия"
+                            else -> "Движок обновлён"
+                        }
+                    )
+                    engine.text = "Движок yt-dlp: ${engineVersion()}. Обновляется сам раз в неделю."
+                }
+            }
+        }
     }
 
-    // ---------- Аккаунты ----------
-
-    private fun chooseSite() {
-        AlertDialog.Builder(this)
-            .setTitle("Куда войти?")
-            .setItems(Cookies.SITES.map { it.name }.toTypedArray()) { _, i ->
+    private fun refreshSites() {
+        val logged = Cookies.loggedInSites(this).toSet()
+        sites.removeAllViews()
+        Cookies.SITES.forEachIndexed { i, site ->
+            val row = layoutInflater.inflate(R.layout.item_site, sites, false)
+            row.findViewById<TextView>(R.id.badge).showBadge(siteBadge(site.name))
+            row.findViewById<TextView>(R.id.name).text = site.name
+            val ok = site.name in logged
+            row.findViewById<TextView>(R.id.state).text = if (ok) "Вход выполнен" else "Нажмите, чтобы войти"
+            row.findViewById<ImageView>(R.id.stateIcon).apply {
+                setImageResource(if (ok) R.drawable.ic_check_circle else R.drawable.ic_person_outline)
+                imageTintList = ColorStateList.valueOf(MaterialColors.getColor(this, if (ok) M.attr.colorPrimary else M.attr.colorOnSurfaceVariant))
+            }
+            row.setOnClickListener {
                 startActivity(Intent(this, LoginActivity::class.java).putExtra(LoginActivity.EXTRA_SITE, i))
             }
-            .setNegativeButton("Отмена", null)
-            .show()
+            sites.addView(row)
+        }
     }
 
-    private fun pickCookiesFile() {
-        AlertDialog.Builder(this)
+    private fun cookiesHelp() {
+        MaterialAlertDialogBuilder(this)
             .setTitle("Файл cookies.txt")
+            .setIcon(R.drawable.ic_upload_file)
             .setMessage(
                 "Если Google не пускает во встроенном окне входа:\n\n" +
                     "1. Установите Firefox и дополнение «Get cookies.txt LOCALLY».\n" +
                     "2. Войдите на сайт в Firefox (можно через Google).\n" +
                     "3. Нажмите значок дополнения → Export.\n" +
-                    "4. Выберите сохранённый файл здесь.\n\n" +
-                    "После загрузки удалите файл из «Загрузок»: по нему можно войти в ваш аккаунт."
+                    "4. Выберите сохранённый файл.\n\n" +
+                    "Потом удалите файл из «Загрузок»: по нему можно войти в ваш аккаунт."
             )
-            .setPositiveButton("Выбрать файл") { _, _ ->
-                startActivityForResult(
-                    Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/*"),
-                    REQ_COOKIES,
-                )
-            }
+            .setPositiveButton("Выбрать файл") { _, _ -> pickCookies.launch(arrayOf("text/*")) }
             .setNegativeButton("Отмена", null)
             .show()
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQ_COOKIES || resultCode != RESULT_OK) return
-        val uri = data?.data ?: return
-        val n = try {
-            contentResolver.openInputStream(uri)!!.bufferedReader().use { Cookies.import(this, it.readText()) }
-        } catch (e: Exception) {
-            0
-        }
-        Toast.makeText(this, if (n > 0) "Вход сохранён" else "В файле нет данных для входа", Toast.LENGTH_LONG).show()
-        onResume()
-    }
+    // ---------------- Общее ----------------
 
-    private fun logoutAll() {
-        AlertDialog.Builder(this)
-            .setMessage("Удалить все сохранённые входы в аккаунты?")
-            .setPositiveButton("Удалить") { _, _ ->
-                Cookies.clear(this)
-                onResume()
-            }
-            .setNegativeButton("Отмена", null)
-            .show()
+    private fun snack(text: String) {
+        Snackbar.make(nav, text, Snackbar.LENGTH_SHORT).setAnchorView(nav).show()
     }
 
     private fun askNotificationPermission() {
@@ -376,6 +495,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        private const val REQ_COOKIES = 10
+        const val EXTRA_SHOW_JOBS = "showJobs"
     }
 }

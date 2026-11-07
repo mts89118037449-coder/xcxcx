@@ -11,6 +11,8 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Material You: на Android 12+ цвета приложения подстраиваются под обои.
+        com.google.android.material.color.DynamicColors.applyToActivitiesIfAvailable(this)
         Notifications.createChannels(this)
         Jobs.init(this)
         // Первый запуск распаковывает Python и ffmpeg — делаем это в фоне.

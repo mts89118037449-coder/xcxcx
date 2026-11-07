@@ -32,7 +32,7 @@ object Notifications {
             PendingIntent.FLAG_IMMUTABLE,
         )
         return Notification.Builder(ctx, PROGRESS)
-            .setSmallIcon(R.drawable.ic_download)
+            .setSmallIcon(R.drawable.ic_stat_download)
             .setContentTitle(if (active > 1) "Скачиваю: $active" else "Скачиваю…")
             .setContentText("Ход загрузки — в приложении")
             .setContentIntent(open)
