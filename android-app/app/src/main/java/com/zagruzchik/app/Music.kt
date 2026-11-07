@@ -168,18 +168,16 @@ object Music {
                 Service.SOUNDCLOUD -> SoundCloudSource.resolve(url)
                 Service.VK, Service.ZVUK, Service.ZAYCEV -> null // данные только из текста, которым поделились
             }
-        } catch (e: UserError) {
-            if (hintTrack(hint) == null) throw e
-            null
         } catch (e: Exception) {
-            if (hintTrack(hint) == null) throw UserError("${service.title} не отдал данные о треке (${e.message}). Попробуйте ещё раз или отключите VPN.")
-            null
+            null // недоступно в стране, закрыто, сбой — ниже есть запасные пути
         }
         if (item != null) return item
+        // Запасной путь: описание страницы для превью ссылок (его отдают почти все сервисы).
+        PageMeta.track(url)?.let { return MusicItem("track", it.label, listOf(it), service) }
         val t = hintTrack(hint) ?: throw UserError(
             if (service == Service.VK || service == Service.ZVUK || service == Service.ZAYCEV)
                 "${service.title} не показывает треки без входа. Поделитесь треком прямо из приложения — название придёт вместе со ссылкой."
-            else "Не удалось узнать название трека."
+            else "${service.title} не отдал данные о песне — возможно, он недоступен в вашей стране. Поделитесь песней прямо из приложения сервиса (название придёт вместе со ссылкой) или найдите её по названию на вкладке «Скачать»."
         )
         return MusicItem("track", t.label, listOf(t), service)
     }
@@ -240,10 +238,16 @@ object AppleSource {
     private val ALBUM = Regex("""/album/(?:[^/]+/)?(\d+)""")
     private val TRACK_PARAM = Regex("""[?&]i=(\d+)""")
 
+    private var country = "us"
+
+    /** Ищем в магазине страны из ссылки, потом в американском (российский часто отвечает 403). */
     private fun lookup(id: String, entity: String? = null): JSONArray {
-        // В российском магазине Apple API отвечает 403, поэтому спрашиваем американский.
-        val url = "https://itunes.apple.com/lookup?id=$id&country=us" + (entity?.let { "&entity=$it&limit=200" } ?: "")
-        return Http.json(url).getJSONArray("results")
+        val tail = entity?.let { "&entity=$it&limit=200" } ?: ""
+        for (c in listOf(country, "us").distinct()) {
+            val r = runCatching { Http.json("https://itunes.apple.com/lookup?id=$id&country=$c$tail").getJSONArray("results") }.getOrNull()
+            if (r != null && r.length() > 0) return r
+        }
+        return JSONArray()
     }
 
     fun track(o: JSONObject) = Track(
@@ -253,6 +257,7 @@ object AppleSource {
     )
 
     fun resolve(url: String): MusicItem {
+        country = Regex("""music\.apple\.com/([a-z]{2})/""").find(url)?.groupValues?.get(1) ?: "us"
         val trackId = TRACK_PARAM.find(url)?.groupValues?.get(1) ?: SONG.find(url)?.groupValues?.get(1)
         if (trackId != null) {
             val r = lookup(trackId)
@@ -385,5 +390,64 @@ object SoundCloudSource {
         val artist = if (full.contains(" by ")) full.substringAfterLast(" by ").trim() else o.optString("author_name")
         val t = Track(title, artist, cover = o.optString("thumbnail_url").takeIf { it.isNotEmpty() })
         return MusicItem("track", t.label, listOf(t), Service.SOUNDCLOUD)
+    }
+}
+
+/**
+ * Название песни из описания страницы (Open Graph — то, что показывают мессенджеры в превью ссылки).
+ * Запасной путь, когда API сервиса недоступно в стране или закрыто.
+ */
+object PageMeta {
+    private val TAIL = Regex(
+        """\s*([|·-]\s*)?(Spotify|Apple Music|Deezer|Яндекс Музыка|Yandex Music|SoundCloud|YouTube Music|VK Музыка|Звук)\b.*$|\.\s*Слушать онлайн.*$|\s+on (Spotify|Apple Music|Deezer|SoundCloud)$""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun track(url: String): Track? {
+        for (ua in listOf(Http.DESKTOP_UA, Http.MOBILE_UA)) {
+            val page = runCatching { Http.get(url, ua) }.getOrNull() ?: continue
+            parse(page)?.let { return it }
+        }
+        return null
+    }
+
+    /** Заглушки вместо названия песни (страница-приложение, главная сервиса). */
+    private val GENERIC = listOf("яндекс музыка", "yandex music", "spotify", "apple music", "deezer", "soundcloud",
+        "web player", "веб-плеер", "собираем музыку", "youtube music", "vk музыка", "звук")
+
+    internal fun parse(page: String): Track? {
+        fun meta(name: String) = Regex("""<meta[^>]+(?:property|name)="$name"[^>]+content="([^"]*)"""").find(page)?.groupValues?.get(1)
+            ?.let { android.text.Html.fromHtml(it, android.text.Html.FROM_HTML_MODE_LEGACY).toString().trim() }
+        fun clean(x: String) = x.replace('\u200E', ' ').replace('\u00A0', ' ').replace(Regex("""\s+"""), " ")
+            .replace(Regex("""\s+(on|в|на)\s+(Spotify|Apple Music|Deezer|SoundCloud|Яндекс Музыке)$""", RegexOption.IGNORE_CASE), "")
+            .replace(TAIL, "").trim().trim('«', '»', '"')
+        val og = meta("og:title") ?: Regex("""<title>([^<]*)</title>""").find(page)?.groupValues?.get(1)?.trim() ?: return null
+        val raw = og.replace('\u200E', ' ').replace('\u00A0', ' ')
+        var title: String
+        var artist = meta("music:musician_description").orEmpty()
+        val desc = meta("og:description").orEmpty()
+        val ruApple = Regex("""«(.+?)»\s*\((.+?)\)""").find(raw) // «Песня «X» (Исполнитель) в Apple Music»
+        when {
+            ruApple != null -> { title = ruApple.groupValues[1]; artist = ruApple.groupValues[2] }
+            raw.contains(" - Song by ", true) || raw.contains(" by ") -> {
+                val by = if (raw.contains(" - Song by ", true)) " - Song by " else " by "
+                title = raw.substringBefore(by); artist = raw.substringAfter(by)
+            }
+            else -> {
+                title = clean(raw)
+                if (artist.isEmpty() && desc.contains(" · ")) artist = desc.substringBefore(" · ") // Spotify
+                else if (artist.isEmpty()) {
+                    val parts = title.split(Regex("""\s+[—–-]\s+"""), limit = 2) // «Название — Исполнитель»
+                    if (parts.size == 2) { title = parts[0]; artist = parts[1] }
+                }
+            }
+        }
+        title = clean(title)
+        artist = clean(artist)
+        if (title.isEmpty() || title.length > 200) return null
+        // Вместо песни — заглушка сервиса: лучше честно сказать, чем включить не то.
+        val low = (title + " " + artist).lowercase()
+        if (GENERIC.any { low.startsWith(it) || title.lowercase() == it }) return null
+        return Track(title, artist)
     }
 }
