@@ -38,6 +38,20 @@ URL=$(printf '%s' "$RAW" | grep -oE 'https?://[^[:space:]]+' | head -n1)
 if [ -z "$URL" ]; then err "Не нашёл ссылку в: $RAW"; exit 1; fi
 mkdir -p "$OUT" || { err "Нет доступа к $OUT. Выполните: termux-setup-storage"; exit 1; }
 
+# Вход в аккаунты: cookies, выгруженные из браузера в «Загрузки» (файлы *cookies*.txt),
+# забираем в закрытую папку Termux и удаляем из «Загрузок», чтобы их не прочитали другие приложения.
+INBOX="${DL_INBOX:-/storage/emulated/0/Download}"
+while IFS= read -r c; do   # от старых к новым, чтобы свежий вход перекрывал старый
+  [ -f "$c" ] || continue
+  [ -f "$COOKIES" ] || printf '# Netscape HTTP Cookie File\n' > "$COOKIES"
+  # Строки #HttpOnly_ — это тоже cookies (в них обычно и лежит вход), их сохраняем.
+  # Новые записи идут в конец — они главнее старых.
+  grep -E '^#HttpOnly_|^[^#[:space:]]' "$c" >> "$COOKIES"
+  chmod 600 "$COOKIES"
+  rm -f "$c"
+  say "Вход в аккаунт сохранён: $(basename "$c")"
+done < <(ls -1tr "$INBOX"/*cookies*.txt 2>/dev/null)
+
 # Сайты часто меняются — раз в неделю тихо обновляем загрузчики.
 if [ -z "${DL_NO_UPDATE:-}" ] && { [ ! -f "$STAMP" ] || [ -n "$(find "$STAMP" -mtime +6 2>/dev/null)" ]; }; then
   say "Обновляю загрузчики (раз в неделю)…"
