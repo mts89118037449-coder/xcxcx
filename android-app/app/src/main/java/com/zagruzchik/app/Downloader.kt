@@ -134,9 +134,8 @@ object Downloader {
             val prefix = if (n > 1) "${i + 1}/$n: ${t.label}" else ""
             ui.onProgress(i * 100f / n, listOf(prefix, "ищу лучший вариант…").filter { it.isNotEmpty() }.joinToString(" · "))
             try {
-                val found = findBest(t, ctx, token) ?: throw UserError("Не нашёл «${t.label}» ни в YouTube Music, ни в SoundCloud, ни в YouTube")
-                execute(trackRequest(found.url, t, item, dir, ctx), "$jobId-$i", token) { p, line ->
-                    val detail = listOf(prefix, found.source, speed(line)).filter { it.isNotEmpty() }.joinToString(" · ")
+                downloadTrack(t, item, dir, ctx, "$jobId-$i", token) { source, p, line ->
+                    val detail = listOf(prefix, source, speed(line)).filter { it.isNotEmpty() }.joinToString(" · ")
                     ui.onProgress((i + p.coerceIn(0f, 100f) / 100f) * 100f / n, detail)
                 }
             } catch (e: UserError) {
@@ -161,7 +160,15 @@ object Downloader {
      * Ищет трек в нескольких источниках и выбирает лучший вариант сам:
      * тот же исполнитель и название, длительность ±несколько секунд, без «clean»/ремиксов/каверов/превью.
      */
-    private fun findBest(t: Track, ctx: Context, token: CancelToken): Candidate? {
+    /**
+     * Скачивает трек, перебирая варианты: до 3 лучших из каждого источника по очереди.
+     * Если вариант не скачивается (DRM у платных треков SoundCloud, недоступен в регионе,
+     * YouTube просит вход) — берём следующий, а не сдаёмся.
+     */
+    private fun downloadTrack(
+        t: Track, item: MusicItem, dir: File, ctx: Context, id: String, token: CancelToken,
+        progress: (source: String, percent: Float, line: String) -> Unit,
+    ) {
         val ytm = "https://music.youtube.com/search?q=" + Http.enc(t.query) + "#songs"
         val searches = listOf(
             "YouTube Music" to ytm,
@@ -169,13 +176,31 @@ object Downloader {
             "YouTube" to "ytsearch6:${t.query}",
         ).let { if (Settings.sourceOrder(ctx) == Settings.SourceOrder.SOUNDCLOUD) listOf(it[1], it[0], it[2]) else it }
 
+        val problems = mutableListOf<String>()
+        var attempt = 0
         for ((name, query) in searches) {
             if (token.cancelled) throw CancelledError()
-            val list = search(query, name)
-            val best = Match.best(t, list) { Triple(it.title, it.author, it.duration) }
-            if (best != null) return best
+            progress(name, 0f, "")
+            val candidates = Match.ranked(t, search(query, name)) { Triple(it.title, it.author, it.duration) }.take(3)
+            for (c in candidates) {
+                if (token.cancelled) throw CancelledError()
+                val before = dir.listFiles().orEmpty().toSet()
+                try {
+                    execute(trackRequest(c.url, t, item, dir, ctx), "$id-${attempt++}", token) { p, line -> progress(c.source, p, line) }
+                    if (audios(dir).any { it !in before }) return
+                    problems += "$name: файл не появился"
+                } catch (e: UserError) {
+                    if (token.cancelled) throw CancelledError()
+                    problems += "$name: ${e.message}"
+                    // Убираем недокачанное, чтобы не перепутать с готовым файлом.
+                    dir.listFiles().orEmpty().filter { it !in before }.forEach { it.delete() }
+                }
+            }
         }
-        return null
+        throw UserError(
+            if (problems.isEmpty()) "Не нашёл «${t.label}» ни в YouTube Music, ни в SoundCloud, ни в YouTube."
+            else "Не получилось скачать «${t.label}». ${problems.distinct().take(2).joinToString("; ")}"
+        )
     }
 
     private fun search(query: String, source: String): List<Candidate> {
@@ -277,11 +302,20 @@ object Downloader {
     private fun explain(err: String): String {
         val e = err.lowercase()
         return when {
+            "drm" in e -> "Трек защищён от скачивания (платный, DRM)."
+            "not available in your country" in e || "geo" in e && "restrict" in e || "not available from your location" in e ->
+                "Недоступно в вашей стране. Попробуйте с VPN или без него."
+            "video unavailable" in e || "track is not available" in e || "this video is not available" in e ->
+                "Недоступно: удалено или скрыто автором."
+            "age" in e && ("confirm" in e || "restricted" in e) || "inappropriate" in e ->
+                "Есть возрастное ограничение. Войдите в аккаунт: Настройки → Аккаунты."
             "sign in" in e || "login" in e || "log in" in e || "cookies" in e || "not a bot" in e ->
-                "Сайт требует вход. Откройте Загрузчик → «Войти в аккаунт» и повторите."
+                "Сайт требует вход. Войдите в аккаунт: Настройки → Аккаунты — и повторите."
             "private" in e -> "Это приватная публикация. Нужен вход в аккаунт, у которого есть к ней доступ."
             "unsupported url" in e -> "Этот сайт не поддерживается."
             "no video" in e -> "В публикации нет видео."
+            "http error 403" in e || "forbidden" in e -> "Сайт не отдал файл (403). Попробуйте позже или с другим VPN."
+            "http error 429" in e || "too many requests" in e -> "Сайт временно ограничил скачивание. Подождите немного."
             "unable to download" in e || "timed out" in e || "connection" in e -> "Проблема с интернетом. Попробуйте ещё раз."
             else -> err.lineSequence().lastOrNull { it.contains("ERROR") }?.substringAfter("ERROR: ")?.take(300)
                 ?: "Не получилось скачать."

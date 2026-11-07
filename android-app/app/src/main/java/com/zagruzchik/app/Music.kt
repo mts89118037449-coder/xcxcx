@@ -129,6 +129,13 @@ object Match {
         return s
     }
 
+    /** Все подходящие кандидаты, от лучшего к худшему (оценка ≥ 0). */
+    fun <T> ranked(src: Track, items: List<T>, info: (T) -> Triple<String, String, Int>): List<T> =
+        items.mapNotNull { item -> val (t, a, d) = info(item); score(src, t, a, d)?.let { item to it } }
+            .filter { it.second >= 0 }
+            .sortedByDescending { it.second }
+            .map { it.first }
+
     fun <T> best(src: Track, items: List<T>, info: (T) -> Triple<String, String, Int>): T? =
         items.mapNotNull { item -> val (t, a, d) = info(item); score(src, t, a, d)?.let { item to it } }
             .filter { it.second >= 0 }
