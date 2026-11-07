@@ -87,7 +87,7 @@ $('#metric').onclick = (e) => {
   scene.setMetric(state.metric); updateViewLabel();
   renderKpis(); if (state.tab === 'summary') renderSummary();
 };
-$('#btnView').onclick = () => { scene.select(null); scene.resetView(true); };
+$('#btnView').onclick = () => { setLayout(''); scene.select(null); scene.resetView(true); };
 scene.onSection = (s) => { state.section = s; renderFloor(); toast(`${T.part} ${s} — нажмите на ${T.levelAcc}, чтобы открыть`); };
 // ---------- панель «Вид» ----------
 const vp = $('#viewPanel');
@@ -1504,13 +1504,45 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.cla
 
 // ---------- мобильный вид: 3D закреплено сверху, прокрутка страницы вращает модель ----------
 const mobile = matchMedia('(max-width: 900px)');
+// ---------- раскладка экрана: обычная · «подробнее» (панель крупно) · 3D на весь экран ----------
+/** mode: '' — обычный вид, 'info' — панель крупно, 'big' — 3D на весь экран */
+function setLayout(mode) {
+  const b = document.body;
+  b.classList.toggle('info', mode === 'info');
+  b.classList.toggle('stage-big', mode === 'big');
+  updateLayoutBtn();
+  if (mobile.matches) scrollTo({ top: 0 });
+  // после смены размера сцены — снова навести камеру на здание (узкая полоса 3D иначе «теряет» его)
+  setTimeout(() => { scene.resize(); if (!b.classList.contains('info') || !mobile.matches) scene.resetView(true); }, mobile.matches ? 340 : 60);
+}
+function updateLayoutBtn() {
+  const b = document.body, btn = $('#btnLayout');
+  const info = b.classList.contains('info'), big = b.classList.contains('stage-big');
+  const [t, title] = info ? [mobile.matches ? '▣ Показать 3D' : 'Обычный вид ›', 'Вернуть обычный вид (Esc)']
+    : big ? [mobile.matches ? '☰ Подробнее' : '‹ Панель', mobile.matches ? 'Панель крупно' : 'Вернуть панель (Esc)']
+    : [mobile.matches ? '☰ Подробнее' : '‹ Подробнее', 'Панель крупно — больше информации, 3D сбоку'];
+  btn.textContent = t; btn.title = title; btn.setAttribute('aria-label', title);
+  btn.classList.toggle('on', info);
+}
+$('#btnLayout').onclick = () => {
+  const b = document.body;
+  if (b.classList.contains('info')) setLayout('');
+  else if (b.classList.contains('stage-big') && !mobile.matches) setLayout('');
+  else setLayout('info');
+};
+addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
+  if (document.body.classList.contains('info') || document.body.classList.contains('stage-big')) setLayout('');
+});
+mobile.addEventListener('change', updateLayoutBtn);
+updateLayoutBtn();
 let lastY = scrollY;
 addEventListener('scroll', () => {
   const dy = scrollY - lastY; lastY = scrollY;
   if (mobile.matches && !document.body.classList.contains('touring')) scene.orbitBy(dy * 0.002);
 }, { passive: true });
 $('#btnLegend').onclick = () => document.body.classList.toggle('legend-on');
-$('#btnExpand').onclick = () => { document.body.classList.toggle('stage-big'); setTimeout(() => scene.resize(), 320); };
+$('#btnExpand').onclick = () => setLayout(document.body.classList.contains('stage-big') ? '' : 'big');
 
 function shortDate(iso) { const [, m, d] = iso.split('-').map(Number); return `${d} ${MONTHS_GEN[m - 1]}`; }
 
