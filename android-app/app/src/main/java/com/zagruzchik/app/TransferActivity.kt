@@ -5,7 +5,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -39,6 +38,10 @@ class TransferActivity : AppCompatActivity() {
     private lateinit var bottomBar: View
 
     private var track: Track? = null
+    private var coverBitmap: android.graphics.Bitmap? = null
+    private val preferred by lazy { Installed.preferred(this) }
+    private val installed by lazy { Installed.all(this).toSet() }
+    private lateinit var openMine: com.google.android.material.button.MaterialButton
     private val links = linkedMapOf<Service, Transfer.Link>()
     private val rows = mutableMapOf<Service, View>()
 
@@ -57,12 +60,13 @@ class TransferActivity : AppCompatActivity() {
         errorView = findViewById(R.id.error)
         services = findViewById(R.id.services)
         bottomBar = findViewById(R.id.bottomBar)
+        openMine = findViewById(R.id.openMine)
         sourceView.text = Describe.of(url)
 
+        // Карточка песни: картинка + все ссылки одним сообщением.
         findViewById<View>(R.id.shareAll).setOnClickListener {
             val t = track ?: return@setOnClickListener
-            val text = Transfer.shareText(t, Transfer.ORDER.mapNotNull { links[it] })
-            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Поделиться"))
+            SongCard.share(this, t, coverBitmap, Transfer.ORDER.mapNotNull { links[it] })
         }
         findViewById<View>(R.id.copyAll).setOnClickListener {
             val t = track ?: return@setOnClickListener
@@ -124,7 +128,9 @@ class TransferActivity : AppCompatActivity() {
         // Сразу показываем все сервисы с крутилкой, ссылки подставляются по мере ответа.
         services.removeAllViews()
         rows.clear()
-        for (s in Transfer.ORDER) {
+        // Сначала мой сервис, потом установленные на телефоне, потом остальные.
+        val order = Transfer.ORDER.sortedBy { s -> if (s == preferred) 0 else if (s in installed) 1 else 2 }
+        for (s in order) {
             val row = layoutInflater.inflate(R.layout.item_service, services, false)
             row.findViewById<TextView>(R.id.badge).showBadge(s.badge)
             row.findViewById<TextView>(R.id.name).text = s.title
@@ -140,7 +146,7 @@ class TransferActivity : AppCompatActivity() {
         t.cover?.let { c ->
             pool.execute {
                 val bmp = runCatching { URL(c).openStream().use { BitmapFactory.decodeStream(it) } }.getOrNull()
-                main.post { if (bmp != null && !isDestroyed) cover.setImageBitmap(bmp) }
+                main.post { if (bmp != null && !isDestroyed) { coverBitmap = bmp; cover.setImageBitmap(bmp) } }
             }
         }
     }
@@ -150,10 +156,16 @@ class TransferActivity : AppCompatActivity() {
         links[link.service] = link
         val row = rows[link.service] ?: return
         val kind = row.findViewById<TextView>(R.id.kind)
-        kind.text = when {
+        val what = when {
             original -> "исходная ссылка"
-            link.exact -> "✓ точная ссылка на трек"
-            else -> "поиск в ${link.service.title}"
+            link.exact -> "✓ точная ссылка"
+            else -> "поиск в сервисе"
+        }
+        kind.text = if (link.service in installed) "$what · установлено" else what
+        if (link.service == preferred) {
+            openMine.text = "Открыть в ${link.service.inTitle}"
+            openMine.setOnClickListener { open(link) }
+            openMine.isVisible = true
         }
         row.findViewById<View>(R.id.spinner).isVisible = false
         row.findViewById<View>(R.id.copy).apply {
@@ -162,17 +174,14 @@ class TransferActivity : AppCompatActivity() {
         }
         row.findViewById<View>(R.id.open).apply {
             isVisible = true
-            setOnClickListener { open(link.url) }
+            setOnClickListener { open(link) }
         }
-        row.findViewById<View>(R.id.card).setOnClickListener { open(link.url) }
+        row.findViewById<View>(R.id.card).setOnClickListener { open(link) }
     }
 
-    private fun open(u: String) {
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
-        } catch (e: Exception) {
-            snack("Нечем открыть ссылку")
-        }
+    /** Открываем прямо в приложении сервиса, если оно установлено. */
+    private fun open(link: Transfer.Link) {
+        if (!Installed.open(this, link.service, link.url)) snack("Нечем открыть ссылку")
     }
 
     private fun copy(text: String, message: String) {

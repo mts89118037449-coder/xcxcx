@@ -6,6 +6,20 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <!-- Музыкальные приложения, которые мы ищем на телефоне, чтобы открывать ссылки прямо в них. -->
+    <queries>
+        <package android:name="com.spotify.music" />
+        <package android:name="ru.yandex.music" />
+        <package android:name="com.apple.android.music" />
+        <package android:name="com.google.android.apps.youtube.music" />
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.uma.musicvk" />
+        <package android:name="com.vkontakte.android" />
+        <package android:name="com.zvooq.openplay" />
+        <package android:name="deezer.android.app" />
+        <package android:name="com.soundcloud.android" />
+    </queries>
+
     <application
         android:name=".App"
         android:icon="@mipmap/ic_launcher"
@@ -21,6 +35,9 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- «Поделиться → Загрузчик» из любого приложения -->
@@ -30,12 +47,26 @@
             android:excludeFromRecents="true"
             android:taskAffinity=""
             android:theme="@style/ShareTheme">
-            <intent-filter android:label="Скачать">
+            <intent-filter android:label="Загрузчик">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- Второй пункт в меню «Поделиться»: сразу ссылки на песню в других сервисах. -->
+        <activity-alias
+            android:name=".ShareLinksAlias"
+            android:exported="true"
+            android:icon="@drawable/ic_shortcut_links"
+            android:label="Где послушать"
+            android:targetActivity=".ShareActivity">
+            <intent-filter android:label="Где послушать">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity-alias>
 
         <activity
             android:name=".LoginActivity"
@@ -44,6 +75,16 @@
         <activity
             android:name=".TransferActivity"
             android:exported="false" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <service
             android:name=".DownloadService"

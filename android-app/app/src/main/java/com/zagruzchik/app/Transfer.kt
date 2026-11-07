@@ -14,7 +14,7 @@ object Transfer {
     /** Порядок сервисов в списке. */
     val ORDER = listOf(
         Service.YANDEX, Service.SPOTIFY, Service.APPLE, Service.YOUTUBE_MUSIC,
-        Service.VK, Service.YOUTUBE, Service.DEEZER, Service.SOUNDCLOUD,
+        Service.VK, Service.ZVUK, Service.YOUTUBE, Service.DEEZER, Service.SOUNDCLOUD, Service.ZAYCEV,
     )
 
     /**
@@ -29,7 +29,7 @@ object Transfer {
                 Service.YANDEX -> yandex(t)
                 Service.YOUTUBE_MUSIC -> youtubeId?.invoke(t.query)?.let { "https://music.youtube.com/watch?v=$it" }
                 Service.YOUTUBE -> youtubeId?.invoke(t.query)?.let { "https://www.youtube.com/watch?v=$it" }
-                Service.SPOTIFY, Service.VK, Service.SOUNDCLOUD -> null
+                Service.SPOTIFY, Service.VK, Service.SOUNDCLOUD, Service.ZVUK, Service.ZAYCEV -> null
             }
         }.getOrNull()
         return if (exact != null) Link(service, exact, true) else Link(service, service.searchUrl(t.query), false)
@@ -94,10 +94,26 @@ object Transfer {
         return YandexSource.link(best)
     }
 
-    /** Текст «Исполнитель — Название» и ссылки по сервисам — чтобы переслать другу. */
-    fun shareText(t: Track, links: List<Link>) = buildString {
-        appendLine(t.label)
-        appendLine()
-        links.forEach { appendLine("${it.service.title}: ${it.url}") }
-    }.trim()
+    /**
+     * Сообщение для мессенджера: «🎵 Исполнитель — Название» и ссылки по сервисам.
+     * Сначала точные ссылки, потом поиск. Укладываемся в 1000 символов — лимит подписи к картинке в Telegram.
+     */
+    fun shareText(t: Track, links: List<Link>): String {
+        val head = "🎵 ${t.label}\n"
+        val sorted = links.filter { it.exact } + links.filter { !it.exact }
+        val sb = StringBuilder(head)
+        for (l in sorted) {
+            val line = "\n${l.service.title}: ${pretty(l.url)}"
+            if (sb.length + line.length > 1000) break
+            sb.append(line)
+        }
+        return sb.toString()
+    }
+
+    /** Делает ссылку читаемой: «%D0%9A%D0%B8%D0%BD%D0%BE» → «Кино». Мессенджеры такие ссылки тоже распознают. */
+    fun pretty(url: String): String = Regex("""(%[89A-Fa-f][0-9A-Fa-f])+""").replace(url) { m ->
+        // Только байты ≥ 0x80 (русские буквы и т.п.); пробелы (%20) и спецсимволы остаются закодированными.
+        val bytes = m.value.chunked(3).map { it.substring(1).toInt(16).toByte() }.toByteArray()
+        runCatching { String(bytes, Charsets.UTF_8).takeIf { !it.contains('\uFFFD') } }.getOrNull() ?: m.value
+    }
 }

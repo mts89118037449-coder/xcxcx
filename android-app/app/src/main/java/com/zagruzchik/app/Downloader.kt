@@ -132,20 +132,13 @@ object Downloader {
         item.tracks.forEachIndexed { i, t ->
             if (token.cancelled) throw CancelledError()
             val prefix = if (n > 1) "${i + 1}/$n: ${t.label}" else ""
-            ui.onProgress(i * 100f / n, prefix)
-            val before = mp3s(dir).size
-            val progress: (Float, String) -> Unit = { p, line ->
-                val detail = listOf(prefix, speed(line)).filter { it.isNotEmpty() }.joinToString(" · ")
-                ui.onProgress((i + p.coerceIn(0f, 100f) / 100f) * 100f / n, detail)
-            }
+            ui.onProgress(i * 100f / n, listOf(prefix, "ищу лучший вариант…").filter { it.isNotEmpty() }.joinToString(" · "))
             try {
-                // Если известна длительность — берём из первых 5 результатов тот, что совпадает по времени
-                // (так не попадаются часовые версии, клипы с длинным вступлением и т.п.).
-                if (t.durationSec > 0) {
-                    runCatching { execute(trackRequest(t, item, dir, ctx, byDuration = true), "$jobId-$i-d", token, progress) }
-                        .onFailure { if (it is CancelledError) throw it }
+                val found = findBest(t, ctx, token) ?: throw UserError("Не нашёл «${t.label}» ни в YouTube Music, ни в SoundCloud, ни в YouTube")
+                execute(trackRequest(found.url, t, item, dir, ctx), "$jobId-$i", token) { p, line ->
+                    val detail = listOf(prefix, found.source, speed(line)).filter { it.isNotEmpty() }.joinToString(" · ")
+                    ui.onProgress((i + p.coerceIn(0f, 100f) / 100f) * 100f / n, detail)
                 }
-                if (mp3s(dir).size == before) execute(trackRequest(t, item, dir, ctx, byDuration = false), "$jobId-$i", token, progress)
             } catch (e: UserError) {
                 if (token.cancelled) throw CancelledError()
                 if (n == 1) throw e
@@ -153,26 +146,78 @@ object Downloader {
                 lastError = e
             }
         }
-        val files = mp3s(dir)
+        val files = audios(dir)
         if (files.isEmpty()) throw lastError ?: UserError("Не удалось скачать ни одного трека.")
         return Result(files, subfolder = if (n > 1) safeName(item.name) else null, failed = failed)
     }
 
-    private fun mp3s(dir: File) = dir.listFiles().orEmpty().filter { it.isFile && it.extension == "mp3" }
+    private val AUDIO_EXT = setOf("mp3", "m4a", "opus", "ogg", "webm", "aac", "flac")
+    private fun audios(dir: File) = dir.listFiles().orEmpty().filter { it.isFile && it.extension.lowercase() in AUDIO_EXT }
 
-    private fun trackRequest(t: Track, item: MusicItem, dir: File, ctx: Context, byDuration: Boolean): YoutubeDLRequest {
-        val source = if (byDuration) "ytsearch5:${t.query}" else "ytsearch1:${t.query} audio"
-        return baseRequest(source, dir, ctx, Format.MP3).apply {
-            addOption("-o", "${safeName(t.label)}.%(ext)s")
-            if (byDuration) {
-                addOption("--match-filter", "duration >= ${t.durationSec - 15} & duration <= ${t.durationSec + 15}")
-                addOption("--max-downloads", "1")
+    /** Кандидат из поиска: ссылка, название, автор, длительность и откуда он. */
+    internal class Candidate(val url: String, val title: String, val author: String, val duration: Int, val source: String)
+
+    /**
+     * Ищет трек в нескольких источниках и выбирает лучший вариант сам:
+     * тот же исполнитель и название, длительность ±несколько секунд, без «clean»/ремиксов/каверов/превью.
+     */
+    private fun findBest(t: Track, ctx: Context, token: CancelToken): Candidate? {
+        val ytm = "https://music.youtube.com/search?q=" + Http.enc(t.query) + "#songs"
+        val searches = listOf(
+            "YouTube Music" to ytm,
+            "SoundCloud" to "scsearch8:${t.query}",
+            "YouTube" to "ytsearch6:${t.query}",
+        ).let { if (Settings.sourceOrder(ctx) == Settings.SourceOrder.SOUNDCLOUD) listOf(it[1], it[0], it[2]) else it }
+
+        for ((name, query) in searches) {
+            if (token.cancelled) throw CancelledError()
+            val list = search(query, name)
+            val best = Match.best(t, list) { Triple(it.title, it.author, it.duration) }
+            if (best != null) return best
+        }
+        return null
+    }
+
+    private fun search(query: String, source: String): List<Candidate> {
+        val r = YoutubeDLRequest(query).apply {
+            addOption("--flat-playlist")
+            addOption("--playlist-end", "8")
+            addOption("--no-warnings")
+            addOption("--print", "%(url)s\t%(title)s\t%(artist,artists,creator,uploader,channel)s\t%(duration)s")
+        }
+        val out = runCatching { YoutubeDL.getInstance().execute(r).out }.getOrNull() ?: return emptyList()
+        return parseSearch(out, source)
+    }
+
+    /** Разбирает вывод поиска yt-dlp: «ссылка⇥название⇥автор⇥длительность» по строке на результат. */
+    internal fun parseSearch(out: String, source: String): List<Candidate> {
+        return out.lines().mapNotNull { line ->
+            val f = line.split('\t')
+            if (f.size < 4 || !f[0].startsWith("http")) return@mapNotNull null
+            val author = f[2].takeIf { it != "NA" }.orEmpty().removeSuffix(" - Topic")
+            val duration = f[3].toDoubleOrNull()?.toInt() ?: 0
+            // У SoundCloud и YouTube исполнитель часто только в названии: «Кино - Группа крови».
+            val artistField = listOf(author, f[1].substringBefore(" - ", "")).filter { it.isNotBlank() }.joinToString(" | ")
+            Candidate(f[0], f[1], artistField, duration, source)
+        }
+    }
+
+    private fun trackRequest(url: String, t: Track, item: MusicItem, dir: File, ctx: Context): YoutubeDLRequest {
+        val original = Settings.quality(ctx) == Settings.Quality.ORIGINAL
+        return baseRequest(url, dir, ctx, if (original) Format.BEST else Format.MP3).apply {
+            if (original) {
+                // Звук без перекодирования: M4A, а если его нет — Opus.
+                addOption("-f", "bestaudio[ext=m4a]/bestaudio")
+                addOption("-x")
             }
-            // Теги MP3 — как в музыкальном сервисе, а не как в названии ролика на YouTube.
+            addOption("-o", "${safeName(t.label)}.%(ext)s")
+            // Теги — как в музыкальном сервисе, а не как в названии ролика.
             tag(this, "title", t.title)
             tag(this, "track", t.title)
             if (t.artist.isNotEmpty()) tag(this, "artist", t.artist)
             if (item.type == "album") tag(this, "album", item.name)
+            // Обложку надёжно встраивает только ffmpeg в MP3 (для Opus нужен модуль, которого может не быть).
+            if (!original) addOption("--embed-thumbnail")
         }
     }
 

@@ -15,6 +15,7 @@ class App : Application() {
         com.google.android.material.color.DynamicColors.applyToActivitiesIfAvailable(this)
         Notifications.createChannels(this)
         Jobs.init(this)
+        Shortcuts.publish(this)
         // Первый запуск распаковывает Python и ffmpeg — делаем это в фоне.
         thread(name = "ytdl-init") {
             try {

@@ -28,7 +28,20 @@ class ShareActivity : AppCompatActivity() {
             finish()
             return
         }
-        val music = Music.isMusic(url)
+        val music = Music.isMusic(url) || Service.of(url) == Service.YOUTUBE
+
+        // Выбрали «Где послушать» (отдельный пункт или быстрая кнопка) — сразу к ссылкам, без панели.
+        val linksMode = componentName.className.endsWith("ShareLinksAlias") ||
+            intent.getStringExtra(androidx.core.content.pm.ShortcutManagerCompat.EXTRA_SHORTCUT_ID) == Shortcuts.ID_LINKS
+        if (linksMode) {
+            if (music) {
+                TransferActivity.open(this, url, shared)
+            } else {
+                Toast.makeText(this, "«Где послушать» работает для ссылок на песни", Toast.LENGTH_LONG).show()
+            }
+            finish()
+            return
+        }
 
         val sheet = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.sheet_share, null)
@@ -43,6 +56,8 @@ class ShareActivity : AppCompatActivity() {
         val download = view.findViewById<MaterialButton>(R.id.download)
         val transfer = view.findViewById<MaterialButton>(R.id.transfer)
         transfer.isVisible = music
+        // Пришли через быструю кнопку «Скачать» — сразу качаем в формате по умолчанию.
+        val quickDownload = intent.getStringExtra(androidx.core.content.pm.ShortcutManagerCompat.EXTRA_SHORTCUT_ID) == Shortcuts.ID_DOWNLOAD
 
         fun start() {
             if (started) return
@@ -69,6 +84,10 @@ class ShareActivity : AppCompatActivity() {
         sheet.setOnDismissListener { finish() }
         sheet.show()
 
+        if (quickDownload) {
+            start()
+            return
+        }
         // Для видео: если ничего не нажать, загрузка начнётся сама. Для музыки — нет:
         // человек мог прийти за ссылками в других сервисах.
         if (!music) {

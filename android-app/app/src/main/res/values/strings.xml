@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_download">Скачать из буфера</string>
+    <string name="shortcut_download_long">Скачать ссылку из буфера обмена</string>
+    <string name="shortcut_links">Где послушать</string>
+    <string name="shortcut_links_long">Ссылки на песню из буфера в других сервисах</string>
+</resources>

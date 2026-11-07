@@ -95,6 +95,16 @@
                 android:textColor="?attr/colorError"
                 android:visibility="gone" />
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/openMine"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginTop="12dp"
+                android:visibility="gone"
+                app:cornerRadius="20dp"
+                app:icon="@drawable/ic_open_in_new"
+                app:iconGravity="textStart" />
+
             <LinearLayout
                 android:id="@+id/services"
                 android:layout_width="match_parent"

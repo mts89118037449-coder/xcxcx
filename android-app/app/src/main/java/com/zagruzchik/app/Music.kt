@@ -20,15 +20,17 @@ data class Track(
 data class MusicItem(val type: String, val name: String, val tracks: List<Track>, val source: Service)
 
 /** Музыкальные сервисы: откуда можно взять ссылку и куда сделать трансфер. */
-enum class Service(val title: String) {
-    SPOTIFY("Spotify"),
-    YANDEX("Яндекс Музыка"),
-    APPLE("Apple Music"),
-    YOUTUBE_MUSIC("YouTube Music"),
-    YOUTUBE("YouTube"),
-    VK("VK Музыка"),
-    DEEZER("Deezer"),
-    SOUNDCLOUD("SoundCloud");
+enum class Service(val title: String, val packages: List<String>) {
+    SPOTIFY("Spotify", listOf("com.spotify.music")),
+    YANDEX("Яндекс Музыка", listOf("ru.yandex.music")),
+    APPLE("Apple Music", listOf("com.apple.android.music")),
+    YOUTUBE_MUSIC("YouTube Music", listOf("com.google.android.apps.youtube.music")),
+    YOUTUBE("YouTube", listOf("com.google.android.youtube")),
+    VK("VK Музыка", listOf("com.uma.musicvk", "com.vkontakte.android")),
+    ZVUK("Звук", listOf("com.zvooq.openplay")),
+    DEEZER("Deezer", listOf("deezer.android.app")),
+    SOUNDCLOUD("SoundCloud", listOf("com.soundcloud.android")),
+    ZAYCEV("Зайцев.нет", emptyList());
 
     /** Ссылка на поиск внутри сервиса — когда точную ссылку найти не удалось. */
     fun searchUrl(q: String): String {
@@ -42,6 +44,8 @@ enum class Service(val title: String) {
             VK -> "https://vk.com/audio?q=$e"
             DEEZER -> "https://www.deezer.com/search/${Uri.encode(q)}"
             SOUNDCLOUD -> "https://soundcloud.com/search/sounds?q=$e"
+            ZVUK -> "https://zvuk.com/search?query=$e"
+            ZAYCEV -> "https://zaycev.net/search?query_search=$e"
         }
     }
 
@@ -57,6 +61,8 @@ enum class Service(val title: String) {
                 (host == "vk.com" || host == "vk.ru") && (url.contains("/audio") || url.contains("/music")) -> VK
                 host.endsWith("deezer.com") || host == "deezer.page.link" || host == "link.deezer.com" || host == "dzr.page.link" -> DEEZER
                 host.endsWith("soundcloud.com") || host == "on.soundcloud.com" -> SOUNDCLOUD
+                host == "zvuk.com" || host == "share.zvuk.com" -> ZVUK
+                host.endsWith("zaycev.net") -> ZAYCEV
                 else -> null
             }
         }
@@ -68,6 +74,8 @@ object Match {
     private val VERSION_WORDS = listOf(
         "remix", "live", "cover", "karaoke", "instrumental", "acoustic", "sped up", "slowed", "nightcore", "8d",
         "mix", "edit", "version", "remaster", "reverb", "bass boosted", "ремикс", "кавер", "минус", "караоке",
+        // Версии с цензурой: берём оригинал, если исходный трек не «clean».
+        "clean", "radio edit", "censored", "цензур", "preview", "snippet", "teaser", "tiktok",
     )
 
     fun norm(s: String) = s.lowercase()
@@ -88,6 +96,7 @@ object Match {
 
     /** Оценка похожести кандидата на исходный трек; null — точно не он. */
     fun score(src: Track, title: String, artist: String, durationSec: Int = 0): Int? {
+        if (durationSec in 1..59 && (src.durationSec == 0 || src.durationSec >= 75)) return null // 30-секундные превью
         val sb = base(src.title)
         val cb = base(title)
         if (sb.isEmpty() || cb.isEmpty()) return null
@@ -108,10 +117,12 @@ object Match {
         if (extra.any()) s -= 3
         if (src.durationSec > 0 && durationSec > 0) {
             val d = kotlin.math.abs(src.durationSec - durationSec)
+            // Сильно другая длительность — это другая версия, превью или клип с длинным вступлением.
+            if (d > 45) return null
             s += when {
                 d <= 3 -> 2
                 d <= 10 -> 1
-                d > 30 -> -3
+                d > 25 -> -3
                 else -> 0
             }
         }
@@ -132,7 +143,7 @@ object Match {
 object Music {
 
     /** Сервисы, где сам звук закрыт: качаем этот же трек с YouTube. */
-    fun needsSearch(url: String) = Service.of(url) in setOf(Service.SPOTIFY, Service.APPLE, Service.DEEZER, Service.VK)
+    fun needsSearch(url: String) = Service.of(url) in setOf(Service.SPOTIFY, Service.APPLE, Service.DEEZER, Service.VK, Service.ZVUK, Service.ZAYCEV)
 
     fun isMusic(url: String) = Service.of(url)?.let { it != Service.YOUTUBE } ?: false
 
@@ -146,7 +157,7 @@ object Music {
                 Service.YANDEX -> YandexSource.resolve(url)
                 Service.YOUTUBE_MUSIC, Service.YOUTUBE -> YouTubeSource.resolve(url, service)
                 Service.SOUNDCLOUD -> SoundCloudSource.resolve(url)
-                Service.VK -> null
+                Service.VK, Service.ZVUK, Service.ZAYCEV -> null // данные только из текста, которым поделились
             }
         } catch (e: UserError) {
             if (hintTrack(hint) == null) throw e
@@ -157,7 +168,8 @@ object Music {
         }
         if (item != null) return item
         val t = hintTrack(hint) ?: throw UserError(
-            if (service == Service.VK) "VK Музыка не показывает треки без входа. Поделитесь треком прямо из приложения VK — название придёт вместе со ссылкой."
+            if (service == Service.VK || service == Service.ZVUK || service == Service.ZAYCEV)
+                "${service.title} не показывает треки без входа. Поделитесь треком прямо из приложения — название придёт вместе со ссылкой."
             else "Не удалось узнать название трека."
         )
         return MusicItem("track", t.label, listOf(t), service)
@@ -170,7 +182,7 @@ object Music {
         listOf(
             "Слушайте", "Слушаю", "Послушай", "Послушайте", "на Яндекс Музыке", "в Яндекс Музыке", "Яндекс Музыка", "Яндекс Музыке",
             "в VK Музыке", "VK Музыка", "ВКонтакте", "on Spotify", "в Spotify", "Spotify", "on Apple Music", "Apple Music",
-            "on Deezer", "Deezer", "Listen to", "Check out", "Трек", "трек",
+            "on Deezer", "Deezer", "в Звуке", "Звук", "Зайцев.нет", "Listen to", "Check out", "Трек", "трек",
         ).forEach { phrase ->
             // Только целые слова: «трек» не должен вырезаться из «Электрек».
             t = t.replace(Regex("""(?<!\p{L})""" + Regex.escape(phrase) + """(?!\p{L})""", RegexOption.IGNORE_CASE), " ")

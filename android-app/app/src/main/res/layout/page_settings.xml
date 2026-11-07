@@ -13,6 +13,25 @@
 
         <TextView
             style="@style/SectionTitle"
+            android:text="Музыка" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="?attr/materialCardViewFilledStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
+            app:cardCornerRadius="20dp">
+
+            <LinearLayout
+                android:id="@+id/musicSettings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingVertical="6dp" />
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            style="@style/SectionTitle"
             android:text="Аккаунты" />
 
         <TextView

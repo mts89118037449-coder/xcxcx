@@ -61,6 +61,9 @@ class MainActivity : AppCompatActivity() {
 
     private val prefs by lazy { getSharedPreferences("app", MODE_PRIVATE) }
 
+    /** Действие из ярлыка на значке: выполняется, когда окно получит фокус (иначе буфер обмена не прочитать). */
+    private var pendingClipAction: String? = null
+
     private val listener: (Job?) -> Unit = { job ->
         if (job == null) adapter.submit(Jobs.all) else adapter.update(job)
         refreshSummary()
@@ -122,6 +125,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        when (intent?.action) {
+            ACTION_PASTE_DOWNLOAD, ACTION_PASTE_LINKS -> pendingClipAction = intent.action
+        }
         intent?.getStringExtra(DownloadService.EXTRA_URL)?.let {
             input.setText(it)
             showPage(R.id.nav_download)
@@ -192,7 +198,30 @@ class MainActivity : AppCompatActivity() {
     // Android разрешает читать буфер обмена, только когда окно в фокусе.
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && input.text.isNullOrBlank()) pasteFromClipboard(force = false)
+        if (!hasFocus) return
+        pendingClipAction?.let { action ->
+            pendingClipAction = null
+            runClipAction(action)
+            return
+        }
+        if (input.text.isNullOrBlank()) pasteFromClipboard(force = false)
+    }
+
+    private fun runClipAction(action: String) {
+        val clip = getSystemService(ClipboardManager::class.java).primaryClip
+        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
+        val url = Links.extract(text)
+        if (url == null) {
+            showPage(R.id.nav_download)
+            snack("В буфере обмена нет ссылки — скопируйте её и попробуйте снова")
+            return
+        }
+        if (action == ACTION_PASTE_LINKS) {
+            TransferActivity.open(this, url, text)
+        } else {
+            DownloadService.enqueue(this, url, Links.defaultFormat(url), text)
+            showPage(R.id.nav_jobs)
+        }
     }
 
     /** Сам подставляет только новые ссылки: уже скачанные и стёртые крестиком — нет. */
@@ -408,6 +437,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSettingsPage() {
         sites = findViewById(R.id.sites)
+        refreshMusicSettings()
         findViewById<View>(R.id.importCookies).setOnClickListener { cookiesHelp() }
         findViewById<View>(R.id.logoutAll).setOnClickListener {
             MaterialAlertDialogBuilder(this)
@@ -443,6 +473,63 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun refreshMusicSettings() {
+        val box = findViewById<LinearLayout>(R.id.musicSettings)
+        box.removeAllViews()
+        fun row(icon: Int, title: String, value: String, hint: String, onClick: () -> Unit) {
+            val v = layoutInflater.inflate(R.layout.item_setting, box, false)
+            v.findViewById<ImageView>(R.id.icon).setImageResource(icon)
+            v.findViewById<TextView>(R.id.title).text = title
+            v.findViewById<TextView>(R.id.value).text = value
+            v.findViewById<TextView>(R.id.hint).text = hint
+            v.setOnClickListener { onClick() }
+            box.addView(v)
+        }
+        val installed = Installed.all(this).toSet()
+        val mine = Settings.myService(this)
+        val auto = Installed.preferred(this)
+        row(
+            R.drawable.ic_music_note, "Мой сервис",
+            mine?.title ?: auto?.let { "Авто: ${it.title}" } ?: "Авто",
+            "Его ссылка — первой, с кнопкой «Открыть в …»",
+        ) { chooseMyService(installed) }
+        val q = Settings.quality(this)
+        row(R.drawable.ic_download, "Качество музыки", q.label, q.hint) {
+            choose("Качество музыки", Settings.Quality.entries.map { "${it.label} — ${it.hint}" }, q.ordinal) {
+                Settings.setQuality(this, Settings.Quality.entries[it]); refreshMusicSettings()
+            }
+        }
+        val src = Settings.sourceOrder(this)
+        row(R.drawable.ic_link, "Где искать песни", src.label, src.hint) {
+            choose("Где искать песни", Settings.SourceOrder.entries.map { "${it.label} — ${it.hint}" }, src.ordinal) {
+                Settings.setSourceOrder(this, Settings.SourceOrder.entries[it]); refreshMusicSettings()
+            }
+        }
+    }
+
+    private fun chooseMyService(installed: Set<Service>) {
+        // Установленные — первыми и с пометкой.
+        val options = listOf<Service?>(null) + Transfer.ORDER.sortedBy { if (it in installed) 0 else 1 }
+        val labels = options.map { s ->
+            when {
+                s == null -> "Авто — первый установленный"
+                s in installed -> "${s.title} · установлен"
+                else -> s.title
+            }
+        }
+        choose("Мой музыкальный сервис", labels, options.indexOf(Settings.myService(this)).coerceAtLeast(0)) {
+            Settings.setMyService(this, options[it]); refreshMusicSettings()
+        }
+    }
+
+    private fun choose(title: String, items: List<String>, checked: Int, onPick: (Int) -> Unit) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setSingleChoiceItems(items.toTypedArray(), checked) { d, which -> onPick(which); d.dismiss() }
+            .setNegativeButton("Отмена", null)
+            .show()
     }
 
     private fun refreshSites() {
@@ -496,5 +583,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_SHOW_JOBS = "showJobs"
+        const val ACTION_PASTE_DOWNLOAD = "com.zagruzchik.app.PASTE_DOWNLOAD"
+        const val ACTION_PASTE_LINKS = "com.zagruzchik.app.PASTE_LINKS"
     }
 }

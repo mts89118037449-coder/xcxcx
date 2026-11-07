@@ -28,6 +28,8 @@ val Service.badge: Badge
         Service.VK -> Badge("VK", Color.parseColor("#0077FF"))
         Service.DEEZER -> Badge("D", Color.parseColor("#A238FF"))
         Service.SOUNDCLOUD -> Badge("SC", Color.parseColor("#FF5500"))
+        Service.ZVUK -> Badge("Зв", Color.WHITE, Color.BLACK)
+        Service.ZAYCEV -> Badge("Z", Color.parseColor("#E5482B"))
     }
 
 fun siteBadge(name: String): Badge = when (name) {
@@ -39,6 +41,15 @@ fun siteBadge(name: String): Badge = when (name) {
     "Facebook" -> Badge("f", Color.parseColor("#1877F2"))
     else -> Badge(name.take(1), Color.GRAY)
 }
+
+/** Название сервиса в предложном падеже: «Открыть в Яндекс Музыке». */
+val Service.inTitle: String
+    get() = when (this) {
+        Service.YANDEX -> "Яндекс Музыке"
+        Service.VK -> "VK Музыке"
+        Service.ZVUK -> "Звуке"
+        else -> title
+    }
 
 /** Короткое описание ссылки для подсказки под полем: «TikTok · видео», «Spotify · альбом → MP3». */
 object Describe {

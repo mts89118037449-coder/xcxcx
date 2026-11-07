@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Долгое нажатие на значок приложения -->
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_download"
+        android:shortcutId="paste_download"
+        android:shortcutLongLabel="@string/shortcut_download_long"
+        android:shortcutShortLabel="@string/shortcut_download">
+        <intent
+            android:action="com.zagruzchik.app.PASTE_DOWNLOAD"
+            android:targetClass="com.zagruzchik.app.MainActivity"
+            android:targetPackage="com.zagruzchik.app" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_links"
+        android:shortcutId="paste_links"
+        android:shortcutLongLabel="@string/shortcut_links_long"
+        android:shortcutShortLabel="@string/shortcut_links">
+        <intent
+            android:action="com.zagruzchik.app.PASTE_LINKS"
+            android:targetClass="com.zagruzchik.app.MainActivity"
+            android:targetPackage="com.zagruzchik.app" />
+    </shortcut>
+
+    <!-- Быстрые кнопки в верхнем ряду меню «Поделиться» (Direct Share) -->
+    <share-target android:targetClass="com.zagruzchik.app.ShareActivity">
+        <data android:mimeType="text/plain" />
+        <category android:name="com.zagruzchik.app.category.SHARE" />
+    </share-target>
+</shortcuts>
