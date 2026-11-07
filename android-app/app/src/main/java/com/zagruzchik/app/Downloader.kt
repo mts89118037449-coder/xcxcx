@@ -113,32 +113,80 @@ object Spotify {
     }
 }
 
+/** Позволяет остановить загрузку: помечаем отмену и убиваем текущий процесс yt-dlp. */
+class CancelToken {
+    @Volatile var cancelled = false
+        private set
+    @Volatile var processId: String? = null
+
+    fun cancel() {
+        cancelled = true
+        processId?.let { runCatching { YoutubeDL.getInstance().destroyProcessById(it) } }
+    }
+}
+
+class CancelledError : Exception("Отменено")
+
+/** Что показывать в карточке загрузки. */
+interface DownloadListener {
+    fun onTitle(title: String)
+    fun onProgress(percent: Float, detail: String)
+}
+
 object Downloader {
 
     /** Результат: готовые файлы во временной папке и подпапка в «Загрузках» (для альбомов). */
     class Result(val files: List<File>, val subfolder: String? = null, val failed: Int = 0)
 
-    /** Скачивает ссылку. onProgress получает общий процент (0–100) и короткий текст. */
-    fun download(ctx: Context, url: String, format: Format, jobId: String, onProgress: (Float, String) -> Unit): Result {
-        App.awaitReady()
-        val dir = File(ctx.cacheDir, "dl/$jobId").apply { deleteRecursively(); mkdirs() }
-        if (Spotify.isSpotify(url)) return downloadSpotify(url, dir, jobId, ctx, onProgress)
+    private val DESTINATION = Regex("""Destination: (.+)$""")
+    private val SPEED = Regex("""of\s+~?\s*([\d.]+\w+)\s+at\s+([\d.]+\w+/s)(?:\s+ETA\s+(\S+))?""")
 
-        val request = baseRequest(url, dir, ctx, format)
-        request.addOption("-o", "%(title).80B [%(id)s].%(ext)s")
-        execute(request, jobId) { p, line -> onProgress(p, line) }
-        return Result(collect(dir))
+    fun download(ctx: Context, url: String, format: Format, jobId: String, token: CancelToken, ui: DownloadListener): Result {
+        App.awaitReady()
+        if (token.cancelled) throw CancelledError()
+        val dir = File(ctx.cacheDir, "dl/$jobId").apply { deleteRecursively(); mkdirs() }
+        try {
+            if (Spotify.isSpotify(url)) return downloadSpotify(url, dir, jobId, ctx, token, ui)
+
+            val request = baseRequest(url, dir, ctx, format)
+            request.addOption("-o", "%(title).80B [%(id)s].%(ext)s")
+            var titled = false
+            execute(request, jobId, token) { p, line ->
+                if (!titled) DESTINATION.find(line)?.let {
+                    titled = true
+                    ui.onTitle(File(it.groupValues[1]).nameWithoutExtension.replace(Regex("""\.f\d+$"""), "").replace(Regex("""\s*\[[^\]]+]$"""), "").trim())
+                }
+                ui.onProgress(p, speed(line))
+            }
+            return Result(collect(dir))
+        } catch (e: Exception) {
+            if (token.cancelled) {
+                dir.deleteRecursively()
+                throw CancelledError()
+            }
+            throw e
+        }
     }
 
-    private fun downloadSpotify(url: String, dir: File, jobId: String, ctx: Context, onProgress: (Float, String) -> Unit): Result {
-        onProgress(0f, "Читаю Spotify…")
+    /** «10.5MiB · 2.3MiB/s · осталось 00:05» из строки прогресса yt-dlp. */
+    private fun speed(line: String): String {
+        val m = SPEED.find(line) ?: return ""
+        val (size, rate, eta) = m.destructured
+        return listOfNotNull(size, rate, eta.takeIf { it.isNotEmpty() && it != "Unknown" }?.let { "осталось $it" }).joinToString(" · ")
+    }
+
+    private fun downloadSpotify(url: String, dir: File, jobId: String, ctx: Context, token: CancelToken, ui: DownloadListener): Result {
+        ui.onProgress(0f, "Читаю Spotify…")
         val item = Spotify.resolve(url)
         val n = item.tracks.size
+        ui.onTitle(if (n > 1) "${item.name} ($n)" else item.tracks.first().let { if (it.artist.isEmpty()) it.title else "${it.artist} — ${it.title}" })
         var failed = 0
         var lastError: UserError? = null
         item.tracks.forEachIndexed { i, t ->
+            if (token.cancelled) throw CancelledError()
             val label = if (t.artist.isEmpty()) t.title else "${t.artist} — ${t.title}"
-            onProgress(i * 100f / n, if (n > 1) "Трек ${i + 1}/$n: $label" else label)
+            val prefix = if (n > 1) "${i + 1}/$n: $label" else ""
+            ui.onProgress(i * 100f / n, prefix)
             val request = baseRequest("ytsearch1:${t.artist} - ${t.title} audio", dir, ctx, Format.MP3).apply {
                 addOption("-o", "${safeName(label)}.%(ext)s")
                 // Теги MP3 — как в Spotify, а не как в названии ролика на YouTube.
@@ -148,10 +196,12 @@ object Downloader {
                 if (item.type == "album") tag(this, "album", item.name)
             }
             try {
-                execute(request, "$jobId-$i") { p, _ ->
-                    onProgress((i + p.coerceIn(0f, 100f) / 100f) * 100f / n, if (n > 1) "Трек ${i + 1}/$n: $label" else label)
+                execute(request, "$jobId-$i", token) { p, line ->
+                    val detail = listOf(prefix, speed(line)).filter { it.isNotEmpty() }.joinToString(" · ")
+                    ui.onProgress((i + p.coerceIn(0f, 100f) / 100f) * 100f / n, detail)
                 }
             } catch (e: UserError) {
+                if (token.cancelled) throw CancelledError()
                 if (n == 1) throw e
                 failed++
                 lastError = e
@@ -193,11 +243,18 @@ object Downloader {
 
     private fun safeName(s: String) = s.replace(Regex("""[\\/:*?"<>|\u0000-\u001F]"""), "_").trim().take(120).ifEmpty { "Без названия" }
 
-    private fun execute(request: YoutubeDLRequest, id: String, cb: (Float, String) -> Unit) {
+    private fun execute(request: YoutubeDLRequest, id: String, token: CancelToken, cb: (Float, String) -> Unit) {
+        token.processId = id
+        if (token.cancelled) throw CancelledError()
         try {
             YoutubeDL.getInstance().execute(request, processId = id, redirectErrorStream = false) { p, _, line -> cb(p, line) }
+        } catch (e: YoutubeDL.CanceledException) {
+            throw CancelledError()
         } catch (e: YoutubeDLException) {
+            if (token.cancelled) throw CancelledError()
             throw UserError(explain(e.message.orEmpty()))
+        } finally {
+            token.processId = null
         }
     }
 
@@ -207,8 +264,6 @@ object Downloader {
         if (files.isEmpty()) throw UserError("Файл не найден после загрузки. Попробуйте другой формат.")
         return files
     }
-
-    fun cancel(jobId: String) = YoutubeDL.getInstance().destroyProcessById(jobId)
 
     private fun explain(err: String): String {
         val e = err.lowercase()

@@ -8,121 +8,112 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.net.Uri
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
-import java.util.UUID
 import java.util.concurrent.Executors
 
 object Notifications {
     const val PROGRESS = "progress"
-    const val RESULT = "result"
     const val FOREGROUND_ID = 1
 
     fun createChannels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(PROGRESS, "Ход загрузки", NotificationManager.IMPORTANCE_LOW))
-        nm.createNotificationChannel(NotificationChannel(RESULT, "Готовые файлы", NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(NotificationChannel(PROGRESS, "Фоновая загрузка", NotificationManager.IMPORTANCE_LOW))
+        nm.deleteNotificationChannel("result") // старые уведомления «Скачано» больше не используются
     }
 
-    fun progress(ctx: Context, title: String, text: String, percent: Int): Notification =
-        Notification.Builder(ctx, PROGRESS)
+    /** Android требует уведомление, пока идёт фоновая работа. Держим его тихим и простым. */
+    fun foreground(ctx: Context, active: Int): Notification {
+        val open = PendingIntent.getActivity(
+            ctx, 0,
+            Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        return Notification.Builder(ctx, PROGRESS)
             .setSmallIcon(R.drawable.ic_download)
-            .setContentTitle(title)
-            .setContentText(text)
+            .setContentTitle(if (active > 1) "Скачиваю: $active" else "Скачиваю…")
+            .setContentText("Ход загрузки — в приложении")
+            .setContentIntent(open)
             .setOnlyAlertOnce(true)
             .setOngoing(true)
-            .setProgress(100, percent.coerceIn(0, 100), percent < 0)
             .build()
+    }
 }
 
-/** Скачивает ссылки по очереди в фоне — можно закрыть приложение и заниматься своими делами. */
+/** Скачивает по очереди в фоне. Ход загрузки показывается в приложении (через [Jobs]). */
 class DownloadService : Service() {
 
     private val executor = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private val nm by lazy { getSystemService(NotificationManager::class.java) }
-    @Volatile private var queued = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(
-            Notifications.FOREGROUND_ID,
-            Notifications.progress(this, "Загрузчик", "Готовлюсь…", -1),
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-        )
-        val url = intent?.getStringExtra(EXTRA_URL)
-        val format = intent?.getStringExtra(EXTRA_FORMAT)?.let { runCatching { Format.valueOf(it) }.getOrNull() }
-        if (url == null || format == null) {
-            if (queued == 0) stopSelf(startId)
+        startForeground(Notifications.FOREGROUND_ID, Notifications.foreground(this, activeCount()), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        val job = intent?.getStringExtra(EXTRA_JOB)?.let { Jobs.get(it) }
+        if (job == null) {
+            if (activeCount() == 0) stopSelf(startId)
             return START_NOT_STICKY
         }
-        queued++
-        executor.execute { runJob(url, format, startId) }
+        val token = Jobs.token(job.id)
+        executor.execute { runJob(job.id, job.url, job.format, token, startId) }
         return START_NOT_STICKY
     }
 
-    private fun runJob(url: String, format: Format, startId: Int) {
-        val jobId = UUID.randomUUID().toString()
-        val resultId = jobId.hashCode()
+    private fun activeCount() = Jobs.all.count { it.active }
+
+    private fun runJob(id: String, url: String, format: Format, token: CancelToken, startId: Int) {
+        if (token.cancelled) return finish(id, startId)
+        Jobs.update(id, save = true) { status = Status.RUNNING; progress = 0f; detail = "Подключаюсь…"; error = "" }
         var lastUpdate = 0L
-        val title = "Скачиваю (${format.label})"
         try {
-            nm.notify(Notifications.FOREGROUND_ID, Notifications.progress(this, title, url, -1))
-            val result = Downloader.download(this, url, format, jobId) { p, line ->
-                val now = System.currentTimeMillis()
-                if (now - lastUpdate > 700) {
+            val result = Downloader.download(this, url, format, id, token, object : DownloadListener {
+                override fun onTitle(title: String) = Jobs.update(id, save = true) { this.title = title }
+                override fun onProgress(percent: Float, detail: String) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastUpdate < 250) return // не чаще 4 раз в секунду
                     lastUpdate = now
-                    val text = when {
-                        line.startsWith("Трек") || line.startsWith("Читаю") -> line.take(90)
-                        p > 0 -> "${p.toInt()}%"
-                        else -> line.take(90)
+                    Jobs.update(id) {
+                        if (percent > 0) progress = percent
+                        if (detail.isNotEmpty()) this.detail = detail
                     }
-                    nm.notify(Notifications.FOREGROUND_ID, Notifications.progress(this, title, text, if (p > 0) p.toInt() else -1))
+                }
+            })
+            Jobs.update(id) { progress = 100f; detail = "Сохраняю в «Загрузки»…" }
+            val saved = result.files.map { f ->
+                val name = f.name
+                val (uri, mime) = Storage.publish(this, f, result.subfolder)
+                SavedFile(uri.toString(), name, mime)
+            }
+            Jobs.update(id, save = true) {
+                status = Status.DONE
+                files = saved
+                detail = buildString {
+                    append(if (saved.size == 1) saved.first().name else "${saved.size} файл(ов)")
+                    result.subfolder?.let { append(" · папка «$it»") }
+                    if (result.failed > 0) append(" · не нашлось: ${result.failed}")
                 }
             }
-            nm.notify(Notifications.FOREGROUND_ID, Notifications.progress(this, "Сохраняю в «Загрузки»", "", -1))
-            val names = result.files.map { it.name }
-            val saved = result.files.map { Storage.publish(this, it, result.subfolder) }
-            var text = when {
-                result.subfolder != null -> "${names.size} трек(ов) → Загрузки/${Storage.FOLDER}/${result.subfolder}"
-                names.size == 1 -> names.first()
-                else -> "${names.first()} и ещё ${names.size - 1}"
-            }
-            if (result.failed > 0) text += "\nНе нашлось: ${result.failed}"
-            notifyResult(resultId, "Скачано ✓", text, openFile(saved.first().first, saved.first().second))
+        } catch (e: CancelledError) {
+            Jobs.update(id, save = true) { status = Status.CANCELLED; detail = "" }
         } catch (e: Exception) {
             Log.e("Zagruzchik", "download failed: $url", e)
             val msg = (e as? UserError)?.message ?: e.message ?: "Неизвестная ошибка"
-            val retry = Intent(this, MainActivity::class.java).putExtra(EXTRA_URL, url)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            notifyResult(resultId, "Не получилось скачать", msg, retry)
+            Jobs.update(id, save = true) { status = if (token.cancelled) Status.CANCELLED else Status.FAILED; error = msg; detail = "" }
         } finally {
-            main.post {
-                queued--
-                stopSelf(startId)
-            }
+            finish(id, startId)
         }
     }
 
-    private fun openFile(uri: Uri, mime: String) = Intent(Intent.ACTION_VIEW)
-        .setDataAndType(uri, mime)
-        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-
-    private fun notifyResult(id: Int, title: String, text: String, tap: Intent) {
-        val pi = PendingIntent.getActivity(this, id, tap, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val n = Notification.Builder(this, Notifications.RESULT)
-            .setSmallIcon(R.drawable.ic_download)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setStyle(Notification.BigTextStyle().bigText(text))
-            .setContentIntent(pi)
-            .setAutoCancel(true)
-            .build()
-        nm.notify(id, n)
+    private fun finish(id: String, startId: Int) {
+        main.post {
+            Jobs.forget(id)
+            if (activeCount() > 0) nm.notify(Notifications.FOREGROUND_ID, Notifications.foreground(this, activeCount()))
+            stopSelf(startId)
+        }
     }
 
     override fun onDestroy() {
@@ -131,15 +122,14 @@ class DownloadService : Service() {
     }
 
     companion object {
+        const val EXTRA_JOB = "job"
         const val EXTRA_URL = "url"
-        const val EXTRA_FORMAT = "format"
 
-        fun start(ctx: Context, url: String, format: Format) {
-            ctx.startForegroundService(
-                Intent(ctx, DownloadService::class.java)
-                    .putExtra(EXTRA_URL, url)
-                    .putExtra(EXTRA_FORMAT, format.name)
-            )
+        /** Добавляет загрузку в список и запускает её. */
+        fun enqueue(ctx: Context, url: String, format: Format): Job {
+            val job = Jobs.create(url, format)
+            ctx.startForegroundService(Intent(ctx, DownloadService::class.java).putExtra(EXTRA_JOB, job.id))
+            return job
         }
     }
 }

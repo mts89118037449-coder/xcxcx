@@ -25,6 +25,14 @@ fun Context.themeColor(attr: Int): Int {
 
 val ACCENT = Color.parseColor("#0E7490")
 
+fun Context.isNight() =
+    (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+/** Цвет текста-ссылок: в тёмной теме светлее, чтобы читался. */
+fun Context.accentText() = if (isNight()) Color.parseColor("#67D4EA") else ACCENT
+
+fun Context.errorText() = if (isNight()) Color.parseColor("#F87171") else Color.parseColor("#DC2626")
+
 fun Context.column(padding: Int = 20) = LinearLayout(this).apply {
     orientation = LinearLayout.VERTICAL
     setPadding(dp(padding), dp(padding), dp(padding), dp(padding))

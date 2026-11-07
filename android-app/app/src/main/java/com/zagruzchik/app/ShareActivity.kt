@@ -64,8 +64,9 @@ class ShareActivity : Activity() {
     private fun start(format: Format) {
         handler.removeCallbacksAndMessages(null)
         if (isFinishing) return
-        DownloadService.start(this, url, format)
-        Toast.makeText(this, "Скачиваю — файл появится в «Загрузки/${Storage.FOLDER}»", Toast.LENGTH_SHORT).show()
+        DownloadService.enqueue(this, url, format)
+        // Сразу показываем приложение со списком загрузок и прогрессом.
+        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
         finish()
     }
 
