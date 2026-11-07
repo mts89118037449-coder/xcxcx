@@ -32,6 +32,9 @@ class Job(
 ) {
     val active get() = status == Status.QUEUED || status == Status.RUNNING
 
+    /** Обложка/превью из источника (до того, как файл готов). */
+    var coverUrl: String? = null
+
     /** Найденные ссылки на песню в сервисах: имя сервиса → ссылка. Сохраняются, чтобы второй раз открывать сразу. */
     var links: Map<String, String> = emptyMap()
 
@@ -115,6 +118,7 @@ object Jobs {
     }
 
     fun remove(id: String) {
+        Covers.forget(id)
         list.removeAll { it.id == id && !it.active }
         tokens.remove(id)
         changed(null, save = true)
@@ -157,6 +161,7 @@ object Jobs {
                 put("id", j.id); put("url", j.url); put("format", j.format.name); put("title", j.title)
                 put("status", j.status.name); put("error", j.error); put("createdAt", j.createdAt); put("hint", j.hint ?: "")
                 put("links", JSONObject(j.links))
+                put("cover", j.coverUrl ?: "")
                 put("files", JSONArray().apply {
                     j.files.forEach { put(JSONObject().put("uri", it.uri).put("name", it.name).put("mime", it.mime)) }
                 })
@@ -188,6 +193,7 @@ object Jobs {
                 createdAt = o.optLong("createdAt"),
                 hint = o.optString("hint").takeIf { it.isNotEmpty() },
             )
+            job.coverUrl = o.optString("cover").takeIf { it.isNotEmpty() }
             o.optJSONObject("links")?.let { l -> job.links = l.keys().asSequence().associateWith { l.getString(it) } }
             // Приложение закрыли посреди загрузки — показываем, что её надо повторить.
             if (job.active) {

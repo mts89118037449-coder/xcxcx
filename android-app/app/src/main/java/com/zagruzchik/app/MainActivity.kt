@@ -416,6 +416,8 @@ class MainActivity : AppCompatActivity() {
         private val card: MaterialCardView = v.findViewById(R.id.card)
         private val iconBox: View = v.findViewById(R.id.iconBox)
         private val icon: ImageView = v.findViewById(R.id.icon)
+        private val cover: ImageView = v.findViewById(R.id.cover)
+        private val coverBadge: ImageView = v.findViewById(R.id.coverBadge)
         private val title: TextView = v.findViewById(R.id.title)
         private val subtitle: TextView = v.findViewById(R.id.subtitle)
         private val progress: LinearProgressIndicator = v.findViewById(R.id.progress)
@@ -442,6 +444,26 @@ class MainActivity : AppCompatActivity() {
             icon.setImageResource(iconRes)
             iconBox.backgroundTintList = ColorStateList.valueOf(MaterialColors.getColor(iconBox, bg))
             icon.imageTintList = ColorStateList.valueOf(MaterialColors.getColor(icon, fg))
+
+            // Обложка: из файла или превью источника. Пока грузится — значок.
+            val pos = bindingAdapterPosition
+            val bmp = Covers.get(this@MainActivity, job) { if (pos != RecyclerView.NO_POSITION) adapter.notifyItemChanged(pos) }
+            cover.isVisible = bmp != null
+            icon.isVisible = bmp == null
+            if (bmp != null) cover.setImageBitmap(bmp)
+            // На обложке — маленький значок состояния (ошибка, отмена, очередь).
+            val badge = when (job.status) {
+                Status.FAILED -> Triple(R.drawable.ic_error_outline, M.attr.colorErrorContainer, M.attr.colorOnErrorContainer)
+                Status.CANCELLED -> Triple(R.drawable.ic_close, M.attr.colorSurfaceContainerHighest, M.attr.colorOnSurfaceVariant)
+                Status.QUEUED -> Triple(R.drawable.ic_schedule, M.attr.colorSecondaryContainer, M.attr.colorOnSecondaryContainer)
+                else -> null
+            }
+            coverBadge.isVisible = bmp != null && badge != null
+            if (badge != null) {
+                coverBadge.setImageResource(badge.first)
+                coverBadge.backgroundTintList = ColorStateList.valueOf(MaterialColors.getColor(coverBadge, badge.second))
+                coverBadge.imageTintList = ColorStateList.valueOf(MaterialColors.getColor(coverBadge, badge.third))
+            }
 
             subtitle.text = when (job.status) {
                 Status.QUEUED -> "${job.format.label} · в очереди"
@@ -726,17 +748,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshMusicSettings() {
+        val appearance = findViewById<LinearLayout>(R.id.appearanceSettings)
+        appearance.removeAllViews()
+        val theme = Settings.theme(this)
+        settingRow(appearance, R.drawable.ic_settings, "Тема", theme.label, "Тёмная бережёт глаза и батарею на AMOLED-экранах") {
+            choose("Тема", Settings.Theme.entries.map { it.label }, theme.ordinal) {
+                Settings.setTheme(this, Settings.Theme.entries[it])
+            }
+        }
+
         val box = findViewById<LinearLayout>(R.id.musicSettings)
         box.removeAllViews()
-        fun row(icon: Int, title: String, value: String, hint: String, onClick: () -> Unit) {
-            val v = layoutInflater.inflate(R.layout.item_setting, box, false)
-            v.findViewById<ImageView>(R.id.icon).setImageResource(icon)
-            v.findViewById<TextView>(R.id.title).text = title
-            v.findViewById<TextView>(R.id.value).text = value
-            v.findViewById<TextView>(R.id.hint).text = hint
-            v.setOnClickListener { onClick() }
-            box.addView(v)
-        }
+        fun row(icon: Int, title: String, value: String, hint: String, onClick: () -> Unit) = settingRow(box, icon, title, value, hint, onClick)
         val installed = Installed.all(this).toSet()
         val mine = Settings.myService(this)
         val auto = Installed.preferred(this)
@@ -757,6 +780,16 @@ class MainActivity : AppCompatActivity() {
                 Settings.setSourceOrder(this, Settings.SourceOrder.entries[it]); refreshMusicSettings()
             }
         }
+    }
+
+    private fun settingRow(box: LinearLayout, icon: Int, title: String, value: String, hint: String, onClick: () -> Unit) {
+        val v = layoutInflater.inflate(R.layout.item_setting, box, false)
+        v.findViewById<ImageView>(R.id.icon).setImageResource(icon)
+        v.findViewById<TextView>(R.id.title).text = title
+        v.findViewById<TextView>(R.id.value).text = value
+        v.findViewById<TextView>(R.id.hint).text = hint
+        v.setOnClickListener { onClick() }
+        box.addView(v)
     }
 
     private fun chooseMyService(installed: Set<Service>) {

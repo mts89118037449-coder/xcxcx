@@ -14,7 +14,21 @@ object Settings {
         SOUNDCLOUD("Сначала SoundCloud", "Потом YouTube Music и YouTube"),
     }
 
+    enum class Theme(val label: String, val mode: Int) {
+        DARK("Тёмная", androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES),
+        LIGHT("Светлая", androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO),
+        SYSTEM("Как в системе", androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM),
+    }
+
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+
+    /** Тема по умолчанию — тёмная. */
+    fun theme(ctx: Context) = runCatching { Theme.valueOf(prefs(ctx).getString("theme", null)!!) }.getOrDefault(Theme.DARK)
+
+    fun setTheme(ctx: Context, t: Theme) {
+        prefs(ctx).edit().putString("theme", t.name).apply()
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(t.mode) // экраны перерисуются сами
+    }
 
     fun quality(ctx: Context) = runCatching { Quality.valueOf(prefs(ctx).getString("quality", null)!!) }.getOrDefault(Quality.MP3)
     fun setQuality(ctx: Context, q: Quality) = prefs(ctx).edit().putString("quality", q.name).apply()

@@ -11,8 +11,10 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         // Material You: на Android 12+ цвета приложения подстраиваются под обои.
         com.google.android.material.color.DynamicColors.applyToActivitiesIfAvailable(this)
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(Settings.theme(this).mode)
         Notifications.createChannels(this)
         Jobs.init(this)
         Shortcuts.publish(this)
@@ -44,6 +46,9 @@ class App : Application() {
     }
 
     companion object {
+        lateinit var instance: App
+            private set
+
         private const val TAG = "Zagruzchik"
         private const val WEEK_MS = 7L * 24 * 3600 * 1000
         private val ready = CountDownLatch(1)

@@ -78,6 +78,7 @@ class DownloadService : Service() {
             val result = Downloader.download(this, url, format, id, token, object : DownloadListener {
                 override fun onTitle(title: String) = Jobs.update(id, save = true) { this.title = title }
                 override fun onStream(urls: List<String>) = Jobs.update(id) { stream = urls }
+                override fun onCover(url: String) = Jobs.update(id, save = true) { if (coverUrl == null) coverUrl = url }
                 // Готовый трек альбома сразу в «Загрузки» — его уже можно слушать.
                 override fun onFile(file: File, subfolder: String?) {
                     val name = file.name

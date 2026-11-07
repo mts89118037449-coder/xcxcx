@@ -26,16 +26,38 @@
 
             <FrameLayout
                 android:id="@+id/iconBox"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="@drawable/bg_circle">
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_rounded">
 
                 <ImageView
                     android:id="@+id/icon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
                     android:layout_gravity="center"
                     android:importantForAccessibility="no" />
+
+                <!-- Обложка песни или кадр видео -->
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/cover"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:importantForAccessibility="no"
+                    android:scaleType="centerCrop"
+                    android:visibility="gone"
+                    app:shapeAppearanceOverlay="@style/JobCoverShape" />
+
+                <!-- Маленький значок поверх обложки: ошибка / в очереди -->
+                <ImageView
+                    android:id="@+id/coverBadge"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="bottom|end"
+                    android:layout_margin="2dp"
+                    android:background="@drawable/bg_circle"
+                    android:importantForAccessibility="no"
+                    android:padding="3dp"
+                    android:visibility="gone" />
             </FrameLayout>
 
             <LinearLayout

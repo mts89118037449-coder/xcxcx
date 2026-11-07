@@ -58,6 +58,9 @@ interface DownloadListener {
     /** Прямая ссылка на поток — можно слушать/смотреть, не дожидаясь конца загрузки. У видео их бывает две: картинка и звук. */
     fun onStream(urls: List<String>) {}
 
+    /** Ссылка на обложку/превью из источника — показываем на карточке, пока файл качается. */
+    fun onCover(url: String) {}
+
     /** Трек альбома готов — его можно сразу сохранить в «Загрузки» и слушать. */
     fun onFile(file: File, subfolder: String?) {}
 }
@@ -112,7 +115,7 @@ object Downloader {
         request.addOption("-o", "%(title).80B [%(id)s].%(ext)s")
         requestStream(request)
         var titled = false
-        execute(request, jobId, token, onStream = ui::onStream) { p, line ->
+        execute(request, jobId, token, onStream = ui::onStream, onCover = ui::onCover) { p, line ->
             if (!titled) DESTINATION.find(line)?.let {
                 titled = true
                 ui.onTitle(File(it.groupValues[1]).nameWithoutExtension.replace(Regex("""\.f\d+$"""), "").replace(Regex("""\s*\[[^\]]+]$"""), "").trim())
@@ -223,7 +226,7 @@ object Downloader {
                 val before = dir.listFiles().orEmpty().toSet()
                 try {
                     val req = trackRequest(c.url, t, item, dir, ctx).also { if (stream) requestStream(it) }
-                    execute(req, "$id-${attempt++}", token, onStream = ui::onStream) { p, line -> progress(c.source, p, line) }
+                    execute(req, "$id-${attempt++}", token, onStream = ui::onStream, onCover = ui::onCover) { p, line -> progress(c.source, p, line) }
                     if (audios(dir).any { it !in before }) return
                     problems += "$name: файл не появился"
                 } catch (e: UserError) {
@@ -317,7 +320,7 @@ object Downloader {
 
     /** Просим yt-dlp сразу перед загрузкой напечатать прямые ссылки на поток (для «Слушать сейчас»). */
     private fun requestStream(r: YoutubeDLRequest) {
-        r.addOption("--print", "before_dl:$STREAM_TAG\t%(urls)j")
+        r.addOption("--print", "before_dl:$STREAM_TAG\t%(urls)j\t%(thumbnail)j")
         r.addOption("--progress") // --print иначе выключает строки прогресса
     }
 
@@ -326,6 +329,7 @@ object Downloader {
     private fun execute(
         request: YoutubeDLRequest, id: String, token: CancelToken,
         onStream: ((List<String>) -> Unit)? = null,
+        onCover: ((String) -> Unit)? = null,
         cb: (Float, String) -> Unit,
     ) {
         token.attach(id)
@@ -336,9 +340,11 @@ object Downloader {
         try {
             YoutubeDL.getInstance().execute(request, processId = id, redirectErrorStream = false) { p, _, line ->
                 if (line.startsWith("$STREAM_TAG\t")) {
-                    val urls = runCatching { org.json.JSONTokener(line.substringAfter('\t')).nextValue() as String }.getOrNull()
-                        ?.lines()?.map { it.trim() }?.filter { it.startsWith("http") }
+                    val parts = line.split('\t')
+                    fun json(i: Int) = runCatching { org.json.JSONTokener(parts[i]).nextValue() as? String }.getOrNull()
+                    val urls = json(1)?.lines()?.map { it.trim() }?.filter { it.startsWith("http") }
                     if (!urls.isNullOrEmpty()) onStream?.invoke(urls)
+                    json(2)?.takeIf { it.startsWith("http") }?.let { onCover?.invoke(it) }
                 } else {
                     cb(p, line)
                 }

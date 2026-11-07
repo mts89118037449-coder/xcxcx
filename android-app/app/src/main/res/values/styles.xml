@@ -73,6 +73,11 @@
         <item name="cornerSize">12dp</item>
     </style>
 
+    <style name="JobCoverShape">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">14dp</item>
+    </style>
+
     <style name="CoverShape">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">20dp</item>
