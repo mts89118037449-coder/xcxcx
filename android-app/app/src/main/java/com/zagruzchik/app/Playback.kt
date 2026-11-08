@@ -182,20 +182,27 @@ object Playback {
             start(app, gen, streamItem(first, ready))
             return
         }
-        // Полная версия обычно готова заранее или находится за 1–3 с — ждём её и играем с начала.
-        // Фрагмент (с середины песни) — только если площадки долго не отвечают.
+        // Без пауз: полная версия готова (выше) — играет с начала; нет — сразу фрагмент, а полная
+        // бесшовно подхватывает его с того же места. Ждать полную в тишине больше не будем.
         val fullSoon = worker.submit<StreamInfo> { resolve(first) }
+        val preview = first.track.preview
+        // Конкретная страница/файл (результат «Везде в интернете») — фрагмента у неё нет, просто ждём.
+        val canPreview = first.pageUrl == null && first.directUrl == null
+        if (!canPreview || (preview != null && Previews.fresh(preview))) return previewThenFull(app, gen, first, fullSoon)
+        // Фрагмента нет или ссылка устарела (Deezer даёт её на ~15 минут) — берём свежую, это доли секунды.
         Pending.set(first.track, loading = true, error = null)
         worker.execute {
-            val quick = runCatching { fullSoon.get(QUICK_MS, java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrNull()
+            val fresh = runCatching { Previews.refresh(first.track) }.getOrNull()
+            val ready = if (fullSoon.isDone) runCatching { fullSoon.get() }.getOrNull() else null
             main.post {
                 if (gen != queueGen) return@post
-                if (quick != null) {
+                if (ready != null) {
                     Pending.set(null, loading = false, error = null)
-                    start(app, gen, streamItem(first, quick))
-                    worker.execute { MediaCache.store(app, first.track, quick.pageUrl) } // в следующий раз — мгновенно
+                    start(app, gen, streamItem(first, ready))
+                    worker.execute { MediaCache.store(app, first.track, ready.pageUrl) }
                 } else {
-                    previewThenFull(app, gen, first, fullSoon)
+                    val q = QItem(first.track.copy(preview = fresh), first.local, first.sourceUrl, first.pageUrl, first.directUrl, first.directSource)
+                    previewThenFull(app, gen, q, fullSoon)
                 }
             }
         }
@@ -251,8 +258,6 @@ object Playback {
 
     /** Где обрываем фрагмент и где к нему бесшовно пристыковывается полная версия. */
     private const val PREVIEW_END_MS = 28_500L
-    /** Стыкуем, только если до конца фрагмента есть время подгрузить полную (иначе — обычный переход). */
-    private const val JOIN_LEAD_MS = 3_000L
 
     /** Полная версия, начатая не с начала (после фрагмента): на сколько мс она сдвинута. */
     const val X_OFFSET = "offset"
@@ -280,8 +285,6 @@ object Playback {
         c.seekTo(i, ms)
     }
 
-    /** Сколько ждать полную версию, прежде чем включить фрагмент. */
-    private const val QUICK_MS = 6000L
 
     private val alignPool = java.util.concurrent.Executors.newSingleThreadExecutor()
 
@@ -296,13 +299,14 @@ object Playback {
             // Бесшовно: полная версия встаёт в очередь сразу за фрагментом, обрезанная так, что начинается
             // ровно с того места песни, где фрагмент закончится. Проигрыватель заранее её подгружает и
             // переходит без паузы, перемотки и затухания — на слух звук просто становится полным.
-            if (onPreview && align != null && c.playbackState != androidx.media3.common.Player.STATE_ENDED &&
-                PREVIEW_END_MS - c.currentPosition >= JOIN_LEAD_MS
-            ) {
-                val start = align.fullPositionMs(PREVIEW_END_MS)
-                val extras = android.os.Bundle(full.mediaMetadata.extras ?: android.os.Bundle()).apply { putLong(X_OFFSET, start) }
+            // Место не нашлось — полная идёт с начала, но тоже без паузы: сразу после фрагмента, подгруженная заранее.
+            val previewAlive = onPreview && c.playerError == null &&
+                c.playbackState != androidx.media3.common.Player.STATE_ENDED && c.playbackState != androidx.media3.common.Player.STATE_IDLE
+            if (previewAlive) {
+                val start = align?.fullPositionMs(PREVIEW_END_MS) ?: 0L
+                val extras = android.os.Bundle(full.mediaMetadata.extras ?: android.os.Bundle()).apply { if (start > 0) putLong(X_OFFSET, start) }
                 val joined = full.buildUpon()
-                    .setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(start).build())
+                    .apply { if (start > 0) setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(start).build()) }
                     .setMediaMetadata(full.mediaMetadata.buildUpon().setExtras(extras).build())
                     .build()
                 c.addMediaItem(c.currentMediaItemIndex + 1, joined)
@@ -315,7 +319,8 @@ object Playback {
                 c.playbackState == androidx.media3.common.Player.STATE_ENDED -> c.duration.coerceAtLeast(0)
                 else -> c.currentPosition
             }
-            val target = if (onPreview && align != null) align.fullPositionMs(previewPos) else 0L
+            // Фрагмент так и не заиграл (ошибка) — полную с начала, а не с середины.
+            val target = if (onPreview && align != null && c.playerError == null) align.fullPositionMs(previewPos) else 0L
             c.setMediaItem(full, target)
             c.prepare()
             c.play()
@@ -354,6 +359,12 @@ object Playback {
                 mediaItem?.let { remember(it) }
                 fill(app, queueGen)
             }
+            // Фрагмент не открылся — показываем «готовлю», полная версия включится сама, как только найдётся.
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                if (c.currentMediaItem?.mediaMetadata?.extras?.getBoolean(X_PREVIEW) == true && waitingFull != null)
+                    Pending.set(waitingFull, loading = true, error = null)
+            }
+
             // Фрагмент закончился, а полная версия ещё не готова — не тишина, а «подхватываю».
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == androidx.media3.common.Player.STATE_ENDED) { learn(skipped = false); current = null }
