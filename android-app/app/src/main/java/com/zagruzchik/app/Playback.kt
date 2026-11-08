@@ -346,6 +346,26 @@ object Playback {
     /** Песня, для которой играет фрагмент и ещё ищется полная версия. */
     @Volatile private var waitingFull: Track? = null
 
+    /** Есть ли следующая песня: уже в проигрывателе или ещё в текущем списке. */
+    fun hasNext(c: MediaController) = c.hasNextMediaItem() || nextToAdd < queue.size
+
+    /**
+     * Следующая песня из текущего списка. Если она ещё не подготовлена в проигрывателе —
+     * не ждём, а сразу включаем её (из списка, с начала).
+     */
+    fun next(ctx: Context) {
+        val app = ctx.applicationContext
+        controller(app) { c ->
+            when {
+                c.hasNextMediaItem() -> c.seekToNextMediaItem()
+                nextToAdd < queue.size -> playQueue(app, queue, nextToAdd, openScreen = false)
+            }
+        }
+    }
+
+    /** Предыдущая: в начале песни — прошлая, дальше 3 секунд — с начала этой. */
+    fun previous(ctx: Context) = controller(ctx.applicationContext) { it.seekToPrevious() }
+
     /** Другая очередь (файлы, видео): старая больше не продолжается и не включает радио. */
     private fun resetQueue() {
         queueGen++

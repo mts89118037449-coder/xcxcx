@@ -20,6 +20,8 @@ class App : Application() {
         Library.init(this)
         History.init(this)
         Taste.init(this)
+        News.init(this)
+        News.checkOnLaunch() // новинки любимых исполнителей — проверяем при каждом запуске
         MediaCache.init(this)
         Shortcuts.publish(this)
         // Первый запуск распаковывает Python и ffmpeg — делаем это в фоне.

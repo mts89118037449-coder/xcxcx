@@ -5,11 +5,21 @@ import org.json.JSONObject
 import java.util.concurrent.Executors
 
 /** Альбом. [id] — Deezer; если null (чарт Apple), альбом находим поиском при открытии. */
-data class Album(val id: Long?, val title: String, val artist: String, val cover: String?, val year: String? = null, val explicit: Boolean = false)
+data class Album(
+    val id: Long?, val title: String, val artist: String, val cover: String?, val year: String? = null, val explicit: Boolean = false,
+    /** album / single / ep / compile — у исполнителя альбомы и синглы показываем отдельно. */
+    val type: String = "album", val date: String? = null,
+) {
+    val isSingle get() = type == "single" || type == "ep"
+}
 
 data class Artist(val id: Long, val name: String, val picture: String?, val fans: Int = 0)
 
-class ArtistPage(val artist: Artist, val top: List<Track>, val albums: List<Album>, val related: List<Artist>)
+class ArtistPage(val artist: Artist, val top: List<Track>, val albums: List<Album>, val related: List<Artist>) {
+    /** Альбомы (новые — первыми) и отдельно синглы/EP. */
+    val longPlays get() = albums.filter { !it.isSingle }.sortedByDescending { it.date }
+    val singles get() = albums.filter { it.isSingle }.sortedByDescending { it.date }
+}
 
 /**
  * Каталог как в стриминговом сервисе: чарты, новинки, исполнители, альбомы, радио похожих песен.
@@ -123,6 +133,20 @@ object Catalog {
         full to tracks
     }
 
+    // ---------------- Новинки ----------------
+
+    /** Релизы исполнителя за последние [days] дней (новые — первыми). */
+    fun recentReleases(artist: String, days: Int): List<Album> {
+        val a = artistByName(artist) ?: return emptyList()
+        if (Match.norm(a.name) != Match.norm(artist.split(Regex("""\s*(,|&| feat\.? | ft\.? )\s*""", RegexOption.IGNORE_CASE)).first().trim())) return emptyList()
+        val since = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(System.currentTimeMillis() - days * 86_400_000L))
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        return albums(Http.json("$DZ/artist/${a.id}/albums?limit=100").optJSONArray("data"))
+            .map { if (it.artist.isEmpty()) it.copy(artist = a.name) else it }
+            .filter { d -> d.date != null && d.date >= since && d.date <= today }
+            .let(::uncensoredFirst)
+    }
+
     // ---------------- Радио ----------------
 
     /**
@@ -158,7 +182,8 @@ object Catalog {
         (0 until it.length()).map { i ->
             val o = it.getJSONObject(i)
             Album(o.optLong("id"), o.optString("title"), o.optJSONObject("artist")?.optString("name").orEmpty(),
-                o.optString("cover_big").ifEmpty { null }, o.optString("release_date").take(4).ifEmpty { null }, o.optBoolean("explicit_lyrics"))
+                o.optString("cover_big").ifEmpty { null }, o.optString("release_date").take(4).ifEmpty { null }, o.optBoolean("explicit_lyrics"),
+                o.optString("record_type").ifEmpty { "album" }, o.optString("release_date").ifEmpty { null })
         }
     }.orEmpty()
 

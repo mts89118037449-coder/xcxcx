@@ -87,7 +87,9 @@ class NowPlayingActivity : AppCompatActivity() {
         findViewById<View>(R.id.npClose).setOnClickListener { finish() }
         play.setOnClickListener { controller?.let { if (it.isPlaying) it.pause() else { if (it.playbackState == Player.STATE_ENDED) it.seekTo(0); it.play() } } }
         findViewById<View>(R.id.npPrev).setOnClickListener { controller?.seekToPrevious() }
-        findViewById<View>(R.id.npNext).setOnClickListener { controller?.seekToNext() }
+        findViewById<View>(R.id.npNext).setOnClickListener { Playback.next(this) }
+        // Свайп по обложке: вправо — следующая песня из текущего списка, влево — предыдущая.
+        Swipe.attach(findViewById(R.id.npCoverFrame), onRight = { Playback.next(this) }, onLeft = { Playback.previous(this) })
         shuffle.setOnClickListener { controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
         repeat.setOnClickListener {
             controller?.let {

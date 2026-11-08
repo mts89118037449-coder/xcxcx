@@ -15,6 +15,7 @@ object Taste {
     private lateinit var file: File
     private val tracks = HashMap<String, Stat>()
     private val artists = HashMap<String, Int>()
+    private val names = HashMap<String, String>() // ключ → имя как пишется (для поиска новинок)
 
     fun init(ctx: Context) {
         file = File(ctx.filesDir, "taste.json")
@@ -23,15 +24,35 @@ object Taste {
             t.keys().forEach { k -> t.optJSONArray(k)?.let { a -> tracks[k] = Stat(a.optInt(0), a.optInt(1), a.optLong(2)) } }
         }
         o.optJSONObject("a")?.let { a -> a.keys().forEach { k -> artists[k] = a.optInt(k) } }
+        o.optJSONObject("n")?.let { n -> n.keys().forEach { k -> names[k] = n.optString(k) } }
     }
 
-    private fun artistKey(a: String) = Match.norm(a.split(Regex("""\s*(,|&| feat\.? | ft\.? )\s*""", RegexOption.IGNORE_CASE)).first().trim())
+    private fun mainArtist(a: String) = a.split(Regex("""\s*(,|&| feat\.? | ft\.? )\s*""", RegexOption.IGNORE_CASE)).first().trim()
+    private fun artistKey(a: String) = Match.norm(mainArtist(a))
+
+    /**
+     * Любимые исполнители: чьи песни под ♥ (каждая — как 3 прослушивания) и кого слушаете чаще.
+     * Из них собираются «Новинки».
+     */
+    @Synchronized fun favoriteArtists(n: Int): List<String> {
+        val w = HashMap<String, Double>()
+        val shown = HashMap<String, String>()
+        Library.favorites.filter { it.artist.isNotBlank() }.forEach { t ->
+            val k = artistKey(t.artist); w.merge(k, 3.0, Double::plus); shown.putIfAbsent(k, mainArtist(t.artist))
+        }
+        artists.forEach { (k, c) -> if (c >= 2) { w.merge(k, c.toDouble(), Double::plus); names[k]?.let { shown.putIfAbsent(k, it) } } }
+        return w.entries.sortedByDescending { it.value }.mapNotNull { shown[it.key] }.take(n)
+    }
 
     /** Дослушали (или почти) — плюс песне и исполнителю. */
     @Synchronized fun played(t: Track) {
         val s = tracks.getOrPut(Library.key(t)) { Stat() }
         s.plays++; s.last = System.currentTimeMillis()
-        if (t.artist.isNotBlank()) artists.merge(artistKey(t.artist), 1, Int::plus)
+        if (t.artist.isNotBlank()) {
+            val k = artistKey(t.artist)
+            artists.merge(k, 1, Int::plus)
+            names[k] = mainArtist(t.artist)
+        }
         save()
     }
 
@@ -77,6 +98,8 @@ object Taste {
         tracks.forEach { (k, s) -> t.put(k, org.json.JSONArray().put(s.plays).put(s.skips).put(s.last)) }
         val a = JSONObject()
         artists.forEach { (k, n) -> a.put(k, n) }
-        runCatching { File(file.path + ".tmp").apply { writeText(JSONObject().put("t", t).put("a", a).toString()) }.renameTo(file) }
+        val n = JSONObject()
+        names.forEach { (k, v) -> n.put(k, v) }
+        runCatching { File(file.path + ".tmp").apply { writeText(JSONObject().put("t", t).put("a", a).put("n", n).toString()) }.renameTo(file) }
     }
 }

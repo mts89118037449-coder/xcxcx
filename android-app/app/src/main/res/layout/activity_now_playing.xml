@@ -269,7 +269,10 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/npDownload"
-                android:textSize="13sp"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="9sp"
+                app:autoSizeMaxTextSize="13sp"
+                app:autoSizeStepGranularity="1sp"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
                 android:insetLeft="0dp"
@@ -287,7 +290,10 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/npLyrics"
-                android:textSize="13sp"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="9sp"
+                app:autoSizeMaxTextSize="13sp"
+                app:autoSizeStepGranularity="1sp"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
                 android:insetLeft="0dp"
@@ -306,7 +312,10 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/npWhere"
-                android:textSize="13sp"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="9sp"
+                app:autoSizeMaxTextSize="13sp"
+                app:autoSizeStepGranularity="1sp"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
                 android:insetLeft="0dp"
@@ -325,7 +334,10 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/npShare"
-                android:textSize="13sp"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="9sp"
+                app:autoSizeMaxTextSize="13sp"
+                app:autoSizeStepGranularity="1sp"
                 android:paddingStart="4dp"
                 android:paddingEnd="4dp"
                 android:insetLeft="0dp"

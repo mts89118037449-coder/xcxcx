@@ -150,14 +150,17 @@ object Streams {
         // Берём по старшинству (SoundCloud → YouTube Music → YouTube), но не ждём старшую дольше 4 с,
         // если младшая уже готова: полная версия включается за 1–2 секунды.
         val bg = Ytdlp.isBackground // подготовка заранее не мешает нажатому
+        val problems = java.util.concurrent.ConcurrentLinkedQueue<String>()
+        val foundOn = java.util.concurrent.ConcurrentLinkedQueue<String>()
         val jobs = sources.map { (name, query) ->
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                 val candidates = runCatching { Match.ranked(t, Downloader.searchCandidates(query, name)) { Triple(it.title, it.author, it.duration) } }
                     .getOrDefault(emptyList())
                 // Ссылки для двух лучших берём одновременно (лучший может оказаться платным — DRM), третий — если оба не играют.
-                val top = candidates.take(2).map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) { Downloader.streamOf(c.url, name, c.title) } } }
+                if (candidates.isNotEmpty()) foundOn += name
+                val top = candidates.take(2).map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) { Downloader.streamOf(c.url, name, c.title, problems) } } }
                 top.firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
-                    ?: candidates.getOrNull(2)?.let { c -> Downloader.streamOf(c.url, name, c.title) }
+                    ?: candidates.getOrNull(2)?.let { c -> Downloader.streamOf(c.url, name, c.title, problems) }
             } }
         }
         val started = System.currentTimeMillis()
@@ -178,6 +181,15 @@ object Streams {
             else Downloader.streamOf(w.url, w.source, w.title)
             if (s != null) return s
         }
-        throw UserError("Не нашёл «${t.label}» ни на одной площадке: SoundCloud, YouTube, Яндекс, Rutube, Internet Archive, Dailymotion, Audius.")
+        // Честно: где песня есть и почему не играет (чаще всего — платная на SoundCloud).
+        val drm = problems.filter { it.contains("DRM") || it.contains("платн", ignoreCase = true) }.map { it.substringBefore(":") }.distinct()
+        val missing = listOf("SoundCloud", "YouTube").filter { it !in foundOn }
+        throw UserError(buildString {
+            if (drm.isNotEmpty()) append("На ${drm.joinToString(" и ")} песня есть, но платная (DRM) — бесплатно её не включить.")
+            else if (problems.isNotEmpty()) append("Нашёл, но не играет: ${problems.first()}.")
+            else append("Не нашёл «${t.label}».")
+            if (missing.isNotEmpty()) append(" На ${missing.joinToString(" и ")} её нет.")
+            append(" Можно открыть в своём сервисе — кнопка «Сервисы».")
+        })
     }
 }

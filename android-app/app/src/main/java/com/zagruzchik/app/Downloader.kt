@@ -315,14 +315,15 @@ object Downloader {
     private const val STREAM_FORMAT = "bestaudio[protocol^=http]/bestaudio[protocol=m3u8_native]/bestaudio"
 
     /** Прямая ссылка на звук для одной страницы (SoundCloud/YouTube). null — не играет (DRM и т.п.). */
-    fun streamOf(pageUrl: String, source: String, title: String): StreamInfo? {
+    fun streamOf(pageUrl: String, source: String, title: String, problems: MutableCollection<String>? = null): StreamInfo? {
         try {
             val d = YtdlpDaemon.stream(pageUrl, STREAM_FORMAT) ?: return null
             val url = d.optJSONArray("urls")?.optString(0)?.takeIf { it.startsWith("http") } ?: return null
             return StreamInfo(url, d.optString("page").takeIf { it.startsWith("http") } ?: pageUrl, source,
                 d.optString("thumbnail").takeIf { it.startsWith("http") }, title)
         } catch (_: YtdlpDaemon.Unavailable) {
-        } catch (_: UserError) {
+        } catch (e: UserError) {
+            problems?.add("$source: ${e.message}")
             return null
         }
         val r = YoutubeDLRequest(pageUrl).apply {

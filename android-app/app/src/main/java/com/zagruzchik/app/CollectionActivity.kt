@@ -93,10 +93,12 @@ class CollectionActivity : AppCompatActivity() {
                     showTracks(p.top, numbered = true)
                     Streams.prefetchMany(p.top, 6)
                 }
-                if (p.albums.isNotEmpty()) {
-                    section("Альбомы и синглы")
+                // Альбомы и синглы — отдельно, новые первыми.
+                for ((title, list) in listOf("Альбомы" to p.longPlays, "Синглы и EP" to p.singles)) {
+                    if (list.isEmpty()) continue
+                    section(title)
                     val (scroll, inner) = Rows.shelf(this)
-                    p.albums.forEach { inner.addView(Rows.albumCard(this, inner, it)) }
+                    list.forEach { inner.addView(Rows.albumCard(this, inner, it)) }
                     content.addView(scroll)
                 }
                 if (p.related.isNotEmpty()) {

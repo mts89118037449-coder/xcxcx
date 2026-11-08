@@ -139,6 +139,8 @@ class MainActivity : AppCompatActivity() {
         installedCache = null // могли поставить/удалить приложение или сменить «мой сервис»
         Library.listen(libraryListener)
         History.listen(libraryListener)
+        News.listen(newsListener)
+        News.checkOnLaunch() // вернулись в приложение спустя время — тоже проверяем
         Jobs.listen(listener)
         refreshJobs()
         refreshLibrary()
@@ -156,6 +158,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         Library.unlisten(libraryListener)
         History.unlisten(libraryListener)
+        News.unlisten(newsListener)
         Jobs.unlisten(listener)
         controller?.removeListener(playerListener)
         controller = null
@@ -350,6 +353,8 @@ class MainActivity : AppCompatActivity() {
                 homeLoading = false
                 if (isDestroyed) return@runOnUiThread
                 home.removeAllViews()
+                home.addView(newsBox) // сверху — новинки любимых исполнителей
+                renderNews()
                 if (c.isEmpty() && al.isEmpty() && ar.isEmpty()) return@runOnUiThread
                 homeLoaded = true
                 if (c.isNotEmpty()) {
@@ -381,6 +386,49 @@ class MainActivity : AppCompatActivity() {
                     home.addView(scroll)
                 }
             }
+        }
+    }
+
+    private val newsBox by lazy { LinearLayout(this).apply { orientation = LinearLayout.VERTICAL } }
+    private val newsListener: () -> Unit = { renderNews() }
+
+    /** «Новинки ваших исполнителей»: свежие релизы (с пометкой «новое») и их песни. */
+    private fun renderNews() {
+        if (newsBox.parent == null) {
+            findViewById<LinearLayout>(R.id.homeSection).addView(newsBox, 0)
+        }
+        newsBox.removeAllViews()
+        val list = News.releases
+        if (list.isEmpty()) {
+            val hint = when {
+                News.checking -> "Проверяю новинки ваших исполнителей…"
+                Taste.favoriteArtists(1).isEmpty() -> "Ставьте ♥ песням — здесь появятся новинки ваших исполнителей"
+                else -> "За последние 3 месяца у ваших исполнителей новинок нет. Проверяю при каждом запуске."
+            }
+            newsBox.addView(sectionHeader("Новинки для вас"))
+            newsBox.addView(TextView(this).apply {
+                text = hint
+                setTextAppearance(M.style.TextAppearance_Material3_BodyMedium)
+                setTextColor(MaterialColors.getColor(this, M.attr.colorOnSurfaceVariant))
+                setPadding(dp(4), 0, dp(4), dp(4))
+            })
+            return
+        }
+        val fresh = list.count { it.isNew }
+        val tracks = News.tracks
+        val items = tracks.map { Playback.QItem(it, Library.localFor(it), it.url) }
+        newsBox.addView(sectionHeader(if (fresh > 0) "Новинки для вас · $fresh новых" else "Новинки для вас", "Слушать") {
+            Playback.playQueue(this, items, 0)
+        })
+        val (scroll, inner) = Rows.shelf(this)
+        list.forEach { r ->
+            val a = r.album
+            val sub = listOfNotNull(if (r.isNew) "🆕 новое" else null, a.artist, if (a.isSingle) "сингл" else "альбом").joinToString(" · ")
+            inner.addView(Rows.card(this, inner, a.title + if (a.explicit) " 🅴" else "", sub, a.cover, false) { Rows.openAlbum(this, a) })
+        }
+        newsBox.addView(scroll)
+        tracks.take(4).forEachIndexed { i, t ->
+            newsBox.addView(trackRow(newsBox, t, onPlay = { Playback.playQueue(this, items, i) }))
         }
     }
 
@@ -447,7 +495,9 @@ class MainActivity : AppCompatActivity() {
                 findViewById<View>(R.id.musicProgress).isVisible = false
                 findViewById<View>(R.id.catalogEmpty).isVisible = found.isEmpty()
                 catalog.removeAllViews()
-                found.forEach { catalog.addView(trackRow(catalog, it)) }
+                // Результаты — это список: дальше играют следующие песни из него (и свайп по плееру).
+                val items = found.map { Playback.QItem(it, Library.localFor(it), it.url) }
+                found.forEachIndexed { i, t -> catalog.addView(trackRow(catalog, t, onPlay = { Playback.playQueue(this, items, i) })) }
                 Streams.prefetchMany(found, 4) // к нажатию ▶ полная версия уже готова
             }
         }
@@ -489,15 +539,18 @@ class MainActivity : AppCompatActivity() {
             else -> "Нашлось на: ${sources.joinToString(", ")}" + if (done) "" else " · ищу дальше…"
         } + if (failed.isNotEmpty()) "\nНе ответили: ${failed.joinToString("; ")}" else ""
         web.removeAllViews()
-        shown.forEach { w ->
-            val t = w.track()
+        val items = shown.map { w ->
+            Playback.QItem(w.track(), null, null, if (w.direct) null else w.url, if (w.direct) w.url else null, w.source)
+        }
+        shown.forEachIndexed { i, w ->
             web.addView(
                 trackRow(
-                    web, t,
-                    pageUrl = if (w.direct) null else w.url,
-                    directUrl = if (w.direct) w.url else null,
+                    web, items[i].track,
+                    pageUrl = items[i].pageUrl,
+                    directUrl = items[i].directUrl,
                     directSource = w.source,
                     subtitle = listOf(w.source, w.artist).filter { it.isNotBlank() }.joinToString(" · "),
+                    onPlay = { Playback.playQueue(this, items, i) },
                 )
             )
         }
@@ -1011,7 +1064,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.miniPlay).setOnClickListener {
             controller?.let { if (it.isPlaying) it.pause() else it.play() }
         }
-        findViewById<View>(R.id.miniNext).setOnClickListener { controller?.seekToNextMediaItem() }
+        findViewById<View>(R.id.miniNext).setOnClickListener { Playback.next(this) }
+        // Свайп вправо по мини-плееру — следующая песня списка, влево — предыдущая.
+        Swipe.attach(mini, onRight = { Playback.next(this) }, onLeft = { Playback.previous(this) })
     }
 
     private fun updateMini() {
@@ -1026,7 +1081,7 @@ class MainActivity : AppCompatActivity() {
             setIconResource(if (c.isPlaying) R.drawable.ic_pause else R.drawable.ic_play_arrow)
             contentDescription = if (c.isPlaying) "Пауза" else "Играть"
         }
-        findViewById<View>(R.id.miniNext).isVisible = c.hasNextMediaItem()
+        findViewById<View>(R.id.miniNext).isVisible = Playback.hasNext(c)
         val cover = findViewById<com.google.android.material.imageview.ShapeableImageView>(R.id.miniCover)
         val art = m.artworkData?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
         if (art != null) cover.setImageBitmap(art) else cover.setImageResource(R.drawable.ic_music_note)
