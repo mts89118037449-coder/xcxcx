@@ -13,8 +13,22 @@ object MusicSearch {
         val deezer = runCatching { deezer(q, limit) }.getOrDefault(emptyList())
         val apple = if (deezer.size < 8) runCatching { apple(q, limit) }.getOrDefault(emptyList()) else emptyList()
         // Без повторов: одна и та же песня из двух каталогов показывается один раз.
+        // Каталоги сами ставят переделки (Piano, Remix…) выше оригинала — пересортировываем:
+        // оригинал выше переделок, версия без цензуры выше «чистой», порядок каталога — при равенстве.
+        val qw = Match.norm(q).split(' ').filter { it.length > 1 }
+        fun coverage(t: Track): Double {
+            if (qw.isEmpty()) return 1.0
+            val hay = Match.norm(t.title + " " + t.artist)
+            return qw.count { hay.contains(it) }.toDouble() / qw.size
+        }
+        // Главное — похожесть на запрос; дальше оригинал выше переделок, без цензуры — чуть выше.
+        val ranked = (deezer + apple).withIndex().sortedByDescending { (i, t) ->
+            3.0 * coverage(t) - 1.5 * Match.versionPenaltyWords(t.title, q).size +
+                (if (t.explicit || Match.isUncensored(t.title)) 0.4 else 0.0) - i * 0.01
+        }.map { it.value }
+        // Без повторов, но версия без цензуры не теряется за «чистой» с тем же названием.
         val seen = HashSet<String>()
-        return (deezer + apple).filter { seen.add(Match.base(it.title) + "|" + Match.norm(it.artist)) }.take(limit)
+        return ranked.filter { seen.add(Match.base(it.title) + "|" + Match.norm(it.artist) + "|" + it.explicit) }.take(limit)
     }
 
     private fun deezer(q: String, limit: Int): List<Track> {
@@ -52,7 +66,7 @@ object Streams {
         val k = key(t)
         if (cached(k) != null || pending.containsKey(k)) return
         pending[k] = pool.submit<StreamInfo> {
-            try { find(t).also { done[k] = System.currentTimeMillis() to it } } finally { pending.remove(k) }
+            try { Ytdlp.inBackground { find(t) }.also { done[k] = System.currentTimeMillis() to it } } finally { pending.remove(k) }
         }
     }
 

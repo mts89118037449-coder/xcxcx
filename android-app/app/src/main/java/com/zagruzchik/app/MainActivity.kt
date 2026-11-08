@@ -281,7 +281,7 @@ class MainActivity : AppCompatActivity() {
         empty.text = "Ничего не нашлось по «$q». Попробуйте иначе или вставьте ссылку."
         searchResults.removeAllViews()
         // Первые три — начинаем готовить заранее, чтобы ▶ срабатывал быстро.
-        found.take(3).forEach { Streams.prefetch(it) }
+        found.take(1).forEach { Streams.prefetch(it) }
         found.forEach { t -> searchResults.addView(trackRow(searchResults, t)) }
     }
 
@@ -330,22 +330,24 @@ class MainActivity : AppCompatActivity() {
                 findViewById<View>(R.id.catalogEmpty).isVisible = found.isEmpty()
                 catalog.removeAllViews()
                 found.forEach { catalog.addView(trackRow(catalog, it)) }
-                found.take(3).forEach { Streams.prefetch(it) } // к нажатию ▶ уже готово
+                found.take(1).forEach { Streams.prefetch(it) } // к нажатию ▶ уже готово
             }
         }
         // Везде в интернете: 9 площадок разом, результаты появляются по мере ответа.
         val collected = java.util.Collections.synchronizedList(mutableListOf<WebResult>())
         val answered = java.util.concurrent.atomic.AtomicInteger(0)
-        WebSearch.searchAll(q, onResults = { _, r ->
+        val failed = java.util.Collections.synchronizedList(mutableListOf<String>())
+        WebSearch.searchAll(q, onResults = { src, r, err ->
             collected += r
+            if (err != null) failed += "$src ($err)"
             val n = answered.incrementAndGet()
-            runOnUiThread { if (seq == musicSeq) showWeb(q, collected.toList(), n, done = false) }
+            runOnUiThread { if (seq == musicSeq) showWeb(q, collected.toList(), n, done = false, failed.toList()) }
         }, onDone = {
-            runOnUiThread { if (seq == musicSeq) showWeb(q, collected.toList(), answered.get(), done = true) }
+            runOnUiThread { if (seq == musicSeq) showWeb(q, collected.toList(), answered.get(), done = true, failed.toList()) }
         })
     }
 
-    private fun showWeb(q: String, all: List<WebResult>, answered: Int, done: Boolean) {
+    private fun showWeb(q: String, all: List<WebResult>, answered: Int, done: Boolean, failed: List<String> = emptyList()) {
         val web = findViewById<LinearLayout>(R.id.webList)
         findViewById<View>(R.id.webProgress).isVisible = !done
         // Похожие на запрос — выше; совсем непохожие не показываем. Повторы одного и того же — один раз.
@@ -367,7 +369,7 @@ class MainActivity : AppCompatActivity() {
             shown.isEmpty() && done -> "Нигде не нашлось. Проверьте написание или попробуйте только название."
             shown.isEmpty() -> "Ищу на 9 площадках… ответили $answered"
             else -> "Нашлось на: ${sources.joinToString(", ")}" + if (done) "" else " · ищу дальше…"
-        }
+        } + if (failed.isNotEmpty()) "\nНе ответили: ${failed.joinToString("; ")}" else ""
         web.removeAllViews()
         shown.forEach { w ->
             val t = w.track()
@@ -1012,6 +1014,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.versionText).text = "Загрузчик ${info.versionName}"
         val engine = findViewById<TextView>(R.id.engineText)
         engine.text = "Движок yt-dlp: ${engineVersion()}. Обновляется сам раз в неделю."
+        findViewById<MaterialButton>(R.id.checkSources).setOnClickListener { runDiagnostics() }
         findViewById<MaterialButton>(R.id.updateEngine).setOnClickListener { btn ->
             btn.isEnabled = false
             snack("Обновляю движок…")
@@ -1118,6 +1121,23 @@ class MainActivity : AppCompatActivity() {
             .setSingleChoiceItems(items.toTypedArray(), checked) { d, which -> onPick(which); d.dismiss() }
             .setNegativeButton("Отмена", null)
             .show()
+    }
+
+    private fun runDiagnostics() {
+        val text = TextView(this).apply {
+            setPadding(dp(24), dp(12), dp(24), dp(8))
+            setTextIsSelectable(true)
+            text = "Проверяю на этом телефоне… (около минуты)"
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Проверка источников")
+            .setView(android.widget.ScrollView(this).apply { addView(text) })
+            .setPositiveButton("Закрыть", null)
+            .show()
+        val lines = mutableListOf<String>()
+        thread {
+            Diagnostics.run(this) { l -> runOnUiThread { lines += l; text.text = lines.joinToString("\n\n") } }
+        }
     }
 
     private fun refreshSites() {

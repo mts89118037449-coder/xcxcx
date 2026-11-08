@@ -1,7 +1,6 @@
 package com.zagruzchik.app
 
 import android.content.Context
-import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import org.json.JSONObject
 import java.io.File
@@ -58,7 +57,7 @@ object MediaCache {
                     addOption("-N", "4")
                     addOption("-o", File(dir, "$name.%(ext)s").absolutePath)
                 }
-                runCatching { YoutubeDL.getInstance().execute(r) }
+                runCatching { Ytdlp.inBackground { Ytdlp.execute(r) } }
                 val f = dir.listFiles().orEmpty().firstOrNull { it.name.startsWith("$name.") && !it.name.endsWith(".part") && !it.name.endsWith(".ytdl") }
                     ?: return@execute
                 synchronized(this) {

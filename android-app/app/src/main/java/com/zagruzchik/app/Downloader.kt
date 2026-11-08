@@ -133,7 +133,7 @@ object Downloader {
             addOption("--print", "id")
             addOption("--no-warnings")
         }
-        return runCatching { YoutubeDL.getInstance().execute(r).out.lines().map { it.trim() }.firstOrNull { it.length == 11 } }.getOrNull()
+        return runCatching { Ytdlp.execute(r).out.lines().map { it.trim() }.firstOrNull { it.length == 11 } }.getOrNull()
     }
 
     /** «10.5MiB · 2.3MiB/s · осталось 00:05» из строки прогресса yt-dlp. */
@@ -196,7 +196,7 @@ object Downloader {
     private fun audios(dir: File) = dir.listFiles().orEmpty().filter { it.isFile && it.extension.lowercase() in AUDIO_EXT }
 
     /** Кандидат из поиска: ссылка, название, автор, длительность и откуда он. */
-    internal class Candidate(val url: String, val title: String, val author: String, val duration: Int, val source: String)
+    internal class Candidate(val url: String, val title: String, val author: String, val duration: Int, val source: String, val views: Long = 0)
 
     /**
      * Скачивает трек, перебирая варианты: до 3 лучших из каждого источника по очереди.
@@ -257,15 +257,23 @@ object Downloader {
         )
     }
 
-    private fun search(query: String, source: String): List<Candidate> {
+    private fun search(query: String, source: String, processId: String? = null): List<Candidate> =
+        runCatching { searchOrThrow(query, source, processId) }.getOrDefault(emptyList())
+
+    /** То же, но с ошибкой — для проверки источников и подписи «не ответил». */
+    internal fun searchOrThrow(query: String, source: String, processId: String? = null): List<Candidate> {
         val r = YoutubeDLRequest(query).apply {
             addOption("--flat-playlist")
             addOption("--cache-dir", cacheDir())
             addOption("--playlist-end", "8")
             addOption("--no-warnings")
-            addOption("--print", "%(url)s\t%(title)s\t%(artist,artists,creator,uploader,channel)s\t%(duration)s")
+            addOption("--print", "%(url)s\t%(title)s\t%(artist,artists,creator,uploader,channel)s\t%(duration)s\t%(view_count)s")
         }
-        val out = runCatching { YoutubeDL.getInstance().execute(r).out }.getOrNull() ?: return emptyList()
+        val out = try {
+            Ytdlp.execute(r, processId).out
+        } catch (e: YoutubeDLException) {
+            throw UserError(explain(e.message.orEmpty()))
+        }
         return parseSearch(out, source)
     }
 
@@ -273,7 +281,7 @@ object Downloader {
     private fun cacheDir() = File(App.instance.cacheDir, "yt-dlp").apply { mkdirs() }.absolutePath
 
     /** Быстрый поиск без разбора каждого результата — для выбора лучшего варианта. */
-    internal fun searchCandidates(query: String, source: String) = search(query, source)
+    internal fun searchCandidates(query: String, source: String, processId: String? = null) = search(query, source, processId)
 
     /** Видео одним потоком (картинка+звук) — для повторного просмотра из истории. */
     fun videoStreamOf(pageUrl: String): String? {
@@ -284,7 +292,7 @@ object Downloader {
             addOption("-f", "b[ext=mp4]/b")
             addOption("--print", "%(url)s")
         }
-        return runCatching { YoutubeDL.getInstance().execute(r).out.lines().firstOrNull { it.startsWith("http") } }.getOrNull()
+        return runCatching { Ytdlp.execute(r).out.lines().firstOrNull { it.startsWith("http") } }.getOrNull()
     }
 
     /** Прямая ссылка на звук для одной страницы (SoundCloud/YouTube). null — не играет (DRM и т.п.). */
@@ -297,7 +305,7 @@ object Downloader {
             addOption("-f", "bestaudio[protocol^=http]/bestaudio[protocol=m3u8_native]/bestaudio")
             addOption("--print", "%(url)j\t%(thumbnail)j\t%(webpage_url)s")
         }
-        val out = runCatching { YoutubeDL.getInstance().execute(r).out }.getOrNull() ?: return null
+        val out = runCatching { Ytdlp.execute(r).out }.getOrNull() ?: return null
         val f = out.lines().firstOrNull { it.contains('\t') }?.split('\t') ?: return null
         fun json(s: String) = runCatching { org.json.JSONTokener(s).nextValue() as? String }.getOrNull()
         val url = json(f[0])?.takeIf { it.startsWith("http") } ?: return null
@@ -313,7 +321,7 @@ object Downloader {
             val duration = f[3].toDoubleOrNull()?.toInt() ?: 0
             // У SoundCloud и YouTube исполнитель часто только в названии: «Кино - Группа крови».
             val artistField = listOf(author, f[1].substringBefore(" - ", "")).filter { it.isNotBlank() }.joinToString(" | ")
-            Candidate(f[0], f[1], artistField, duration, source)
+            Candidate(f[0], f[1], artistField, duration, source, f.getOrNull(4)?.toLongOrNull() ?: 0)
         }
     }
 

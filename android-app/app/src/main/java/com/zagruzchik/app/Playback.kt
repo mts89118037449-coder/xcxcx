@@ -217,8 +217,8 @@ object Playback {
                     if (gen != queueGen) return@post
                     waitingFull = null
                     if (preview != null) {
-                        // Фрагмент уже играет — не прерываем, просто сообщаем; дальше по очереди.
-                        Pending.set(null, loading = false, error = null)
+                        // Фрагмент уже играет — не прерываем, но честно говорим, что полной версии не будет.
+                        Pending.set(first.track, loading = false, error = "Полную версию не нашёл — играет фрагмент.\n$msg")
                         fill(app, gen)
                     } else {
                         Pending.set(first.track, loading = false, error = msg)

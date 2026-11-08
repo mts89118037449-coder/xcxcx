@@ -39,7 +39,8 @@ object LinkCache {
             for (s in Transfer.ORDER) {
                 if (e.links.containsKey(s)) continue
                 pool.execute {
-                    e.links[s] = Transfer.find(s, rich, Downloader::youtubeId)
+                    // Ссылки для «Поделиться» — фоновая работа: не мешает тому, что играет и ищется.
+                    e.links[s] = Ytdlp.inBackground { Transfer.find(s, rich, Downloader::youtubeId) }
                     notify(e)
                 }
             }

@@ -18,6 +18,8 @@ data class WebResult(
     val source: String,
     val cover: String? = null,
     val direct: Boolean = false,
+    /** Прослушивания/просмотры — официальная загрузка обычно популярнее перезаливов. */
+    val views: Long = 0,
 ) {
     fun track() = Track(title, artist, duration, cover = cover)
 }
@@ -29,10 +31,15 @@ object WebSearch {
     /** Источник: название и функция поиска. */
     private class Source(val name: String, val search: (String) -> List<WebResult>)
 
+    // Запуски yt-dlp текущего поиска: при новом запросе старые останавливаем, а не копим.
+    private val running = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private val gen = java.util.concurrent.atomic.AtomicInteger()
+    private val processIds = ThreadLocal<String?>()
+
     private val SOURCES = listOf(
-        Source("YouTube") { q -> ytdlp("ytsearch8:$q", "YouTube") },
-        Source("YouTube Music") { q -> ytdlp("https://music.youtube.com/search?q=" + Http.enc(q) + "#songs", "YouTube Music") },
         Source("SoundCloud") { q -> ytdlp("scsearch8:$q", "SoundCloud") },
+        Source("YouTube Music") { q -> ytdlp("https://music.youtube.com/search?q=" + Http.enc(q) + "#songs", "YouTube Music") },
+        Source("YouTube") { q -> ytdlp("ytsearch8:$q", "YouTube") },
         Source("Яндекс Музыка", ::yandex),
         Source("Rutube", ::rutube),
         Source("Internet Archive", ::archive),
@@ -42,12 +49,21 @@ object WebSearch {
     )
 
     /** Все источники разом. [onResults] вызывается из фоновых потоков по мере ответа каждого источника. */
-    fun searchAll(q: String, onResults: (source: String, results: List<WebResult>) -> Unit, onDone: () -> Unit): List<Future<*>> {
+    fun searchAll(q: String, onResults: (source: String, results: List<WebResult>, error: String?) -> Unit, onDone: () -> Unit): List<Future<*>> {
+        val my = gen.incrementAndGet()
+        synchronized(running) { running.toList().forEach { Ytdlp.cancel(it) }; running.clear() }
         val left = java.util.concurrent.atomic.AtomicInteger(SOURCES.size)
         return SOURCES.map { s ->
             pool.submit {
-                val r = runCatching { s.search(q) }.getOrDefault(emptyList())
-                onResults(s.name, r)
+                if (gen.get() != my) return@submit
+                val id = "ws-$my-${s.name}"
+                running += id
+                processIds.set(id)
+                val r = runCatching { s.search(q) }
+                processIds.set(null)
+                running -= id
+                if (gen.get() != my) return@submit
+                onResults(s.name, r.getOrDefault(emptyList()), r.exceptionOrNull()?.let { (it as? UserError)?.message ?: it.javaClass.simpleName })
                 if (left.decrementAndGet() == 0) onDone()
             }
         }
@@ -73,11 +89,13 @@ object WebSearch {
         var s = hit.toDouble() / qw.size
         val title = Match.norm(r.title)
         val qn = Match.norm(q)
-        if (title.startsWith(qn) || qn.endsWith(title) && title.length > 3) s += 0.2
+        if (title.startsWith(qn) || qn.endsWith(title) && title.length > 3) s += 0.1
         // Все слова запроса в «Исполнитель — Название» — самое похожее на оригинал.
         if (Match.norm(r.artist + " " + r.title).let { hay2 -> qw.all { hay2.contains(it) } } && r.artist.isNotBlank()) s += 0.1
         // Ремиксы, миксы, каверы, концерты — ниже оригинала (если их не искали специально).
-        if (Match.VERSION_WORDS.any { title.contains(it) && !qn.contains(it) }) s -= 0.35
+        if (Match.versionPenaltyWords(r.title, q).isNotEmpty()) s -= 0.35
+        if (Match.isUncensored(r.title) && !Match.isUncensored(q)) s += 0.15 // без цензуры — выше
+        if (r.views > 0) s += minOf(0.7, kotlin.math.log10(r.views.toDouble() + 1) / 10) // популярное (обычно оригинал) — выше
         if (r.duration in 1..59) s -= 0.3 // превью/отрывки
         if (r.duration > 600) s -= 0.25 // часовые сборники и миксы — ниже
         if (r.duration > 1200) s -= 0.2
@@ -88,8 +106,8 @@ object WebSearch {
 
     private fun ytdlp(query: String, source: String): List<WebResult> {
         App.awaitReadyOrNull() ?: return emptyList()
-        return Downloader.searchCandidates(query, source).map {
-            WebResult(it.url, it.title, it.author.substringBefore(" | "), it.duration, source)
+        return Downloader.searchOrThrow(query, source, processIds.get()).map {
+            WebResult(it.url, it.title, it.author.substringBefore(" | "), it.duration, source, views = it.views)
         }
     }
 

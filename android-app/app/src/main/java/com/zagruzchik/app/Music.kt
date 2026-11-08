@@ -15,6 +15,8 @@ data class Track(
     val url: String? = null,
     /** Официальный 30-секундный фрагмент (Deezer/Apple/Spotify) — играет мгновенно, пока ищется полная версия. */
     val preview: String? = null,
+    /** Версия без цензуры (по данным каталога). */
+    val explicit: Boolean = false,
 ) {
     val label get() = if (artist.isEmpty()) title else "$artist — $title"
     val query get() = "$artist $title".trim()
@@ -80,9 +82,26 @@ object Match {
         "mix", "edit", "version", "remaster", "reverb", "bass boosted", "ремикс", "кавер", "минус", "караоке",
         // Версии с цензурой: берём оригинал, если исходный трек не «clean».
         "clean", "radio edit", "censored", "цензур", "preview", "snippet", "teaser", "tiktok",
+        // Другие исполнения и переделки.
+        "piano", "пианино", "фортепиано", "hardstyle", "phonk", "фонк", "speed up", "speedup", "ускорен", "замедлен",
+        "lofi", "lo fi", "rmx", "flip", "mashup", "мэшап", "violin", "guitar", "orchestra", "bootleg", "cover version",
     )
 
-    fun norm(s: String) = s.lowercase()
+    /** Пометки «без цензуры» — это плюс, а не «версия с цензурой» (в них есть «censored»/«цензур»). */
+    private val UNCENSORED = listOf("без цензур", "uncensored", "explicit", "нецензур", "18+", "dirty")
+
+    fun isUncensored(title: String) = java.text.Normalizer.normalize(title, java.text.Normalizer.Form.NFKC).lowercase().let { t -> UNCENSORED.any { t.contains(it) } }
+
+    /** Слова «другой версии» в названии, которых нет в исходном названии/запросе. */
+    fun versionPenaltyWords(title: String, source: String): List<String> {
+        val t = norm(title); val src = norm(source)
+        val unc = isUncensored(title)
+        return VERSION_WORDS.filter { w ->
+            t.contains(w) && !src.contains(w) && !(unc && (w == "censored" || w == "цензур"))
+        }
+    }
+
+    fun norm(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFKC).lowercase()
         .replace('ё', 'е')
         .replace(Regex("""[^\p{L}\p{N}]+"""), " ")
         .trim()
@@ -114,9 +133,10 @@ object Match {
             s += 2
         }
         val srcLow = norm(src.title)
-        for (w in VERSION_WORDS) if (norm(title).contains(w) && !srcLow.contains(w)) s -= 3
+        s -= 3 * versionPenaltyWords(title, src.title).size
+        if (isUncensored(title) && !isUncensored(src.title)) s += 2 // без цензуры — лучше
         // Лишняя приписка в скобках, которой нет у исходного трека («Pianoforte», «Sped Up»…) — скорее всего, другая версия.
-        val extra = Regex("""[(\[]([^)\]]+)[)\]]""").findAll(title).map { norm(it.groupValues[1]) }
+        val extra = Regex("""[(\[]([^)\]]+)[)\]]""").findAll(title).filter { !isUncensored(it.value) }.map { norm(it.groupValues[1]) }
             .filter { it.isNotEmpty() && !srcLow.contains(it) && !it.startsWith("feat") && !it.startsWith("ft ") }
         if (extra.any()) s -= 3
         if (src.durationSec > 0 && durationSec > 0) {
@@ -259,6 +279,7 @@ object AppleSource {
         cover = o.optString("artworkUrl100").takeIf { it.isNotEmpty() }?.replace("100x100", "600x600"),
         url = o.optString("trackViewUrl").takeIf { it.isNotEmpty() }?.substringBefore("&uo="),
         preview = o.optString("previewUrl").takeIf { it.isNotEmpty() },
+        explicit = o.optString("trackExplicitness") == "explicit",
     )
 
     fun resolve(url: String): MusicItem {
@@ -289,6 +310,7 @@ object DeezerSource {
         cover = o.optJSONObject("album")?.optString("cover_big")?.takeIf { it.isNotEmpty() },
         url = o.optString("link").takeIf { it.isNotEmpty() },
         preview = o.optString("preview").takeIf { it.isNotEmpty() },
+        explicit = o.optBoolean("explicit_lyrics"),
     )
 
     fun resolve(url: String): MusicItem {
