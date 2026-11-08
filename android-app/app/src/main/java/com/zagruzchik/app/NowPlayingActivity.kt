@@ -191,7 +191,7 @@ class NowPlayingActivity : AppCompatActivity() {
                 tv != null -> "На телевизоре: $tv"
                 src == null -> ""
                 src == "Скачано" -> "Из загрузок · без интернета"
-                m.extras?.getBoolean(Playback.X_PREVIEW) == true -> "Играет фрагмент · полная версия через пару секунд…"
+                m.extras?.getBoolean(Playback.X_PREVIEW) == true -> "Фрагмент · полная версия подхватит с этого же места"
                 else -> "Играет из $src · без скачивания"
             }
             setCover(m.artworkUri?.toString(), m.artworkData)

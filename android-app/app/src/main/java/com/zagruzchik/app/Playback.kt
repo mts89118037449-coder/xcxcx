@@ -174,10 +174,25 @@ object Playback {
         } else {
             Pending.set(first.track, loading = true, error = null)
         }
+        // Пока играет фрагмент — разбираем его звук, чтобы потом найти это место в полной версии.
+        val previewPcm = preview?.let { url -> alignPool.submit<ShortArray?> { runCatching { Align.pcm(app, url, 31) }.getOrNull() } }
         worker.execute {
             try {
-                val full = streamItem(first, resolve(first))
-                main.post { if (gen == queueGen) { Pending.set(null, loading = false, error = null); start(app, gen, full) } }
+                val stream = resolve(first)
+                val full = streamItem(first, stream)
+                val align = previewPcm?.let { f ->
+                    runCatching {
+                        val pv = f.get() ?: return@runCatching null
+                        val d = first.track.durationSec
+                        val whole = Align.pcm(app, stream.url, if (d in 40..600) d + 5 else 300) ?: return@runCatching null
+                        Align.find(pv, whole)
+                    }.getOrNull()
+                }
+                main.post {
+                    if (gen != queueGen) return@post
+                    Pending.set(null, loading = false, error = null)
+                    if (preview != null) continueFromPreview(app, gen, full, preview, align) else start(app, gen, full)
+                }
             } catch (e: Exception) {
                 val msg = (e as? UserError)?.message ?: "Не получилось включить: ${e.message}"
                 main.post {
@@ -191,6 +206,30 @@ object Playback {
                     }
                 }
             }
+        }
+    }
+
+    private val alignPool = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    /**
+     * Фрагмент → полная версия без «с начала»: включаем полную с того места песни,
+     * где сейчас фрагмент (или где он закончился). Если место не удалось уверенно найти — с начала.
+     */
+    private fun continueFromPreview(app: Context, gen: Int, full: MediaItem, previewUrl: String, align: Align.Result?) {
+        controller(app) { c ->
+            if (gen != queueGen) return@controller
+            val onPreview = c.currentMediaItem?.mediaId == previewUrl
+            val previewPos = when {
+                !onPreview -> 0L
+                c.playbackState == androidx.media3.common.Player.STATE_ENDED -> c.duration.coerceAtLeast(0)
+                else -> c.currentPosition
+            }
+            val target = if (onPreview && align != null) align.fullPositionMs(previewPos) else 0L
+            c.setMediaItem(full, target)
+            c.prepare()
+            c.play()
+            hook(app, c)
+            fill(app, gen)
         }
     }
 
