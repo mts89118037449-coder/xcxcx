@@ -27,8 +27,13 @@ BASE = {"quiet": True, "no_warnings": True, "noprogress": True, "skip_download":
 if len(sys.argv) > 2 and sys.argv[2]: BASE["js_runtimes"] = {"quickjs": {"path": sys.argv[2]}}
 if len(sys.argv) > 3 and sys.argv[3]: BASE["cachedir"] = sys.argv[3]
 
+cancelled = set()  # метки отменённых поисков: ещё не начатые запросы с ними пропускаем
+
 def handle(req):
     rid = req.get("id")
+    if req.get("tag") and req["tag"] in cancelled:
+        out({"id": rid, "ok": False, "error": "cancelled"})
+        return
     try:
         opts = dict(BASE); opts.update(req.get("opts") or {})
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -49,7 +54,7 @@ def handle(req):
 
 out({"ready": True, "version": yt_dlp.version.__version__})
 # Нажатое человеком — в своём пуле, подготовка заранее («bg») — в отдельном, чтобы не стоять в очереди за ней.
-pool = ThreadPoolExecutor(6)
+pool = ThreadPoolExecutor(10)
 bg_pool = ThreadPoolExecutor(4)
 while True:
     line = sys.stdin.readline()
@@ -58,6 +63,10 @@ while True:
     if not line: continue
     try:
         req = json.loads(line)
+        if req.get("op") == "cancel":
+            cancelled.add(req.get("tag"))
+            if len(cancelled) > 500: cancelled.clear()
+            continue
         (bg_pool if req.get("bg") else pool).submit(handle, req)
     except Exception as e:
         out({"ok": False, "error": str(e)})

@@ -343,20 +343,31 @@ class MainActivity : AppCompatActivity() {
         homeLoading = true
         val home = findViewById<LinearLayout>(R.id.homeSection)
         thread {
-            val chart = pool { Catalog.chart() }
-            val albums = pool { Catalog.topAlbums() }
-            val artists = pool { Catalog.topArtists() }
-            val c = runCatching { chart.get() }.getOrDefault(emptyList())
-            val al = runCatching { albums.get() }.getOrDefault(emptyList())
-            val ar = runCatching { artists.get() }.getOrDefault(emptyList())
-            runOnUiThread {
-                homeLoading = false
-                if (isDestroyed) return@runOnUiThread
+            // 1) Мгновенно — то, что сохранено с прошлого раза; 2) затем свежее из сети.
+            for (offline in listOf(true, false)) {
+                fun <T> load(f: () -> T) = pool { if (offline) Http.fromDisk(f) else f() }
+                val chart = load { Catalog.chart() }
+                val albums = load { Catalog.topAlbums() }
+                val artists = load { Catalog.topArtists() }
+                val c = runCatching { chart.get() }.getOrDefault(emptyList())
+                val al = runCatching { albums.get() }.getOrDefault(emptyList())
+                val ar = runCatching { artists.get() }.getOrDefault(emptyList())
+                if (offline && c.isEmpty() && al.isEmpty() && ar.isEmpty()) continue
+                val last = !offline
+                runOnUiThread { renderHome(home, c, al, ar, last) }
+            }
+        }
+    }
+
+    private fun renderHome(home: LinearLayout, c: List<Track>, al: List<Album>, ar: List<Artist>, last: Boolean) {
+            run {
+                if (last) homeLoading = false
+                if (isDestroyed) return
                 home.removeAllViews()
                 home.addView(newsBox) // сверху — новинки любимых исполнителей
                 renderNews()
-                if (c.isEmpty() && al.isEmpty() && ar.isEmpty()) return@runOnUiThread
-                homeLoaded = true
+                if (c.isEmpty() && al.isEmpty() && ar.isEmpty()) return
+                if (last) homeLoaded = true
                 if (c.isNotEmpty()) {
                     val items = c.map { Playback.QItem(it, Library.localFor(it), it.url) }
                     home.addView(sectionHeader(Catalog.chartTitle, "Слушать") { Playback.playQueue(this, items, 0) })
@@ -371,7 +382,7 @@ class MainActivity : AppCompatActivity() {
                         text = "Весь чарт · ${c.size}"
                         setOnClickListener { show(c.size); isVisible = false }
                     })
-                    Streams.prefetchMany(c, 6) // первые песни чарта включатся сразу с начала
+                    if (last) Streams.prefetchMany(c, 6) // первые песни чарта включатся сразу с начала
                 }
                 if (al.isNotEmpty()) {
                     home.addView(sectionHeader("Популярные альбомы"))
@@ -386,7 +397,6 @@ class MainActivity : AppCompatActivity() {
                     home.addView(scroll)
                 }
             }
-        }
     }
 
     private val newsBox by lazy { LinearLayout(this).apply { orientation = LinearLayout.VERTICAL } }

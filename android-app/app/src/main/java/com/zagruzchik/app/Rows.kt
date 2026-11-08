@@ -47,11 +47,25 @@ object Rows {
             else Playback.playQueue(act, listOf(Playback.QItem(t, local ?: Library.localFor(t), t.url, pageUrl, directUrl, directSource)), 0)
         }
         row.setOnClickListener(play)
-        // Палец коснулся — уже ищем полную версию (до отпускания проходит 100–300 мс).
+        // Палец задержался на песне (не листание) — уже ищем полную версию, к отпусканию часть работы сделана.
+        // При прокрутке ничего не запускаем: иначе десятки поисков забивали очередь и нажатая песня ждала.
         if (!video && local == null && directUrl == null) {
-            val touch = View.OnTouchListener { _, e ->
-                if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN && Library.localFor(t) == null && !MediaCache.has(t)) {
+            val slop = android.view.ViewConfiguration.get(act).scaledTouchSlop
+            var downX = 0f; var downY = 0f
+            val start = Runnable {
+                if (Library.localFor(t) == null && !MediaCache.has(t)) {
                     if (pageUrl != null) Streams.prefetchPage(pageUrl, Describe.site(pageUrl), t.title) else Streams.touch(t)
+                }
+            }
+            val touch = View.OnTouchListener { v, e ->
+                when (e.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        downX = e.rawX; downY = e.rawY
+                        v.postDelayed(start, android.view.ViewConfiguration.getTapTimeout().toLong())
+                    }
+                    android.view.MotionEvent.ACTION_MOVE ->
+                        if (kotlin.math.abs(e.rawX - downX) > slop || kotlin.math.abs(e.rawY - downY) > slop) v.removeCallbacks(start)
+                    android.view.MotionEvent.ACTION_CANCEL -> v.removeCallbacks(start)
                 }
                 false
             }

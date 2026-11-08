@@ -112,14 +112,14 @@ object YtdlpDaemon {
      * Запрос. Возвращает data, бросает [UserError] с понятным текстом, если площадка ответила ошибкой,
      * и [Unavailable], если сам процесс недоступен (тогда — обычный yt-dlp).
      */
-    private fun call(op: String, url: String, opts: JSONObject, timeoutSec: Long): Any {
+    private fun call(op: String, url: String, opts: JSONObject, timeoutSec: Long, tag: String? = null): Any {
         val pr = ensure() ?: throw Unavailable()
         val id = ids.incrementAndGet()
         val f = CompletableFuture<JSONObject>()
         pr.pending[id] = f
         try {
             val line = JSONObject().put("id", id).put("op", op).put("url", url).put("opts", opts)
-                .put("bg", Ytdlp.isBackground).toString()
+                .put("bg", Ytdlp.isBackground).apply { if (tag != null) put("tag", tag) }.toString()
             synchronized(pr) { pr.stdin.write(line); pr.stdin.newLine(); pr.stdin.flush() }
         } catch (e: Exception) {
             pr.pending.remove(id)
@@ -137,19 +137,28 @@ object YtdlpDaemon {
             throw Unavailable()
         }
         timeouts.set(0)
-        if (!r.optBoolean("ok")) throw UserError(Downloader.explain(r.optString("error")))
+        if (!r.optBoolean("ok")) throw UserError(if (r.optString("error") == "cancelled") "Отменено" else Downloader.explain(r.optString("error")))
         return r.opt("data") ?: JSONObject.NULL
     }
 
     class Unavailable : Exception()
+
+    /** Отменить ещё не начатые запросы с этой меткой (новый поиск — старый больше не нужен). */
+    fun cancel(tag: String) {
+        val pr = proc?.takeIf { it.p.isAlive } ?: return
+        runCatching {
+            val line = JSONObject().put("op", "cancel").put("tag", tag).toString()
+            synchronized(pr) { pr.stdin.write(line); pr.stdin.newLine(); pr.stdin.flush() }
+        }
+    }
 
     private fun cookies(o: JSONObject) = o.apply {
         Cookies.file(App.instance).takeIf { it.exists() }?.let { put("cookiefile", it.absolutePath) }
     }
 
     /** Плоский поиск: «scsearch8:…», «ytsearch8:…» или ссылка на страницу поиска. */
-    internal fun search(query: String, source: String, timeoutSec: Long = 30): List<Downloader.Candidate> {
-        val a = call("search", query, JSONObject().put("extract_flat", "in_playlist").put("playlistend", 8), timeoutSec) as? JSONArray
+    internal fun search(query: String, source: String, timeoutSec: Long = 30, tag: String? = null): List<Downloader.Candidate> {
+        val a = call("search", query, JSONObject().put("extract_flat", "in_playlist").put("playlistend", 8), timeoutSec, tag) as? JSONArray
             ?: return emptyList()
         return (0 until a.length()).mapNotNull { i ->
             val e = a.optJSONObject(i) ?: return@mapNotNull null

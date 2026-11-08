@@ -36,6 +36,7 @@ object Catalog {
     @Suppress("UNCHECKED_CAST")
     private fun <T : Any> cached(key: String, ttlMin: Int, load: () -> T): T {
         cache[key]?.takeIf { System.currentTimeMillis() - it.time < ttlMin * 60_000L }?.let { return it.value as T }
+        if (Http.isOffline) return load() // с телефона — не запоминаем, сразу после этого придёт свежее
         return load().also { if (!(it is List<*> && it.isEmpty())) cache[key] = Cached(System.currentTimeMillis(), it) }
     }
 
@@ -46,7 +47,7 @@ object Catalog {
 
     /** Топ песен России (Apple), дополненный данными Deezer: превью для мгновенного старта, длительность, explicit. */
     fun chart(): List<Track> = cached("chart", 30) {
-        val apple = appleFeed("songs").map { o ->
+        val apple = runCatching { appleFeed("songs") }.getOrDefault(emptyList()).map { o ->
             Track(o.optString("name"), o.optString("artistName"), cover = bigApple(o.optString("artworkUrl100")),
                 url = o.optString("url").ifEmpty { null }, explicit = o.optString("contentAdvisoryRating").startsWith("Expl"))
         }
@@ -63,15 +64,16 @@ object Catalog {
      * и быстро на другой — спрашиваем оба сразу и берём что успело (лучше 50, чем 25).
      */
     private fun appleFeed(kind: String): List<JSONObject> {
-        fun load(n: Int) = pool.submit<List<JSONObject>> {
-            val r = Http.json("https://rss.marketingtools.apple.com/api/v2/ru/music/most-played/$n/$kind.json")
+        fun load(n: Int) = submit {
+            // Apple иногда отвечает по полминуты — ждём не больше 7 с, иначе берём сохранённое/запасное.
+            val r = Http.cachedJson("https://rss.marketingtools.apple.com/api/v2/ru/music/most-played/$n/$kind.json", 7000)
                 .getJSONObject("feed").getJSONArray("results")
             (0 until r.length()).map { r.getJSONObject(it) }
         }
         val big = load(50)
         val small = load(25)
         val fast = runCatching { small.get() }.getOrDefault(emptyList())
-        val full = runCatching { big.get(if (fast.isEmpty()) 20 else 3, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(emptyList())
+        val full = runCatching { big.get(if (fast.isEmpty()) 8 else 3, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(emptyList())
         return full.ifEmpty { fast }
     }
 
@@ -80,11 +82,11 @@ object Catalog {
         appleFeed("albums").map { o ->
             Album(null, o.optString("name"), o.optString("artistName"), bigApple(o.optString("artworkUrl100")),
                 o.optString("releaseDate").take(4).ifEmpty { null }, o.optString("contentAdvisoryRating").startsWith("Expl"))
-        }.ifEmpty { albums(Http.json("$DZ/chart/0/albums?limit=25").optJSONArray("data")) }
+        }.ifEmpty { albums(Http.cachedJson("$DZ/chart/0/albums?limit=25").optJSONArray("data")) }
     }
 
     /** Популярные исполнители (Deezer). */
-    fun topArtists(): List<Artist> = cached("artists", 60) { artists(Http.json("$DZ/chart/0/artists?limit=20").optJSONArray("data")) }
+    fun topArtists(): List<Artist> = cached("artists", 60) { artists(Http.cachedJson("$DZ/chart/0/artists?limit=20").optJSONArray("data")) }
 
     // ---------------- Поиск ----------------
 
@@ -166,7 +168,7 @@ object Catalog {
 
     /** Ищем ту же песню в Deezer: превью для мгновенного старта, длительность, версия без цензуры. */
     private fun enrich(t: Track): Track {
-        val data = Http.json("$DZ/search?limit=6&q=" + Http.enc("${t.artist} ${t.title}")).optJSONArray("data") ?: return t
+        val data = Http.cachedJson("$DZ/search?limit=6&q=" + Http.enc("${t.artist} ${t.title}"), 8000).optJSONArray("data") ?: return t
         val found = (0 until data.length()).map { DeezerSource.track(data.getJSONObject(it)) }
         val ok = Match.ranked(t, found) { Triple(it.title, it.artist, it.durationSec) }
         val best = ok.firstOrNull { it.explicit } ?: ok.firstOrNull() ?: return t
@@ -174,7 +176,7 @@ object Catalog {
     }
 
     private fun deezerTracks(url: String): List<Track> {
-        val d = Http.json(url).optJSONArray("data") ?: return emptyList()
+        val d = Http.cachedJson(url).optJSONArray("data") ?: return emptyList()
         return (0 until d.length()).map { DeezerSource.track(d.getJSONObject(it)) }
     }
 
@@ -205,5 +207,11 @@ object Catalog {
 
     private fun bigApple(u: String) = u.ifEmpty { null }?.replace(Regex("""/\d+x\d+bb\."""), "/600x600bb.")
 
-    private fun <T, R> parallel(items: List<T>, f: (T) -> R): List<R> = items.map { pool.submit<R> { f(it) } }.map { it.get() }
+    private fun <T, R> parallel(items: List<T>, f: (T) -> R): List<R> = items.map { x -> submit { f(x) } }.map { it.get() }
+
+    /** В фон — с тем же режимом «только с телефона», что у вызывающего. */
+    private fun <T> submit(f: () -> T): java.util.concurrent.Future<T> {
+        val off = Http.isOffline
+        return pool.submit<T> { if (off) Http.fromDisk(f) else f() }
+    }
 }

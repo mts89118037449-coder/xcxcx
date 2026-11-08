@@ -271,7 +271,7 @@ object Downloader {
     /** То же, но с ошибкой — для проверки источников и подписи «не ответил». */
     internal fun searchOrThrow(query: String, source: String, processId: String? = null): List<Candidate> {
         // Быстрый путь — постоянный процесс (≈1 с), иначе обычный запуск yt-dlp.
-        try { return YtdlpDaemon.search(query, source) } catch (_: YtdlpDaemon.Unavailable) {}
+        try { return YtdlpDaemon.search(query, source, tag = processId) } catch (_: YtdlpDaemon.Unavailable) {}
         val r = YoutubeDLRequest(query).apply {
             addOption("--flat-playlist")
             addOption("--cache-dir", cacheDir())

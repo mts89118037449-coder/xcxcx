@@ -12,12 +12,12 @@ object Http {
 
     class HttpError(val code: Int, url: String) : Exception("HTTP $code: $url")
 
-    fun get(url: String, ua: String = MOBILE_UA): String {
+    fun get(url: String, ua: String = MOBILE_UA, timeoutMs: Int = 20_000): String {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.setRequestProperty("User-Agent", ua)
         conn.setRequestProperty("Accept-Language", "ru,en;q=0.8")
-        conn.connectTimeout = 15_000
-        conn.readTimeout = 20_000
+        conn.connectTimeout = minOf(15_000, timeoutMs)
+        conn.readTimeout = timeoutMs
         try {
             val code = conn.responseCode
             if (code !in 200..299) throw HttpError(code, url)
@@ -28,6 +28,37 @@ object Http {
     }
 
     fun json(url: String): JSONObject = JSONObject(get(url))
+
+    // ---------------- Ответы на телефоне (главная открывается мгновенно) ----------------
+
+    private val offline = ThreadLocal<Boolean>()
+
+    /** Выполнить [block], беря ответы только с телефона (что сохранено в прошлый раз), без сети. */
+    fun <T> fromDisk(block: () -> T): T {
+        offline.set(true)
+        try { return block() } finally { offline.set(false) }
+    }
+
+    val isOffline get() = offline.get() == true
+
+    private fun diskFile(url: String): java.io.File {
+        val h = java.security.MessageDigest.getInstance("SHA-1").digest(url.toByteArray()).joinToString("") { "%02x".format(it) }
+        return java.io.File(App.instance.cacheDir, "http/$h").apply { parentFile?.mkdirs() }
+    }
+
+    /**
+     * JSON с сохранением на телефон. В режиме [fromDisk] — только сохранённое (любой давности);
+     * иначе из сети, а если сеть не ответила — последнее сохранённое.
+     */
+    fun cachedJson(url: String, timeoutMs: Int = 20_000): JSONObject {
+        val f = diskFile(url)
+        if (isOffline) return JSONObject(f.readText())
+        return try {
+            get(url, timeoutMs = timeoutMs).also { text -> runCatching { f.writeText(text) } }.let(::JSONObject)
+        } catch (e: Exception) {
+            if (f.exists()) JSONObject(f.readText()) else throw e
+        }
+    }
 
     fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 

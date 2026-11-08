@@ -79,6 +79,9 @@ object Ytdlp {
 
     /** Остановить запуск — в фоне (библиотека при этом запускает внешнюю команду и ждёт её). */
     fun cancel(processId: String) {
-        killer.execute { runCatching { YoutubeDL.getInstance().destroyProcessById(processId) } }
+        killer.execute {
+            YtdlpDaemon.cancel(processId)
+            runCatching { YoutubeDL.getInstance().destroyProcessById(processId) }
+        }
     }
 }

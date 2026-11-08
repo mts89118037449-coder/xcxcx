@@ -59,7 +59,8 @@ object WebSearch {
                 val id = "ws-$my-${s.name}"
                 running += id
                 processIds.set(id)
-                val r = runCatching { s.search(q) }
+                // «Везде в интернете» — фоном: песня, которую включили, важнее.
+                val r = runCatching { Ytdlp.inBackground { s.search(q) } }
                 processIds.set(null)
                 running -= id
                 if (gen.get() != my) return@submit
