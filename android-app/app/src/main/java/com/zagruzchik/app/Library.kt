@@ -17,6 +17,7 @@ object Library {
     fun init(ctx: Context) {
         file = File(ctx.filesDir, "library.json")
         saved.clear()
+        savedKeys = null
         val arr = runCatching { JSONArray(file.readText()) }.getOrNull() ?: return
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
@@ -28,17 +29,26 @@ object Library {
         }
     }
 
-    fun key(t: Track) = Match.base(t.title) + "|" + Match.norm(t.artist)
+    // Ключ песни считается через нормализацию текста — недёшево, а в списках он нужен десятки раз: запоминаем.
+    private val keys = java.util.concurrent.ConcurrentHashMap<Track, String>()
+
+    fun key(t: Track): String = keys[t] ?: (Match.base(t.title) + "|" + Match.norm(t.artist)).also {
+        if (keys.size > 5000) keys.clear()
+        keys[t] = it
+    }
+
+    @Volatile private var savedKeys: Set<String>? = null
 
     val favorites: List<Track> get() = saved.toList()
 
-    fun isSaved(t: Track) = saved.any { key(it) == key(t) }
+    fun isSaved(t: Track): Boolean = (savedKeys ?: saved.toList().map(::key).toHashSet().also { savedKeys = it }).contains(key(t))
 
     /** Добавить/убрать из «Избранного». Возвращает, сохранена ли песня теперь. */
     fun toggle(t: Track): Boolean {
         val k = key(t)
         val was = saved.removeAll { key(it) == k }
         if (!was) saved.add(0, t)
+        savedKeys = null
         save()
         listeners.toList().forEach { it() }
         return !was
@@ -74,13 +84,31 @@ object Library {
     }
 
     /** Песня уже качается (поставили ♥ или нажали «Скачать»). */
-    fun downloading(t: Track): Boolean = Jobs.all.any { it.active && it.kind == Kind.MUSIC && key(it.track()) == key(t) }
+    fun downloading(t: Track): Boolean = Jobs.all.filter { it.active && it.kind == Kind.MUSIC }.let { a -> a.isNotEmpty() && a.any { key(it.track()) == key(t) } }
 
     fun listen(l: () -> Unit) { listeners += l }
     fun unlisten(l: () -> Unit) { listeners -= l }
 
     /** Скачанная музыка: песня + файл. Новые — первыми. */
-    fun downloaded(): List<Pair<Track, SavedFile>> =
+    fun downloaded(): List<Pair<Track, SavedFile>> = synchronized(this) { refreshDownloaded(); dl }
+
+    /** Скачанный файл этой песни, если есть. */
+    fun localFor(t: Track): SavedFile? = synchronized(this) { refreshDownloaded(); dlByKey[key(t)] }
+
+    // Список скачанного пересчитываем, только когда изменились загрузки (раньше — для каждой строки списка).
+    private var dlVersion = -1
+    private var dl: List<Pair<Track, SavedFile>> = emptyList()
+    private var dlByKey: Map<String, SavedFile> = emptyMap()
+
+    private fun refreshDownloaded() {
+        val v = Jobs.version
+        if (v == dlVersion) return
+        dl = buildDownloaded()
+        dlByKey = HashMap<String, SavedFile>().apply { dl.asReversed().forEach { (t, f) -> put(key(t), f) } } // новые — главнее
+        dlVersion = v
+    }
+
+    private fun buildDownloaded(): List<Pair<Track, SavedFile>> =
         Jobs.all.filter { it.status == Status.DONE && it.kind == Kind.MUSIC }.flatMap { j ->
             j.files.filter { it.mime.startsWith("audio") }.map { f ->
                 val name = f.name.substringBeforeLast('.').replace(Regex("""\s*\[[^\]]+]$"""), "")
@@ -94,8 +122,6 @@ object Library {
             }
         }
 
-    /** Скачанный файл этой песни, если есть. */
-    fun localFor(t: Track): SavedFile? = downloaded().firstOrNull { key(it.first) == key(t) }?.second
 
     private fun save() {
         val arr = JSONArray()

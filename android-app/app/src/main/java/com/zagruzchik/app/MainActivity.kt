@@ -519,35 +519,65 @@ class MainActivity : AppCompatActivity() {
             collected += r
             if (err != null) failed += "$src ($err)"
             val n = answered.incrementAndGet()
-            runOnUiThread { if (seq == musicSeq) showWeb(q, collected.toList(), n, done = false, failed.toList()) }
+            // Сортировка — здесь, в фоне; на экран — не чаще раза в 350 мс (раньше список целиком
+            // перестраивался после ответа каждой из 9 площадок, и экран подвисал).
+            postWeb(seq, q, rankWeb(q, collected.toList()), n, done = false, failed.toList())
         }, onDone = {
-            runOnUiThread { if (seq == musicSeq) showWeb(q, collected.toList(), answered.get(), done = true, failed.toList()) }
+            postWeb(seq, q, rankWeb(q, collected.toList()), answered.get(), done = true, failed.toList())
         })
     }
 
-    private fun showWeb(q: String, all: List<WebResult>, answered: Int, done: Boolean, failed: List<String> = emptyList()) {
-        val web = findViewById<LinearLayout>(R.id.webList)
-        findViewById<View>(R.id.webProgress).isVisible = !done
-        // Похожие на запрос — выше; совсем непохожие не показываем. Повторы одного и того же — один раз.
+    private class WebState(val seq: Int, val q: String, val shown: List<WebResult>, val answered: Int, val done: Boolean, val failed: List<String>)
+    @Volatile private var webPending: WebState? = null
+    private var webScheduled = false
+    private var webLastDraw = 0L
+    private var webDrawn: List<String> = emptyList()
+
+    private fun postWeb(seq: Int, q: String, shown: List<WebResult>, answered: Int, done: Boolean, failed: List<String>) {
+        webPending = WebState(seq, q, shown, answered, done, failed)
+        runOnUiThread {
+            if (webScheduled) return@runOnUiThread
+            webScheduled = true
+            val wait = (350 - (System.currentTimeMillis() - webLastDraw)).coerceAtLeast(0)
+            musicSearch.postDelayed({
+                webScheduled = false
+                val st = webPending ?: return@postDelayed
+                if (st.seq != musicSeq) return@postDelayed
+                webLastDraw = System.currentTimeMillis()
+                showWeb(st.q, st.shown, st.answered, st.done, st.failed)
+            }, wait)
+        }
+    }
+
+    /** Похожие на запрос — выше; совсем непохожие не показываем; повторы — один раз; сверху — разные площадки. */
+    private fun rankWeb(q: String, all: List<WebResult>): List<WebResult> {
         val seen = HashSet<String>()
-        val shown = all.map { it to WebSearch.relevance(q, it) }
+        return all.map { it to WebSearch.relevance(q, it) }
             .filter { it.second >= 0.34 }
             .sortedByDescending { it.second }
             .map { it.first }
             .filter { seen.add(it.url) }
             .let { sorted ->
-                // Сверху — разные площадки: не больше 4 результатов от одной, остальные ниже.
                 val perSource = HashMap<String, Int>()
                 val (head, tail) = sorted.partition { (perSource.merge(it.source, 1, Int::plus) ?: 0) <= 4 }
                 head + tail
             }
             .take(40)
+    }
+
+    private fun showWeb(q: String, shown: List<WebResult>, answered: Int, done: Boolean, failed: List<String> = emptyList()) {
+        val web = findViewById<LinearLayout>(R.id.webList)
+        findViewById<View>(R.id.webProgress).isVisible = !done
         val sources = shown.map { it.source }.distinct()
         findViewById<TextView>(R.id.webHint).text = when {
             shown.isEmpty() && done -> "Нигде не нашлось. Проверьте написание или попробуйте только название."
             shown.isEmpty() -> "Ищу на 9 площадках… ответили $answered"
             else -> "Нашлось на: ${sources.joinToString(", ")}" + if (done) "" else " · ищу дальше…"
         } + if (failed.isNotEmpty()) "\nНе ответили: ${failed.joinToString("; ")}" else ""
+        // Список не изменился (ответила площадка, но её результаты ниже порога) — строки не трогаем.
+        val urls = shown.map { it.url }
+        if (urls == webDrawn && web.childCount == urls.size) return
+        webDrawn = urls
         web.removeAllViews()
         val items = shown.map { w ->
             Playback.QItem(w.track(), null, null, if (w.direct) null else w.url, if (w.direct) w.url else null, w.source)

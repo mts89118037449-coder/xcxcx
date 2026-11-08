@@ -149,7 +149,11 @@ object Jobs {
         return ok
     }
 
+    /** Растёт при каждом изменении списка — по нему другие части понимают, что пора пересчитать своё. */
+    @Volatile var version = 0; private set
+
     private fun changed(job: Job?, save: Boolean) {
+        version++
         if (save) save()
         listeners.toList().forEach { it(job) }
     }
