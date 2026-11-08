@@ -43,6 +43,15 @@
                 android:textAppearance="?attr/textAppearanceLabelLarge"
                 android:textColor="?attr/colorOnSurfaceVariant" />
 
+            <!-- В библиотеку -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/npLike"
+                style="?attr/materialIconButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="В библиотеку"
+                app:icon="@drawable/ic_favorite_border" />
+
             <!-- Транслировать на ТВ / колонку -->
             <androidx.mediarouter.app.MediaRouteButton
                 android:id="@+id/npCast"

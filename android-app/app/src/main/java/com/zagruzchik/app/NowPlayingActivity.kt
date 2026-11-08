@@ -117,6 +117,12 @@ class NowPlayingActivity : AppCompatActivity() {
             currentTrack()?.let { TransferActivity.openTrack(this, it, extras()?.getString(Playback.X_SOURCE_URL)) }
         }
         download.setOnClickListener { downloadCurrent() }
+        findViewById<MaterialButton>(R.id.npLike).setOnClickListener {
+            val t = currentTrack() ?: return@setOnClickListener
+            val saved = Library.toggle(LinkCache.get(t)?.track ?: t)
+            Snackbar.make(seek, if (saved) "Добавлено в библиотеку" else "Убрано из библиотеки", Snackbar.LENGTH_SHORT).show()
+            render()
+        }
         setupCastButton(findViewById(R.id.npCast))
     }
 
@@ -184,7 +190,8 @@ class NowPlayingActivity : AppCompatActivity() {
             source.text = when {
                 tv != null -> "На телевизоре: $tv"
                 src == null -> ""
-                src == "Скачано" -> "Из загрузок"
+                src == "Скачано" -> "Из загрузок · без интернета"
+                m.extras?.getBoolean(Playback.X_PREVIEW) == true -> "Играет фрагмент · полная версия через пару секунд…"
                 else -> "Играет из $src · без скачивания"
             }
             setCover(m.artworkUri?.toString(), m.artworkData)
@@ -200,6 +207,11 @@ class NowPlayingActivity : AppCompatActivity() {
         download.isEnabled = !local && !pending
         download.text = if (local) "Скачано" else "Скачать"
         download.setIconResource(if (local) R.drawable.ic_check_circle else R.drawable.ic_download)
+        val liked = currentTrack()?.let { Library.isSaved(it) } == true
+        findViewById<MaterialButton>(R.id.npLike).apply {
+            setIconResource(if (liked) R.drawable.ic_favorite else R.drawable.ic_favorite_border)
+            contentDescription = if (liked) "Убрать из библиотеки" else "В библиотеку"
+        }
         updateProgress()
         // Ссылки для «Отправить» готовим сразу, пока песня играет.
         currentTrack()?.let { LinkCache.prefetch(it, extras()?.getString(Playback.X_SOURCE_URL)) }

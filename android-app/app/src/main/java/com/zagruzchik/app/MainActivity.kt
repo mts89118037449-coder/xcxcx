@@ -89,7 +89,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingClipAction: String? = null
 
     private val listener: (Job?) -> Unit = { job ->
-        if (job == null) refreshJobs() else adapter.update(job)
+        if (job == null) { refreshJobs(); refreshLibrary() } else adapter.update(job)
         refreshSummary()
     }
 
@@ -107,6 +107,7 @@ class MainActivity : AppCompatActivity() {
         nav = findViewById(R.id.bottomNav)
         pages = mapOf(
             R.id.nav_download to findViewById(R.id.pageDownload),
+            R.id.nav_music to findViewById(R.id.pageMusic),
             R.id.nav_jobs to findViewById(R.id.pageJobs),
             R.id.nav_settings to findViewById(R.id.pageSettings),
         )
@@ -120,6 +121,7 @@ class MainActivity : AppCompatActivity() {
         setupJobsPage()
         setupSettingsPage()
         setupMiniPlayer()
+        setupMusicPage()
 
         showPage(savedInstanceState?.getInt("page") ?: R.id.nav_download)
         handleIntent(intent)
@@ -134,8 +136,10 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         installedCache = null // могли поставить/удалить приложение или сменить «мой сервис»
+        Library.listen(libraryListener)
         Jobs.listen(listener)
         refreshJobs()
+        refreshLibrary()
         refreshSummary()
         Playback.controller(this) { c ->
             controller = c
@@ -147,6 +151,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        Library.unlisten(libraryListener)
         Jobs.unlisten(listener)
         controller?.removeListener(playerListener)
         controller = null
@@ -179,6 +184,7 @@ class MainActivity : AppCompatActivity() {
     private fun applyPage(id: Int) {
         pages.forEach { (k, v) -> v.isVisible = k == id }
         toolbar.title = when (id) {
+            R.id.nav_music -> "Музыка"
             R.id.nav_jobs -> "Загрузки"
             R.id.nav_settings -> "Настройки"
             else -> "Загрузчик"
@@ -274,22 +280,139 @@ class MainActivity : AppCompatActivity() {
         searchResults.removeAllViews()
         // Первые три — начинаем готовить заранее, чтобы ▶ срабатывал быстро.
         found.take(3).forEach { Streams.prefetch(it) }
-        found.forEach { t ->
-            val row = layoutInflater.inflate(R.layout.item_search, searchResults, false)
-            Images.into(row.findViewById(R.id.srCover), t.cover, R.drawable.ic_music_note)
-            row.findViewById<TextView>(R.id.srTitle).text = t.title
-            val d = if (t.durationSec > 0) " · %d:%02d".format(t.durationSec / 60, t.durationSec % 60) else ""
-            row.findViewById<TextView>(R.id.srSub).text = t.artist + d
-            val play = View.OnClickListener { hideKeyboard(); Playback.playTrack(this, t, t.url) }
-            row.setOnClickListener(play)
-            row.findViewById<View>(R.id.srPlay).setOnClickListener(play)
-            row.findViewById<View>(R.id.srDownload).setOnClickListener {
-                val u = t.url ?: return@setOnClickListener snack("Эту песню можно только послушать")
-                DownloadService.enqueue(this, u, Format.MP3, t.label)
-                snack("Скачиваю «${t.title}»")
+        found.forEach { t -> searchResults.addView(trackRow(searchResults, t)) }
+    }
+
+    // ---------------- Музыка: поиск и библиотека ----------------
+
+    private lateinit var musicSearch: TextInputEditText
+    private var musicSeq = 0
+    private var libraryMode = 0 // 0 — избранное, 1 — скачанное
+    private val musicSearchRun = Runnable { runMusicSearch() }
+    private val libraryListener: () -> Unit = { refreshLibrary() }
+
+    private fun setupMusicPage() {
+        musicSearch = findViewById(R.id.musicSearch)
+        musicSearch.doAfterTextChanged {
+            val q = it?.toString()?.trim().orEmpty()
+            findViewById<View>(R.id.musicResults).isVisible = q.length >= 2
+            findViewById<View>(R.id.librarySection).isVisible = q.length < 2
+            musicSearch.removeCallbacks(musicSearchRun)
+            if (q.length >= 2) {
+                findViewById<View>(R.id.musicProgress).isVisible = true
+                musicSearch.postDelayed(musicSearchRun, 450)
             }
-            searchResults.addView(row)
         }
+        musicSearch.setOnEditorActionListener { _, _, _ -> hideKeyboard(); true }
+        findViewById<com.google.android.material.chip.ChipGroup>(R.id.libTabs).setOnCheckedStateChangeListener { _, ids ->
+            libraryMode = if (ids.firstOrNull() == R.id.libDownloaded) 1 else 0
+            refreshLibrary()
+        }
+        findViewById<View>(R.id.libPlayAll).setOnClickListener { playLibrary(shuffle = false) }
+        findViewById<View>(R.id.libShuffle).setOnClickListener { playLibrary(shuffle = true) }
+    }
+
+    /** Поиск: каталоги (быстро, с обложками) + SoundCloud и YouTube (дольше, но там есть всё). */
+    private fun runMusicSearch() {
+        val q = musicSearch.text?.toString()?.trim().orEmpty()
+        val seq = ++musicSeq
+        val catalog = findViewById<LinearLayout>(R.id.catalogList)
+        val web = findViewById<LinearLayout>(R.id.webList)
+        web.removeAllViews()
+        findViewById<View>(R.id.webProgress).isVisible = true
+        thread {
+            val found = runCatching { MusicSearch.search(q) }.getOrDefault(emptyList())
+            runOnUiThread {
+                if (seq != musicSeq) return@runOnUiThread
+                findViewById<View>(R.id.musicProgress).isVisible = false
+                findViewById<View>(R.id.catalogEmpty).isVisible = found.isEmpty()
+                catalog.removeAllViews()
+                found.forEach { catalog.addView(trackRow(catalog, it)) }
+                found.take(3).forEach { Streams.prefetch(it) } // к нажатию ▶ уже готово
+            }
+        }
+        thread {
+            App.awaitReadyOrNull() ?: return@thread
+            val results = listOf("SoundCloud" to "scsearch8:$q", "YouTube" to "ytsearch6:$q").flatMap { (name, query) ->
+                runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
+            }
+            runOnUiThread {
+                if (seq != musicSeq) return@runOnUiThread
+                findViewById<View>(R.id.webProgress).isVisible = false
+                findViewById<TextView>(R.id.webHint).text =
+                    if (results.isEmpty()) "Ничего не нашлось" else "Ремиксы, редкие треки и всё, что выложено в интернет"
+                results.forEach { c ->
+                    val t = Track(c.title, c.author.substringBefore(" | "), c.duration)
+                    web.addView(trackRow(web, t, pageUrl = c.url, subtitle = "${c.source} · ${c.author.substringBefore(" | ")}"))
+                }
+            }
+        }
+    }
+
+    private fun libraryItems(): List<Playback.QItem> = if (libraryMode == 1) {
+        Library.downloaded().map { (t, f) -> Playback.QItem(t, f) }
+    } else {
+        Library.favorites.map { t -> Playback.QItem(t, Library.localFor(t), t.url) }
+    }
+
+    private fun refreshLibrary() {
+        if (!::musicSearch.isInitialized) return
+        val items = libraryItems()
+        findViewById<com.google.android.material.chip.Chip>(R.id.libFav).text = "Избранное · ${Library.favorites.size}"
+        findViewById<com.google.android.material.chip.Chip>(R.id.libDownloaded).text = "Скачанное · ${Library.downloaded().size}"
+        findViewById<View>(R.id.libButtons).isVisible = items.isNotEmpty()
+        val empty = findViewById<TextView>(R.id.libEmpty)
+        empty.isVisible = items.isEmpty()
+        empty.text = if (libraryMode == 1) "Скачанной музыки пока нет.\nСкачайте песню — она появится здесь."
+        else "Здесь будут песни, которые вы сохраните ♥.\nНайдите песню поиском выше и нажмите ♥."
+        val list = findViewById<LinearLayout>(R.id.libList)
+        list.removeAllViews()
+        items.forEachIndexed { i, q ->
+            list.addView(trackRow(list, q.track, local = q.local, onPlay = { Playback.playQueue(this, items, i) }))
+        }
+    }
+
+    private fun playLibrary(shuffle: Boolean) {
+        val items = libraryItems().let { if (shuffle) it.shuffled() else it }
+        Playback.playQueue(this, items, 0)
+    }
+
+    /**
+     * Строка песни: обложка, название, ♥, скачать, ▶.
+     * [pageUrl] — конкретная страница (SoundCloud/YouTube), [local] — уже скачанный файл.
+     */
+    private fun trackRow(
+        parent: ViewGroup, t: Track, pageUrl: String? = null, local: SavedFile? = null,
+        subtitle: String? = null, onPlay: (() -> Unit)? = null,
+    ): View {
+        val row = layoutInflater.inflate(R.layout.item_search, parent, false)
+        Images.into(row.findViewById(R.id.srCover), t.cover, R.drawable.ic_music_note)
+        row.findViewById<TextView>(R.id.srTitle).text = t.title
+        val d = if (t.durationSec > 0) " · %d:%02d".format(t.durationSec / 60, t.durationSec % 60) else ""
+        val offline = if (local != null) " · на телефоне" else ""
+        row.findViewById<TextView>(R.id.srSub).text = (subtitle ?: t.artist) + d + offline
+        val play = View.OnClickListener {
+            hideKeyboard()
+            if (onPlay != null) onPlay()
+            else Playback.playQueue(this, listOf(Playback.QItem(t, local ?: Library.localFor(t), t.url, pageUrl)), 0)
+        }
+        row.setOnClickListener(play)
+        row.findViewById<View>(R.id.srPlay).setOnClickListener(play)
+        val like = row.findViewById<MaterialButton>(R.id.srLike)
+        fun paintLike() = like.setIconResource(if (Library.isSaved(t)) R.drawable.ic_favorite else R.drawable.ic_favorite_border)
+        paintLike()
+        like.setOnClickListener {
+            snack(if (Library.toggle(t)) "«${t.title}» — в библиотеке" else "Убрано из библиотеки")
+            paintLike()
+        }
+        val dl = row.findViewById<View>(R.id.srDownload)
+        dl.isVisible = local == null
+        dl.setOnClickListener {
+            val u = pageUrl ?: t.url ?: return@setOnClickListener snack("Эту песню можно только послушать")
+            DownloadService.enqueue(this, u, Format.MP3, t.label)
+            snack("Скачиваю «${t.title}»")
+        }
+        return row
     }
 
     private fun hideKeyboard() {

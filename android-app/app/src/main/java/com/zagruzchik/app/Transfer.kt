@@ -37,7 +37,7 @@ object Transfer {
 
     /** Дополняет трек длительностью, ISRC и обложкой — это помогает точнее искать в других сервисах. */
     fun enrich(t: Track): Track {
-        if (t.durationSec > 0 && t.cover != null) return t
+        if (t.durationSec > 0 && t.cover != null && t.preview != null) return t
         val d = runCatching { deezerMatch(t) }.getOrNull()
         val a = if (d == null) runCatching { appleMatch(t) }.getOrNull() else null
         val m = d ?: a ?: return t
@@ -45,6 +45,8 @@ object Transfer {
             durationSec = if (t.durationSec > 0) t.durationSec else m.durationSec,
             isrc = t.isrc ?: m.isrc,
             cover = t.cover ?: m.cover,
+            preview = t.preview ?: m.preview,
+            url = t.url ?: m.url,
         )
     }
 

@@ -65,6 +65,9 @@ object Streams {
         return find(t).also { done[k] = System.currentTimeMillis() to it }
     }
 
+    /** Готовый поток, если уже нашли (тогда фрагмент не нужен — сразу полная версия). */
+    fun cachedFor(t: Track): StreamInfo? = cached(key(t))
+
     private fun cached(k: String) = done[k]?.let { (time, s) -> s.takeIf { System.currentTimeMillis() - time < TTL_MS } }
 
     private fun find(t: Track): StreamInfo {

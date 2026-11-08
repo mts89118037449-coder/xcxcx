@@ -13,6 +13,8 @@ data class Track(
     val cover: String? = null,
     /** Страница трека в каталоге (Deezer/Apple) — по ней трек можно скачать. */
     val url: String? = null,
+    /** Официальный 30-секундный фрагмент (Deezer/Apple/Spotify) — играет мгновенно, пока ищется полная версия. */
+    val preview: String? = null,
 ) {
     val label get() = if (artist.isEmpty()) title else "$artist — $title"
     val query get() = "$artist $title".trim()
@@ -219,12 +221,14 @@ object SpotifySource {
         if (type == "track") {
             val artists = e.optJSONArray("artists") ?: JSONArray()
             val artist = (0 until artists.length()).joinToString(", ") { artists.getJSONObject(it).optString("name") }
-            return MusicItem(type, name, listOf(Track(name, clean(artist), e.optInt("duration") / 1000)), Service.SPOTIFY)
+            val pv = e.optJSONObject("audioPreview")?.optString("url")?.takeIf { it.isNotEmpty() }
+            return MusicItem(type, name, listOf(Track(name, clean(artist), e.optInt("duration") / 1000, preview = pv)), Service.SPOTIFY)
         }
         val list = e.optJSONArray("trackList") ?: throw UserError("Spotify не показал треки")
         val tracks = (0 until list.length()).map {
             val t = list.getJSONObject(it)
-            Track(clean(t.optString("title")), clean(t.optString("subtitle")), t.optInt("duration") / 1000)
+            Track(clean(t.optString("title")), clean(t.optString("subtitle")), t.optInt("duration") / 1000,
+                preview = t.optJSONObject("audioPreview")?.optString("url")?.takeIf { it.isNotEmpty() })
         }.filter { it.title.isNotEmpty() }
         if (tracks.isEmpty()) throw UserError("Spotify не показал треки. Возможно, плейлист закрытый.")
         return MusicItem(type, name, tracks, Service.SPOTIFY)
@@ -254,6 +258,7 @@ object AppleSource {
         o.optString("trackName"), o.optString("artistName"), o.optInt("trackTimeMillis") / 1000,
         cover = o.optString("artworkUrl100").takeIf { it.isNotEmpty() }?.replace("100x100", "600x600"),
         url = o.optString("trackViewUrl").takeIf { it.isNotEmpty() }?.substringBefore("&uo="),
+        preview = o.optString("previewUrl").takeIf { it.isNotEmpty() },
     )
 
     fun resolve(url: String): MusicItem {
@@ -283,6 +288,7 @@ object DeezerSource {
         isrc = o.optString("isrc").takeIf { it.isNotEmpty() },
         cover = o.optJSONObject("album")?.optString("cover_big")?.takeIf { it.isNotEmpty() },
         url = o.optString("link").takeIf { it.isNotEmpty() },
+        preview = o.optString("preview").takeIf { it.isNotEmpty() },
     )
 
     fun resolve(url: String): MusicItem {

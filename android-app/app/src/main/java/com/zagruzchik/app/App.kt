@@ -17,6 +17,7 @@ class App : Application() {
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(Settings.theme(this).mode)
         Notifications.createChannels(this)
         Jobs.init(this)
+        Library.init(this)
         Shortcuts.publish(this)
         // Первый запуск распаковывает Python и ffmpeg — делаем это в фоне.
         thread(name = "ytdl-init") {
@@ -53,6 +54,9 @@ class App : Application() {
         private const val WEEK_MS = 7L * 24 * 3600 * 1000
         private val ready = CountDownLatch(1)
         @Volatile private var initError: Throwable? = null
+
+        /** То же, но без ошибки: null, если движок не запустился. */
+        fun awaitReadyOrNull(): Unit? = runCatching { awaitReady() }.getOrNull()
 
         fun awaitReady() {
             ready.await()

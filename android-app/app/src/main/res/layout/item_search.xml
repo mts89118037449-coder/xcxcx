@@ -43,6 +43,14 @@
     </LinearLayout>
 
     <com.google.android.material.button.MaterialButton
+        android:id="@+id/srLike"
+        style="?attr/materialIconButtonStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:contentDescription="В библиотеку"
+        app:icon="@drawable/ic_favorite_border" />
+
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/srDownload"
         style="?attr/materialIconButtonStyle"
         android:layout_width="wrap_content"

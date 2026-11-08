@@ -30,6 +30,11 @@
                 layout="@layout/page_download" />
 
             <include
+                android:id="@+id/pageMusic"
+                layout="@layout/page_music"
+                android:visibility="gone" />
+
+            <include
                 android:id="@+id/pageJobs"
                 layout="@layout/page_jobs"
                 android:visibility="gone" />
@@ -132,6 +137,7 @@
             android:id="@+id/bottomNav"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            app:labelVisibilityMode="labeled"
             app:menu="@menu/bottom_nav" />
     </LinearLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

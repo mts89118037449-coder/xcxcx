@@ -117,50 +117,151 @@ object Playback {
     }
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
+    const val X_PREVIEW = "preview"
+
+    /** Песня в очереди: из интернета или уже скачанная (тогда играет мгновенно и без сети). */
+    class QItem(val track: Track, val local: SavedFile? = null, val sourceUrl: String? = null, val pageUrl: String? = null)
+
+    /** Поток для песни: с конкретной страницы (результат SoundCloud/YouTube) или поиском по названию. */
+    private fun resolve(q: QItem): StreamInfo = q.pageUrl?.let { page ->
+        Downloader.streamOf(page, Describe.site(page), q.track.title) ?: throw UserError("Этот трек не играет: платный, удалён или недоступен в стране.")
+    } ?: Streams.resolve(q.track)
+
+    private val queueWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private var queue: List<QItem> = emptyList()
+    private var queueGen = 0
+    private var nextToAdd = 0
+    private var filling = false
+    private var hooked: MediaController? = null
+
+    /** «Слушать» одну песню. */
+    fun playTrack(ctx: Context, t: Track, sourceUrl: String? = null, openScreen: Boolean = true) =
+        playQueue(ctx, listOf(QItem(t, Library.localFor(t), sourceUrl)), 0, openScreen)
+
     /**
-     * «Слушать» песню без скачивания: экран плеера открывается сразу (обложка, название),
-     * поток ищется в фоне (SoundCloud → YouTube Music → YouTube), ссылки для «Поделиться» — параллельно.
+     * Играть очередь песен (библиотека, альбом). Первая включается сразу:
+     * скачанная — с телефона; из интернета — официальный 30-секундный фрагмент мгновенно,
+     * а через пару секунд его сменяет полная версия (SoundCloud → YouTube Music → YouTube).
+     * Следующие песни готовятся заранее, пока играет текущая, — переход без пауз.
      */
-    fun playTrack(ctx: Context, t: Track, sourceUrl: String? = null, openScreen: Boolean = true) {
+    fun playQueue(ctx: Context, items: List<QItem>, start: Int, openScreen: Boolean = true) {
+        if (items.isEmpty()) return
         val app = ctx.applicationContext
-        Pending.set(t, loading = true, error = null)
-        LinkCache.prefetch(t, sourceUrl)
+        val gen = ++queueGen
+        queue = items
+        nextToAdd = start + 1
+        filling = false
+        val first = items[start.coerceIn(0, items.lastIndex)]
+        LinkCache.prefetch(first.track, first.sourceUrl)
         if (openScreen) ctx.startActivity(Intent(ctx, NowPlayingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+
+        first.local?.let { f ->
+            Pending.set(null, loading = false, error = null)
+            start(app, gen, item(f).withTrack(first.track))
+            return
+        }
+        val ready = if (first.pageUrl == null) Streams.cachedFor(first.track) else null
+        if (ready != null) {
+            Pending.set(null, loading = false, error = null)
+            start(app, gen, streamItem(first, ready))
+            return
+        }
+        // Мгновенно — официальный фрагмент, пока ищется полная версия.
+        val preview = first.track.preview
+        if (preview != null) {
+            Pending.set(null, loading = false, error = null)
+            start(app, gen, previewItem(first, preview), fill = false)
+        } else {
+            Pending.set(first.track, loading = true, error = null)
+        }
         worker.execute {
             try {
-                val s = Streams.resolve(t)
-                val cover = t.cover ?: LinkCache.get(t)?.track?.cover ?: s.cover
-                val item = MediaItem.Builder()
-                    .setUri(s.url)
-                    .setMediaId(s.url)
-                    .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(s.url)).build())
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle(t.title)
-                            .setArtist(t.artist.ifEmpty { null })
-                            .setArtworkUri(cover?.let(Uri::parse))
-                            .setExtras(android.os.Bundle().apply {
-                                putString(X_SOURCE, s.source)
-                                putString(X_SOURCE_URL, sourceUrl ?: t.url)
-                                putString(X_PAGE_URL, s.pageUrl)
-                            })
-                            .build()
-                    )
-                    .build()
-                main.post {
-                    controller(app) { c ->
-                        c.setMediaItem(item)
-                        c.prepare()
-                        c.play()
-                        Pending.set(t, loading = false, error = null)
-                    }
-                }
+                val full = streamItem(first, resolve(first))
+                main.post { if (gen == queueGen) { Pending.set(null, loading = false, error = null); start(app, gen, full) } }
             } catch (e: Exception) {
                 val msg = (e as? UserError)?.message ?: "Не получилось включить: ${e.message}"
-                main.post { Pending.set(t, loading = false, error = msg) }
+                main.post {
+                    if (gen != queueGen) return@post
+                    if (preview != null) {
+                        // Фрагмент уже играет — не прерываем, просто сообщаем; дальше по очереди.
+                        Pending.set(null, loading = false, error = null)
+                        fill(app, gen)
+                    } else {
+                        Pending.set(first.track, loading = false, error = msg)
+                    }
+                }
             }
         }
     }
+
+    private fun start(app: Context, gen: Int, item: MediaItem, fill: Boolean = true) {
+        controller(app) { c ->
+            if (gen != queueGen) return@controller
+            c.setMediaItem(item)
+            c.prepare()
+            c.play()
+            hook(app, c)
+            if (fill) fill(app, gen)
+        }
+    }
+
+    /** Следим за переходами: как только до конца очереди в проигрывателе меньше двух песен — готовим следующую. */
+    private fun hook(app: Context, c: MediaController) {
+        if (hooked === c) return
+        hooked = c
+        c.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = fill(app, queueGen)
+        })
+    }
+
+    private fun fill(app: Context, gen: Int) {
+        if (filling || gen != queueGen || nextToAdd >= queue.size) return
+        val c = hooked ?: return
+        if (c.mediaItemCount - 1 - c.currentMediaItemIndex >= 2) return
+        val q = queue[nextToAdd]
+        filling = true
+        queueWorker.execute {
+            val item = q.local?.let { item(it).withTrack(q.track) }
+                ?: runCatching { streamItem(q, resolve(q)) }.getOrNull() // не нашлась — пропускаем
+            main.post {
+                if (gen != queueGen) return@post
+                filling = false
+                nextToAdd++
+                if (item != null) c.addMediaItem(item)
+                fill(app, gen)
+            }
+        }
+    }
+
+    private fun MediaItem.withTrack(t: Track): MediaItem = buildUpon().setMediaMetadata(
+        mediaMetadata.buildUpon().setTitle(t.title).setArtist(t.artist.ifEmpty { null }).build()
+    ).build()
+
+    private fun meta(q: QItem, source: String, extra: android.os.Bundle.() -> Unit = {}): MediaMetadata {
+        val cover = q.track.cover ?: LinkCache.get(q.track)?.track?.cover
+        return MediaMetadata.Builder()
+            .setTitle(q.track.title)
+            .setArtist(q.track.artist.ifEmpty { null })
+            .setArtworkUri(cover?.let(Uri::parse))
+            .setExtras(android.os.Bundle().apply {
+                putString(X_SOURCE, source)
+                putString(X_SOURCE_URL, q.sourceUrl ?: q.track.url)
+                extra()
+            })
+            .build()
+    }
+
+    private fun streamItem(q: QItem, s: StreamInfo): MediaItem = MediaItem.Builder()
+        .setUri(s.url).setMediaId(s.url)
+        .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(s.url)).build())
+        .setMediaMetadata(meta(q, s.source) { putString(X_PAGE_URL, s.pageUrl) })
+        .build()
+
+    private fun previewItem(q: QItem, url: String): MediaItem = MediaItem.Builder()
+        .setUri(url).setMediaId(url)
+        .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(url)).build())
+        .setMediaMetadata(meta(q, "фрагмента") { putBoolean(X_PREVIEW, true) })
+        .build()
 
     /**
      * Слушать/смотреть, пока идёт загрузка: играем прямо из интернета по ссылке, которую дал yt-dlp.
@@ -169,6 +270,7 @@ object Playback {
     fun playStream(ctx: Context, job: Job) {
         val urls = job.stream
         if (urls.isEmpty()) return
+        queueGen++
         Pending.set(null, loading = false, error = null)
         val video = job.kind == Kind.VIDEO
         val main = urls.first()
@@ -196,6 +298,7 @@ object Playback {
     /** Играть очередь: [files] с позиции [start]. Видео сразу открывает экран проигрывателя. */
     fun play(ctx: Context, files: List<Pair<SavedFile, String?>>, start: Int) {
         if (files.isEmpty()) return
+        queueGen++
         Pending.set(null, loading = false, error = null)
         controller(ctx) { c ->
             c.setMediaItems(files.map { (f, album) -> item(f, album) }, start.coerceIn(0, files.lastIndex), 0L)
