@@ -30,6 +30,15 @@ object Settings {
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(t.mode) // экраны перерисуются сами
     }
 
+    /** Скачивать песню на телефон, когда ставишь ♥. */
+    fun saveLiked(ctx: Context) = prefs(ctx).getBoolean("saveLiked", true)
+    fun setSaveLiked(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("saveLiked", on).apply()
+
+    /** Сколько места под память прослушанного (МБ). 0 — не запоминать. */
+    val CACHE_OPTIONS = listOf(0, 500, 1024, 2048, 5120)
+    fun cacheLimitMb(ctx: Context) = prefs(ctx).getInt("cacheMb", 2048)
+    fun setCacheLimitMb(ctx: Context, mb: Int) = prefs(ctx).edit().putInt("cacheMb", mb).apply()
+
     fun quality(ctx: Context) = runCatching { Quality.valueOf(prefs(ctx).getString("quality", null)!!) }.getOrDefault(Quality.MP3)
     fun setQuality(ctx: Context, q: Quality) = prefs(ctx).edit().putString("quality", q.name).apply()
 

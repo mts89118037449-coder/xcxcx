@@ -275,6 +275,18 @@ object Downloader {
     /** Быстрый поиск без разбора каждого результата — для выбора лучшего варианта. */
     internal fun searchCandidates(query: String, source: String) = search(query, source)
 
+    /** Видео одним потоком (картинка+звук) — для повторного просмотра из истории. */
+    fun videoStreamOf(pageUrl: String): String? {
+        App.awaitReadyOrNull() ?: return null
+        val r = YoutubeDLRequest(pageUrl).apply {
+            addOption("--skip-download"); addOption("--no-warnings"); addOption("--no-playlist")
+            addOption("--cache-dir", cacheDir())
+            addOption("-f", "b[ext=mp4]/b")
+            addOption("--print", "%(url)s")
+        }
+        return runCatching { YoutubeDL.getInstance().execute(r).out.lines().firstOrNull { it.startsWith("http") } }.getOrNull()
+    }
+
     /** Прямая ссылка на звук для одной страницы (SoundCloud/YouTube). null — не играет (DRM и т.п.). */
     fun streamOf(pageUrl: String, source: String, title: String): StreamInfo? {
         val r = YoutubeDLRequest(pageUrl).apply {

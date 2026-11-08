@@ -137,6 +137,7 @@ class MainActivity : AppCompatActivity() {
         super.onStart()
         installedCache = null // могли поставить/удалить приложение или сменить «мой сервис»
         Library.listen(libraryListener)
+        History.listen(libraryListener)
         Jobs.listen(listener)
         refreshJobs()
         refreshLibrary()
@@ -152,6 +153,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         Library.unlisten(libraryListener)
+        History.unlisten(libraryListener)
         Jobs.unlisten(listener)
         controller?.removeListener(playerListener)
         controller = null
@@ -305,7 +307,7 @@ class MainActivity : AppCompatActivity() {
         }
         musicSearch.setOnEditorActionListener { _, _, _ -> hideKeyboard(); true }
         findViewById<com.google.android.material.chip.ChipGroup>(R.id.libTabs).setOnCheckedStateChangeListener { _, ids ->
-            libraryMode = if (ids.firstOrNull() == R.id.libDownloaded) 1 else 0
+            libraryMode = when (ids.firstOrNull()) { R.id.libDownloaded -> 1; R.id.libVideo -> 2; R.id.libHistory -> 3; else -> 0 }
             refreshLibrary()
         }
         findViewById<View>(R.id.libPlayAll).setOnClickListener { playLibrary(shuffle = false) }
@@ -381,26 +383,75 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun libraryItems(): List<Playback.QItem> = if (libraryMode == 1) {
-        Library.downloaded().map { (t, f) -> Playback.QItem(t, f) }
-    } else {
-        Library.favorites.map { t -> Playback.QItem(t, Library.localFor(t), t.url) }
+    /** Музыкальные элементы раздела (для «Слушать всё»): любимое, вся музыка, история песен. */
+    private fun libraryItems(): List<Playback.QItem> = when (libraryMode) {
+        1 -> Library.downloaded().map { (t, f) -> Playback.QItem(t, f) }
+        2 -> emptyList()
+        3 -> History.all.filter { it.kind == Kind.MUSIC }.map { e -> Playback.QItem(e.track, e.local ?: Library.localFor(e.track), e.sourceUrl, e.pageUrl) }
+        else -> Library.favorites.map { t -> Playback.QItem(t, Library.localFor(t), t.url) }
+    }
+
+    /** Где песня сейчас: на телефоне, качается, в памяти — чтобы было видно, что включится мгновенно. */
+    private fun statusOf(t: Track, local: SavedFile?): String? = when {
+        local != null || Library.localFor(t) != null -> "на телефоне"
+        Library.downloading(t) -> "качается…"
+        MediaCache.has(t) -> "в памяти · мгновенно"
+        else -> null
     }
 
     private fun refreshLibrary() {
         if (!::musicSearch.isInitialized) return
-        val items = libraryItems()
-        findViewById<com.google.android.material.chip.Chip>(R.id.libFav).text = "Избранное · ${Library.favorites.size}"
-        findViewById<com.google.android.material.chip.Chip>(R.id.libDownloaded).text = "Скачанное · ${Library.downloaded().size}"
-        findViewById<View>(R.id.libButtons).isVisible = items.isNotEmpty()
-        val empty = findViewById<TextView>(R.id.libEmpty)
-        empty.isVisible = items.isEmpty()
-        empty.text = if (libraryMode == 1) "Скачанной музыки пока нет.\nСкачайте песню — она появится здесь."
-        else "Здесь будут песни, которые вы сохраните ♥.\nНайдите песню поиском выше и нажмите ♥."
+        val videos = Jobs.all.filter { it.status == Status.DONE && it.kind == Kind.VIDEO }
+        val chip = { id: Int, text: String -> findViewById<com.google.android.material.chip.Chip>(id).text = text }
+        chip(R.id.libFav, "Любимое · ${Library.favorites.size}")
+        chip(R.id.libDownloaded, "Музыка · ${Library.downloaded().size}")
+        chip(R.id.libVideo, "Видео · ${videos.size}")
+        chip(R.id.libHistory, "История · ${History.all.size}")
+
         val list = findViewById<LinearLayout>(R.id.libList)
         list.removeAllViews()
-        items.forEachIndexed { i, q ->
-            list.addView(trackRow(list, q.track, local = q.local, onPlay = { Playback.playQueue(this, items, i) }))
+        val items = libraryItems()
+        findViewById<View>(R.id.libButtons).isVisible = items.isNotEmpty()
+        when (libraryMode) {
+            2 -> videos.forEach { j ->
+                list.addView(trackRow(list, Track(j.title, j.site, cover = j.coverUrl), video = true, status = "на телефоне",
+                    onPlay = { Playback.play(this, j.files.map { it to null }, 0) }))
+            }
+            3 -> History.all.forEach { e ->
+                val local = e.local ?: if (e.kind == Kind.MUSIC) Library.localFor(e.track) else null
+                val video = e.kind == Kind.VIDEO
+                list.addView(trackRow(list, e.track, pageUrl = e.pageUrl, local = local, video = video,
+                    status = listOfNotNull(if (video) "видео" else statusOf(e.track, local), ago(e.time)).joinToString(" · "),
+                    onPlay = {
+                        when {
+                            local != null -> Playback.play(this, listOf(local to null), 0)
+                            video && e.pageUrl != null -> Playback.playVideoPage(this, e.pageUrl, e.track.title)
+                            else -> Playback.playQueue(this, listOf(Playback.QItem(e.track, null, e.sourceUrl, e.pageUrl)), 0)
+                        }
+                    }))
+            }
+            else -> items.forEachIndexed { i, q ->
+                list.addView(trackRow(list, q.track, local = q.local, status = statusOf(q.track, q.local),
+                    onPlay = { Playback.playQueue(this, items, i) }))
+            }
+        }
+        val empty = findViewById<TextView>(R.id.libEmpty)
+        empty.isVisible = list.childCount == 0
+        empty.text = when (libraryMode) {
+            1 -> "Скачанной музыки пока нет.\nСкачайте песню или поставьте ♥ — она появится здесь."
+            2 -> "Скачанных видео пока нет."
+            3 -> "Здесь будет всё, что вы слушали и смотрели.\nПовторное включение — мгновенно."
+            else -> "Ставьте ♥ песням — они сохранятся на телефон\nи будут играть мгновенно, даже без интернета."
+        }
+    }
+
+    private fun ago(time: Long): String {
+        val m = (System.currentTimeMillis() - time) / 60000
+        return when {
+            m < 1 -> "только что"
+            m < 60 -> "$m мин назад"
+            m < 60 * 24 -> "${m / 60} ч назад"
+            else -> "${m / 60 / 24} дн назад"
         }
     }
 
@@ -417,13 +468,14 @@ class MainActivity : AppCompatActivity() {
         parent: ViewGroup, t: Track, pageUrl: String? = null, local: SavedFile? = null,
         subtitle: String? = null, onPlay: (() -> Unit)? = null,
         directUrl: String? = null, directSource: String? = null,
+        status: String? = null, video: Boolean = false,
     ): View {
         val row = layoutInflater.inflate(R.layout.item_search, parent, false)
         Images.into(row.findViewById(R.id.srCover), t.cover, R.drawable.ic_music_note)
         row.findViewById<TextView>(R.id.srTitle).text = t.title
         val d = if (t.durationSec > 0) " · %d:%02d".format(t.durationSec / 60, t.durationSec % 60) else ""
-        val offline = if (local != null) " · на телефоне" else ""
-        row.findViewById<TextView>(R.id.srSub).text = (subtitle ?: t.artist) + d + offline
+        val st = status ?: statusOf(t, local)
+        row.findViewById<TextView>(R.id.srSub).text = listOfNotNull((subtitle ?: t.artist).ifBlank { null }, d.removePrefix(" · ").ifEmpty { null }, st).joinToString(" · ")
         val play = View.OnClickListener {
             hideKeyboard()
             if (onPlay != null) onPlay()
@@ -434,12 +486,20 @@ class MainActivity : AppCompatActivity() {
         val like = row.findViewById<MaterialButton>(R.id.srLike)
         fun paintLike() = like.setIconResource(if (Library.isSaved(t)) R.drawable.ic_favorite else R.drawable.ic_favorite_border)
         paintLike()
+        like.isVisible = !video
         like.setOnClickListener {
-            snack(if (Library.toggle(t)) "«${t.title}» — в библиотеке" else "Убрано из библиотеки")
+            val inCache = MediaCache.has(t)
+            val saved = Library.like(this, t, pageUrl ?: directUrl, t.url)
+            snack(when {
+                !saved -> "Убрано из любимого"
+                local != null || !Settings.saveLiked(this) -> "«${t.title}» — в любимом"
+                inCache -> "«${t.title}» — в любимом, сохраняю из памяти"
+                else -> "«${t.title}» — в любимом, скачиваю на телефон"
+            })
             paintLike()
         }
         val dl = row.findViewById<View>(R.id.srDownload)
-        dl.isVisible = local == null
+        dl.isVisible = local == null && !video
         dl.setOnClickListener {
             val u = directUrl ?: pageUrl ?: t.url ?: return@setOnClickListener snack("Эту песню можно только послушать")
             DownloadService.enqueue(this, u, Format.MP3, t.label)
@@ -1000,6 +1060,23 @@ class MainActivity : AppCompatActivity() {
         row(R.drawable.ic_download, "Качество музыки", q.label, q.hint) {
             choose("Качество музыки", Settings.Quality.entries.map { "${it.label} — ${it.hint}" }, q.ordinal) {
                 Settings.setQuality(this, Settings.Quality.entries[it]); refreshMusicSettings()
+            }
+        }
+        val saveLiked = Settings.saveLiked(this)
+        row(R.drawable.ic_favorite, "Сохранять любимое на телефон", if (saveLiked) "Да" else "Нет",
+            "♥ — песня скачивается и играет без интернета") {
+            Settings.setSaveLiked(this, !saveLiked); refreshMusicSettings()
+        }
+        val cacheMb = Settings.cacheLimitMb(this)
+        val used = MediaCache.sizeBytes / 1024 / 1024
+        row(R.drawable.ic_schedule, "Память прослушанного",
+            if (cacheMb == 0) "Выключена" else "До ${if (cacheMb >= 1024) "${cacheMb / 1024} ГБ" else "$cacheMb МБ"} · занято $used МБ",
+            "Прослушанное включается снова мгновенно и без интернета") {
+            val labels = Settings.CACHE_OPTIONS.map { if (it == 0) "Не запоминать" else if (it >= 1024) "${it / 1024} ГБ" else "$it МБ" } + "Очистить память сейчас"
+            choose("Память прослушанного", labels, Settings.CACHE_OPTIONS.indexOf(cacheMb).coerceAtLeast(0)) { i ->
+                if (i == Settings.CACHE_OPTIONS.size) { MediaCache.clear(); snack("Память очищена") }
+                else Settings.setCacheLimitMb(this, Settings.CACHE_OPTIONS[i])
+                refreshMusicSettings()
             }
         }
         val src = Settings.sourceOrder(this)

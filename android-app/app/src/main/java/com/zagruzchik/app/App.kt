@@ -18,6 +18,8 @@ class App : Application() {
         Notifications.createChannels(this)
         Jobs.init(this)
         Library.init(this)
+        History.init(this)
+        MediaCache.init(this)
         Shortcuts.publish(this)
         // Первый запуск распаковывает Python и ffmpeg — делаем это в фоне.
         thread(name = "ytdl-init") {

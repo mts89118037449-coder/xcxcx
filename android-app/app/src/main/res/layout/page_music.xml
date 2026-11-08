@@ -114,34 +114,59 @@
 
             <TextView
                 style="@style/SectionTitle"
-                android:text="Моя музыка" />
+                android:text="Медиатека" />
 
-            <com.google.android.material.chip.ChipGroup
-                android:id="@+id/libTabs"
+            <HorizontalScrollView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:selectionRequired="true"
-                app:singleSelection="true">
+                android:scrollbars="none">
 
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/libFav"
-                    style="@style/Widget.Material3.Chip.Filter"
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/libTabs"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:checked="true"
-                    android:text="Избранное"
-                    app:chipIcon="@drawable/ic_favorite"
-                    app:chipIconVisible="true" />
+                    app:selectionRequired="true"
+                    app:singleLine="true"
+                    app:singleSelection="true">
 
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/libDownloaded"
-                    style="@style/Widget.Material3.Chip.Filter"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Скачанное"
-                    app:chipIcon="@drawable/ic_download"
-                    app:chipIconVisible="true" />
-            </com.google.android.material.chip.ChipGroup>
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/libFav"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:text="Любимое"
+                        app:chipIcon="@drawable/ic_favorite"
+                        app:chipIconVisible="true" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/libDownloaded"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Музыка"
+                        app:chipIcon="@drawable/ic_music_note"
+                        app:chipIconVisible="true" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/libVideo"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Видео"
+                        app:chipIcon="@drawable/ic_movie"
+                        app:chipIconVisible="true" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/libHistory"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="История"
+                        app:chipIcon="@drawable/ic_schedule"
+                        app:chipIconVisible="true" />
+                </com.google.android.material.chip.ChipGroup>
+            </HorizontalScrollView>
 
             <LinearLayout
                 android:id="@+id/libButtons"

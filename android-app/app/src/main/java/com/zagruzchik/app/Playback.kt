@@ -30,6 +30,7 @@ object Playback {
                 future = null
                 return@addListener
             }
+            hook(app, c)
             onReady(c)
         }, ContextCompat.getMainExecutor(app))
     }
@@ -165,6 +166,12 @@ object Playback {
             start(app, gen, item(f).withTrack(first.track))
             return
         }
+        // Уже звучала — играем из памяти: мгновенно и без интернета.
+        MediaCache.fileFor(first.track)?.let { f ->
+            Pending.set(null, loading = false, error = null)
+            start(app, gen, cachedItem(first, f))
+            return
+        }
         val ready = when {
             first.directUrl != null -> resolve(first)
             first.pageUrl == null -> Streams.cachedFor(first.track)
@@ -190,6 +197,7 @@ object Playback {
             try {
                 val stream = resolve(first)
                 val full = streamItem(first, stream)
+                MediaCache.store(app, first.track, stream.pageUrl) // в следующий раз — мгновенно
                 val align = previewPcm?.let { f ->
                     runCatching {
                         val pv = f.get() ?: return@runCatching null
@@ -260,7 +268,10 @@ object Playback {
         if (hooked === c) return
         hooked = c
         c.addListener(object : androidx.media3.common.Player.Listener {
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = fill(app, queueGen)
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                mediaItem?.let { remember(it) }
+                fill(app, queueGen)
+            }
             // Фрагмент закончился, а полная версия ещё не готова — не тишина, а «подхватываю».
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == androidx.media3.common.Player.STATE_ENDED &&
@@ -269,6 +280,24 @@ object Playback {
             }
         })
     }
+
+    /** Записать в историю то, что начало играть (фрагменты — нет). */
+    private fun remember(item: MediaItem) {
+        val m = item.mediaMetadata
+        val x = m.extras
+        if (x?.getBoolean(X_PREVIEW) == true) return
+        val title = m.title?.toString() ?: return
+        val mime = x?.getString(X_LOCAL_MIME)
+        val local = x?.getString(X_LOCAL_URI)?.takeIf { !it.startsWith("file:") }?.let { SavedFile(it, x.getString(X_LOCAL_NAME) ?: title, mime ?: "audio/mpeg") }
+        val video = mime?.startsWith("video") == true || x?.getBoolean(X_VIDEO) == true
+        History.add(History.Entry(
+            Track(title, m.artist?.toString().orEmpty(), cover = m.artworkUri?.toString()),
+            if (video) Kind.VIDEO else Kind.MUSIC,
+            x?.getString(X_PAGE_URL), x?.getString(X_SOURCE_URL), local, System.currentTimeMillis(),
+        ))
+    }
+
+    const val X_VIDEO = "video"
 
     /** Песня, для которой играет фрагмент и ещё ищется полная версия. */
     @Volatile private var waitingFull: Track? = null
@@ -281,7 +310,8 @@ object Playback {
         filling = true
         queueWorker.execute {
             val item = q.local?.let { item(it).withTrack(q.track) }
-                ?: runCatching { streamItem(q, resolve(q)) }.getOrNull() // не нашлась — пропускаем
+                ?: MediaCache.fileFor(q.track)?.let { cachedItem(q, it) }
+                ?: runCatching { resolve(q).also { MediaCache.store(app, q.track, it.pageUrl) }.let { streamItem(q, it) } }.getOrNull() // не нашлась — пропускаем
             main.post {
                 if (gen != queueGen) return@post
                 filling = false
@@ -316,11 +346,36 @@ object Playback {
         .setMediaMetadata(meta(q, s.source) { putString(X_PAGE_URL, s.pageUrl) })
         .build()
 
+    private fun cachedItem(q: QItem, f: java.io.File): MediaItem {
+        val uri = Uri.fromFile(f)
+        return MediaItem.Builder().setUri(uri).setMediaId(uri.toString())
+            .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(uri).build())
+            .setMediaMetadata(meta(q, "памяти") { putString(X_LOCAL_URI, uri.toString()); putString(X_LOCAL_MIME, "audio/" + f.extension) })
+            .build()
+    }
+
     private fun previewItem(q: QItem, url: String): MediaItem = MediaItem.Builder()
         .setUri(url).setMediaId(url)
         .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(url)).build())
         .setMediaMetadata(meta(q, "фрагмента") { putBoolean(X_PREVIEW, true) })
         .build()
+
+    /** Посмотреть видео из истории снова (если файла на телефоне нет): ссылка на поток — через yt-dlp. */
+    fun playVideoPage(ctx: Context, pageUrl: String, title: String) {
+        val app = ctx.applicationContext
+        queueGen++
+        ctx.startActivity(Intent(ctx, PlayerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        worker.execute {
+            val url = Downloader.videoStreamOf(pageUrl) ?: return@execute
+            val item = MediaItem.Builder().setUri(url).setMediaId(url)
+                .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(url)).build())
+                .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setExtras(android.os.Bundle().apply {
+                    putBoolean(X_VIDEO, true); putString(X_PAGE_URL, pageUrl)
+                }).build())
+                .build()
+            main.post { controller(app) { c -> c.setMediaItem(item); c.prepare(); c.play() } }
+        }
+    }
 
     /**
      * Слушать/смотреть, пока идёт загрузка: играем прямо из интернета по ссылке, которую дал yt-dlp.
@@ -334,6 +389,7 @@ object Playback {
         val video = job.kind == Kind.VIDEO
         val main = urls.first()
         val extras = android.os.Bundle().apply { if (urls.size > 1) putString(EXTRA_AUDIO_URL, urls[1]) }
+        val metaExtras = android.os.Bundle().apply { putBoolean(X_VIDEO, video); putString(X_PAGE_URL, job.url); putString(X_SOURCE, job.site) }
         val parts = job.title.split(" — ", limit = 2)
         val item = MediaItem.Builder()
             .setUri(main)
@@ -343,6 +399,7 @@ object Playback {
                 MediaMetadata.Builder()
                     .setTitle(if (parts.size == 2) parts[1] else job.title)
                     .setArtist(if (parts.size == 2) parts[0] else job.site)
+                    .setExtras(metaExtras)
                     .build()
             )
             .build()

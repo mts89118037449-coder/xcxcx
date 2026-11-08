@@ -44,6 +44,38 @@ object Library {
         return !was
     }
 
+    /**
+     * ♥ — это «в мою медиатеку»: песня сохраняется на телефон.
+     * Уже звучала — копируем из памяти прослушанного (мгновенно), иначе скачиваем.
+     * Возвращает, понравилась ли песня теперь.
+     */
+    fun like(ctx: Context, t: Track, pageUrl: String? = null, sourceUrl: String? = null): Boolean {
+        val now = toggle(t)
+        if (!now || !Settings.saveLiked(ctx) || localFor(t) != null || downloading(t)) return now
+        val app = ctx.applicationContext
+        if (MediaCache.has(t)) {
+            // Из памяти — в «Загрузки» как обычная загрузка, без повторного скачивания.
+            val job = Jobs.create(pageUrl ?: sourceUrl ?: t.url ?: "memory:" + key(t), Format.MP3, t.label)
+            Jobs.update(job.id, save = true) { title = t.label; status = Status.RUNNING; detail = "Сохраняю из памяти…"; coverUrl = t.cover }
+            Thread {
+                val tmp = File(app.cacheDir, "like").apply { mkdirs() }
+                val copy = runCatching { MediaCache.copyOf(t, tmp) }.getOrNull()
+                val saved = copy?.let { f -> runCatching { Storage.publish(app, f) }.getOrNull()?.let { (uri, mime) -> SavedFile(uri.toString(), f.name, mime) } }
+                Jobs.update(job.id, save = true) {
+                    if (saved != null) { status = Status.DONE; files = listOf(saved); progress = 100f; detail = saved.name }
+                    else { status = Status.FAILED; error = "Не получилось сохранить из памяти" }
+                }
+            }.start()
+        } else {
+            val url = pageUrl ?: sourceUrl ?: t.url ?: return now
+            DownloadService.enqueue(app, url, Format.MP3, t.label)
+        }
+        return now
+    }
+
+    /** Песня уже качается (поставили ♥ или нажали «Скачать»). */
+    fun downloading(t: Track): Boolean = Jobs.all.any { it.active && it.kind == Kind.MUSIC && key(it.track()) == key(t) }
+
     fun listen(l: () -> Unit) { listeners += l }
     fun unlisten(l: () -> Unit) { listeners -= l }
 

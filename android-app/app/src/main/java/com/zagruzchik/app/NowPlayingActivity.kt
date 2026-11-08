@@ -119,8 +119,16 @@ class NowPlayingActivity : AppCompatActivity() {
         download.setOnClickListener { downloadCurrent() }
         findViewById<MaterialButton>(R.id.npLike).setOnClickListener {
             val t = currentTrack() ?: return@setOnClickListener
-            val saved = Library.toggle(LinkCache.get(t)?.track ?: t)
-            Snackbar.make(seek, if (saved) "Добавлено в библиотеку" else "Убрано из библиотеки", Snackbar.LENGTH_SHORT).show()
+            val x = extras()
+            val local = x?.getString(Playback.X_LOCAL_URI) != null && x.getString(Playback.X_SOURCE) == "Скачано"
+            val saved = Library.like(this, LinkCache.get(t)?.track ?: t, x?.getString(Playback.X_PAGE_URL), x?.getString(Playback.X_SOURCE_URL))
+            val msg = when {
+                !saved -> "Убрано из любимого"
+                local || !Settings.saveLiked(this) -> "В любимом"
+                MediaCache.has(t) -> "В любимом · сохраняю на телефон из памяти"
+                else -> "В любимом · скачиваю на телефон"
+            }
+            Snackbar.make(seek, msg, Snackbar.LENGTH_SHORT).show()
             render()
         }
         setupCastButton(findViewById(R.id.npCast))
