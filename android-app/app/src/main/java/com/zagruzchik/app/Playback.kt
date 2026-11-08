@@ -78,7 +78,8 @@ object Playback {
         }
     }
 
-    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+    // Своя нить на каждое «Слушать»: новая песня не ждёт, пока доищется предыдущая.
+    private val worker = java.util.concurrent.Executors.newCachedThreadPool()
     private val prefetcher = java.util.concurrent.Executors.newFixedThreadPool(2)
     /** Ссылка → какая это песня (чтобы не узнавать дважды). */
     private val linkTracks = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.Future<Track>>()
@@ -178,6 +179,7 @@ object Playback {
         val preview = first.track.preview
         if (preview != null) {
             Pending.set(null, loading = false, error = null)
+            waitingFull = first.track
             start(app, gen, previewItem(first, preview), fill = false)
         } else {
             Pending.set(first.track, loading = true, error = null)
@@ -192,12 +194,12 @@ object Playback {
                     runCatching {
                         val pv = f.get() ?: return@runCatching null
                         val d = first.track.durationSec
-                        val whole = Align.pcm(app, stream.url, if (d in 40..600) d + 5 else 300) ?: return@runCatching null
-                        Align.find(pv, whole)
+                        Align.findInStream(app, pv, stream.url, d)
                     }.getOrNull()
                 }
                 main.post {
                     if (gen != queueGen) return@post
+                    waitingFull = null
                     Pending.set(null, loading = false, error = null)
                     if (preview != null) continueFromPreview(app, gen, full, preview, align) else start(app, gen, full)
                 }
@@ -205,6 +207,7 @@ object Playback {
                 val msg = (e as? UserError)?.message ?: "Не получилось включить: ${e.message}"
                 main.post {
                     if (gen != queueGen) return@post
+                    waitingFull = null
                     if (preview != null) {
                         // Фрагмент уже играет — не прерываем, просто сообщаем; дальше по очереди.
                         Pending.set(null, loading = false, error = null)
@@ -258,8 +261,17 @@ object Playback {
         hooked = c
         c.addListener(object : androidx.media3.common.Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = fill(app, queueGen)
+            // Фрагмент закончился, а полная версия ещё не готова — не тишина, а «подхватываю».
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == androidx.media3.common.Player.STATE_ENDED &&
+                    c.currentMediaItem?.mediaMetadata?.extras?.getBoolean(X_PREVIEW) == true && waitingFull != null
+                ) Pending.set(waitingFull, loading = true, error = null)
+            }
         })
     }
+
+    /** Песня, для которой играет фрагмент и ещё ищется полная версия. */
+    @Volatile private var waitingFull: Track? = null
 
     private fun fill(app: Context, gen: Int) {
         if (filling || gen != queueGen || nextToAdd >= queue.size) return

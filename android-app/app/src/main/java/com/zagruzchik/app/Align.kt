@@ -30,6 +30,8 @@ object Align {
 
     /** Где во всей песне (мс) окажется момент [previewMs] фрагмента. */
     class Result(private val partStartsSec: List<Double>, private val partLenSec: Double) {
+        fun shifted(by: Double) = Result(partStartsSec.map { it + by }, partLenSec)
+
         fun fullPositionMs(previewMs: Long): Long {
             val p = previewMs / 1000.0
             val k = (p / partLenSec).toInt().coerceIn(0, partStartsSec.lastIndex)
@@ -39,13 +41,31 @@ object Align {
 
     // ---------------- Звук → числа (ffmpeg, который уже есть в приложении) ----------------
 
-    /** Звук по ссылке → моно 8 кГц, не дольше [maxSec] секунд. */
-    fun pcm(ctx: Context, url: String, maxSec: Int): ShortArray? {
+    /**
+     * Где фрагмент в полной версии — проверяем окнами, начиная с начала песни:
+     * фрагменты почти всегда из первых двух минут, поэтому обычно хватает первого окна,
+     * и не нужно скачивать всю песню. Окна перекрываются, чтобы фрагмент не разрезало.
+     */
+    fun findInStream(ctx: Context, preview: ShortArray, url: String, durationSec: Int): Result? {
+        val end = if (durationSec in 40..900) durationSec else 400
+        var start = 0
+        while (start < end) {
+            val len = minOf(110, end - start)
+            val chunk = pcm(ctx, url, len, start) ?: return null
+            find(preview, chunk)?.let { return it.shifted(start.toDouble()) }
+            if (start + len >= end) break
+            start += len - 35 // перекрытие больше длины фрагмента
+        }
+        return null
+    }
+
+    /** Звук по ссылке → моно 8 кГц, не дольше [maxSec] секунд, начиная с [fromSec]. */
+    fun pcm(ctx: Context, url: String, maxSec: Int, fromSec: Int = 0): ShortArray? {
         App.awaitReadyOrNull() ?: return null
         val bin = File(ctx.applicationInfo.nativeLibraryDir, "libffmpeg.so")
         val pkgs = File(ctx.noBackupFilesDir, "youtubedl-android/packages")
         val p = ProcessBuilder(
-            bin.absolutePath, "-nostdin", "-loglevel", "error", "-t", maxSec.toString(), "-i", url,
+            bin.absolutePath, "-nostdin", "-loglevel", "error", "-ss", fromSec.toString(), "-t", maxSec.toString(), "-i", url,
             "-ac", "1", "-ar", SR.toString(), "-f", "s16le", "pipe:1",
         ).apply {
             environment()["LD_LIBRARY_PATH"] = "${pkgs}/ffmpeg/usr/lib:${pkgs}/python/usr/lib"

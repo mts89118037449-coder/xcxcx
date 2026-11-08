@@ -43,6 +43,7 @@ object Streams {
     private val done = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, StreamInfo>>()
     private val pending = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.Future<StreamInfo>>()
     private val pool = java.util.concurrent.Executors.newFixedThreadPool(3)
+    private val searchPool = java.util.concurrent.Executors.newCachedThreadPool()
 
     private fun key(t: Track) = Match.base(t.title) + "|" + Match.norm(t.artist)
 
@@ -77,16 +78,24 @@ object Streams {
             "YouTube Music" to "https://music.youtube.com/search?q=" + Http.enc(t.query) + "#songs",
             "YouTube" to "ytsearch6:${t.query}",
         )
-        for ((name, query) in sources) {
-            val candidates = Match.ranked(t, Downloader.searchCandidates(query, name)) { Triple(it.title, it.author, it.duration) }
+        // Все площадки ищем одновременно (раньше — по очереди, это и съедало время),
+        // а выбираем по старшинству: SoundCloud → YouTube Music → YouTube → остальные.
+        val searches = sources.map { (name, query) ->
+            name to searchPool.submit<List<Downloader.Candidate>> {
+                runCatching { Match.ranked(t, Downloader.searchCandidates(query, name)) { Triple(it.title, it.author, it.duration) } }.getOrDefault(emptyList())
+            }
+        }
+        val extra = searchPool.submit<List<WebResult>> { runCatching { WebSearch.extraCandidates(t) }.getOrDefault(emptyList()) }
+        for ((name, f) in searches) {
+            val candidates = runCatching { f.get() }.getOrDefault(emptyList())
             // Платные треки (DRM) не играют — пробуем следующий вариант.
             for (c in candidates.take(3)) {
                 val s = Downloader.streamOf(c.url, name, c.title) ?: continue
                 return s
             }
         }
-        // Нет на SoundCloud/YouTube (удалили) — ищем по другим площадкам: Яндекс, Rutube, Internet Archive…
-        for (w in WebSearch.extraCandidates(t).take(4)) {
+        // Нет на SoundCloud/YouTube (удалили) — другие площадки: Яндекс, Rutube, Internet Archive…
+        for (w in runCatching { extra.get() }.getOrDefault(emptyList()).take(4)) {
             val s = if (w.direct) StreamInfo(w.url, w.url, w.source, w.cover, w.title)
             else Downloader.streamOf(w.url, w.source, w.title)
             if (s != null) return s
