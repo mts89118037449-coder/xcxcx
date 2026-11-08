@@ -237,8 +237,22 @@ object Downloader {
                 }
             }
         }
+        // Удалили с основных площадок — пробуем Яндекс, Internet Archive, Rutube, Dailymotion, Audius.
+        for (w in WebSearch.extraCandidates(t).take(4)) {
+            if (token.cancelled) throw CancelledError()
+            val before = dir.listFiles().orEmpty().toSet()
+            progress(w.source, 0f, "")
+            try {
+                execute(trackRequest(w.url, t, item, dir, ctx), "$id-${attempt++}", token) { p, line -> progress(w.source, p, line) }
+                if (audios(dir).any { it !in before }) return
+            } catch (e: UserError) {
+                if (token.cancelled) throw CancelledError()
+                problems += "${w.source}: ${e.message}"
+                dir.listFiles().orEmpty().filter { it !in before }.forEach { it.delete() }
+            }
+        }
         throw UserError(
-            if (problems.isEmpty()) "Не нашёл «${t.label}» ни в YouTube Music, ни в SoundCloud, ни в YouTube."
+            if (problems.isEmpty()) "Не нашёл «${t.label}» ни на одной площадке: YouTube, SoundCloud, Яндекс, Internet Archive, Rutube и др."
             else "Не получилось скачать «${t.label}». ${problems.distinct().take(2).joinToString("; ")}"
         )
     }

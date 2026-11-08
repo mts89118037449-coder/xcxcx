@@ -85,6 +85,12 @@ object Streams {
                 return s
             }
         }
-        throw UserError("Не нашёл «${t.label}» для прослушивания. Попробуйте «Скачать» — там больше источников.")
+        // Нет на SoundCloud/YouTube (удалили) — ищем по другим площадкам: Яндекс, Rutube, Internet Archive…
+        for (w in WebSearch.extraCandidates(t).take(4)) {
+            val s = if (w.direct) StreamInfo(w.url, w.url, w.source, w.cover, w.title)
+            else Downloader.streamOf(w.url, w.source, w.title)
+            if (s != null) return s
+        }
+        throw UserError("Не нашёл «${t.label}» ни на одной площадке: SoundCloud, YouTube, Яндекс, Rutube, Internet Archive, Dailymotion, Audius.")
     }
 }

@@ -75,7 +75,7 @@ enum class Service(val title: String, val packages: List<String>) {
 
 /** Сравнение треков из разных сервисов: тот же ли это трек, а не ремикс или кавер. */
 object Match {
-    private val VERSION_WORDS = listOf(
+    internal val VERSION_WORDS = listOf(
         "remix", "live", "cover", "karaoke", "instrumental", "acoustic", "sped up", "slowed", "nightcore", "8d",
         "mix", "edit", "version", "remaster", "reverb", "bass boosted", "ремикс", "кавер", "минус", "караоке",
         // Версии с цензурой: берём оригинал, если исходный трек не «clean».

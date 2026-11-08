@@ -120,10 +120,14 @@ object Playback {
     const val X_PREVIEW = "preview"
 
     /** Песня в очереди: из интернета или уже скачанная (тогда играет мгновенно и без сети). */
-    class QItem(val track: Track, val local: SavedFile? = null, val sourceUrl: String? = null, val pageUrl: String? = null)
+    class QItem(
+        val track: Track, val local: SavedFile? = null, val sourceUrl: String? = null, val pageUrl: String? = null,
+        /** Прямая ссылка на аудиофайл (Internet Archive, Audius) — играет сразу. */
+        val directUrl: String? = null, val directSource: String? = null,
+    )
 
     /** Поток для песни: с конкретной страницы (результат SoundCloud/YouTube) или поиском по названию. */
-    private fun resolve(q: QItem): StreamInfo = q.pageUrl?.let { page ->
+    private fun resolve(q: QItem): StreamInfo = q.directUrl?.let { StreamInfo(it, it, q.directSource ?: "интернета", q.track.cover, q.track.title) } ?: q.pageUrl?.let { page ->
         Downloader.streamOf(page, Describe.site(page), q.track.title) ?: throw UserError("Этот трек не играет: платный, удалён или недоступен в стране.")
     } ?: Streams.resolve(q.track)
 
@@ -160,7 +164,11 @@ object Playback {
             start(app, gen, item(f).withTrack(first.track))
             return
         }
-        val ready = if (first.pageUrl == null) Streams.cachedFor(first.track) else null
+        val ready = when {
+            first.directUrl != null -> resolve(first)
+            first.pageUrl == null -> Streams.cachedFor(first.track)
+            else -> null
+        }
         if (ready != null) {
             Pending.set(null, loading = false, error = null)
             start(app, gen, streamItem(first, ready))

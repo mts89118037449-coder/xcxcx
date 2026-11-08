@@ -331,21 +331,53 @@ class MainActivity : AppCompatActivity() {
                 found.take(3).forEach { Streams.prefetch(it) } // к нажатию ▶ уже готово
             }
         }
-        thread {
-            App.awaitReadyOrNull() ?: return@thread
-            val results = listOf("SoundCloud" to "scsearch8:$q", "YouTube" to "ytsearch6:$q").flatMap { (name, query) ->
-                runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
+        // Везде в интернете: 9 площадок разом, результаты появляются по мере ответа.
+        val collected = java.util.Collections.synchronizedList(mutableListOf<WebResult>())
+        val answered = java.util.concurrent.atomic.AtomicInteger(0)
+        WebSearch.searchAll(q, onResults = { _, r ->
+            collected += r
+            val n = answered.incrementAndGet()
+            runOnUiThread { if (seq == musicSeq) showWeb(q, collected.toList(), n, done = false) }
+        }, onDone = {
+            runOnUiThread { if (seq == musicSeq) showWeb(q, collected.toList(), answered.get(), done = true) }
+        })
+    }
+
+    private fun showWeb(q: String, all: List<WebResult>, answered: Int, done: Boolean) {
+        val web = findViewById<LinearLayout>(R.id.webList)
+        findViewById<View>(R.id.webProgress).isVisible = !done
+        // Похожие на запрос — выше; совсем непохожие не показываем. Повторы одного и того же — один раз.
+        val seen = HashSet<String>()
+        val shown = all.map { it to WebSearch.relevance(q, it) }
+            .filter { it.second >= 0.34 }
+            .sortedByDescending { it.second }
+            .map { it.first }
+            .filter { seen.add(it.url) }
+            .let { sorted ->
+                // Сверху — разные площадки: не больше 4 результатов от одной, остальные ниже.
+                val perSource = HashMap<String, Int>()
+                val (head, tail) = sorted.partition { (perSource.merge(it.source, 1, Int::plus) ?: 0) <= 4 }
+                head + tail
             }
-            runOnUiThread {
-                if (seq != musicSeq) return@runOnUiThread
-                findViewById<View>(R.id.webProgress).isVisible = false
-                findViewById<TextView>(R.id.webHint).text =
-                    if (results.isEmpty()) "Ничего не нашлось" else "Ремиксы, редкие треки и всё, что выложено в интернет"
-                results.forEach { c ->
-                    val t = Track(c.title, c.author.substringBefore(" | "), c.duration)
-                    web.addView(trackRow(web, t, pageUrl = c.url, subtitle = "${c.source} · ${c.author.substringBefore(" | ")}"))
-                }
-            }
+            .take(40)
+        val sources = shown.map { it.source }.distinct()
+        findViewById<TextView>(R.id.webHint).text = when {
+            shown.isEmpty() && done -> "Нигде не нашлось. Проверьте написание или попробуйте только название."
+            shown.isEmpty() -> "Ищу на 9 площадках… ответили $answered"
+            else -> "Нашлось на: ${sources.joinToString(", ")}" + if (done) "" else " · ищу дальше…"
+        }
+        web.removeAllViews()
+        shown.forEach { w ->
+            val t = w.track()
+            web.addView(
+                trackRow(
+                    web, t,
+                    pageUrl = if (w.direct) null else w.url,
+                    directUrl = if (w.direct) w.url else null,
+                    directSource = w.source,
+                    subtitle = listOf(w.source, w.artist).filter { it.isNotBlank() }.joinToString(" · "),
+                )
+            )
         }
     }
 
@@ -384,6 +416,7 @@ class MainActivity : AppCompatActivity() {
     private fun trackRow(
         parent: ViewGroup, t: Track, pageUrl: String? = null, local: SavedFile? = null,
         subtitle: String? = null, onPlay: (() -> Unit)? = null,
+        directUrl: String? = null, directSource: String? = null,
     ): View {
         val row = layoutInflater.inflate(R.layout.item_search, parent, false)
         Images.into(row.findViewById(R.id.srCover), t.cover, R.drawable.ic_music_note)
@@ -394,7 +427,7 @@ class MainActivity : AppCompatActivity() {
         val play = View.OnClickListener {
             hideKeyboard()
             if (onPlay != null) onPlay()
-            else Playback.playQueue(this, listOf(Playback.QItem(t, local ?: Library.localFor(t), t.url, pageUrl)), 0)
+            else Playback.playQueue(this, listOf(Playback.QItem(t, local ?: Library.localFor(t), t.url, pageUrl, directUrl, directSource)), 0)
         }
         row.setOnClickListener(play)
         row.findViewById<View>(R.id.srPlay).setOnClickListener(play)
@@ -408,7 +441,7 @@ class MainActivity : AppCompatActivity() {
         val dl = row.findViewById<View>(R.id.srDownload)
         dl.isVisible = local == null
         dl.setOnClickListener {
-            val u = pageUrl ?: t.url ?: return@setOnClickListener snack("Эту песню можно только послушать")
+            val u = directUrl ?: pageUrl ?: t.url ?: return@setOnClickListener snack("Эту песню можно только послушать")
             DownloadService.enqueue(this, u, Format.MP3, t.label)
             snack("Скачиваю «${t.title}»")
         }
