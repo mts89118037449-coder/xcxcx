@@ -49,6 +49,12 @@
                 android:indeterminate="true"
                 app:trackCornerRadius="4dp" />
 
+            <LinearLayout
+                android:id="@+id/searchShelves"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
             <TextView
                 android:id="@+id/catalogTitle"
                 style="@style/SectionTitle"
@@ -104,6 +110,13 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
         </LinearLayout>
+
+        <!-- Главная: чарт, альбомы, исполнители -->
+        <LinearLayout
+            android:id="@+id/homeSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
 
         <!-- Библиотека -->
         <LinearLayout

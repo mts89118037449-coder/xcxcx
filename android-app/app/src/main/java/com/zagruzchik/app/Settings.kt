@@ -5,8 +5,8 @@ import android.content.Context
 /** Настройки приложения (вкладка «Настройки»). */
 object Settings {
     enum class Quality(val label: String, val hint: String) {
-        MP3("MP3", "Открывается везде. Лучшее качество MP3 (VBR ~245 кбит/с)"),
-        ORIGINAL("Оригинал", "Без перекодирования: M4A/Opus как в источнике — чуть лучше звук"),
+        ORIGINAL("Оригинал", "Максимальное качество: звук как в источнике (Opus/AAC до 256 кбит/с), без перекодирования"),
+        MP3("MP3", "Для старых плееров и машин. Перекодирование в MP3 (VBR ~245 кбит/с) — чуть хуже звук"),
     }
 
     enum class SourceOrder(val label: String, val hint: String) {
@@ -30,6 +30,10 @@ object Settings {
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(t.mode) // экраны перерисуются сами
     }
 
+    /** Когда очередь закончилась — продолжать похожей музыкой. */
+    fun radio(ctx: Context) = prefs(ctx).getBoolean("radio", true)
+    fun setRadio(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("radio", on).apply()
+
     /** Скачивать песню на телефон, когда ставишь ♥. */
     fun saveLiked(ctx: Context) = prefs(ctx).getBoolean("saveLiked", true)
     fun setSaveLiked(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("saveLiked", on).apply()
@@ -39,7 +43,7 @@ object Settings {
     fun cacheLimitMb(ctx: Context) = prefs(ctx).getInt("cacheMb", 2048)
     fun setCacheLimitMb(ctx: Context, mb: Int) = prefs(ctx).edit().putInt("cacheMb", mb).apply()
 
-    fun quality(ctx: Context) = runCatching { Quality.valueOf(prefs(ctx).getString("quality", null)!!) }.getOrDefault(Quality.MP3)
+    fun quality(ctx: Context) = runCatching { Quality.valueOf(prefs(ctx).getString("quality", null)!!) }.getOrDefault(Quality.ORIGINAL)
     fun setQuality(ctx: Context, q: Quality) = prefs(ctx).edit().putString("quality", q.name).apply()
 
     fun sourceOrder(ctx: Context) = runCatching { SourceOrder.valueOf(prefs(ctx).getString("source", null)!!) }.getOrDefault(SourceOrder.AUTO)

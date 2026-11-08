@@ -302,10 +302,21 @@ object Playback {
     /** Песня, для которой играет фрагмент и ещё ищется полная версия. */
     @Volatile private var waitingFull: Track? = null
 
+    /** Другая очередь (файлы, видео): старая больше не продолжается и не включает радио. */
+    private fun resetQueue() {
+        queueGen++
+        queue = emptyList()
+        nextToAdd = 0
+        filling = false
+    }
+
+    private var radioGen = -1 // для какой очереди уже искали радио (чтобы не искать по кругу)
+
     private fun fill(app: Context, gen: Int) {
-        if (filling || gen != queueGen || nextToAdd >= queue.size) return
+        if (filling || gen != queueGen) return
         val c = hooked ?: return
         if (c.mediaItemCount - 1 - c.currentMediaItemIndex >= 2) return
+        if (nextToAdd >= queue.size) return radio(app, gen)
         val q = queue[nextToAdd]
         filling = true
         queueWorker.execute {
@@ -317,6 +328,29 @@ object Playback {
                 filling = false
                 nextToAdd++
                 if (item != null) c.addMediaItem(item)
+                fill(app, gen)
+            }
+        }
+    }
+
+    /**
+     * Очередь заканчивается — продолжаем похожей музыкой (радио исполнителя последней песни),
+     * как в стриминговых сервисах. Выключается в настройках.
+     */
+    private fun radio(app: Context, gen: Int) {
+        if (queue.isEmpty() || radioGen == gen || !Settings.radio(app)) return
+        val seed = queue.last().track.takeIf { it.artist.isNotBlank() } ?: return
+        radioGen = gen
+        filling = true
+        val played = queue.map { it.track }
+        queueWorker.execute {
+            val more = runCatching { Catalog.radio(seed, played) }.getOrDefault(emptyList())
+            main.post {
+                if (gen != queueGen) return@post
+                filling = false
+                if (more.isEmpty()) return@post
+                queue = queue + more.map { QItem(it, Library.localFor(it), it.url) }
+                radioGen = -1 // и дальше — когда закончится и это
                 fill(app, gen)
             }
         }
@@ -363,7 +397,7 @@ object Playback {
     /** Посмотреть видео из истории снова (если файла на телефоне нет): ссылка на поток — через yt-dlp. */
     fun playVideoPage(ctx: Context, pageUrl: String, title: String) {
         val app = ctx.applicationContext
-        queueGen++
+        resetQueue()
         ctx.startActivity(Intent(ctx, PlayerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         worker.execute {
             val url = Downloader.videoStreamOf(pageUrl) ?: return@execute
@@ -384,7 +418,7 @@ object Playback {
     fun playStream(ctx: Context, job: Job) {
         val urls = job.stream
         if (urls.isEmpty()) return
-        queueGen++
+        resetQueue()
         Pending.set(null, loading = false, error = null)
         val video = job.kind == Kind.VIDEO
         val main = urls.first()
@@ -414,7 +448,7 @@ object Playback {
     /** Играть очередь: [files] с позиции [start]. Видео сразу открывает экран проигрывателя. */
     fun play(ctx: Context, files: List<Pair<SavedFile, String?>>, start: Int) {
         if (files.isEmpty()) return
-        queueGen++
+        resetQueue()
         Pending.set(null, loading = false, error = null)
         controller(ctx) { c ->
             c.setMediaItems(files.map { (f, album) -> item(f, album) }, start.coerceIn(0, files.lastIndex), 0L)

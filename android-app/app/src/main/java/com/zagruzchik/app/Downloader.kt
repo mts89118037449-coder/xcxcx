@@ -128,6 +128,14 @@ object Downloader {
     /** Ищет видео на YouTube и возвращает его id (для трансфера). */
     fun youtubeId(query: String): String? {
         App.awaitReady()
+        try {
+            return YtdlpDaemon.search("ytsearch1:$query", "YouTube").firstNotNullOfOrNull { c ->
+                Regex("[?&]v=([\\w-]{11})").find(c.url)?.groupValues?.get(1)
+            }
+        } catch (_: YtdlpDaemon.Unavailable) {
+        } catch (_: UserError) {
+            return null
+        }
         val r = YoutubeDLRequest("ytsearch1:$query").apply {
             addOption("--flat-playlist")
             addOption("--print", "id")
@@ -262,6 +270,8 @@ object Downloader {
 
     /** То же, но с ошибкой — для проверки источников и подписи «не ответил». */
     internal fun searchOrThrow(query: String, source: String, processId: String? = null): List<Candidate> {
+        // Быстрый путь — постоянный процесс (≈1 с), иначе обычный запуск yt-dlp.
+        try { return YtdlpDaemon.search(query, source) } catch (_: YtdlpDaemon.Unavailable) {}
         val r = YoutubeDLRequest(query).apply {
             addOption("--flat-playlist")
             addOption("--cache-dir", cacheDir())
@@ -286,6 +296,12 @@ object Downloader {
     /** Видео одним потоком (картинка+звук) — для повторного просмотра из истории. */
     fun videoStreamOf(pageUrl: String): String? {
         App.awaitReadyOrNull() ?: return null
+        try {
+            return YtdlpDaemon.stream(pageUrl, "b[ext=mp4]/b")?.optJSONArray("urls")?.optString(0)?.takeIf { it.startsWith("http") }
+        } catch (_: YtdlpDaemon.Unavailable) {
+        } catch (_: UserError) {
+            return null
+        }
         val r = YoutubeDLRequest(pageUrl).apply {
             addOption("--skip-download"); addOption("--no-warnings"); addOption("--no-playlist")
             addOption("--cache-dir", cacheDir())
@@ -295,14 +311,26 @@ object Downloader {
         return runCatching { Ytdlp.execute(r).out.lines().firstOrNull { it.startsWith("http") } }.getOrNull()
     }
 
+    /** Лучший звук, который можно играть по ссылке (HTTP, затем HLS). */
+    private const val STREAM_FORMAT = "bestaudio[protocol^=http]/bestaudio[protocol=m3u8_native]/bestaudio"
+
     /** Прямая ссылка на звук для одной страницы (SoundCloud/YouTube). null — не играет (DRM и т.п.). */
     fun streamOf(pageUrl: String, source: String, title: String): StreamInfo? {
+        try {
+            val d = YtdlpDaemon.stream(pageUrl, STREAM_FORMAT) ?: return null
+            val url = d.optJSONArray("urls")?.optString(0)?.takeIf { it.startsWith("http") } ?: return null
+            return StreamInfo(url, d.optString("page").takeIf { it.startsWith("http") } ?: pageUrl, source,
+                d.optString("thumbnail").takeIf { it.startsWith("http") }, title)
+        } catch (_: YtdlpDaemon.Unavailable) {
+        } catch (_: UserError) {
+            return null
+        }
         val r = YoutubeDLRequest(pageUrl).apply {
             addOption("--skip-download")
             addOption("--no-warnings")
             addOption("--no-playlist")
             addOption("--cache-dir", cacheDir())
-            addOption("-f", "bestaudio[protocol^=http]/bestaudio[protocol=m3u8_native]/bestaudio")
+            addOption("-f", STREAM_FORMAT)
             addOption("--print", "%(url)j\t%(thumbnail)j\t%(webpage_url)s")
         }
         val out = runCatching { Ytdlp.execute(r).out }.getOrNull() ?: return null
@@ -329,8 +357,8 @@ object Downloader {
         val original = Settings.quality(ctx) == Settings.Quality.ORIGINAL
         return baseRequest(url, dir, ctx, if (original) Format.BEST else Format.MP3).apply {
             if (original) {
-                // Звук без перекодирования: M4A, а если его нет — Opus.
-                addOption("-f", "bestaudio[ext=m4a]/bestaudio")
+                // Звук без перекодирования, лучший по битрейту (обычно Opus 160 кбит/с или AAC 256).
+                addOption("-f", "bestaudio/best")
                 addOption("-x")
             }
             addOption("-o", "${safeName(t.label)}.%(ext)s")
@@ -425,7 +453,7 @@ object Downloader {
         return files
     }
 
-    private fun explain(err: String): String {
+    internal fun explain(err: String): String {
         val e = err.lowercase()
         return when {
             "drm" in e -> "Трек защищён от скачивания (платный, DRM)."

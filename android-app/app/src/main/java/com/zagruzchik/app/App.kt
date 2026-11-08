@@ -32,7 +32,10 @@ class App : Application() {
             }
             // Движок доступен сразу; обновление — потом и отдельно (раньше всё ждало его и могло зависнуть).
             ready.countDown()
-            if (initError == null) updateIfNeeded()
+            if (initError == null) {
+                YtdlpDaemon.warmUp() // постоянный yt-dlp — первый поиск уже без ожидания старта Python
+                updateIfNeeded()
+            }
         }
     }
 
@@ -54,6 +57,7 @@ class App : Application() {
             try {
                 YoutubeDL.getInstance().updateYoutubeDL(this, YoutubeDL.UpdateChannel.STABLE)
                 prefs.edit().putLong("lastUpdate", now).apply()
+                YtdlpDaemon.restart() // новая версия — со следующего запроса
             } catch (e: Exception) {
                 Log.w(TAG, "yt-dlp update failed", e)
             }

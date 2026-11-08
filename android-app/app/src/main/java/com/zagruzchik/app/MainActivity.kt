@@ -142,6 +142,7 @@ class MainActivity : AppCompatActivity() {
         refreshJobs()
         refreshLibrary()
         refreshSummary()
+        if (::musicSearch.isInitialized) loadHome() // если в прошлый раз не было интернета
         Playback.controller(this) { c ->
             controller = c
             c.addListener(playerListener)
@@ -299,6 +300,7 @@ class MainActivity : AppCompatActivity() {
             val q = it?.toString()?.trim().orEmpty()
             findViewById<View>(R.id.musicResults).isVisible = q.length >= 2
             findViewById<View>(R.id.librarySection).isVisible = q.length < 2
+            findViewById<View>(R.id.homeSection).isVisible = q.length < 2
             musicSearch.removeCallbacks(musicSearchRun)
             if (q.length >= 2) {
                 findViewById<View>(R.id.musicProgress).isVisible = true
@@ -312,6 +314,84 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.libPlayAll).setOnClickListener { playLibrary(shuffle = false) }
         findViewById<View>(R.id.libShuffle).setOnClickListener { playLibrary(shuffle = true) }
+        loadHome()
+    }
+
+    private var homeLoaded = false
+    private var homeLoading = false
+
+    /** Главная как в стриминговом сервисе: чарт России, популярные альбомы и исполнители. */
+    private fun loadHome() {
+        if (homeLoaded || homeLoading) return
+        homeLoading = true
+        val home = findViewById<LinearLayout>(R.id.homeSection)
+        thread {
+            val chart = pool { Catalog.chart() }
+            val albums = pool { Catalog.topAlbums() }
+            val artists = pool { Catalog.topArtists() }
+            val c = runCatching { chart.get() }.getOrDefault(emptyList())
+            val al = runCatching { albums.get() }.getOrDefault(emptyList())
+            val ar = runCatching { artists.get() }.getOrDefault(emptyList())
+            runOnUiThread {
+                homeLoading = false
+                if (isDestroyed) return@runOnUiThread
+                home.removeAllViews()
+                if (c.isEmpty() && al.isEmpty() && ar.isEmpty()) return@runOnUiThread
+                homeLoaded = true
+                if (c.isNotEmpty()) {
+                    val items = c.map { Playback.QItem(it, Library.localFor(it), it.url) }
+                    home.addView(sectionHeader(Catalog.chartTitle, "Слушать") { Playback.playQueue(this, items, 0) })
+                    val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                    fun show(n: Int) {
+                        list.removeAllViews()
+                        c.take(n).forEachIndexed { i, t -> list.addView(trackRow(list, t, number = i + 1, onPlay = { Playback.playQueue(this, items, i) })) }
+                    }
+                    show(5)
+                    home.addView(list)
+                    if (c.size > 5) home.addView(MaterialButton(this, null, androidx.appcompat.R.attr.borderlessButtonStyle).apply {
+                        text = "Весь чарт · ${c.size}"
+                        setOnClickListener { show(c.size); isVisible = false }
+                    })
+                    Streams.prefetch(c.first())
+                }
+                if (al.isNotEmpty()) {
+                    home.addView(sectionHeader("Популярные альбомы"))
+                    val (scroll, inner) = Rows.shelf(this)
+                    al.forEach { inner.addView(Rows.albumCard(this, inner, it)) }
+                    home.addView(scroll)
+                }
+                if (ar.isNotEmpty()) {
+                    home.addView(sectionHeader("Исполнители"))
+                    val (scroll, inner) = Rows.shelf(this)
+                    ar.forEach { inner.addView(Rows.artistCard(this, inner, it)) }
+                    home.addView(scroll)
+                }
+            }
+        }
+    }
+
+    private val homePool = java.util.concurrent.Executors.newCachedThreadPool()
+    private fun <T> pool(f: () -> T) = homePool.submit<T> { f() }
+
+    /** Заголовок раздела, справа — необязательная кнопка. */
+    private fun sectionHeader(title: String, action: String? = null, onAction: (() -> Unit)? = null): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        row.addView(TextView(this, null, 0, R.style.SectionTitle).apply {
+            text = title
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                topMargin = dp(20); bottomMargin = dp(8); marginStart = dp(4)
+            }
+        })
+        if (action != null && onAction != null) row.addView(MaterialButton(this, null, androidx.appcompat.R.attr.borderlessButtonStyle).apply {
+            text = action
+            setIconResource(R.drawable.ic_play_arrow)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
+            setOnClickListener { onAction() }
+        })
+        return row
     }
 
     /** Поиск: каталоги (быстро, с обложками) + SoundCloud и YouTube (дольше, но там есть всё). */
@@ -322,6 +402,30 @@ class MainActivity : AppCompatActivity() {
         val web = findViewById<LinearLayout>(R.id.webList)
         web.removeAllViews()
         findViewById<View>(R.id.webProgress).isVisible = true
+        val shelves = findViewById<LinearLayout>(R.id.searchShelves)
+        shelves.removeAllViews()
+        thread {
+            // Исполнители и альбомы — как в стриминговом сервисе.
+            val artists = runCatching { Catalog.searchArtists(q) }.getOrDefault(emptyList())
+                .filter { WebSearch.relevance(q, WebResult("", it.name, it.name, 0, "")) >= 0.5 }.take(6)
+            val albums = runCatching { Catalog.searchAlbums(q) }.getOrDefault(emptyList())
+            runOnUiThread {
+                if (seq != musicSeq) return@runOnUiThread
+                shelves.removeAllViews()
+                if (artists.isNotEmpty()) {
+                    shelves.addView(sectionHeader("Исполнители"))
+                    val (scroll, inner) = Rows.shelf(this)
+                    artists.forEach { inner.addView(Rows.artistCard(this, inner, it)) }
+                    shelves.addView(scroll)
+                }
+                if (albums.isNotEmpty()) {
+                    shelves.addView(sectionHeader("Альбомы"))
+                    val (scroll, inner) = Rows.shelf(this)
+                    albums.forEach { inner.addView(Rows.albumCard(this, inner, it)) }
+                    shelves.addView(scroll)
+                }
+            }
+        }
         thread {
             val found = runCatching { MusicSearch.search(q) }.getOrDefault(emptyList())
             runOnUiThread {
@@ -393,13 +497,7 @@ class MainActivity : AppCompatActivity() {
         else -> Library.favorites.map { t -> Playback.QItem(t, Library.localFor(t), t.url) }
     }
 
-    /** Где песня сейчас: на телефоне, качается, в памяти — чтобы было видно, что включится мгновенно. */
-    private fun statusOf(t: Track, local: SavedFile?): String? = when {
-        local != null || Library.localFor(t) != null -> "на телефоне"
-        Library.downloading(t) -> "качается…"
-        MediaCache.has(t) -> "в памяти · мгновенно"
-        else -> null
-    }
+    private fun statusOf(t: Track, local: SavedFile?) = Rows.statusOf(t, local)
 
     private fun refreshLibrary() {
         if (!::musicSearch.isInitialized) return
@@ -462,53 +560,14 @@ class MainActivity : AppCompatActivity() {
         Playback.playQueue(this, items, 0)
     }
 
-    /**
-     * Строка песни: обложка, название, ♥, скачать, ▶.
-     * [pageUrl] — конкретная страница (SoundCloud/YouTube), [local] — уже скачанный файл.
-     */
+    /** Строка песни — общая с экранами исполнителя и альбома. */
     private fun trackRow(
         parent: ViewGroup, t: Track, pageUrl: String? = null, local: SavedFile? = null,
         subtitle: String? = null, onPlay: (() -> Unit)? = null,
         directUrl: String? = null, directSource: String? = null,
-        status: String? = null, video: Boolean = false,
-    ): View {
-        val row = layoutInflater.inflate(R.layout.item_search, parent, false)
-        Images.into(row.findViewById(R.id.srCover), t.cover, R.drawable.ic_music_note)
-        row.findViewById<TextView>(R.id.srTitle).text = t.title
-        val d = if (t.durationSec > 0) " · %d:%02d".format(t.durationSec / 60, t.durationSec % 60) else ""
-        val st = status ?: statusOf(t, local)
-        row.findViewById<TextView>(R.id.srSub).text = listOfNotNull((subtitle ?: t.artist).ifBlank { null }, d.removePrefix(" · ").ifEmpty { null }, st).joinToString(" · ")
-        val play = View.OnClickListener {
-            hideKeyboard()
-            if (onPlay != null) onPlay()
-            else Playback.playQueue(this, listOf(Playback.QItem(t, local ?: Library.localFor(t), t.url, pageUrl, directUrl, directSource)), 0)
-        }
-        row.setOnClickListener(play)
-        row.findViewById<View>(R.id.srPlay).setOnClickListener(play)
-        val like = row.findViewById<MaterialButton>(R.id.srLike)
-        fun paintLike() = like.setIconResource(if (Library.isSaved(t)) R.drawable.ic_favorite else R.drawable.ic_favorite_border)
-        paintLike()
-        like.isVisible = !video
-        like.setOnClickListener {
-            val inCache = MediaCache.has(t)
-            val saved = Library.like(this, t, pageUrl ?: directUrl, t.url)
-            snack(when {
-                !saved -> "Убрано из любимого"
-                local != null || !Settings.saveLiked(this) -> "«${t.title}» — в любимом"
-                inCache -> "«${t.title}» — в любимом, сохраняю из памяти"
-                else -> "«${t.title}» — в любимом, скачиваю на телефон"
-            })
-            paintLike()
-        }
-        val dl = row.findViewById<View>(R.id.srDownload)
-        dl.isVisible = local == null && !video
-        dl.setOnClickListener {
-            val u = directUrl ?: pageUrl ?: t.url ?: return@setOnClickListener snack("Эту песню можно только послушать")
-            DownloadService.enqueue(this, u, Format.MP3, t.label)
-            snack("Скачиваю «${t.title}»")
-        }
-        return row
-    }
+        status: String? = null, video: Boolean = false, number: Int? = null,
+    ): View = Rows.track(this, parent, t, ::snack, pageUrl, local, subtitle, onPlay, directUrl, directSource, status, video, number,
+        beforePlay = { hideKeyboard() })
 
     private fun hideKeyboard() {
         getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.hideSoftInputFromWindow(input.windowToken, 0)
@@ -1022,6 +1081,7 @@ class MainActivity : AppCompatActivity() {
                 val result = runCatching {
                     App.awaitReady()
                     YoutubeDL.getInstance().updateYoutubeDL(this, YoutubeDL.UpdateChannel.STABLE)
+                        .also { YtdlpDaemon.restart() }
                 }
                 runOnUiThread {
                     btn.isEnabled = true
@@ -1069,6 +1129,11 @@ class MainActivity : AppCompatActivity() {
         row(R.drawable.ic_favorite, "Сохранять любимое на телефон", if (saveLiked) "Да" else "Нет",
             "♥ — песня скачивается и играет без интернета") {
             Settings.setSaveLiked(this, !saveLiked); refreshMusicSettings()
+        }
+        val radio = Settings.radio(this)
+        row(R.drawable.ic_queue_music, "Радио после очереди", if (radio) "Да" else "Нет",
+            "Когда песни закончились — дальше играет похожая музыка") {
+            Settings.setRadio(this, !radio); refreshMusicSettings()
         }
         val cacheMb = Settings.cacheLimitMb(this)
         val used = MediaCache.sizeBytes / 1024 / 1024

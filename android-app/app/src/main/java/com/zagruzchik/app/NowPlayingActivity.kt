@@ -117,6 +117,11 @@ class NowPlayingActivity : AppCompatActivity() {
             currentTrack()?.let { TransferActivity.openTrack(this, it, extras()?.getString(Playback.X_SOURCE_URL)) }
         }
         download.setOnClickListener { downloadCurrent() }
+        // Исполнитель — ссылкой на его страницу: популярное, альбомы, радио.
+        artist.setOnClickListener {
+            val name = currentTrack()?.artist?.takeIf { it.isNotBlank() && it != "Скачано" } ?: return@setOnClickListener
+            Rows.openArtist(this, name)
+        }
         findViewById<MaterialButton>(R.id.npLike).setOnClickListener {
             val t = currentTrack() ?: return@setOnClickListener
             val x = extras()
