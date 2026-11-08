@@ -26,12 +26,13 @@ class App : Application() {
             try {
                 YoutubeDL.getInstance().init(this)
                 FFmpeg.getInstance().init(this)
-                updateIfNeeded()
             } catch (t: Throwable) {
                 Log.e(TAG, "init failed", t)
                 initError = t
             }
+            // Движок доступен сразу; обновление — потом и отдельно (раньше всё ждало его и могло зависнуть).
             ready.countDown()
+            if (initError == null) updateIfNeeded()
         }
     }
 
@@ -40,11 +41,22 @@ class App : Application() {
         val prefs = getSharedPreferences("app", MODE_PRIVATE)
         val now = System.currentTimeMillis()
         if (now - prefs.getLong("lastUpdate", 0) < WEEK_MS) return
-        try {
-            YoutubeDL.getInstance().updateYoutubeDL(this, YoutubeDL.UpdateChannel.STABLE)
-            prefs.edit().putLong("lastUpdate", now).apply()
-        } catch (e: Exception) {
-            Log.w(TAG, "yt-dlp update failed", e)
+        // Библиотека ходит на GitHub без таймаута — сначала коротко проверяем, что он отвечает.
+        val reachable = runCatching {
+            (java.net.URL("https://api.github.com/").openConnection() as java.net.HttpURLConnection).run {
+                connectTimeout = 5000; readTimeout = 5000
+                responseCode.also { disconnect() } in 200..499
+            }
+        }.getOrDefault(false)
+        if (!reachable) return
+        // На время замены движка поиски/загрузки ждут (но не дольше пары минут).
+        Ytdlp.exclusive(120) {
+            try {
+                YoutubeDL.getInstance().updateYoutubeDL(this, YoutubeDL.UpdateChannel.STABLE)
+                prefs.edit().putLong("lastUpdate", now).apply()
+            } catch (e: Exception) {
+                Log.w(TAG, "yt-dlp update failed", e)
+            }
         }
     }
 

@@ -37,7 +37,9 @@ object MediaCache {
         return f
     }
 
-    fun has(t: Track) = fileFor(t) != null
+    /** Есть ли в памяти — только проверка, без записи на диск (её зовут при отрисовке списков). */
+    @Synchronized
+    fun has(t: Track): Boolean = index[Library.key(t)]?.let { File(dir, it.optString("file")).exists() } == true
 
     val sizeBytes: Long @Synchronized get() = index.values.sumOf { it.optLong("size") }
 
@@ -57,7 +59,7 @@ object MediaCache {
                     addOption("-N", "4")
                     addOption("-o", File(dir, "$name.%(ext)s").absolutePath)
                 }
-                runCatching { Ytdlp.inBackground { Ytdlp.execute(r) } }
+                runCatching { Ytdlp.inBackground { Ytdlp.execute(r, timeoutSec = 600) } }
                 val f = dir.listFiles().orEmpty().firstOrNull { it.name.startsWith("$name.") && !it.name.endsWith(".part") && !it.name.endsWith(".ytdl") }
                     ?: return@execute
                 synchronized(this) {
