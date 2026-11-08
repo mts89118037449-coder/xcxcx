@@ -223,7 +223,7 @@ object Playback {
                     runCatching {
                         val pv = f.get() ?: return@runCatching null
                         val d = first.track.durationSec
-                        Align.findInStream(app, pv, stream.url, d)
+                        Align.findInStream(app, pv, stream.url, d, joinSec = PREVIEW_END_MS / 1000.0)
                     }.getOrNull()
                 }
                 main.post {
@@ -249,6 +249,37 @@ object Playback {
         }
     }
 
+    /** Где обрываем фрагмент и где к нему бесшовно пристыковывается полная версия. */
+    private const val PREVIEW_END_MS = 28_500L
+    /** Стыкуем, только если до конца фрагмента есть время подгрузить полную (иначе — обычный переход). */
+    private const val JOIN_LEAD_MS = 3_000L
+
+    /** Полная версия, начатая не с начала (после фрагмента): на сколько мс она сдвинута. */
+    const val X_OFFSET = "offset"
+
+    fun offset(c: MediaController): Long = c.currentMediaItem?.mediaMetadata?.extras?.getLong(X_OFFSET) ?: 0L
+
+    /** Позиция и длительность с учётом сдвига — для полосы перемотки и текста песни. */
+    fun position(c: MediaController) = c.currentPosition + offset(c)
+    fun duration(c: MediaController) = c.duration.takeIf { it > 0 }?.plus(offset(c)) ?: c.duration
+
+    /**
+     * Перемотка в песне. Назад, раньше места стыковки с фрагментом, — та же песня целиком
+     * (без обрезки), с нужного места.
+     */
+    fun seek(c: MediaController, ms: Long) {
+        val off = offset(c)
+        if (ms >= off) return c.seekTo(ms - off)
+        val i = c.currentMediaItemIndex
+        val item = c.currentMediaItem ?: return
+        val extras = android.os.Bundle(item.mediaMetadata.extras ?: android.os.Bundle()).apply { remove(X_OFFSET) }
+        c.replaceMediaItem(i, item.buildUpon()
+            .setClippingConfiguration(MediaItem.ClippingConfiguration.UNSET)
+            .setMediaMetadata(item.mediaMetadata.buildUpon().setExtras(extras).build())
+            .build())
+        c.seekTo(i, ms)
+    }
+
     /** Сколько ждать полную версию, прежде чем включить фрагмент. */
     private const val QUICK_MS = 6000L
 
@@ -262,6 +293,23 @@ object Playback {
         controller(app) { c ->
             if (gen != queueGen) return@controller
             val onPreview = c.currentMediaItem?.mediaId == previewUrl
+            // Бесшовно: полная версия встаёт в очередь сразу за фрагментом, обрезанная так, что начинается
+            // ровно с того места песни, где фрагмент закончится. Проигрыватель заранее её подгружает и
+            // переходит без паузы, перемотки и затухания — на слух звук просто становится полным.
+            if (onPreview && align != null && c.playbackState != androidx.media3.common.Player.STATE_ENDED &&
+                PREVIEW_END_MS - c.currentPosition >= JOIN_LEAD_MS
+            ) {
+                val start = align.fullPositionMs(PREVIEW_END_MS)
+                val extras = android.os.Bundle(full.mediaMetadata.extras ?: android.os.Bundle()).apply { putLong(X_OFFSET, start) }
+                val joined = full.buildUpon()
+                    .setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(start).build())
+                    .setMediaMetadata(full.mediaMetadata.buildUpon().setExtras(extras).build())
+                    .build()
+                c.addMediaItem(c.currentMediaItemIndex + 1, joined)
+                hook(app, c)
+                fill(app, gen)
+                return@controller
+            }
             val previewPos = when {
                 !onPreview -> 0L
                 c.playbackState == androidx.media3.common.Player.STATE_ENDED -> c.duration.coerceAtLeast(0)
@@ -293,6 +341,12 @@ object Playback {
         hooked = c
         c.addListener(object : androidx.media3.common.Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // Фрагмент перешёл в полную версию — убираем его из очереди («назад» не вернёт к нему).
+                val i = c.currentMediaItemIndex
+                if (i > 0 && c.getMediaItemAt(i - 1).mediaMetadata.extras?.getBoolean(X_PREVIEW) == true) main.post {
+                    val j = c.currentMediaItemIndex
+                    if (j > 0 && c.getMediaItemAt(j - 1).mediaMetadata.extras?.getBoolean(X_PREVIEW) == true) c.removeMediaItem(j - 1)
+                }
                 learn(reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_SEEK)
                 current = mediaItem?.takeIf { it.mediaMetadata.extras?.getBoolean(X_PREVIEW) != true }
                     ?.mediaMetadata?.let { m -> m.title?.toString()?.let { Track(it, m.artist?.toString().orEmpty()) } }
@@ -454,6 +508,8 @@ object Playback {
 
     private fun previewItem(q: QItem, url: String): MediaItem = MediaItem.Builder()
         .setUri(url).setMediaId(url)
+        // Фрагмент заканчиваем чуть раньше его конца — там бывает затухание; дальше бесшовно идёт полная версия.
+        .setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setEndPositionMs(PREVIEW_END_MS).build())
         .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(url)).build())
         .setMediaMetadata(meta(q, "фрагмента") { putBoolean(X_PREVIEW, true) })
         .build()

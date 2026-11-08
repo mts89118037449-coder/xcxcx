@@ -104,11 +104,11 @@ class NowPlayingActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(slider: Slider) { seeking = true }
             override fun onStopTrackingTouch(slider: Slider) {
                 seeking = false
-                controller?.let { c -> if (c.duration > 0) c.seekTo((slider.value / 1000f * c.duration).toLong()) }
+                controller?.let { c -> val d = Playback.duration(c); if (d > 0) Playback.seek(c, (slider.value / 1000f * d).toLong()) }
             }
         })
         seek.addOnChangeListener { _, value, fromUser ->
-            val d = controller?.duration ?: 0
+            val d = controller?.let { Playback.duration(it) } ?: 0
             if (fromUser && d > 0) pos.text = time((value / 1000f * d).toLong())
         }
         retry.setOnClickListener { Playback.Pending.track?.let { Playback.playTrack(this, it) } }
@@ -121,8 +121,9 @@ class NowPlayingActivity : AppCompatActivity() {
         download.setOnClickListener { downloadCurrent() }
         findViewById<View>(R.id.npLyrics).setOnClickListener {
             val t = currentTrack() ?: return@setOnClickListener
-            val d = controller?.duration?.takeIf { it > 0 }?.let { (it / 1000).toInt() } ?: 0
-            LyricsSheet.show(this, t.copy(durationSec = d), position = { controller?.currentPosition ?: 0L }, seek = { controller?.seekTo(it) })
+            val d = controller?.let { Playback.duration(it) }?.takeIf { it > 0 }?.let { (it / 1000).toInt() } ?: 0
+            LyricsSheet.show(this, t.copy(durationSec = d), position = { controller?.let { Playback.position(it) } ?: 0L },
+                seek = { ms -> controller?.let { Playback.seek(it, ms) } })
         }
         // Исполнитель — ссылкой на его страницу: популярное, альбомы, радио.
         artist.setOnClickListener {
@@ -272,10 +273,11 @@ class NowPlayingActivity : AppCompatActivity() {
         if (showingPending()) {
             seek.value = 0f; pos.text = "0:00"; dur.text = "0:00"; return
         }
-        val d = c.duration
+        val d = Playback.duration(c)
+        val p = Playback.position(c)
         if (d > 0 && !seeking) {
-            seek.value = (c.currentPosition * 1000f / d).coerceIn(0f, 1000f)
-            pos.text = time(c.currentPosition)
+            seek.value = (p * 1000f / d).coerceIn(0f, 1000f)
+            pos.text = time(p)
         }
         dur.text = if (d > 0) time(d) else "0:00"
     }

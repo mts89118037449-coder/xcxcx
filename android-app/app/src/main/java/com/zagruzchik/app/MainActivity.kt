@@ -1100,9 +1100,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateMiniProgress() {
         val c = controller ?: return
-        val d = c.duration
+        val d = Playback.duration(c)
         val p = findViewById<LinearProgressIndicator>(R.id.miniProgress)
-        if (d > 0) p.setProgressCompat((c.currentPosition * 1000 / d).toInt(), false) else p.progress = 0
+        if (d > 0) p.setProgressCompat((Playback.position(c) * 1000 / d).toInt(), false) else p.progress = 0
     }
 
     private fun open(job: Job) {

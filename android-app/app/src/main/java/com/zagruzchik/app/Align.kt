@@ -29,13 +29,22 @@ object Align {
     private const val FPS = SR.toDouble() / HOP
 
     /** Где во всей песне (мс) окажется момент [previewMs] фрагмента. */
-    class Result(private val partStartsSec: List<Double>, private val partLenSec: Double) {
-        fun shifted(by: Double) = Result(partStartsSec.map { it + by }, partLenSec)
+    class Result(
+        private val partStartsSec: List<Double>, private val partLenSec: Double,
+        /** Точное (по форме волны) смещение у места стыковки [joinSec] — для бесшовного перехода. */
+        private val joinSec: Double? = null, private val joinOffsetSec: Double? = null,
+    ) {
+        fun shifted(by: Double) = Result(partStartsSec.map { it + by }, partLenSec, joinSec, joinOffsetSec?.plus(by))
+
+        fun withJoin(at: Double, offset: Double) = Result(partStartsSec, partLenSec, at, offset)
+
+        /** Грубое смещение части фрагмента, где находится [atSec]. */
+        fun offsetAt(atSec: Double): Double = partStartsSec[(atSec / partLenSec).toInt().coerceIn(0, partStartsSec.lastIndex)]
 
         fun fullPositionMs(previewMs: Long): Long {
             val p = previewMs / 1000.0
-            val k = (p / partLenSec).toInt().coerceIn(0, partStartsSec.lastIndex)
-            return ((partStartsSec[k] + p) * 1000).toLong()
+            if (joinSec != null && joinOffsetSec != null && kotlin.math.abs(p - joinSec) < 2.0) return ((joinOffsetSec + p) * 1000).toLong()
+            return ((offsetAt(p) + p) * 1000).toLong()
         }
     }
 
@@ -46,13 +55,18 @@ object Align {
      * фрагменты почти всегда из первых двух минут, поэтому обычно хватает первого окна,
      * и не нужно скачивать всю песню. Окна перекрываются, чтобы фрагмент не разрезало.
      */
-    fun findInStream(ctx: Context, preview: ShortArray, url: String, durationSec: Int): Result? {
+    fun findInStream(ctx: Context, preview: ShortArray, url: String, durationSec: Int, joinSec: Double? = null): Result? {
         val end = if (durationSec in 40..900) durationSec else 400
         var start = 0
         while (start < end) {
             val len = minOf(110, end - start)
             val chunk = pcm(ctx, url, len, start) ?: return null
-            find(preview, chunk)?.let { return it.shifted(start.toDouble()) }
+            find(preview, chunk)?.let { r ->
+                // Уточняем смещение у места стыковки до долей миллисекунды — иначе на стыке слышна «запинка».
+                val fine = joinSec?.let { refine(preview, chunk, r.offsetAt(it), it) }
+                val local = if (fine != null && joinSec != null) r.withJoin(joinSec, fine) else r
+                return local.shifted(start.toDouble())
+            }
             if (start + len >= end) break
             start += len - 35 // перекрытие больше длины фрагмента
         }
@@ -105,6 +119,33 @@ object Align {
         val consensus = agreeing.map { it.first }.average()
         val perPart = starts.map { if (kotlin.math.abs(it.first - consensus) < 0.4) it.first else consensus }
         return Result(perPart, partLen / FPS)
+    }
+
+    /**
+     * Точное смещение по форме волны: последние 1,5 с фрагмента до [atSec] ищем в полной версии
+     * в пределах ±150 мс от грубой оценки [coarseSec]. null — не уверены (оставляем грубую).
+     */
+    internal fun refine(preview: ShortArray, full: ShortArray, coarseSec: Double, atSec: Double): Double? {
+        val len = (1.5 * SR).toInt()
+        val from = ((atSec - 1.5) * SR).toInt()
+        if (from < 0 || from + len > preview.size) return null
+        val a = DoubleArray(len) { preview[from + it].toDouble() }
+        val am = a.average(); var an = 0.0
+        for (i in a.indices) { a[i] -= am; an += a[i] * a[i] }
+        if (an <= 0) return null
+        val center = ((coarseSec + atSec - 1.5) * SR).toInt()
+        val win = (0.15 * SR).toInt()
+        var best = -1.0; var bestLag = 0
+        for (lag in maxOf(0, center - win)..minOf(full.size - len, center + win)) {
+            var dot = 0.0; var s = 0.0; var s2 = 0.0
+            for (i in 0 until len) { val y = full[lag + i].toDouble(); dot += a[i] * y; s += y; s2 += y * y }
+            val bn = s2 - s * s / len
+            if (bn <= 0) continue
+            val c = dot / kotlin.math.sqrt(an * bn)
+            if (c > best) { best = c; bestLag = lag }
+        }
+        if (best < 0.2) return null
+        return bestLag.toDouble() / SR - (atSec - 1.5)
     }
 
     private fun bestLag(seg: Array<FloatArray>, b: Array<FloatArray>): Pair<Int, Double> {
