@@ -92,21 +92,28 @@ object Streams {
             "YouTube Music" to "https://music.youtube.com/search?q=" + Http.enc(t.query) + "#songs",
             "YouTube" to "ytsearch6:${t.query}",
         )
-        // Все площадки ищем одновременно (раньше — по очереди, это и съедало время),
-        // а выбираем по старшинству: SoundCloud → YouTube Music → YouTube → остальные.
-        val searches = sources.map { (name, query) ->
-            name to searchPool.submit<List<Downloader.Candidate>> {
-                runCatching { Match.ranked(t, Downloader.searchCandidates(query, name)) { Triple(it.title, it.author, it.duration) } }.getOrDefault(emptyList())
+        // Каждая площадка сразу и ищет, и берёт ссылку на звук — все одновременно.
+        // Берём по старшинству (SoundCloud → YouTube Music → YouTube), но не ждём старшую дольше 4 с,
+        // если младшая уже готова: полная версия включается за 1–2 секунды.
+        val extra = searchPool.submit<List<WebResult>> { runCatching { WebSearch.extraCandidates(t) }.getOrDefault(emptyList()) }
+        val jobs = sources.map { (name, query) ->
+            searchPool.submit<StreamInfo?> {
+                val candidates = runCatching { Match.ranked(t, Downloader.searchCandidates(query, name)) { Triple(it.title, it.author, it.duration) } }
+                    .getOrDefault(emptyList())
+                // Платные треки (DRM) не играют — пробуем следующий вариант.
+                candidates.take(3).firstNotNullOfOrNull { c -> Downloader.streamOf(c.url, name, c.title) }
             }
         }
-        val extra = searchPool.submit<List<WebResult>> { runCatching { WebSearch.extraCandidates(t) }.getOrDefault(emptyList()) }
-        for ((name, f) in searches) {
-            val candidates = runCatching { f.get() }.getOrDefault(emptyList())
-            // Платные треки (DRM) не играют — пробуем следующий вариант.
-            for (c in candidates.take(3)) {
-                val s = Downloader.streamOf(c.url, name, c.title) ?: continue
-                return s
+        val started = System.currentTimeMillis()
+        while (true) {
+            for ((i, f) in jobs.withIndex()) {
+                if (!f.isDone) continue
+                val s = runCatching { f.get() }.getOrNull() ?: continue
+                val seniorsDone = jobs.take(i).all { it.isDone }
+                if (seniorsDone || System.currentTimeMillis() - started > 4000) return s
             }
+            if (jobs.all { it.isDone }) break
+            Thread.sleep(40)
         }
         // Нет на SoundCloud/YouTube (удалили) — другие площадки: Яндекс, Rutube, Internet Archive…
         for (w in runCatching { extra.get() }.getOrDefault(emptyList()).take(4)) {

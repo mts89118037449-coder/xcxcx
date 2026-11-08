@@ -224,7 +224,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="В YouTube, TikTok, VK, Spotify, Яндекс Музыке и других приложениях нажмите «Поделиться» → «Загрузчик»."
+                    android:text="В YouTube, TikTok, VK, Spotify, Яндекс Музыке и других приложениях нажмите «Поделиться» → «SoundAura»."
                     android:textAppearance="?attr/textAppearanceBodyMedium"
                     android:textColor="?attr/colorOnSurfaceVariant" />
             </LinearLayout>

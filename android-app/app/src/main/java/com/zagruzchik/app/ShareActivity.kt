@@ -13,7 +13,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 
-/** «Поделиться → Загрузчик»: снизу выезжает панель с выбором формата. */
+/** «Поделиться → SoundAura»: снизу выезжает панель с выбором формата. */
 class ShareActivity : AppCompatActivity() {
 
     private val handler = Handler(Looper.getMainLooper())

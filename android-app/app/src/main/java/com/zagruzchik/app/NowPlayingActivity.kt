@@ -117,6 +117,11 @@ class NowPlayingActivity : AppCompatActivity() {
             currentTrack()?.let { TransferActivity.openTrack(this, it, extras()?.getString(Playback.X_SOURCE_URL)) }
         }
         download.setOnClickListener { downloadCurrent() }
+        findViewById<View>(R.id.npLyrics).setOnClickListener {
+            val t = currentTrack() ?: return@setOnClickListener
+            val d = controller?.duration?.takeIf { it > 0 }?.let { (it / 1000).toInt() } ?: 0
+            LyricsSheet.show(this, t.copy(durationSec = d), position = { controller?.currentPosition ?: 0L }, seek = { controller?.seekTo(it) })
+        }
         // Исполнитель — ссылкой на его страницу: популярное, альбомы, радио.
         artist.setOnClickListener {
             val name = currentTrack()?.artist?.takeIf { it.isNotBlank() && it != "Скачано" } ?: return@setOnClickListener

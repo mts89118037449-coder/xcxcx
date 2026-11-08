@@ -286,6 +286,25 @@
                 app:icon="@drawable/ic_download" />
 
             <com.google.android.material.button.MaterialButton
+                android:id="@+id/npLyrics"
+                android:textSize="13sp"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                app:iconPadding="2dp"
+                app:iconGravity="top"
+                app:iconSize="22dp"
+                android:maxLines="1"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="0dp"
+                android:layout_height="68dp"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="Текст"
+                app:icon="@drawable/ic_lyrics" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/npWhere"
                 android:textSize="13sp"
                 android:paddingStart="4dp"

@@ -16,7 +16,7 @@
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            app:title="Загрузчик"
+            app:title="SoundAura"
             app:titleTextAppearance="?attr/textAppearanceTitleLarge" />
 
         <FrameLayout
@@ -32,6 +32,11 @@
             <include
                 android:id="@+id/pageMusic"
                 layout="@layout/page_music"
+                android:visibility="gone" />
+
+            <include
+                android:id="@+id/pageLibrary"
+                layout="@layout/page_library"
                 android:visibility="gone" />
 
             <include

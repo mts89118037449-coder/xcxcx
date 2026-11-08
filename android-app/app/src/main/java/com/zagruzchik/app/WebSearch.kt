@@ -26,7 +26,7 @@ data class WebResult(
 
 object WebSearch {
     private val pool = Executors.newFixedThreadPool(6)
-    private const val APP = "Zagruzchik"
+    private const val APP = "SoundAura"
 
     /** Источник: название и функция поиска. */
     private class Source(val name: String, val search: (String) -> List<WebResult>)

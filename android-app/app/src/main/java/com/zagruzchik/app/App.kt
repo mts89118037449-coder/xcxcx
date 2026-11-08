@@ -19,6 +19,7 @@ class App : Application() {
         Jobs.init(this)
         Library.init(this)
         History.init(this)
+        Taste.init(this)
         MediaCache.init(this)
         Shortcuts.publish(this)
         // Первый запуск распаковывает Python и ffmpeg — делаем это в фоне.
@@ -78,7 +79,7 @@ class App : Application() {
 
         fun awaitReady() {
             ready.await()
-            initError?.let { throw IllegalStateException("Не удалось запустить загрузчик: ${it.message}", it) }
+            initError?.let { throw IllegalStateException("Не удалось запустить движок: ${it.message}", it) }
         }
     }
 }

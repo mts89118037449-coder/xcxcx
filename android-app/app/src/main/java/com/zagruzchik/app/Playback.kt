@@ -182,6 +182,27 @@ object Playback {
             start(app, gen, streamItem(first, ready))
             return
         }
+        // Полная версия теперь находится за 1–2 с — сначала коротко ждём её и играем с начала.
+        // Не успела — включаем официальный фрагмент, а полная подхватится с того же места.
+        val fullSoon = worker.submit<StreamInfo> { resolve(first) }
+        Pending.set(first.track, loading = true, error = null)
+        worker.execute {
+            val quick = runCatching { fullSoon.get(QUICK_MS, java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrNull()
+            main.post {
+                if (gen != queueGen) return@post
+                if (quick != null) {
+                    Pending.set(null, loading = false, error = null)
+                    start(app, gen, streamItem(first, quick))
+                    worker.execute { MediaCache.store(app, first.track, quick.pageUrl) } // в следующий раз — мгновенно
+                } else {
+                    previewThenFull(app, gen, first, fullSoon)
+                }
+            }
+        }
+    }
+
+    /** Полная версия ещё ищется: играем официальный фрагмент, потом подхватываем полную с того же места. */
+    private fun previewThenFull(app: Context, gen: Int, first: QItem, fullSoon: java.util.concurrent.Future<StreamInfo>) {
         // Мгновенно — официальный фрагмент, пока ищется полная версия.
         val preview = first.track.preview
         if (preview != null) {
@@ -195,7 +216,7 @@ object Playback {
         val previewPcm = preview?.let { url -> alignPool.submit<ShortArray?> { runCatching { Align.pcm(app, url, 31) }.getOrNull() } }
         worker.execute {
             try {
-                val stream = resolve(first)
+                val stream = try { fullSoon.get() } catch (e: java.util.concurrent.ExecutionException) { throw e.cause ?: e }
                 val full = streamItem(first, stream)
                 MediaCache.store(app, first.track, stream.pageUrl) // в следующий раз — мгновенно
                 val align = previewPcm?.let { f ->
@@ -227,6 +248,9 @@ object Playback {
             }
         }
     }
+
+    /** Сколько ждать полную версию, прежде чем включить фрагмент. */
+    private const val QUICK_MS = 2500L
 
     private val alignPool = java.util.concurrent.Executors.newSingleThreadExecutor()
 
@@ -269,16 +293,36 @@ object Playback {
         hooked = c
         c.addListener(object : androidx.media3.common.Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                learn(reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_SEEK)
+                current = mediaItem?.takeIf { it.mediaMetadata.extras?.getBoolean(X_PREVIEW) != true }
+                    ?.mediaMetadata?.let { m -> m.title?.toString()?.let { Track(it, m.artist?.toString().orEmpty()) } }
+                currentSince = System.currentTimeMillis()
                 mediaItem?.let { remember(it) }
                 fill(app, queueGen)
             }
             // Фрагмент закончился, а полная версия ещё не готова — не тишина, а «подхватываю».
             override fun onPlaybackStateChanged(state: Int) {
+                if (state == androidx.media3.common.Player.STATE_ENDED) { learn(skipped = false); current = null }
                 if (state == androidx.media3.common.Player.STATE_ENDED &&
                     c.currentMediaItem?.mediaMetadata?.extras?.getBoolean(X_PREVIEW) == true && waitingFull != null
                 ) Pending.set(waitingFull, loading = true, error = null)
             }
         })
+    }
+
+    // Что играет и с какого момента — чтобы понять, дослушали песню или пролистнули.
+    private var current: Track? = null
+    private var currentSince = 0L
+
+    /** Предпочтения: дослушано (больше 30 с) — нравится, переключено раньше — нет. */
+    private fun learn(skipped: Boolean) {
+        val t = current?.takeIf { it.title.isNotBlank() && !it.artist.equals("Скачано") } ?: return
+        val listened = System.currentTimeMillis() - currentSince
+        when {
+            skipped && listened < 30_000 -> Taste.skipped(t)
+            listened >= 30_000 -> Taste.played(t)
+        }
+        current = null
     }
 
     /** Записать в историю то, что начало играть (фрагменты — нет). */

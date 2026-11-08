@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@+id/nav_download" android:icon="@drawable/ic_download" android:title="Скачать" />
-    <item android:id="@+id/nav_music" android:icon="@drawable/ic_library_music" android:title="Музыка" />
+    <item android:id="@+id/nav_music" android:icon="@drawable/ic_headphones" android:title="Музыка" />
+    <item android:id="@+id/nav_library" android:icon="@drawable/ic_library_music" android:title="Медиатека" />
     <item android:id="@+id/nav_jobs" android:icon="@drawable/ic_folder_open" android:title="Загрузки" />
     <item android:id="@+id/nav_settings" android:icon="@drawable/ic_settings" android:title="Настройки" />
 </menu>

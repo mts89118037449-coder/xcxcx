@@ -7,7 +7,7 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 
 /**
- * Быстрые кнопки «Загрузчик: скачать» и «Загрузчик: где послушать» в верхнем ряду меню «Поделиться».
+ * Быстрые кнопки «SoundAura: скачать» и «SoundAura: где послушать» в верхнем ряду меню «Поделиться».
  * Android сам решает, показывать ли их там (чаще — если приложением пользуются).
  */
 object Shortcuts {

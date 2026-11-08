@@ -133,7 +133,9 @@ object Catalog {
         val a = artistByName(seed.artist) ?: return emptyList()
         val played = exclude.map { Match.base(it.title) + "|" + Match.norm(it.artist) }.toHashSet()
         val list = deezerTracks("$DZ/artist/${a.id}/radio?limit=40")
-        return list.filter { played.add(Match.base(it.title) + "|" + Match.norm(it.artist)) }.take(15)
+        // Пропускаемое не предлагаем; исполнители, которых слушаете чаще, — ближе к началу.
+        val fresh = list.filter { played.add(Match.base(it.title) + "|" + Match.norm(it.artist)) && !Taste.disliked(it) }.take(15)
+        return Taste.smart(fresh) { it }
     }
 
     // ---------------- Разбор ----------------

@@ -61,7 +61,7 @@ class Job(
     /** Сервис, откуда скачано: «YouTube», «Spotify», «TikTok»… */
     val site: String get() = Describe.site(url)
 
-    /** Альбом/плейлист: в «Загрузки/Загрузчик/<альбом>». Название без счётчика «(18)». */
+    /** Альбом/плейлист: в «Загрузки/SoundAura/<альбом>». Название без счётчика «(18)». */
     val album: String? get() = if (files.size > 1) title.replace(Regex("""\s*\(\d+\)$"""), "") else null
 }
 

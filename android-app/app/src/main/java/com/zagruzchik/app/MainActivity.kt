@@ -108,6 +108,7 @@ class MainActivity : AppCompatActivity() {
         pages = mapOf(
             R.id.nav_download to findViewById(R.id.pageDownload),
             R.id.nav_music to findViewById(R.id.pageMusic),
+            R.id.nav_library to findViewById(R.id.pageLibrary),
             R.id.nav_jobs to findViewById(R.id.pageJobs),
             R.id.nav_settings to findViewById(R.id.pageSettings),
         )
@@ -188,9 +189,10 @@ class MainActivity : AppCompatActivity() {
         pages.forEach { (k, v) -> v.isVisible = k == id }
         toolbar.title = when (id) {
             R.id.nav_music -> "Музыка"
+            R.id.nav_library -> "Медиатека"
             R.id.nav_jobs -> "Загрузки"
             R.id.nav_settings -> "Настройки"
-            else -> "Загрузчик"
+            else -> "SoundAura"
         }
         toolbar.menu.clear()
         if (id == R.id.nav_jobs) toolbar.inflateMenu(R.menu.jobs)
@@ -299,7 +301,6 @@ class MainActivity : AppCompatActivity() {
         musicSearch.doAfterTextChanged {
             val q = it?.toString()?.trim().orEmpty()
             findViewById<View>(R.id.musicResults).isVisible = q.length >= 2
-            findViewById<View>(R.id.librarySection).isVisible = q.length < 2
             findViewById<View>(R.id.homeSection).isVisible = q.length < 2
             musicSearch.removeCallbacks(musicSearchRun)
             if (q.length >= 2) {
@@ -312,8 +313,18 @@ class MainActivity : AppCompatActivity() {
             libraryMode = when (ids.firstOrNull()) { R.id.libDownloaded -> 1; R.id.libVideo -> 2; R.id.libHistory -> 3; else -> 0 }
             refreshLibrary()
         }
-        findViewById<View>(R.id.libPlayAll).setOnClickListener { playLibrary(shuffle = false) }
-        findViewById<View>(R.id.libShuffle).setOnClickListener { playLibrary(shuffle = true) }
+        findViewById<View>(R.id.libPlayAll).setOnClickListener { playLibrary() }
+        val modeGroup = findViewById<MaterialButtonToggleGroup>(R.id.libMode)
+        modeGroup.check(when (Settings.playMode(this)) {
+            Settings.PlayMode.ORDER -> R.id.modeOrder
+            Settings.PlayMode.RANDOM -> R.id.modeRandom
+            Settings.PlayMode.SMART -> R.id.modeSmart
+        })
+        modeGroup.addOnButtonCheckedListener { _, id, checked ->
+            if (!checked) return@addOnButtonCheckedListener
+            Settings.setPlayMode(this, when (id) { R.id.modeOrder -> Settings.PlayMode.ORDER; R.id.modeRandom -> Settings.PlayMode.RANDOM; else -> Settings.PlayMode.SMART })
+            refreshLibrary()
+        }
         loadHome()
     }
 
@@ -490,7 +501,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Музыкальные элементы раздела (для «Слушать всё»): любимое, вся музыка, история песен. */
-    private fun libraryItems(): List<Playback.QItem> = when (libraryMode) {
+    /** Список раздела: в «умном» режиме любимое и часто слушаемое — сверху (кроме истории — она по времени). */
+    private fun libraryItems(): List<Playback.QItem> = rawLibraryItems().let { items ->
+        if (libraryMode != 3 && Settings.playMode(this) == Settings.PlayMode.SMART) Taste.smartStable(items) { it.track } else items
+    }
+
+    /** Очередь от песни [i]: по порядку — дальше по списку, случайно — остальные вперемешку. */
+    private fun queueFrom(items: List<Playback.QItem>, i: Int): Pair<List<Playback.QItem>, Int> =
+        if (Settings.playMode(this) == Settings.PlayMode.RANDOM) (listOf(items[i]) + (items - items[i]).shuffled()) to 0 else items to i
+
+    private fun rawLibraryItems(): List<Playback.QItem> = when (libraryMode) {
         1 -> Library.downloaded().map { (t, f) -> Playback.QItem(t, f) }
         2 -> emptyList()
         3 -> History.all.filter { it.kind == Kind.MUSIC }.map { e -> Playback.QItem(e.track, e.local ?: Library.localFor(e.track), e.sourceUrl, e.pageUrl) }
@@ -512,6 +532,7 @@ class MainActivity : AppCompatActivity() {
         list.removeAllViews()
         val items = libraryItems()
         findViewById<View>(R.id.libButtons).isVisible = items.isNotEmpty()
+        findViewById<TextView>(R.id.libModeHint).text = Settings.playMode(this).hint
         when (libraryMode) {
             2 -> videos.forEach { j ->
                 list.addView(trackRow(list, Track(j.title, j.site, cover = j.coverUrl), video = true, status = "на телефоне",
@@ -532,7 +553,7 @@ class MainActivity : AppCompatActivity() {
             }
             else -> items.forEachIndexed { i, q ->
                 list.addView(trackRow(list, q.track, local = q.local, status = statusOf(q.track, q.local),
-                    onPlay = { Playback.playQueue(this, items, i) }))
+                    onPlay = { val (q, at) = queueFrom(items, i); Playback.playQueue(this, q, at) }))
             }
         }
         val empty = findViewById<TextView>(R.id.libEmpty)
@@ -555,8 +576,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun playLibrary(shuffle: Boolean) {
-        val items = libraryItems().let { if (shuffle) it.shuffled() else it }
+    private fun playLibrary() {
+        val items = libraryItems().let { if (Settings.playMode(this) == Settings.PlayMode.RANDOM) it.shuffled() else it }
         Playback.playQueue(this, items, 0)
     }
 
@@ -1070,7 +1091,7 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<TextView>(R.id.folderText).text = "Загрузки / ${Storage.FOLDER}\nАльбомы — в отдельных папках"
         val info = packageManager.getPackageInfo(packageName, 0)
-        findViewById<TextView>(R.id.versionText).text = "Загрузчик ${info.versionName}"
+        findViewById<TextView>(R.id.versionText).text = "SoundAura ${info.versionName}"
         val engine = findViewById<TextView>(R.id.engineText)
         engine.text = "Движок yt-dlp: ${engineVersion()}. Обновляется сам раз в неделю."
         findViewById<MaterialButton>(R.id.checkSources).setOnClickListener { runDiagnostics() }

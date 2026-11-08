@@ -34,7 +34,7 @@
     <application
         android:name=".App"
         android:icon="@mipmap/ic_launcher"
-        android:label="Загрузчик"
+        android:label="SoundAura"
         android:extractNativeLibs="true"
         android:theme="@style/AppTheme">
 
@@ -51,14 +51,14 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
-        <!-- «Поделиться → Загрузчик» из любого приложения -->
+        <!-- «Поделиться → SoundAura» из любого приложения -->
         <activity
             android:name=".ShareActivity"
             android:exported="true"
             android:excludeFromRecents="true"
             android:taskAffinity=""
             android:theme="@style/ShareTheme">
-            <intent-filter android:label="Загрузчик">
+            <intent-filter android:label="SoundAura">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />

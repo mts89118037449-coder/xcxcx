@@ -14,6 +14,13 @@ object Settings {
         SOUNDCLOUD("Сначала SoundCloud", "Потом YouTube Music и YouTube"),
     }
 
+    /** Как играть медиатеку. */
+    enum class PlayMode(val hint: String) {
+        ORDER("Подряд, как в списке"),
+        RANDOM("Вперемешку"),
+        SMART("По вашему вкусу: любимое, часто слушаемое и любимые исполнители — выше, пропускаемое — ниже"),
+    }
+
     enum class Theme(val label: String, val mode: Int) {
         DARK("Тёмная", androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES),
         LIGHT("Светлая", androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO),
@@ -29,6 +36,9 @@ object Settings {
         prefs(ctx).edit().putString("theme", t.name).apply()
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(t.mode) // экраны перерисуются сами
     }
+
+    fun playMode(ctx: Context) = runCatching { PlayMode.valueOf(prefs(ctx).getString("playMode", null)!!) }.getOrDefault(PlayMode.SMART)
+    fun setPlayMode(ctx: Context, m: PlayMode) = prefs(ctx).edit().putString("playMode", m.name).apply()
 
     /** Когда очередь закончилась — продолжать похожей музыкой. */
     fun radio(ctx: Context) = prefs(ctx).getBoolean("radio", true)

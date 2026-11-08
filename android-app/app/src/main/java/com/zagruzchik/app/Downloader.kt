@@ -477,9 +477,9 @@ object Downloader {
     }
 }
 
-/** Кладёт файл в общую папку «Загрузки/Загрузчик», чтобы его видели галерея, плеер и файловый менеджер. */
+/** Кладёт файл в общую папку «Загрузки/SoundAura», чтобы его видели галерея, плеер и файловый менеджер. */
 object Storage {
-    const val FOLDER = "Загрузчик"
+    const val FOLDER = "SoundAura"
 
     fun publish(ctx: Context, file: File, subfolder: String? = null): Pair<Uri, String> {
         val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
