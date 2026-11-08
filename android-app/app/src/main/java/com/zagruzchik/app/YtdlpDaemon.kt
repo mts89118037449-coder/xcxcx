@@ -118,7 +118,8 @@ object YtdlpDaemon {
         val f = CompletableFuture<JSONObject>()
         pr.pending[id] = f
         try {
-            val line = JSONObject().put("id", id).put("op", op).put("url", url).put("opts", opts).toString()
+            val line = JSONObject().put("id", id).put("op", op).put("url", url).put("opts", opts)
+                .put("bg", Ytdlp.isBackground).toString()
             synchronized(pr) { pr.stdin.write(line); pr.stdin.newLine(); pr.stdin.flush() }
         } catch (e: Exception) {
             pr.pending.remove(id)

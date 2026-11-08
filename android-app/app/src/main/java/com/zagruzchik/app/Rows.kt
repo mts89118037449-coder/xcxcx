@@ -47,6 +47,17 @@ object Rows {
             else Playback.playQueue(act, listOf(Playback.QItem(t, local ?: Library.localFor(t), t.url, pageUrl, directUrl, directSource)), 0)
         }
         row.setOnClickListener(play)
+        // Палец коснулся — уже ищем полную версию (до отпускания проходит 100–300 мс).
+        if (!video && local == null && directUrl == null) {
+            val touch = View.OnTouchListener { _, e ->
+                if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN && Library.localFor(t) == null && !MediaCache.has(t)) {
+                    if (pageUrl != null) Streams.prefetchPage(pageUrl, Describe.site(pageUrl), t.title) else Streams.touch(t)
+                }
+                false
+            }
+            row.setOnTouchListener(touch)
+            row.findViewById<View>(R.id.srPlay).setOnTouchListener(touch)
+        }
         row.findViewById<View>(R.id.srPlay).setOnClickListener(play)
         if (!video && t.artist.isNotBlank()) row.setOnLongClickListener { openArtist(act, t.artist); true }
         val like = row.findViewById<MaterialButton>(R.id.srLike)

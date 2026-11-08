@@ -48,13 +48,16 @@ def handle(req):
         out({"id": rid, "ok": False, "error": str(e)[:600]})
 
 out({"ready": True, "version": yt_dlp.version.__version__})
+# Нажатое человеком — в своём пуле, подготовка заранее («bg») — в отдельном, чтобы не стоять в очереди за ней.
 pool = ThreadPoolExecutor(6)
+bg_pool = ThreadPoolExecutor(4)
 while True:
     line = sys.stdin.readline()
     if not line: break
     line = line.strip()
     if not line: continue
     try:
-        pool.submit(handle, json.loads(line))
+        req = json.loads(line)
+        (bg_pool if req.get("bg") else pool).submit(handle, req)
     except Exception as e:
         out({"ok": False, "error": str(e)})

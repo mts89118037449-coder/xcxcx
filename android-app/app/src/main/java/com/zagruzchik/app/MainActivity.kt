@@ -195,6 +195,9 @@ class MainActivity : AppCompatActivity() {
             else -> "SoundAura"
         }
         toolbar.menu.clear()
+        // Медиатека: первые песни, которых нет на телефоне и в памяти, готовим заранее.
+        if (id == R.id.nav_library && ::musicSearch.isInitialized) Streams.prefetchMany(
+            libraryItems().filter { it.local == null && it.pageUrl == null && !MediaCache.has(it.track) }.map { it.track }, 4)
         if (id == R.id.nav_jobs) toolbar.inflateMenu(R.menu.jobs)
         refreshSummary()
     }
@@ -284,7 +287,7 @@ class MainActivity : AppCompatActivity() {
         empty.text = "Ничего не нашлось по «$q». Попробуйте иначе или вставьте ссылку."
         searchResults.removeAllViews()
         // Первые три — начинаем готовить заранее, чтобы ▶ срабатывал быстро.
-        found.take(1).forEach { Streams.prefetch(it) }
+        Streams.prefetchMany(found, 3)
         found.forEach { t -> searchResults.addView(trackRow(searchResults, t)) }
     }
 
@@ -363,7 +366,7 @@ class MainActivity : AppCompatActivity() {
                         text = "Весь чарт · ${c.size}"
                         setOnClickListener { show(c.size); isVisible = false }
                     })
-                    Streams.prefetch(c.first())
+                    Streams.prefetchMany(c, 6) // первые песни чарта включатся сразу с начала
                 }
                 if (al.isNotEmpty()) {
                     home.addView(sectionHeader("Популярные альбомы"))
@@ -445,7 +448,7 @@ class MainActivity : AppCompatActivity() {
                 findViewById<View>(R.id.catalogEmpty).isVisible = found.isEmpty()
                 catalog.removeAllViews()
                 found.forEach { catalog.addView(trackRow(catalog, it)) }
-                found.take(1).forEach { Streams.prefetch(it) } // к нажатию ▶ уже готово
+                Streams.prefetchMany(found, 4) // к нажатию ▶ полная версия уже готова
             }
         }
         // Везде в интернете: 9 площадок разом, результаты появляются по мере ответа.

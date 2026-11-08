@@ -130,7 +130,7 @@ object Playback {
 
     /** Поток для песни: с конкретной страницы (результат SoundCloud/YouTube) или поиском по названию. */
     private fun resolve(q: QItem): StreamInfo = q.directUrl?.let { StreamInfo(it, it, q.directSource ?: "интернета", q.track.cover, q.track.title) } ?: q.pageUrl?.let { page ->
-        Downloader.streamOf(page, Describe.site(page), q.track.title) ?: throw UserError("Этот трек не играет: платный, удалён или недоступен в стране.")
+        Streams.page(page, Describe.site(page), q.track.title) ?: throw UserError("Этот трек не играет: платный, удалён или недоступен в стране.")
     } ?: Streams.resolve(q.track)
 
     private val queueWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -175,15 +175,15 @@ object Playback {
         val ready = when {
             first.directUrl != null -> resolve(first)
             first.pageUrl == null -> Streams.cachedFor(first.track)
-            else -> null
+            else -> Streams.pageIfReady(first.pageUrl)
         }
         if (ready != null) {
             Pending.set(null, loading = false, error = null)
             start(app, gen, streamItem(first, ready))
             return
         }
-        // Полная версия теперь находится за 1–2 с — сначала коротко ждём её и играем с начала.
-        // Не успела — включаем официальный фрагмент, а полная подхватится с того же места.
+        // Полная версия обычно готова заранее или находится за 1–3 с — ждём её и играем с начала.
+        // Фрагмент (с середины песни) — только если площадки долго не отвечают.
         val fullSoon = worker.submit<StreamInfo> { resolve(first) }
         Pending.set(first.track, loading = true, error = null)
         worker.execute {
@@ -250,7 +250,7 @@ object Playback {
     }
 
     /** Сколько ждать полную версию, прежде чем включить фрагмент. */
-    private const val QUICK_MS = 2500L
+    private const val QUICK_MS = 6000L
 
     private val alignPool = java.util.concurrent.Executors.newSingleThreadExecutor()
 
@@ -366,7 +366,7 @@ object Playback {
         queueWorker.execute {
             val item = q.local?.let { item(it).withTrack(q.track) }
                 ?: MediaCache.fileFor(q.track)?.let { cachedItem(q, it) }
-                ?: runCatching { resolve(q).also { MediaCache.store(app, q.track, it.pageUrl) }.let { streamItem(q, it) } }.getOrNull() // не нашлась — пропускаем
+                ?: runCatching { Ytdlp.inBackground { resolve(q) }.also { MediaCache.store(app, q.track, it.pageUrl) }.let { streamItem(q, it) } }.getOrNull() // не нашлась — пропускаем
             main.post {
                 if (gen != queueGen) return@post
                 filling = false

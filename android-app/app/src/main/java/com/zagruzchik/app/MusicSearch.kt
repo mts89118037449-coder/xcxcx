@@ -56,18 +56,52 @@ object Streams {
     private const val TTL_MS = 50 * 60 * 1000L // ссылки на поток живут около часа
     private val done = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, StreamInfo>>()
     private val pending = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.Future<StreamInfo>>()
-    private val pool = java.util.concurrent.Executors.newFixedThreadPool(3)
+    // Подготовка заранее: 3 одновременно, свежие экраны — первыми (очередь «последним пришёл — первым готовим»).
+    private val pool = java.util.concurrent.ThreadPoolExecutor(3, 3, 30, java.util.concurrent.TimeUnit.SECONDS,
+        java.util.concurrent.LinkedBlockingDeque<Runnable>().let { q ->
+            object : java.util.concurrent.LinkedBlockingDeque<Runnable>() {
+                override fun offer(e: Runnable) = offerFirst(e) // LIFO
+            }
+        })
     private val searchPool = java.util.concurrent.Executors.newCachedThreadPool()
+    /** Подготовка, начатая списком (экраном): при новом экране ещё не начатые — отменяем. */
+    private val batch = java.util.Collections.synchronizedList(mutableListOf<Pair<String, java.util.concurrent.Future<StreamInfo>>>())
 
     private fun key(t: Track) = Match.base(t.title) + "|" + Match.norm(t.artist)
 
     /** Начать готовить поток заранее. */
-    fun prefetch(t: Track) {
+    fun prefetch(t: Track): java.util.concurrent.Future<StreamInfo>? {
         val k = key(t)
-        if (cached(k) != null || pending.containsKey(k)) return
-        pending[k] = pool.submit<StreamInfo> {
+        if (cached(k) != null) return null
+        pending[k]?.takeIf { !it.isCancelled }?.let { return it }
+        val f = pool.submit<StreamInfo> {
             try { Ytdlp.inBackground { find(t) }.also { done[k] = System.currentTimeMillis() to it } } finally { pending.remove(k) }
         }
+        pending[k] = f
+        return f
+    }
+
+    /** Палец коснулся песни — начинаем искать сразу, без очереди: к отпусканию часть работы уже сделана. */
+    fun touch(t: Track) {
+        val k = key(t)
+        if (cached(k) != null) return
+        pending[k]?.let { f -> if (!f.cancel(false)) return; pending.remove(k, f) }
+        pending[k] = searchPool.submit<StreamInfo> {
+            try { find(t).also { done[k] = System.currentTimeMillis() to it } } finally { pending.remove(k) }
+        }
+    }
+
+    /**
+     * Готовим первые песни экрана (чарт, альбом, результаты поиска), чтобы по нажатию
+     * полная версия включалась сразу с начала. Не начатое от прошлого экрана — отменяем.
+     */
+    fun prefetchMany(tracks: List<Track>, n: Int = 6) {
+        synchronized(batch) {
+            batch.forEach { (k, f) -> if (f.cancel(false)) pending.remove(k, f) }
+            batch.clear()
+        }
+        // В обратном порядке: очередь LIFO, так первая песня экрана готовится первой.
+        tracks.take(n).reversed().forEach { t -> prefetch(t)?.let { batch += key(t) to it } }
     }
 
     /** Готовый поток (ждёт, если он уже готовится). Вызывать не из главного потока. */
@@ -75,10 +109,30 @@ object Streams {
         val k = key(t)
         cached(k)?.let { return it }
         pending[k]?.let { f ->
-            try { return f.get() } catch (e: java.util.concurrent.ExecutionException) { throw e.cause ?: e }
+            // Ещё в очереди подготовки — не ждём её, ищем сами сразу; уже ищется — ждём (так быстрее).
+            if (f.cancel(false)) pending.remove(k, f)
+            else try { return f.get() } catch (e: java.util.concurrent.ExecutionException) { throw e.cause ?: e } catch (_: java.util.concurrent.CancellationException) {}
         }
         return find(t).also { done[k] = System.currentTimeMillis() to it }
     }
+
+    // Конкретная страница (результат «Везде в интернете», история): ссылка на звук — тоже заранее.
+    private val pages = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.Future<StreamInfo?>>()
+    private val pageTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    fun prefetchPage(pageUrl: String, source: String, title: String): java.util.concurrent.Future<StreamInfo?> {
+        val t = pageTimes[pageUrl]
+        pages[pageUrl]?.takeIf { t != null && System.currentTimeMillis() - t < TTL_MS }?.let { return it }
+        pageTimes[pageUrl] = System.currentTimeMillis()
+        val bg = Ytdlp.isBackground
+        return searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) { Downloader.streamOf(pageUrl, source, title) } }.also { pages[pageUrl] = it }
+    }
+
+    /** Ссылка уже готова (подготовили заранее) — без ожидания. */
+    fun pageIfReady(pageUrl: String): StreamInfo? = pages[pageUrl]?.takeIf { it.isDone }?.let { runCatching { it.get() }.getOrNull() }
+
+    fun page(pageUrl: String, source: String, title: String): StreamInfo? =
+        runCatching { prefetchPage(pageUrl, source, title).get() }.getOrNull().also { if (it == null) pages.remove(pageUrl) }
 
     /** Готовый поток, если уже нашли (тогда фрагмент не нужен — сразу полная версия). */
     fun cachedFor(t: Track): StreamInfo? = cached(key(t))
@@ -95,14 +149,16 @@ object Streams {
         // Каждая площадка сразу и ищет, и берёт ссылку на звук — все одновременно.
         // Берём по старшинству (SoundCloud → YouTube Music → YouTube), но не ждём старшую дольше 4 с,
         // если младшая уже готова: полная версия включается за 1–2 секунды.
-        val extra = searchPool.submit<List<WebResult>> { runCatching { WebSearch.extraCandidates(t) }.getOrDefault(emptyList()) }
+        val bg = Ytdlp.isBackground // подготовка заранее не мешает нажатому
         val jobs = sources.map { (name, query) ->
-            searchPool.submit<StreamInfo?> {
+            searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                 val candidates = runCatching { Match.ranked(t, Downloader.searchCandidates(query, name)) { Triple(it.title, it.author, it.duration) } }
                     .getOrDefault(emptyList())
-                // Платные треки (DRM) не играют — пробуем следующий вариант.
-                candidates.take(3).firstNotNullOfOrNull { c -> Downloader.streamOf(c.url, name, c.title) }
-            }
+                // Ссылки для двух лучших берём одновременно (лучший может оказаться платным — DRM), третий — если оба не играют.
+                val top = candidates.take(2).map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) { Downloader.streamOf(c.url, name, c.title) } } }
+                top.firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
+                    ?: candidates.getOrNull(2)?.let { c -> Downloader.streamOf(c.url, name, c.title) }
+            } }
         }
         val started = System.currentTimeMillis()
         while (true) {
@@ -116,7 +172,8 @@ object Streams {
             Thread.sleep(40)
         }
         // Нет на SoundCloud/YouTube (удалили) — другие площадки: Яндекс, Rutube, Internet Archive…
-        for (w in runCatching { extra.get() }.getOrDefault(emptyList()).take(4)) {
+        // (их опрашиваем только теперь — не нагружаем сеть, когда песня и так нашлась).
+        for (w in runCatching { WebSearch.extraCandidates(t) }.getOrDefault(emptyList()).take(4)) {
             val s = if (w.direct) StreamInfo(w.url, w.url, w.source, w.cover, w.title)
             else Downloader.streamOf(w.url, w.source, w.title)
             if (s != null) return s

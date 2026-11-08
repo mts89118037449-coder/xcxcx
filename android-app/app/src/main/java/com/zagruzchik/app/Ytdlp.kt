@@ -30,6 +30,11 @@ object Ytdlp {
         try { return block() } finally { background.set(was) }
     }
 
+    /** Идёт ли сейчас фоновая работа (передаём в другие нити и в постоянный yt-dlp — он даёт нажатому приоритет). */
+    val isBackground: Boolean get() = background.get() == true
+
+    fun <T> withBackground(bg: Boolean, block: () -> T): T = if (bg) inBackground(block) else block()
+
     /** Монопольно (замена движка): ждём, пока все запуски закончатся, но не дольше [maxSec]. */
     fun exclusive(maxSec: Long, block: () -> Unit) {
         val got = gate.tryAcquire(SLOTS, maxSec, TimeUnit.SECONDS)

@@ -62,7 +62,7 @@ class CollectionActivity : AppCompatActivity() {
                 Images.into(findViewById(R.id.colImage), full.cover, R.drawable.ic_library_music)
                 tracks = list
                 showTracks(list, numbered = true)
-                list.firstOrNull()?.let { Streams.prefetch(it) }
+                Streams.prefetchMany(list, 6)
             }
         }
     }
@@ -91,7 +91,7 @@ class CollectionActivity : AppCompatActivity() {
                 if (p.top.isNotEmpty()) {
                     section("Популярное")
                     showTracks(p.top, numbered = true)
-                    Streams.prefetch(p.top.first())
+                    Streams.prefetchMany(p.top, 6)
                 }
                 if (p.albums.isNotEmpty()) {
                     section("Альбомы и синглы")
