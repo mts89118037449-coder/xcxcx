@@ -28,7 +28,7 @@ class ArtistPage(val artist: Artist, val top: List<Track>, val albums: List<Albu
  */
 object Catalog {
     private const val DZ = "https://api.deezer.com"
-    private val pool = Executors.newFixedThreadPool(6)
+    private val pool = Executors.newFixedThreadPool(10)
 
     private class Cached<T>(val time: Long, val value: T)
     private val cache = java.util.concurrent.ConcurrentHashMap<String, Cached<Any>>()
@@ -42,21 +42,26 @@ object Catalog {
 
     // ---------------- Главная ----------------
 
-    /** Как называется чарт: России (Apple) или мировой (Deezer, если Apple не ответил). */
-    @Volatile var chartTitle = "Чарт России"; private set
-
-    /** Топ песен России (Apple), дополненный данными Deezer: превью для мгновенного старта, длительность, explicit. */
-    fun chart(): List<Track> = cached("chart", 30) {
+    /**
+     * Чарт России: Apple Music (Россия), а если не ответил — Яндекс Музыка (работает из России без VPN).
+     * Песни дополняются данными Deezer: фрагмент для мгновенного старта, длительность, explicit.
+     */
+    fun chartRu(): List<Track> = cached("chartRu", 30) {
         val apple = runCatching { appleFeed("songs") }.getOrDefault(emptyList()).map { o ->
             Track(o.optString("name"), o.optString("artistName"), cover = bigApple(o.optString("artworkUrl100")),
                 url = o.optString("url").ifEmpty { null }, explicit = o.optString("contentAdvisoryRating").startsWith("Expl"))
         }
-        if (apple.isEmpty()) {
-            chartTitle = "Мировой чарт"
-            return@cached deezerTracks("$DZ/chart/0/tracks?limit=50")
-        }
-        chartTitle = "Чарт России"
-        parallel(apple) { t -> runCatching { enrich(t) }.getOrDefault(t) }
+        val list = apple.ifEmpty { runCatching { yandexChart() }.getOrDefault(emptyList()) }
+        parallel(list) { t -> runCatching { if (t.preview == null) enrich(t) else t }.getOrDefault(t) }
+    }
+
+    /** Мировой чарт (Deezer). */
+    fun chartWorld(): List<Track> = cached("chartWorld", 30) { deezerTracks("$DZ/chart/0/tracks?limit=50") }
+
+    private fun yandexChart(): List<Track> {
+        val tracks = Http.cachedJson("https://api.music.yandex.net/landing3/chart/russia", 7000)
+            .optJSONObject("result")?.optJSONObject("chart")?.optJSONArray("tracks") ?: return emptyList()
+        return (0 until minOf(tracks.length(), 50)).mapNotNull { i -> tracks.optJSONObject(i)?.optJSONObject("track")?.let { YandexSource.track(it) } }
     }
 
     /**
@@ -64,17 +69,26 @@ object Catalog {
      * и быстро на другой — спрашиваем оба сразу и берём что успело (лучше 50, чем 25).
      */
     private fun appleFeed(kind: String): List<JSONObject> {
+        // Сервер Apple отвечает через раз (502, или молчит полминуты), причём на разные размеры по-разному.
+        // Просим 100/50/25/10 сразу, каждый — до двух попыток по 6 с, и берём самый полный из ответивших.
+        // Не ответил никто — Http.cachedJson отдаст последний сохранённый на телефоне.
         fun load(n: Int) = submit {
-            // Apple иногда отвечает по полминуты — ждём не больше 7 с, иначе берём сохранённое/запасное.
-            val r = Http.cachedJson("https://rss.marketingtools.apple.com/api/v2/ru/music/most-played/$n/$kind.json", 7000)
-                .getJSONObject("feed").getJSONArray("results")
+            val url = "https://rss.marketingtools.apple.com/api/v2/ru/music/most-played/$n/$kind.json"
+            val o = runCatching { Http.cachedJson(url, 6000) }.recoverCatching { Thread.sleep(500); Http.cachedJson(url, 6000) }.getOrThrow()
+            val r = o.getJSONObject("feed").getJSONArray("results")
             (0 until r.length()).map { r.getJSONObject(it) }
         }
-        val big = load(50)
-        val small = load(25)
-        val fast = runCatching { small.get() }.getOrDefault(emptyList())
-        val full = runCatching { big.get(if (fast.isEmpty()) 8 else 3, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(emptyList())
-        return full.ifEmpty { fast }
+        val jobs = listOf(100, 50, 25, 10).map { load(it) }
+        val started = System.currentTimeMillis()
+        fun result(f: java.util.concurrent.Future<List<JSONObject>>) = if (f.isDone) runCatching { f.get() }.getOrDefault(emptyList()) else emptyList()
+        while (true) {
+            // Самый большой уже ответил — сразу; через 4 с — самый большой из ответивших; через 13 с — что есть.
+            result(jobs[0]).takeIf { it.isNotEmpty() }?.let { return it }
+            val elapsed = System.currentTimeMillis() - started
+            if (elapsed > 4000 || jobs.all { it.isDone }) jobs.map(::result).firstOrNull { it.isNotEmpty() }?.let { return it }
+            if (jobs.all { it.isDone } || elapsed > 13_000) return emptyList()
+            Thread.sleep(100)
+        }
     }
 
     /** Популярные альбомы России (Apple), иначе — чарт альбомов Deezer. */

@@ -81,6 +81,14 @@ object Streams {
         return f
     }
 
+    /**
+     * Песни очереди, которые зазвучат следующими: готовим заранее (ближайшая — первой),
+     * чтобы слушать подряд без ожидания. Экранная подготовка их не отменяет.
+     */
+    fun prefetchAhead(tracks: List<Track>) {
+        tracks.asReversed().forEach { prefetch(it) } // очередь подготовки «последним пришёл — первым», поэтому с конца
+    }
+
     /** Палец коснулся песни — начинаем искать сразу, без очереди: к отпусканию часть работы уже сделана. */
     fun touch(t: Track) {
         val k = key(t)
@@ -145,6 +153,9 @@ object Streams {
             "SoundCloud" to "scsearch8:${t.query}",
             "YouTube Music" to "https://music.youtube.com/search?q=" + Http.enc(t.query) + "#songs",
             "YouTube" to "ytsearch6:${t.query}",
+            // Перезаливы часто названы иначе («Не вспоминать МАЯК Х») — ищем и по одному названию;
+            // чужие песни с таким же названием отсеивает проверка исполнителя.
+            "SoundCloud" to "scsearch10:${Match.base(t.title).ifEmpty { t.title }}",
         )
         // Каждая площадка сразу и ищет, и берёт ссылку на звук — все одновременно.
         // Берём по старшинству (SoundCloud → YouTube Music → YouTube), но не ждём старшую дольше 4 с,
@@ -158,9 +169,11 @@ object Streams {
                     .getOrDefault(emptyList())
                 // Ссылки для двух лучших берём одновременно (лучший может оказаться платным — DRM), третий — если оба не играют.
                 if (candidates.isNotEmpty()) foundOn += name
-                val top = candidates.take(2).map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) { Downloader.streamOf(c.url, name, c.title, problems) } } }
-                top.firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
-                    ?: candidates.getOrNull(2)?.let { c -> Downloader.streamOf(c.url, name, c.title, problems) }
+                // Ссылки берём по две одновременно (лучший вариант может оказаться платным — DRM), до 4 вариантов.
+                candidates.take(4).chunked(2).firstNotNullOfOrNull { pair ->
+                    pair.map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) { Downloader.streamOf(c.url, name, c.title, problems) } } }
+                        .firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
+                }
             } }
         }
         val started = System.currentTimeMillis()

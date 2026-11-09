@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
         setupMiniPlayer()
         setupMusicPage()
 
-        showPage(savedInstanceState?.getInt("page") ?: R.id.nav_download)
+        showPage(savedInstanceState?.getInt("page") ?: R.id.nav_music) // приложение открывается на музыке
         handleIntent(intent)
         if (savedInstanceState == null) askNotificationPermission()
     }
@@ -195,6 +195,7 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_library -> "Медиатека"
             R.id.nav_jobs -> "Загрузки"
             R.id.nav_settings -> "Настройки"
+            R.id.nav_download -> "Скачать по ссылке"
             else -> "SoundAura"
         }
         toolbar.menu.clear()
@@ -346,44 +347,50 @@ class MainActivity : AppCompatActivity() {
             // 1) Мгновенно — то, что сохранено с прошлого раза; 2) затем свежее из сети.
             for (offline in listOf(true, false)) {
                 fun <T> load(f: () -> T) = pool { if (offline) Http.fromDisk(f) else f() }
-                val chart = load { Catalog.chart() }
+                val chart = load { Catalog.chartRu() }
+                val world = load { Catalog.chartWorld() }
                 val albums = load { Catalog.topAlbums() }
                 val artists = load { Catalog.topArtists() }
                 val c = runCatching { chart.get() }.getOrDefault(emptyList())
+                val w = runCatching { world.get() }.getOrDefault(emptyList())
                 val al = runCatching { albums.get() }.getOrDefault(emptyList())
                 val ar = runCatching { artists.get() }.getOrDefault(emptyList())
-                if (offline && c.isEmpty() && al.isEmpty() && ar.isEmpty()) continue
+                if (offline && c.isEmpty() && w.isEmpty() && al.isEmpty() && ar.isEmpty()) continue
                 val last = !offline
-                runOnUiThread { renderHome(home, c, al, ar, last) }
+                runOnUiThread { renderHome(home, c, w, al, ar, last) }
             }
         }
     }
 
-    private fun renderHome(home: LinearLayout, c: List<Track>, al: List<Album>, ar: List<Artist>, last: Boolean) {
+    /** Чарт: первые 5 песен, «Весь чарт», «Слушать» — весь список подряд. */
+    private fun chartSection(home: LinearLayout, title: String, c: List<Track>, prefetch: Boolean) {
+        val items = c.map { Playback.QItem(it, Library.localFor(it), it.url) }
+        home.addView(sectionHeader(title, "Слушать") { Playback.playQueue(this, items, 0) })
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        fun show(n: Int) {
+            list.removeAllViews()
+            c.take(n).forEachIndexed { i, t -> list.addView(trackRow(list, t, number = i + 1, onPlay = { Playback.playQueue(this, items, i) })) }
+        }
+        show(5)
+        home.addView(list)
+        if (c.size > 5) home.addView(MaterialButton(this, null, androidx.appcompat.R.attr.borderlessButtonStyle).apply {
+            text = "Весь чарт · ${c.size}"
+            setOnClickListener { show(c.size); isVisible = false }
+        })
+        if (prefetch) Streams.prefetchMany(c, 6) // первые песни чарта включатся сразу с начала
+    }
+
+    private fun renderHome(home: LinearLayout, c: List<Track>, w: List<Track>, al: List<Album>, ar: List<Artist>, last: Boolean) {
             run {
                 if (last) homeLoading = false
                 if (isDestroyed) return
                 home.removeAllViews()
                 home.addView(newsBox) // сверху — новинки любимых исполнителей
                 renderNews()
-                if (c.isEmpty() && al.isEmpty() && ar.isEmpty()) return
+                if (c.isEmpty() && w.isEmpty() && al.isEmpty() && ar.isEmpty()) return
                 if (last) homeLoaded = true
-                if (c.isNotEmpty()) {
-                    val items = c.map { Playback.QItem(it, Library.localFor(it), it.url) }
-                    home.addView(sectionHeader(Catalog.chartTitle, "Слушать") { Playback.playQueue(this, items, 0) })
-                    val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-                    fun show(n: Int) {
-                        list.removeAllViews()
-                        c.take(n).forEachIndexed { i, t -> list.addView(trackRow(list, t, number = i + 1, onPlay = { Playback.playQueue(this, items, i) })) }
-                    }
-                    show(5)
-                    home.addView(list)
-                    if (c.size > 5) home.addView(MaterialButton(this, null, androidx.appcompat.R.attr.borderlessButtonStyle).apply {
-                        text = "Весь чарт · ${c.size}"
-                        setOnClickListener { show(c.size); isVisible = false }
-                    })
-                    if (last) Streams.prefetchMany(c, 6) // первые песни чарта включатся сразу с начала
-                }
+                if (c.isNotEmpty()) chartSection(home, "Чарт России", c, prefetch = last)
+                if (w.isNotEmpty()) chartSection(home, "Мировой чарт", w, prefetch = false)
                 if (al.isNotEmpty()) {
                     home.addView(sectionHeader("Популярные альбомы"))
                     val (scroll, inner) = Rows.shelf(this)

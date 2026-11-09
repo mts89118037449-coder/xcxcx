@@ -159,6 +159,7 @@ object Playback {
         filling = false
         val first = items[start.coerceIn(0, items.lastIndex)]
         LinkCache.prefetch(first.track, first.sourceUrl)
+        prefetchAhead(nextToAdd)
         if (openScreen) ctx.startActivity(Intent(ctx, NowPlayingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
 
         first.local?.let { f ->
@@ -350,6 +351,13 @@ object Playback {
         hooked = c
         c.addListener(object : androidx.media3.common.Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // Заиграла другая песня — старая ошибка/«готовлю» больше не про неё: экран плеера
+                // показывает то, что звучит (раньше оставались старые обложка и название).
+                val p = Pending.track
+                val nowTitle = mediaItem?.mediaMetadata?.title?.toString()
+                if (p != null && nowTitle != null && (Pending.error != null || nowTitle != p.title) &&
+                    mediaItem.mediaMetadata.extras?.getBoolean(X_PREVIEW) != true
+                ) Pending.set(null, loading = false, error = null)
                 // Фрагмент перешёл в полную версию — убираем его из очереди («назад» не вернёт к нему).
                 val i = c.currentMediaItemIndex
                 if (i > 0 && c.getMediaItemAt(i - 1).mediaMetadata.extras?.getBoolean(X_PREVIEW) == true) main.post {
@@ -435,6 +443,16 @@ object Playback {
     /** Предыдущая: в начале песни — прошлая, дальше 3 секунд — с начала этой. */
     fun previous(ctx: Context) = controller(ctx.applicationContext) { it.seekToPrevious() }
 
+    /** Следующие 8 песен очереди готовим заранее — переходы без ожидания. */
+    private const val AHEAD = 8
+
+    private fun prefetchAhead(from: Int) {
+        val next = queue.drop(from).take(AHEAD).filter { it.local == null && it.directUrl == null && !MediaCache.has(it.track) }
+        Streams.prefetchAhead(next.filter { it.pageUrl == null }.map { it.track })
+        next.mapNotNull { q -> q.pageUrl?.let { Triple(it, Describe.site(it), q.track.title) } }
+            .forEach { (u, site, title) -> Ytdlp.inBackground { Streams.prefetchPage(u, site, title) } }
+    }
+
     /** Другая очередь (файлы, видео): старая больше не продолжается и не включает радио. */
     private fun resetQueue() {
         queueGen++
@@ -460,6 +478,7 @@ object Playback {
                 if (gen != queueGen) return@post
                 filling = false
                 nextToAdd++
+                prefetchAhead(nextToAdd) // окно подготовки сдвигается вместе с очередью
                 if (item != null) c.addMediaItem(item)
                 fill(app, gen)
             }
