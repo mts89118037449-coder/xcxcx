@@ -60,6 +60,12 @@ class ShareActivity : AppCompatActivity() {
         // Музыка: главное — «Слушать» (сразу, без скачивания). Песню начинаем готовить уже сейчас.
         val listen = view.findViewById<MaterialButton>(R.id.listen)
         listen.isVisible = music
+        // Поделились плейлистом или альбомом — можно перенести его целиком в медиатеку.
+        val isList = Regex("""playlist|/album/|/sets/|/likes|[?&]list=""").containsMatchIn(url)
+        view.findViewById<MaterialButton>(R.id.importLib).apply {
+            isVisible = music && isList
+            setOnClickListener { started = true; handler.removeCallbacksAndMessages(null); ImportActivity.open(this@ShareActivity, url); sheet.dismiss() }
+        }
         if (music) {
             Playback.prefetchLink(url, shared)
             view.findViewById<android.view.View>(R.id.formats).isVisible = !Music.needsSearch(url)

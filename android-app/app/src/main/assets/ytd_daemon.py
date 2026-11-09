@@ -38,7 +38,11 @@ def handle(req):
         opts = dict(BASE); opts.update(req.get("opts") or {})
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(req["url"], download=False)
-        if req.get("op") == "search":
+        if req.get("op") == "playlist":
+            res = {"title": info.get("title"), "entries": [{"url": e.get("url") or e.get("webpage_url"), "title": e.get("title"),
+                    "artist": e.get("artist") or e.get("uploader") or e.get("channel"), "duration": e.get("duration")}
+                   for e in (info.get("entries") or []) if e]}
+        elif req.get("op") == "search":
             res = [{"url": e.get("url") or e.get("webpage_url"), "title": e.get("title"),
                     "artist": e.get("artist") or (e.get("artists") or [None])[0] or e.get("creator") or e.get("uploader") or e.get("channel"),
                     "duration": e.get("duration"), "views": e.get("view_count"), "id": e.get("id")}

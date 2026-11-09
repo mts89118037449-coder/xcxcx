@@ -1192,6 +1192,17 @@ class MainActivity : AppCompatActivity() {
         val appearance = findViewById<LinearLayout>(R.id.appearanceSettings)
         appearance.removeAllViews()
         val theme = Settings.theme(this)
+        settingRow(appearance, R.drawable.ic_upload_file, "Перенести медиатеку", "Spotify, Яндекс, Apple…",
+            "Плейлисты и любимое из других сервисов — по ссылке или файлом") { ImportActivity.open(this) }
+        settingRow(appearance, R.drawable.ic_equalizer, "Эквалайзер",
+            if (AudioFx.enabled(this)) "Включён · ${AudioFx.preset(this)}" else "Выключен",
+            "Пресеты, своя кривая, усиление баса и объём") { startActivity(Intent(this, EqualizerActivity::class.java)) }
+        val jm = Settings.joinMode(this)
+        settingRow(appearance, R.drawable.ic_skip_next, "Переход на полную версию", jm.label, jm.hint) {
+            choose("Переход с фрагмента на полную", Settings.JoinMode.entries.map { "${it.label} — ${it.hint}" }, jm.ordinal) {
+                Settings.setJoinMode(this, Settings.JoinMode.entries[it]); refreshMusicSettings()
+            }
+        }
         val ps = Settings.playerStyle(this)
         settingRow(appearance, R.drawable.ic_headphones, "Вид плеера", ps.label, ps.hint) {
             choose("Вид плеера", Settings.PlayerStyle.entries.map { "${it.label} — ${it.hint}" }, ps.ordinal) {

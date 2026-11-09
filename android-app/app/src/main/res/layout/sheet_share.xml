@@ -105,4 +105,16 @@
         app:cornerRadius="20dp"
         app:icon="@drawable/ic_link"
         app:iconGravity="textStart" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/importLib"
+        style="@style/Widget.Material3.Button.TonalButton"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_marginTop="8dp"
+        android:text="Перенести в медиатеку"
+        android:visibility="gone"
+        app:cornerRadius="20dp"
+        app:icon="@drawable/ic_library_music"
+        app:iconGravity="textStart" />
 </LinearLayout>

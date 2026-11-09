@@ -170,6 +170,13 @@ object YtdlpDaemon {
         }
     }
 
+    /** Плейлист целиком (SoundCloud, YouTube): без разбора каждого трека, до [max] записей. */
+    fun playlist(url: String, max: Int = 1000): Pair<String, JSONArray> {
+        val r = call("playlist", url, JSONObject().put("extract_flat", "in_playlist").put("playlistend", max), 120) as? JSONObject
+            ?: throw UserError("Плейлист не открылся")
+        return r.optString("title") to (r.optJSONArray("entries") ?: JSONArray())
+    }
+
     /** Ссылки на поток для страницы: [format] — выбор yt-dlp. */
     fun stream(pageUrl: String, format: String, timeoutSec: Long = 20): JSONObject? =
         call("stream", pageUrl, cookies(JSONObject().put("format", format).put("noplaylist", true)), timeoutSec) as? JSONObject

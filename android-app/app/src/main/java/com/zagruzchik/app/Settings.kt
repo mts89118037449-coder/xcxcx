@@ -23,6 +23,15 @@ object Settings {
     fun playerStyle(ctx: Context) = runCatching { PlayerStyle.valueOf(prefs(ctx).getString("playerStyle", null)!!) }.getOrDefault(PlayerStyle.RING)
     fun setPlayerStyle(ctx: Context, s: PlayerStyle) = prefs(ctx).edit().putString("playerStyle", s.name).apply()
 
+    /** Переход с фрагмента на полную: бесшовно в конце фрагмента или сразу (с короткой паузой на подгрузку). */
+    enum class JoinMode(val label: String, val hint: String) {
+        SEAMLESS("Бесшовно", "Фрагмент доигрывает, полная продолжает с того же места без паузы"),
+        IMMEDIATE("Сразу", "Как только полная нашлась — переключаемся на неё с того же места (пауза меньше секунды)"),
+    }
+
+    fun joinMode(ctx: Context) = runCatching { JoinMode.valueOf(prefs(ctx).getString("joinMode", null)!!) }.getOrDefault(JoinMode.SEAMLESS)
+    fun setJoinMode(ctx: Context, m: JoinMode) = prefs(ctx).edit().putString("joinMode", m.name).apply()
+
     /** Как играть медиатеку. */
     enum class PlayMode(val hint: String) {
         ORDER("Подряд, как в списке"),

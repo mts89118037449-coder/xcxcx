@@ -130,7 +130,10 @@ class LibraryPage(
 
     private fun songsTab() {
         val items = songs()
-        if (items.isEmpty()) return empty("Ставьте ♥ песням — они появятся здесь,\nсохранятся на телефон и будут играть даже без интернета.")
+        if (items.isEmpty()) {
+            content.addView(importCard())
+            return empty("Ставьте ♥ песням или перенесите медиатеку из другого сервиса —\nпесни появятся здесь.")
+        }
         content.addView(mixCard("Умный микс", "${items.size} любимых · самое ваше — чаще") {
             Playback.playQueue(a, Taste.smart(items) { it.track }, 0)
         })
@@ -223,8 +226,46 @@ class LibraryPage(
         content.addView(grid)
     }
 
-    /** Подборки, которые собираются сами. */
+    /** Карточка «Перенести медиатеку» — из Spotify, Яндекса, Apple и др. */
+    private fun importCard(): View {
+        val v = LinearLayout(a).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            background = a.getDrawable(R.drawable.bg_card); setPadding(a.dp(16), a.dp(14), a.dp(16), a.dp(14))
+            isClickable = true; setOnClickListener { ImportActivity.open(a) }
+        }
+        v.addView(ImageView(a).apply {
+            setImageResource(R.drawable.ic_upload_file); setColorFilter(Color.WHITE)
+            background = AuraColors.drawable(a, a.dp(14).toFloat()); setPadding(a.dp(12), a.dp(12), a.dp(12), a.dp(12))
+        }, LinearLayout.LayoutParams(a.dp(48), a.dp(48)))
+        val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(14), 0, 0, 0) }
+        col.addView(TextView(a).apply { text = "Перенести медиатеку"; textSize = 16f; typeface = font(R.font.onest_semibold); setTextColor(onSurface) })
+        col.addView(TextView(a).apply { text = "Spotify, Яндекс, Apple, YouTube Music, SoundCloud, VK…"; textSize = 13f; setTextColor(muted) })
+        v.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        v.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = a.dp(14) }
+        return v
+    }
+
+    /** Ваши плейлисты (перенесённые) и подборки, которые собираются сами. */
     private fun playlistsTab() {
+        content.addView(importCard())
+        Library.playlists.forEach { p ->
+            val r = LinearLayout(a).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = a.dp(76)
+                isClickable = true; isFocusable = true
+                setOnClickListener { a.startActivity(CollectionActivity.playlist(a, p.id)) }
+            }
+            r.addView(com.google.android.material.imageview.ShapeableImageView(a).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                shapeAppearanceModel = com.google.android.material.shape.ShapeAppearanceModel.builder().setAllCornerSizes(a.dp(14).toFloat()).build()
+                Images.into(this, p.tracks.firstOrNull { it.cover != null }?.cover, R.drawable.ph_cover)
+            }, LinearLayout.LayoutParams(a.dp(60), a.dp(60)))
+            val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(14), 0, 0, 0) }
+            col.addView(TextView(a).apply { text = p.name; textSize = 16f; typeface = font(R.font.onest_semibold); setTextColor(onSurface); maxLines = 1 })
+            col.addView(TextView(a).apply { text = "${songsWord(p.tracks.size)} · из ${p.source}"; textSize = 13f; setTextColor(muted) })
+            r.addView(col)
+            content.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = a.dp(8) })
+        }
+        if (Library.playlists.isNotEmpty()) content.addView(TextView(a, null, 0, R.style.SectionTitle).apply { text = "Собираются сами" })
         val fav = Library.favorites
         val history = History.all.filter { it.kind == Kind.MUSIC }
         fun q(l: List<Track>) = l.map { Playback.QItem(it, Library.localFor(it), it.url) }

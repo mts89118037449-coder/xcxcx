@@ -299,13 +299,41 @@ object AppleSource {
             val t = track(r.getJSONObject(0))
             return MusicItem("track", t.label, listOf(t), Service.APPLE)
         }
+        if (url.contains("/playlist/")) return playlist(url)
         val albumId = ALBUM.find(url)?.groupValues?.get(1)
-            ?: throw UserError("Apple Music: поддерживаются ссылки на треки и альбомы")
+            ?: throw UserError("Apple Music: поддерживаются ссылки на треки, альбомы и плейлисты")
         val r = lookup(albumId, "song")
         if (r.length() == 0) throw UserError("Apple Music: альбом не найден")
         val name = r.getJSONObject(0).optString("collectionName")
         val tracks = (1 until r.length()).map { r.getJSONObject(it) }.filter { it.optString("wrapperType") == "track" }.map(::track)
         return MusicItem("album", name, tracks, Service.APPLE)
+    }
+
+    /** Плейлист: список песен есть в данных самой страницы (до 100 за раз — сколько показывает Apple). */
+    private fun playlist(url: String): MusicItem {
+        val page = Http.get(url, Http.DESKTOP_UA)
+        val json = Regex("""<script type="application/json" id="serialized-server-data">(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
+            .find(page)?.groupValues?.get(1) ?: throw UserError("Apple Music не показал плейлист. Он открыт для всех?")
+        val tracks = mutableListOf<Track>()
+        fun walk(o: Any?) {
+            when (o) {
+                is JSONObject -> {
+                    if (o.optString("id").startsWith("track-lockup") && o.has("title")) {
+                        val art = o.optJSONObject("artwork")?.optJSONObject("dictionary")?.optString("url")
+                            ?.replace("{w}", "600")?.replace("{h}", "600")?.replace("{f}", "jpg")
+                        tracks += Track(o.optString("title"), o.optString("artistName"), o.optInt("duration") / 1000,
+                            cover = art?.takeIf { it.startsWith("http") }, explicit = o.optBoolean("showExplicitBadge"))
+                    }
+                    o.keys().forEach { walk(o.opt(it)) }
+                }
+                is JSONArray -> for (i in 0 until o.length()) walk(o.opt(i))
+            }
+        }
+        walk(org.json.JSONTokener(json).nextValue())
+        if (tracks.isEmpty()) throw UserError("Apple Music не показал песни плейлиста. Он открыт для всех?")
+        val name = Regex("""<meta property="og:title" content="([^"]*)"""").find(page)?.groupValues?.get(1)
+            ?.removeSuffix(" on Apple Music")?.replace("&amp;", "&") ?: "Apple Music"
+        return MusicItem("playlist", name, tracks.distinctBy { it.title + "|" + it.artist }, Service.APPLE)
     }
 }
 

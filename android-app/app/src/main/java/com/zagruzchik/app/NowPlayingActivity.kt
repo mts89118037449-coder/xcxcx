@@ -29,7 +29,7 @@ import com.google.android.material.R as M
 class NowPlayingActivity : AppCompatActivity() {
 
     private var controller: MediaController? = null
-    private lateinit var cover: ShapeableImageView
+    private lateinit var cover: ImageView
     private lateinit var title: TextView
     private lateinit var artist: TextView
     private lateinit var source: TextView
@@ -54,6 +54,8 @@ class NowPlayingActivity : AppCompatActivity() {
     private val ticker = object : Runnable {
         override fun run() {
             updateProgress()
+            // Пока играет фрагмент — обновляем «найдена · продолжит через N с».
+            if (extras()?.getBoolean(Playback.X_PREVIEW) == true) render()
             seekView.postDelayed(this, 500)
         }
     }
@@ -85,7 +87,11 @@ class NowPlayingActivity : AppCompatActivity() {
         val frame = findViewById<View>(R.id.npCoverFrame)
         box.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
             val side = minOf(r - l, b - t)
-            if (frame.layoutParams.width != side) frame.post { frame.layoutParams = frame.layoutParams.apply { width = side; height = side } }
+            if (frame.layoutParams.width != side) frame.post {
+                frame.layoutParams = frame.layoutParams.apply { width = side; height = side }
+                // В «кольце» диск всегда помещается внутри кольца прогресса — с зазором.
+                if (ring) (cover.layoutParams as android.widget.FrameLayout.LayoutParams).apply { val m = (side * 0.11f).toInt(); setMargins(m, m, m, m); cover.layoutParams = this }
+            }
         }
 
         findViewById<View>(R.id.npClose).setOnClickListener { finish() }
@@ -120,6 +126,7 @@ class NowPlayingActivity : AppCompatActivity() {
             currentTrack()?.let { TransferActivity.openTrack(this, it, extras()?.getString(Playback.X_SOURCE_URL)) }
         }
         download.setOnClickListener { downloadCurrent() }
+        findViewById<View>(R.id.npFx).setOnClickListener { startActivity(Intent(this, EqualizerActivity::class.java)) }
         findViewById<View>(R.id.npLyrics).setOnClickListener {
             val t = currentTrack() ?: return@setOnClickListener
             val d = controller?.let { Playback.duration(it) }?.takeIf { it > 0 }?.let { (it / 1000).toInt() } ?: 0
@@ -173,7 +180,9 @@ class NowPlayingActivity : AppCompatActivity() {
         super.onStop()
     }
 
-    private fun extras(): Bundle? = controller?.mediaMetadata?.extras
+    // Метки песни (фрагмент или полная, откуда играет) — из текущего элемента очереди. Общие данные
+    // проигрывателя не обновляются при переходе фрагмент → полная: название, исполнитель и обложка те же.
+    private fun extras(): Bundle? = controller?.currentMediaItem?.mediaMetadata?.extras
 
     /** Пока поток готовится — показываем песню из запроса, когда заиграла — из проигрывателя. */
     private fun showingPending(): Boolean {
@@ -213,13 +222,16 @@ class NowPlayingActivity : AppCompatActivity() {
             val m = c.mediaMetadata
             title.text = m.title ?: "Без названия"
             artist.text = listOfNotNull(m.artist, m.albumTitle).joinToString(" · ")
-            val src = m.extras?.getString(Playback.X_SOURCE)
+            val x = extras()
+            val src = x?.getString(Playback.X_SOURCE)
+            val isPreview = x?.getBoolean(Playback.X_PREVIEW) == true
             val tv = Cast.deviceName(this)
             source.text = when {
                 tv != null -> "На телевизоре: $tv"
                 src == null -> ""
                 src == "Скачано" -> "Из загрузок · без интернета"
-                m.extras?.getBoolean(Playback.X_PREVIEW) == true -> "Фрагмент · полная версия подхватит с этого же места"
+                isPreview -> Playback.joinIn(c)?.let { s -> "Полная версия найдена · продолжит без паузы через $s с" }
+                    ?: "Фрагмент · ищу полную версию, продолжит с этого же места"
                 else -> "Играет из $src · без скачивания"
             }
             setCover(m.artworkUri?.toString(), m.artworkData)
@@ -227,7 +239,7 @@ class NowPlayingActivity : AppCompatActivity() {
             findViewById<TextView>(R.id.npHeader).text = when {
                 tv != null -> tv
                 src == "Скачано" -> "С телефона"
-                m.extras?.getBoolean(Playback.X_PREVIEW) == true -> "Фрагмент"
+                isPreview -> "Фрагмент"
                 src != null -> src.replaceFirstChar { it.uppercase() }
                 else -> "Сейчас играет"
             }
@@ -270,7 +282,8 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         if (url == null) {
             coverBitmap = null
-            cover.setImageResource(R.drawable.player_artwork)
+            if (ring) cover.setImageDrawable(GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(MaterialColors.getColor(cover, M.attr.colorSurfaceContainerHighest)) })
+            else cover.setImageResource(R.drawable.player_artwork)
             paintBackground(null)
             return
         }
@@ -279,8 +292,18 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun applyCover(b: Bitmap) {
         coverBitmap = b
-        cover.setImageBitmap(b)
+        // «Кольцо»: обложка — круглый диск (сама картинка обрезается по кругу, по центру квадрата).
+        if (ring) cover.setImageDrawable(disc(b)) else cover.setImageBitmap(b)
         paintBackground(b)
+    }
+
+    private val ring get() = seekView is RingProgressView
+
+    /** Круглая картинка из любой: центральный квадрат, обрезанный по кругу. */
+    private fun disc(b: Bitmap): android.graphics.drawable.Drawable {
+        val side = minOf(b.width, b.height)
+        val sq = Bitmap.createBitmap(b, (b.width - side) / 2, (b.height - side) / 2, side, side)
+        return androidx.core.graphics.drawable.RoundedBitmapDrawableFactory.create(resources, sq).apply { isCircular = true; setAntiAlias(true) }
     }
 
     /** Фон: цвет обложки сверху, плавно уходящий в обычный фон. */

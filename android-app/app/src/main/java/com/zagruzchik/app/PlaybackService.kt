@@ -43,6 +43,13 @@ class PlaybackService : MediaSessionService() {
             this, 0, Intent(this, NowPlayingActivity::class.java), // для видео он сам переключит на PlayerActivity
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        // Эквалайзер, бас и объём — к звуку проигрывателя (и заново, если сменился аудиопоток).
+        AudioFx.attach(this, player.audioSessionId)
+        player.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onAudioSessionIdChanged(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, audioSessionId: Int) {
+                AudioFx.attach(this@PlaybackService, audioSessionId)
+            }
+        })
         local = player
         session = MediaSession.Builder(this, player)
             .setSessionActivity(open)
@@ -107,6 +114,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         cast?.setSessionAvailabilityListener(null)
         cast?.release()
+        AudioFx.release()
         local?.release()
         session?.release()
         session = null

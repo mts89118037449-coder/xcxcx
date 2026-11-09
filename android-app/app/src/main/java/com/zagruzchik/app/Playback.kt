@@ -261,6 +261,18 @@ object Playback {
         }
     }
 
+    /**
+     * Полная версия уже стоит в очереди сразу за фрагментом: через сколько секунд начнётся (для подписи
+     * «найдена · продолжит через N с»). null — ещё ищется.
+     */
+    fun joinIn(c: MediaController): Int? {
+        val i = c.currentMediaItemIndex
+        if (i + 1 >= c.mediaItemCount) return null
+        if (c.getMediaItemAt(i + 1).mediaMetadata.extras?.containsKey(X_PREVIEW) == true) return null
+        if (c.currentMediaItem?.mediaMetadata?.extras?.getBoolean(X_PREVIEW) != true) return null
+        return ((PREVIEW_END_MS - c.currentPosition) / 1000).toInt().coerceAtLeast(0)
+    }
+
     /** Где обрываем фрагмент и где к нему бесшовно пристыковывается полная версия. */
     private const val PREVIEW_END_MS = 28_500L
 
@@ -307,6 +319,13 @@ object Playback {
             // Место не нашлось — полная идёт с начала, но тоже без паузы: сразу после фрагмента, подгруженная заранее.
             val previewAlive = onPreview && c.playerError == null &&
                 c.playbackState != androidx.media3.common.Player.STATE_ENDED && c.playbackState != androidx.media3.common.Player.STATE_IDLE
+            // Настройка «Сразу»: не ждём конца фрагмента — переключаемся на полную с того же места.
+            if (previewAlive && align != null && Settings.joinMode(app) == Settings.JoinMode.IMMEDIATE) {
+                c.setMediaItem(full, align.fullPositionMs(c.currentPosition + 300))
+                c.prepare(); c.play()
+                hook(app, c); fill(app, gen)
+                return@controller
+            }
             if (previewAlive) {
                 val start = align?.fullPositionMs(PREVIEW_END_MS) ?: 0L
                 val extras = android.os.Bundle(full.mediaMetadata.extras ?: android.os.Bundle()).apply { if (start > 0) putLong(X_OFFSET, start) }
@@ -522,6 +541,8 @@ object Playback {
             .setTitle(q.track.title)
             .setArtist(q.track.artist.ifEmpty { null })
             .setArtworkUri(cover?.let(Uri::parse))
+            // Подпись отличается у фрагмента и полной версии — так проигрыватель замечает смену и обновляет экран.
+            .setSubtitle(if (source == "фрагмента") "Фрагмент" else source)
             .setExtras(android.os.Bundle().apply {
                 putString(X_SOURCE, source)
                 putString(X_SOURCE_URL, q.sourceUrl ?: q.track.url)

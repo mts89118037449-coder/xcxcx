@@ -16,6 +16,7 @@ object Library {
 
     fun init(ctx: Context) {
         loadAlbums(ctx)
+        loadPlaylists(ctx)
         file = File(ctx.filesDir, "library.json")
         saved.clear()
         savedKeys = null
@@ -66,6 +67,67 @@ object Library {
             savedAlbums += Album(o.optLong("id").takeIf { it > 0 }, o.optString("title"), o.optString("artist"), o.optString("cover").ifEmpty { null },
                 o.optString("year").ifEmpty { null }, o.optBoolean("explicit"), o.optString("type", "album"))
         }
+    }
+
+    // ---------------- Плейлисты (перенесённые из других сервисов) ----------------
+
+    class Playlist(val id: String, val name: String, val source: String, val tracks: List<Track>, val created: Long)
+
+    private lateinit var playlistsFile: File
+    private val savedPlaylists = mutableListOf<Playlist>()
+    val playlists: List<Playlist> get() = savedPlaylists.toList()
+    fun playlist(id: String) = savedPlaylists.firstOrNull { it.id == id }
+
+    fun addPlaylist(name: String, source: String, tracks: List<Track>): Playlist {
+        val p = Playlist(java.util.UUID.randomUUID().toString(), name, source, tracks, System.currentTimeMillis())
+        savedPlaylists.add(0, p); savePlaylists(); listeners.toList().forEach { it() }
+        return p
+    }
+
+    fun removePlaylist(id: String) {
+        savedPlaylists.removeAll { it.id == id }; savePlaylists(); listeners.toList().forEach { it() }
+    }
+
+    private fun trackJson(t: Track) = JSONObject().put("title", t.title).put("artist", t.artist).put("duration", t.durationSec)
+        .put("isrc", t.isrc ?: "").put("cover", t.cover ?: "").put("url", t.url ?: "").put("explicit", t.explicit)
+
+    private fun trackFrom(o: JSONObject) = Track(o.getString("title"), o.optString("artist"), o.optInt("duration"),
+        isrc = o.optString("isrc").ifEmpty { null }, cover = o.optString("cover").ifEmpty { null },
+        url = o.optString("url").ifEmpty { null }, explicit = o.optBoolean("explicit"))
+
+    private fun savePlaylists() = runCatching {
+        val arr = JSONArray()
+        savedPlaylists.forEach { p ->
+            arr.put(JSONObject().put("id", p.id).put("name", p.name).put("source", p.source).put("created", p.created)
+                .put("tracks", JSONArray().apply { p.tracks.forEach { put(trackJson(it)) } }))
+        }
+        File(playlistsFile.path + ".tmp").apply { writeText(arr.toString()) }.renameTo(playlistsFile)
+    }
+
+    private fun loadPlaylists(ctx: Context) {
+        playlistsFile = File(ctx.filesDir, "playlists.json")
+        savedPlaylists.clear()
+        val arr = runCatching { JSONArray(playlistsFile.readText()) }.getOrNull() ?: return
+        for (i in 0 until arr.length()) runCatching {
+            val o = arr.getJSONObject(i)
+            val ta = o.optJSONArray("tracks") ?: JSONArray()
+            savedPlaylists += Playlist(o.getString("id"), o.optString("name"), o.optString("source"),
+                (0 until ta.length()).map { trackFrom(ta.getJSONObject(it)) }, o.optLong("created"))
+        }
+    }
+
+    /**
+     * Много песен в «Любимое» разом (перенос медиатеки): без скачивания каждой — сотни загрузок
+     * никому не нужны; скачать можно потом. Повторы пропускаются. Возвращает, сколько добавлено.
+     */
+    fun addFavorites(tracks: List<Track>): Int {
+        val have = saved.map(::key).toHashSet()
+        val fresh = tracks.filter { have.add(key(it)) }
+        saved.addAll(0, fresh)
+        savedKeys = null
+        save()
+        listeners.toList().forEach { it() }
+        return fresh.size
     }
 
     fun key(t: Track): String = keys[t] ?: (Match.base(t.title) + "|" + Match.norm(t.artist)).also {

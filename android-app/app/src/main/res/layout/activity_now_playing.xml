@@ -48,22 +48,19 @@
                     android:layout_height="match_parent"
                     android:contentDescription="Перемотка" />
 
-                <com.google.android.material.imageview.ShapeableImageView
+                <ImageView
                     android:id="@+id/npCover"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:layout_margin="34dp"
-                    android:elevation="10dp"
                     android:importantForAccessibility="no"
-                    android:scaleType="centerCrop"
-                    app:shapeAppearanceOverlay="@style/DiscShape" />
+                    android:scaleType="centerCrop" />
 
                 <View
                     android:layout_width="34dp"
                     android:layout_height="34dp"
                     android:layout_gravity="center"
-                    android:background="@drawable/disc_hole"
-                    android:elevation="11dp" />
+                    android:background="@drawable/disc_hole" />
             </FrameLayout>
         </FrameLayout>
 

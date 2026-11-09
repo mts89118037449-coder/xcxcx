@@ -33,6 +33,7 @@ class CollectionActivity : AppCompatActivity() {
         Images.into(findViewById(R.id.colImage), i.getStringExtra(X_IMAGE), R.drawable.ph_cover)
         when (i.getStringExtra(X_KIND)) {
             KIND_LIST -> loadList(i.getStringExtra(X_ID_S).orEmpty())
+            KIND_PLAYLIST -> loadPlaylist(i.getStringExtra(X_ID_S).orEmpty())
             KIND_ALBUM -> loadAlbum(
                 Album(i.getLongExtra(X_ID, 0).takeIf { it > 0 }, title, i.getStringExtra(X_ARTIST).orEmpty(), i.getStringExtra(X_IMAGE))
             )
@@ -74,6 +75,31 @@ class CollectionActivity : AppCompatActivity() {
                 tracks = list
                 showTracks(list, numbered = true)
                 Streams.prefetchMany(list, 6)
+            }
+        }
+    }
+
+    /** Перенесённый плейлист из медиатеки. */
+    private fun loadPlaylist(id: String) {
+        findViewById<View>(R.id.colProgress).isVisible = false
+        val p = Library.playlist(id) ?: return error(UserError("Плейлист удалён"))
+        findViewById<TextView>(R.id.colTitle).text = p.name
+        findViewById<TextView>(R.id.colSub).text = "${p.tracks.size} песен · из ${p.source}"
+        Images.into(findViewById(R.id.colImage), p.tracks.firstOrNull { it.cover != null }?.cover, R.drawable.ph_cover)
+        tracks = p.tracks
+        showTracks(p.tracks, numbered = false)
+        Streams.prefetchMany(p.tracks, 4)
+        // ♥ здесь — удалить плейлист из медиатеки (с подтверждением).
+        findViewById<android.widget.ImageButton>(R.id.colLike).apply {
+            isVisible = true
+            setImageResource(R.drawable.ic_delete_outline)
+            contentDescription = "Удалить плейлист"
+            setOnClickListener {
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(this@CollectionActivity)
+                    .setTitle("Удалить «${p.name}»?")
+                    .setMessage("Плейлист пропадёт из медиатеки. Песни в «Любимом» останутся.")
+                    .setPositiveButton("Удалить") { _, _ -> Library.removePlaylist(p.id); finish() }
+                    .setNegativeButton("Отмена", null).show()
             }
         }
     }
@@ -219,6 +245,10 @@ class CollectionActivity : AppCompatActivity() {
         private const val KIND_ALBUM = "album"
         private const val KIND_ARTIST = "artist"
         private const val KIND_LIST = "list"
+        private const val KIND_PLAYLIST = "playlist"
+
+        fun playlist(ctx: Context, id: String) = Intent(ctx, CollectionActivity::class.java)
+            .putExtra(X_KIND, KIND_PLAYLIST).putExtra(X_ID_S, id)
         private const val X_ID_S = "list_id"
         const val LIST_RU = "ru"
         const val LIST_WORLD = "world"
