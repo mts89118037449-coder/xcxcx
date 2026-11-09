@@ -199,6 +199,8 @@ class MainActivity : AppCompatActivity() {
             else -> "SoundAura"
         }
         toolbar.menu.clear()
+        // На «Музыке» своя шапка с логотипом SoundAura — обычный заголовок не нужен.
+        toolbar.isVisible = id != R.id.nav_music
         // Медиатека: первые песни, которых нет на телефоне и в памяти, готовим заранее.
         if (id == R.id.nav_library && ::musicSearch.isInitialized) Streams.prefetchMany(
             libraryItems().filter { it.local == null && it.pageUrl == null && !MediaCache.has(it.track) }.map { it.track }, 4)
@@ -305,6 +307,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupMusicPage() {
         musicSearch = findViewById(R.id.musicSearch)
+        Aura.gradientText(findViewById(R.id.brandTitle))
+        findViewById<TextView>(R.id.brandGreeting).text = Aura.greeting()
+        Aura.primaryButton(findViewById(R.id.libPlayAll))
         musicSearch.doAfterTextChanged {
             val q = it?.toString()?.trim().orEmpty()
             findViewById<View>(R.id.musicResults).isVisible = q.length >= 2
@@ -464,10 +469,14 @@ class MainActivity : AppCompatActivity() {
                 topMargin = dp(20); bottomMargin = dp(8); marginStart = dp(4)
             }
         })
-        if (action != null && onAction != null) row.addView(MaterialButton(this, null, androidx.appcompat.R.attr.borderlessButtonStyle).apply {
+        if (action != null && onAction != null) row.addView(MaterialButton(this).apply {
             text = action
             setIconResource(R.drawable.ic_play_arrow)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
+            Aura.primaryButton(this) // градиент ауры
+            minHeight = dp(40); minimumHeight = dp(40)
+            insetTop = 0; insetBottom = 0
+            setPadding(dp(16), 0, dp(18), 0)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(12) }
             setOnClickListener { onAction() }
         })
         return row

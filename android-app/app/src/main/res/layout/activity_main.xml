@@ -4,7 +4,7 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
+    android:background="@drawable/bg_aura"
     android:fitsSystemWindows="true">
 
     <LinearLayout
@@ -16,6 +16,7 @@
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
+            android:background="@android:color/transparent"
             app:title="SoundAura"
             app:titleTextAppearance="?attr/textAppearanceTitleLarge" />
 
@@ -59,10 +60,13 @@
             android:layout_marginHorizontal="8dp"
             android:layout_marginBottom="6dp"
             android:visibility="gone"
-            app:cardBackgroundColor="?attr/colorSecondaryContainer"
-            app:cardCornerRadius="18dp">
+            app:cardBackgroundColor="@android:color/transparent"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp">
 
             <LinearLayout
+                android:background="@drawable/bg_mini_player"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical">

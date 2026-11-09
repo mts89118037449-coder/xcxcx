@@ -13,7 +13,7 @@ class App : Application() {
         super.onCreate()
         instance = this
         // Material You: на Android 12+ цвета приложения подстраиваются под обои.
-        com.google.android.material.color.DynamicColors.applyToActivitiesIfAvailable(this)
+        // Свои фирменные цвета SoundAura (фиолетово-розовая аура), а не цвета обоев.
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(Settings.theme(this).mode)
         Notifications.createChannels(this)
         Jobs.init(this)

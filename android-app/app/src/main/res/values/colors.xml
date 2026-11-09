@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="accent">#0E7490</color>
+    <color name="accent">#6A3DF0</color>
     <color name="icon_bg">#0E7490</color>
+    <!-- Свечение ауры на фоне и мини-плеер (светлая тема — нежнее) -->
+    <color name="aura_glow_violet">#335B2EE6</color>
+    <color name="aura_glow_pink">#26FF4F9A</color>
+    <color name="mini_start">#FFF1EAFF</color>
+    <color name="mini_end">#FFFFE6F1</color>
 </resources>

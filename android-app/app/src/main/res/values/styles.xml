@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Material 3. На Android 12+ цвета заменяются цветами обоев (DynamicColors в App). -->
+    <!-- Material 3 в фирменных цветах SoundAura. Фон окна — с мягким свечением ауры. -->
     <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/m3_primary</item>
         <item name="colorOnPrimary">@color/m3_onPrimary</item>
@@ -34,6 +34,7 @@
         <item name="actionMenuTextAppearance">@style/MenuText</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">?attr/colorSurfaceContainer</item>
+        <item name="android:windowBackground">@drawable/bg_aura</item>
     </style>
 
     <!-- Прозрачное окно, поверх которого выезжает нижняя панель «Поделиться». -->

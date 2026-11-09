@@ -73,7 +73,15 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_marginVertical="12dp"
-            android:layout_weight="1">
+            android:layout_weight="1"
+            android:clipChildren="false">
+
+            <!-- Аура: свечение в цвет обложки, «дышит», пока играет музыка -->
+            <View
+                android:id="@+id/npAura"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:importantForAccessibility="no" />
 
             <!-- Обложка и поверх неё — затемнение с «Готовлю…», пока ищется поток -->
             <FrameLayout
@@ -267,90 +275,136 @@
             android:layout_marginTop="12dp"
             android:orientation="horizontal">
 
-            <com.google.android.material.button.MaterialButton
+            <LinearLayout
                 android:id="@+id/npDownload"
-                app:autoSizeTextType="uniform"
-                app:autoSizeMinTextSize="9sp"
-                app:autoSizeMaxTextSize="13sp"
-                app:autoSizeStepGranularity="1sp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:insetLeft="0dp"
-                android:insetRight="0dp"
-                app:iconPadding="2dp"
-                app:iconGravity="top"
-                app:iconSize="22dp"
-                android:maxLines="1"
-                style="@style/Widget.Material3.Button.TonalButton"
                 android:layout_width="0dp"
                 android:layout_height="68dp"
                 android:layout_weight="1"
-                android:text="Скачать"
-                app:icon="@drawable/ic_download" />
+                android:background="@drawable/bg_tile"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
 
-            <com.google.android.material.button.MaterialButton
+                <ImageView
+                    android:id="@+id/npDownloadIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_download"
+                    app:tint="?attr/colorOnSecondaryContainer" />
+
+                <TextView
+                    android:id="@+id/npDownloadText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="Скачать"
+                    android:textColor="?attr/colorOnSecondaryContainer"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/npLyrics"
-                app:autoSizeTextType="uniform"
-                app:autoSizeMinTextSize="9sp"
-                app:autoSizeMaxTextSize="13sp"
-                app:autoSizeStepGranularity="1sp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:insetLeft="0dp"
-                android:insetRight="0dp"
-                app:iconPadding="2dp"
-                app:iconGravity="top"
-                app:iconSize="22dp"
-                android:maxLines="1"
-                style="@style/Widget.Material3.Button.TonalButton"
                 android:layout_width="0dp"
                 android:layout_height="68dp"
+                android:layout_weight="1"
                 android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:text="Текст"
-                app:icon="@drawable/ic_lyrics" />
+                android:background="@drawable/bg_tile"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
 
-            <com.google.android.material.button.MaterialButton
+                <ImageView
+                    android:id="@+id/npLyricsIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_lyrics"
+                    app:tint="?attr/colorOnSecondaryContainer" />
+
+                <TextView
+                    android:id="@+id/npLyricsText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="Текст"
+                    android:textColor="?attr/colorOnSecondaryContainer"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/npWhere"
-                app:autoSizeTextType="uniform"
-                app:autoSizeMinTextSize="9sp"
-                app:autoSizeMaxTextSize="13sp"
-                app:autoSizeStepGranularity="1sp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:insetLeft="0dp"
-                android:insetRight="0dp"
-                app:iconPadding="2dp"
-                app:iconGravity="top"
-                app:iconSize="22dp"
-                android:maxLines="1"
-                style="@style/Widget.Material3.Button.TonalButton"
                 android:layout_width="0dp"
                 android:layout_height="68dp"
-                android:layout_marginHorizontal="8dp"
                 android:layout_weight="1"
-                android:text="Сервисы"
-                app:icon="@drawable/ic_link" />
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_tile"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
 
-            <com.google.android.material.button.MaterialButton
+                <ImageView
+                    android:id="@+id/npWhereIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_link"
+                    app:tint="?attr/colorOnSecondaryContainer" />
+
+                <TextView
+                    android:id="@+id/npWhereText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="Сервисы"
+                    android:textColor="?attr/colorOnSecondaryContainer"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/npShare"
-                app:autoSizeTextType="uniform"
-                app:autoSizeMinTextSize="9sp"
-                app:autoSizeMaxTextSize="13sp"
-                app:autoSizeStepGranularity="1sp"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:insetLeft="0dp"
-                android:insetRight="0dp"
-                app:iconPadding="2dp"
-                app:iconGravity="top"
-                app:iconSize="22dp"
-                android:maxLines="1"
                 android:layout_width="0dp"
                 android:layout_height="68dp"
                 android:layout_weight="1"
-                android:text="Отправить"
-                app:icon="@drawable/ic_send" />
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_tile_aura"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/npShareIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_send"
+                    app:tint="@android:color/white" />
+
+                <TextView
+                    android:id="@+id/npShareText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="Отправить"
+                    android:textColor="@android:color/white"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

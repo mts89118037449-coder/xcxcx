@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="aura_glow_violet">#665B2EE6</color>
+    <color name="aura_glow_pink">#40FF4F9A</color>
+    <color name="mini_start">#FF231A3A</color>
+    <color name="mini_end">#FF2E1830</color>
+</resources>

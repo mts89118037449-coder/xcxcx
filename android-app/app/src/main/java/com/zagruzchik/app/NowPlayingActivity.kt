@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.View
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.ColorUtils
@@ -39,7 +40,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var play: MaterialButton
     private lateinit var shuffle: MaterialButton
     private lateinit var repeat: MaterialButton
-    private lateinit var download: MaterialButton
+    private lateinit var download: View
     private lateinit var loading: View
     private lateinit var status: TextView
     private lateinit var retry: View
@@ -58,6 +59,8 @@ class NowPlayingActivity : AppCompatActivity() {
         }
     }
 
+    private lateinit var glow: Aura.Glow
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_now_playing)
@@ -69,6 +72,8 @@ class NowPlayingActivity : AppCompatActivity() {
         pos = findViewById(R.id.npPos)
         dur = findViewById(R.id.npDur)
         play = findViewById(R.id.npPlay)
+        Aura.playButton(play)
+        glow = Aura.Glow(findViewById(R.id.npAura))
         shuffle = findViewById(R.id.npShuffle)
         repeat = findViewById(R.id.npRepeat)
         download = findViewById(R.id.npDownload)
@@ -80,7 +85,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val box = findViewById<View>(R.id.npCoverBox)
         val frame = findViewById<View>(R.id.npCoverFrame)
         box.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
-            val side = minOf(r - l, b - t)
+            val side = (minOf(r - l, b - t) * 0.88f).toInt() // чуть меньше места — вокруг светится аура
             if (frame.layoutParams.width != side) frame.post { frame.layoutParams = frame.layoutParams.apply { width = side; height = side } }
         }
 
@@ -159,6 +164,11 @@ class NowPlayingActivity : AppCompatActivity() {
         seek.post(ticker)
     }
 
+    override fun onDestroy() {
+        if (::glow.isInitialized) glow.stop()
+        super.onDestroy()
+    }
+
     override fun onStop() {
         Playback.Pending.unlisten(pendingListener)
         controller?.removeListener(listener)
@@ -219,6 +229,7 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         val playing = c?.isPlaying == true
         play.setIconResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play_arrow)
+        glow.playing(playing) // аура «дышит», пока играет
         play.contentDescription = if (playing) "Пауза" else "Играть"
         play.isEnabled = !pending
         shuffle.alpha = if (c?.shuffleModeEnabled == true) 1f else 0.45f
@@ -226,8 +237,9 @@ class NowPlayingActivity : AppCompatActivity() {
         repeat.setIconResource(if (c?.repeatMode == Player.REPEAT_MODE_ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat)
         val local = extras()?.getString(Playback.X_LOCAL_URI) != null && !pending
         download.isEnabled = !local && !pending
-        download.text = if (local) "Скачано" else "Скачать"
-        download.setIconResource(if (local) R.drawable.ic_check_circle else R.drawable.ic_download)
+        download.alpha = if (download.isEnabled || local) 1f else 0.45f
+        findViewById<TextView>(R.id.npDownloadText).text = if (local) "Скачано" else "Скачать"
+        findViewById<ImageView>(R.id.npDownloadIcon).setImageResource(if (local) R.drawable.ic_check_circle else R.drawable.ic_download)
         val liked = currentTrack()?.let { Library.isSaved(it) } == true
         findViewById<MaterialButton>(R.id.npLike).apply {
             setIconResource(if (liked) R.drawable.ic_favorite else R.drawable.ic_favorite_border)
@@ -263,7 +275,10 @@ class NowPlayingActivity : AppCompatActivity() {
     /** Фон: цвет обложки сверху, плавно уходящий в обычный фон. */
     private fun paintBackground(b: Bitmap?) {
         val surface = MaterialColors.getColor(cover, M.attr.colorSurface)
-        val top = if (b == null) surface else ColorUtils.blendARGB(Images.dominant(b), surface, 0.45f)
+        // Цвет обложки с оттенком ауры — сверху, плавно уходит в фон; вокруг обложки — свечение того же цвета.
+        val tone = b?.let { ColorUtils.blendARGB(Images.dominant(it), Aura.VIOLET, 0.25f) } ?: Aura.VIOLET
+        glow.color(tone)
+        val top = ColorUtils.blendARGB(tone, surface, 0.45f)
         findViewById<View>(R.id.npBackground).background =
             GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(top, surface, surface))
     }
@@ -309,6 +324,6 @@ class NowPlayingActivity : AppCompatActivity() {
             }
             .show()
         download.isEnabled = false
-        download.text = "Качаю…"
+        findViewById<TextView>(R.id.npDownloadText).text = "Качаю…"
     }
 }

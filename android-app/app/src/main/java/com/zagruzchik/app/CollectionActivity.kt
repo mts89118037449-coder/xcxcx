@@ -25,6 +25,7 @@ class CollectionActivity : AppCompatActivity() {
         content = findViewById(R.id.colContent)
         findViewById<View>(R.id.colBack).setOnClickListener { finish() }
         findViewById<View>(R.id.colPlay).setOnClickListener { playAll(shuffle = false) }
+        Aura.primaryButton(findViewById(R.id.colPlay))
         findViewById<View>(R.id.colShuffle).setOnClickListener { playAll(shuffle = true) }
 
         val i = intent

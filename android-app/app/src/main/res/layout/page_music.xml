@@ -11,6 +11,25 @@
         android:paddingHorizontal="16dp"
         android:paddingBottom="24dp">
 
+        <!-- Шапка: логотип SoundAura (градиент ауры) и приветствие -->
+        <TextView
+            android:id="@+id/brandTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="sans-serif-black"
+            android:letterSpacing="-0.02"
+            android:text="SoundAura"
+            android:textSize="34sp" />
+
+        <TextView
+            android:id="@+id/brandGreeting"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="14dp"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/musicSearchLayout"
             style="?attr/textInputOutlinedStyle"

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Большая кнопка «Играть» в плеере: круг с градиентом ауры -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#40FFFFFF">
+    <item>
+        <shape android:shape="oval">
+            <gradient android:angle="315" android:startColor="#FF6A3DF0" android:centerColor="#FFA03EE0" android:endColor="#FFFF4F9A" />
+        </shape>
+    </item>
+</ripple>
