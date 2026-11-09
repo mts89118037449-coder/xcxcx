@@ -14,7 +14,8 @@ import kotlin.concurrent.thread
 
 /** Действия с песней («…» в строке): в любимое, скачать, исполнитель, радио, поделиться. */
 object TrackActions {
-    fun show(a: Activity, t: Track, snack: (String) -> Unit, pageUrl: String? = null, directUrl: String? = null, local: SavedFile? = null) {
+    fun show(a: Activity, t: Track, snack: (String) -> Unit, pageUrl: String? = null, directUrl: String? = null, local: SavedFile? = null,
+             onLikeChanged: (Boolean) -> Unit = {}) {
         val dlg = BottomSheetDialog(a)
         val onSurface = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurface, 0)
         val muted = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurfaceVariant, 0)
@@ -47,6 +48,7 @@ object TrackActions {
         item(if (saved) R.drawable.ic_favorite else R.drawable.ic_favorite_border, if (saved) "Убрать из любимого" else "В любимое") {
             val inCache = MediaCache.has(t)
             val now = Library.like(a, t, pageUrl ?: directUrl, t.url)
+            onLikeChanged(now)
             snack(when {
                 !now -> "Убрано из любимого"
                 local != null || !Settings.saveLiked(a) -> "«${t.title}» — в любимом"

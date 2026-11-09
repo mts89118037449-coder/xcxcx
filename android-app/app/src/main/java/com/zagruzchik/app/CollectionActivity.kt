@@ -155,6 +155,16 @@ class CollectionActivity : AppCompatActivity() {
                     isVisible = true
                     setOnClickListener { radio(p.artist) }
                 }
+                // Песни этого исполнителя, которые уже у вас: любимые и скачанные.
+                val covers = p.top.associateBy({ Match.base(it.title) }, { it.cover })
+                val mine = (Library.favorites + Library.downloaded().map { it.first })
+                    .filter { Library.hasArtist(it, p.artist.name) }
+                    .distinctBy { Library.looseKey(it) }
+                    .map { t -> if (t.cover == null) t.copy(cover = covers[Match.base(t.title)] ?: p.artist.picture) else t }
+                if (mine.isNotEmpty()) {
+                    section("В вашей медиатеке · ${mine.size}")
+                    showTracks(mine, numbered = false)
+                }
                 tracks = p.top
                 if (p.top.isNotEmpty()) {
                     section("Популярное")

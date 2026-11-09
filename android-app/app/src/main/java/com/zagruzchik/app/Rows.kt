@@ -74,12 +74,16 @@ object Rows {
         }
         if (!video && t.artist.isNotBlank()) row.setOnLongClickListener { openArtist(act, t.artist); true }
         // Играет сейчас — столбики ауры справа.
+        // Песня уже в «Любимом» — сердечко ауры справа (видно везде: у исполнителя, в альбоме, в поиске).
+        row.findViewById<View>(R.id.srLiked).isVisible = !video && Library.isSaved(t)
         val playingNow = Playback.nowPlayingKey == Library.key(t)
         row.findViewById<EqBarsView>(R.id.srEq).apply { isVisible = playingNow; playing(playingNow) }
         row.findViewById<View>(R.id.srMore).apply {
             isVisible = !video
             setOnClickListener {
-                TrackActions.show(act, t, snack, pageUrl = pageUrl, directUrl = directUrl, local = local)
+                TrackActions.show(act, t, snack, pageUrl = pageUrl, directUrl = directUrl, local = local) { liked ->
+                    row.findViewById<View>(R.id.srLiked).isVisible = liked
+                }
             }
         }
         return row

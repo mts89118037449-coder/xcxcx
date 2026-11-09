@@ -19,7 +19,7 @@ object Library {
         loadPlaylists(ctx)
         file = File(ctx.filesDir, "library.json")
         saved.clear()
-        savedKeys = null
+        savedKeys = null; savedLoose = null
         val arr = runCatching { JSONArray(file.readText()) }.getOrNull() ?: return
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
@@ -124,7 +124,7 @@ object Library {
         val have = saved.map(::key).toHashSet()
         val fresh = tracks.filter { have.add(key(it)) }
         saved.addAll(0, fresh)
-        savedKeys = null
+        savedKeys = null; savedLoose = null
         save()
         listeners.toList().forEach { it() }
         return fresh.size
@@ -136,17 +136,34 @@ object Library {
     }
 
     @Volatile private var savedKeys: Set<String>? = null
+    @Volatile private var savedLoose: Set<String>? = null
+
+    /** Основной исполнитель (первый из «А, Б feat. В»). */
+    fun mainArtist(a: String) = a.split(Regex("""\s*(,|&|;| x | feat\.? | ft\.? | и )\s*""", RegexOption.IGNORE_CASE)).first().trim()
+
+    /** Ключ попроще: название + основной исполнитель (совместные песни записаны в сервисах по-разному). */
+    fun looseKey(t: Track) = Match.base(t.title) + "|" + Match.fold(Match.norm(mainArtist(t.artist)))
+
+    /** Есть ли среди исполнителей песни [artist]. */
+    fun hasArtist(t: Track, artist: String): Boolean {
+        val who = Match.fold(Match.norm(artist))
+        return t.artist.split(Regex("""\s*(,|&|;| x | feat\.? | ft\.? | и )\s*""", RegexOption.IGNORE_CASE))
+            .any { Match.fold(Match.norm(it.trim())) == who }
+    }
 
     val favorites: List<Track> get() = saved.toList()
 
-    fun isSaved(t: Track): Boolean = (savedKeys ?: saved.toList().map(::key).toHashSet().also { savedKeys = it }).contains(key(t))
+    fun isSaved(t: Track): Boolean =
+        (savedKeys ?: saved.toList().map(::key).toHashSet().also { savedKeys = it }).contains(key(t)) ||
+            (savedLoose ?: saved.toList().map(::looseKey).toHashSet().also { savedLoose = it }).contains(looseKey(t))
 
     /** Добавить/убрать из «Избранного». Возвращает, сохранена ли песня теперь. */
     fun toggle(t: Track): Boolean {
         val k = key(t)
-        val was = saved.removeAll { key(it) == k }
+        val lk = looseKey(t)
+        val was = saved.removeAll { key(it) == k || looseKey(it) == lk }
         if (!was) saved.add(0, t)
-        savedKeys = null
+        savedKeys = null; savedLoose = null
         save()
         listeners.toList().forEach { it() }
         return !was

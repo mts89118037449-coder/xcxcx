@@ -55,6 +55,17 @@
             android:textColor="?attr/colorOnSurfaceVariant" />
     </LinearLayout>
 
+    <!-- Уже в «Любимом» -->
+    <ImageView
+        android:id="@+id/srLiked"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:layout_marginStart="8dp"
+        android:contentDescription="В любимом"
+        android:src="@drawable/ic_favorite"
+        android:visibility="gone"
+        app:tint="@color/aura3" />
+
     <com.zagruzchik.app.EqBarsView
         android:id="@+id/srEq"
         android:layout_width="16dp"
