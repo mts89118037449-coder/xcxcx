@@ -4,4 +4,6 @@
     <string name="shortcut_download_long">Скачать ссылку из буфера обмена</string>
     <string name="shortcut_links">Где послушать</string>
     <string name="shortcut_links_long">Ссылки на песню из буфера в других сервисах</string>
+    <string name="screen_import_label">SoundAura — перенос медиатеки</string>
+    <string name="screen_import_desc">Переносит ваши «Любимые» и плейлисты из Spotify, Яндекс Музыки, VK и других приложений без входа и браузера: SoundAura пролистывает открытый вами список и запоминает названия песен. Работает только в музыкальных приложениях и только пока вы переносите — ничего не отправляется в интернет.</string>
 </resources>

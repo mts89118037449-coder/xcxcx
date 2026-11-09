@@ -31,6 +31,7 @@ class ImportActivity : AppCompatActivity() {
     private var source = Importer.Source.SPOTIFY
     private lateinit var tiles: GridLayout
     private lateinit var hint: TextView
+    private lateinit var fromApp: MaterialButton
     private lateinit var linkBox: TextInputLayout
     private lateinit var link: TextInputEditText
     private lateinit var listBox: TextInputLayout
@@ -82,6 +83,17 @@ class ImportActivity : AppCompatActivity() {
 
         hint = TextView(this).apply { textSize = 14f; setTextColor(onSurface); setLineSpacing(0f, 1.3f); background = getDrawable(R.drawable.bg_card); setPadding(dp(16), dp(14), dp(16), dp(14)) }
         root.addView(hint, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+
+        // Главный путь — без браузера и входа: прямо из приложения сервиса на телефоне.
+        fromApp = MaterialButton(this).apply {
+            setIconResource(R.drawable.ic_library_music); Aura.primaryButton(this); insetTop = 0; insetBottom = 0
+            setOnClickListener { fromScreen() }
+        }
+        root.addView(fromApp, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply { topMargin = dp(14) })
+        root.addView(TextView(this).apply {
+            id = View.generateViewId(); tag = "orLink"
+            text = "или по ссылке на плейлист:"; textSize = 13f; setTextColor(muted); setPadding(dp(4), dp(14), 0, 0)
+        })
 
         linkBox = TextInputLayout(this, null, com.google.android.material.R.attr.textInputOutlinedStyle).apply { hint = "Ссылка на плейлист или альбом"; endIconMode = TextInputLayout.END_ICON_CLEAR_TEXT }
         link = TextInputEditText(linkBox.context).apply { inputType = InputType.TYPE_TEXT_VARIATION_URI; maxLines = 3 }
@@ -169,10 +181,64 @@ class ImportActivity : AppCompatActivity() {
                 width = 0; height = dp(54); setMargins(dp(4), dp(4), dp(4), dp(4))
             })
         }
-        hint.text = source.hint
+        val app = installedApp(source)
+        fromApp.isVisible = source.apps.isNotEmpty()
+        fromApp.text = if (app != null) "Перенести «Любимые» из приложения ${source.title}" else "Приложение ${source.title} не установлено"
+        fromApp.isEnabled = app != null
+        hint.text = if (source.apps.isNotEmpty())
+            "Без браузера и входа: откройте в приложении ${source.title} «Любимые» (или любой плейлист) и нажмите кнопку SoundAura внизу — список перенесётся сам.\n\n" + source.hint
+        else source.hint
         linkBox.isVisible = source.byLink
         pickFile.isVisible = !source.byLink
         listBox.isVisible = !source.byLink
+    }
+
+    private fun installedApp(s: Importer.Source) = s.apps.firstOrNull { p -> runCatching { packageManager.getPackageInfo(p, 0) }.isSuccess }
+
+    /**
+     * Перенос с экрана: включаем кнопку SoundAura в приложении сервиса и открываем его.
+     * Нужна служба в «Специальных возможностях» (один переключатель, без входа и паролей).
+     */
+    private fun fromScreen() {
+        val app = installedApp(source) ?: return
+        if (!ScreenImportService.enabled(this)) {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("Один переключатель")
+                .setMessage("Чтобы SoundAura могла пролистать «Любимые» в ${source.title}, включите её в «Специальных возможностях»:\n\n" +
+                    "Специальные возможности → Установленные приложения → «SoundAura — перенос медиатеки» → Включить.\n\n" +
+                    "Без входа и паролей. Работает только в музыкальных приложениях и только пока идёт перенос.")
+                .setPositiveButton("Открыть настройки") { _, _ -> startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                .setNegativeButton("Отмена", null).show()
+            return
+        }
+        ScreenImportService.armed = source.title
+        ScreenImportService.result = null
+        status.isVisible = true
+        status.text = "Откройте «Любимые» в ${source.title} и нажмите кнопку SoundAura внизу экрана."
+        packageManager.getLaunchIntentForPackage(app)?.let { startActivity(it) }
+    }
+
+    /** Вернулись из приложения сервиса со списком — переносим. */
+    private fun takeScreenResult() {
+        val r = ScreenImportService.result ?: return
+        ScreenImportService.result = null
+        if (r.tracks.isEmpty()) {
+            status.isVisible = true
+            status.text = "На экране не нашлось песен. Откройте сам список песен («Любимые» или плейлист) и нажмите кнопку ещё раз."
+            return
+        }
+        start { r }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_FROM_SCREEN, false)) takeScreenResult()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        renderSource() // включили службу в настройках — кнопка готова
+        takeScreenResult()
     }
 
     private fun submit() {
@@ -233,6 +299,7 @@ class ImportActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_URL = "url"
+        const val EXTRA_FROM_SCREEN = "fromScreen"
         fun open(ctx: Context, url: String? = null) = ctx.startActivity(Intent(ctx, ImportActivity::class.java).apply { url?.let { putExtra(EXTRA_URL, it) } })
     }
 

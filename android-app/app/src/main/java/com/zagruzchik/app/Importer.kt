@@ -31,7 +31,15 @@ object Importer {
             "ВК не отдаёт музыку без входа. Быстрее всего: в TuneMyMusic или Soundiiz перенесите VK → «Файл» (CSV) и выберите файл здесь. Или вставьте список «Исполнитель — Песня».",
             byLink = false),
         FILE("Файл, список", null,
-            "CSV из Exportify, TuneMyMusic, Soundiiz — или любой текст, где каждая строка «Исполнитель — Песня».", byLink = false),
+            "CSV из Exportify, TuneMyMusic, Soundiiz — или любой текст, где каждая строка «Исполнитель — Песня».", byLink = false);
+
+        /** Приложения сервиса на телефоне — из них можно перенести «Любимые» прямо с экрана. */
+        val apps: List<String> get() = when (this) {
+            SPOTIFY -> listOf("com.spotify.music"); YANDEX -> listOf("ru.yandex.music"); APPLE -> listOf("com.apple.android.music")
+            YOUTUBE_MUSIC -> listOf("com.google.android.apps.youtube.music"); SOUNDCLOUD -> listOf("com.soundcloud.android")
+            DEEZER -> listOf("deezer.android.app"); VK -> listOf("com.uma.musicvk", "com.vkontakte.android"); FILE -> emptyList()
+        }
+
     }
 
     // ---------------- По ссылке ----------------
