@@ -117,9 +117,40 @@ object Importer {
     fun fromText(text: String, name: String = "Перенос"): Result {
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) throw UserError("Пусто — вставьте список или выберите файл")
-        val tracks = csv(lines) ?: lines.mapNotNull(::line)
+        val tracks = (json(text) ?: csv(lines) ?: lines.mapNotNull(::line)).filter { !isId(it.artist) && !isId(it.title) }
         if (tracks.isEmpty()) throw UserError("Не понял формат. Нужны строки вида «Исполнитель — Песня» или CSV-файл с колонками названия и исполнителя.")
         return Result(name, "Файл", tracks.distinctBy { Library.key(it) })
+    }
+
+    /** Ссылка/идентификатор вместо имени (spotify:artist:…, https://…). */
+    fun isId(s: String) = s.startsWith("spotify:") || s.startsWith("http://") || s.startsWith("https://")
+
+    /**
+     * JSON-выгрузка Spotify («Конфиденциальность → Скачать данные»): YourLibrary.json (tracks: artist/track),
+     * StreamingHistory*.json (artistName/trackName) и расширенная история (master_metadata_*).
+     */
+    private fun json(text: String): List<Track>? {
+        val t = text.trimStart()
+        if (!t.startsWith("{") && !t.startsWith("[")) return null
+        val arr = runCatching {
+            if (t.startsWith("[")) org.json.JSONArray(t) else org.json.JSONObject(t).let { o ->
+                o.optJSONArray("tracks") ?: o.optJSONArray("items") ?: o.keys().asSequence().mapNotNull { o.optJSONArray(it) }.firstOrNull()
+            }
+        }.getOrNull() ?: return null
+        val out = mutableListOf<Track>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val track = o.optJSONObject("track")
+            val title = listOf("track", "trackName", "master_metadata_track_name", "title", "name", "song")
+                .firstNotNullOfOrNull { k -> o.optString(k).takeIf { it.isNotBlank() && it != "null" && o.opt(k) is String } }
+                ?: track?.optString("name")?.takeIf { it.isNotBlank() } ?: continue
+            val artist = listOf("artist", "artistName", "master_metadata_album_artist_name", "artists")
+                .firstNotNullOfOrNull { k -> o.optString(k).takeIf { it.isNotBlank() && it != "null" && o.opt(k) is String } }
+                ?: track?.optJSONArray("artists")?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optString("name") }.joinToString(", ") }
+                ?: ""
+            out += Track(title.trim(), artist.trim())
+        }
+        return out.takeIf { it.isNotEmpty() }
     }
 
     /** CSV с заголовком: ищем колонки названия и исполнителя (Exportify, TuneMyMusic, Soundiiz и др.). */
@@ -130,8 +161,12 @@ object Importer {
         val cols = split(head, sep).map { it.lowercase().trim() }
         val ti = cols.indexOfFirst { it in setOf("track name", "track", "title", "name", "song", "song name", "название", "трек", "песня") }
             .takeIf { it >= 0 } ?: cols.indexOfFirst { it.contains("track") && it.contains("name") || it.contains("title") }
-        val ai = cols.indexOfFirst { it.startsWith("artist") || it.contains("исполнител") }
+        // Колонки с идентификаторами (Exportify: «Artist URI(s)», «Artist IDs») — не имена, их пропускаем.
+        fun idCol(c: String) = listOf("uri", " id", "ids", "url", "link", "ссылк").any { c.contains(it) }
+        val artistCols = cols.indices.filter { (cols[it].startsWith("artist") || cols[it].contains("исполнител")) && !idCol(cols[it]) }
+        val ai = artistCols.firstOrNull { cols[it].contains("name") || cols[it].contains("имя") } ?: artistCols.firstOrNull() ?: -1
         if (ti < 0 || ai < 0) return null
+        if (idCol(cols[ti])) return null
         val di = cols.indexOfFirst { it.contains("duration") || it.contains("длительн") }
         return lines.drop(1).mapNotNull { l ->
             val f = split(l, sep)
@@ -175,6 +210,14 @@ object Importer {
      * Дополняем песни из Deezer (обложка, длительность, ISRC, «без цензуры»), не меняя названий.
      * [progress] — сколько уже обработано.
      */
+    // Deezer пускает ~50 запросов за 5 секунд: шагаем чуть реже, чтобы большие медиатеки не получали отказов.
+    private val nextSlot = java.util.concurrent.atomic.AtomicLong(0)
+    private fun pace() {
+        val now = System.currentTimeMillis()
+        val slot = nextSlot.getAndUpdate { maxOf(it, now) + 110 }.coerceAtLeast(now)
+        if (slot > now) Thread.sleep(slot - now)
+    }
+
     fun enrich(tracks: List<Track>, progress: (Int) -> Unit): List<Track> {
         val done = AtomicInteger()
         val pool = Executors.newFixedThreadPool(8)
@@ -182,6 +225,7 @@ object Importer {
             return tracks.map { t ->
                 pool.submit<Track> {
                     val r = if (t.cover != null && t.durationSec > 0) t else runCatching {
+                        pace()
                         val data = Http.cachedJson("https://api.deezer.com/search?limit=5&q=" + Http.enc("${t.artist} ${t.title}".trim()), 8000).optJSONArray("data")
                         val found = data?.let { d -> (0 until d.length()).map { DeezerSource.track(d.getJSONObject(it)) } }.orEmpty()
                         val best = if (t.artist.isBlank()) found.firstOrNull()

@@ -206,8 +206,14 @@ class ImportActivity : AppCompatActivity() {
                 .setTitle("Один переключатель")
                 .setMessage("Чтобы SoundAura могла пролистать «Любимые» в ${source.title}, включите её в «Специальных возможностях»:\n\n" +
                     "Специальные возможности → Установленные приложения → «SoundAura — перенос медиатеки» → Включить.\n\n" +
-                    "Без входа и паролей. Работает только в музыкальных приложениях и только пока идёт перенос.")
+                    "Без входа и паролей. Работает только в музыкальных приложениях и только пока идёт перенос.\n\n" +
+                    "Пишет «Настройки с ограниченным доступом»? Так Android защищает приложения, установленные не из магазина. " +
+                    "Нажмите «Снять ограничение» → ⋮ в правом верхнем углу → «Разрешить ограниченные настройки» (на Xiaomi — «Разрешить ограниченные настройки» внизу страницы), " +
+                    "подтвердите и снова включите переключатель.")
                 .setPositiveButton("Открыть настройки") { _, _ -> startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                .setNeutralButton("Снять ограничение") { _, _ ->
+                    startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null)))
+                }
                 .setNegativeButton("Отмена", null).show()
             return
         }
@@ -265,15 +271,12 @@ class ImportActivity : AppCompatActivity() {
         thread {
             try {
                 val r = load()
-                val n = r.tracks.size.coerceAtMost(2000)
-                runOnUiThread {
-                    status.text = "Нашёл $n песен в «${r.name}» · добавляю обложки…"
-                    progress.isIndeterminate = false; progress.max = n; progress.progress = 0
-                }
-                val tracks = Importer.enrich(r.tracks.take(2000)) { k -> runOnUiThread { progress.setProgressCompat(k, true) } }
-                val pl = Library.addPlaylist(r.name, r.source, tracks)
-                val added = if (toFav.isChecked) Library.addFavorites(tracks) else 0
-                runOnUiThread { finished(pl, added) }
+                // Сохраняем сразу — всё, без ограничений; обложки и длительность догружаются потом в фоне.
+                val pl = Library.addPlaylist(r.name, r.source, r.tracks)
+                val added = if (toFav.isChecked) Library.addFavorites(r.tracks) else 0
+                val need = r.tracks.filter { it.cover == null || it.durationSec == 0 }
+                runOnUiThread { finished(pl, added, need.size) }
+                if (need.isNotEmpty()) enrichInBackground(pl.id, need)
             } catch (e: Exception) {
                 runOnUiThread {
                     busy = false; go.isEnabled = true; progress.isVisible = false
@@ -283,8 +286,34 @@ class ImportActivity : AppCompatActivity() {
         }
     }
 
-    private fun finished(pl: Library.Playlist, added: Int) {
-        busy = false; go.isEnabled = true; progress.isVisible = false
+    /** Обложки для перенесённого — порциями, в фоне: можно уходить с экрана, медиатека обновится сама. */
+    private fun enrichInBackground(playlistId: String, tracks: List<Track>) {
+        val total = tracks.size
+        var doneCount = 0
+        tracks.chunked(100).forEach { part ->
+            val out = Importer.enrich(part) { k -> val n = doneCount + k; if (n % 10 == 0 || n == total) runOnUiThread { coverStatus(n, total) } }
+            doneCount += part.size
+            Library.enriched(playlistId, part.zip(out))
+        }
+        runOnUiThread { coverStatus(total, total) }
+    }
+
+    private fun coverStatus(n: Int, total: Int) {
+        if (isFinishing || isDestroyed) return
+        progress.isVisible = n < total
+        if (n < total) { progress.isIndeterminate = false; progress.max = total; progress.setProgressCompat(n, true) }
+        cover.isVisible = true
+        cover.text = if (n < total) "Подтягиваю обложки: $n из $total — можно закрыть экран, продолжится само" else "Обложки готовы"
+    }
+
+    private val cover by lazy {
+        TextView(this).apply { textSize = 13f; setTextColor(status.currentTextColor); setPadding(0, dp(6), 0, 0) }
+            .also { (status.parent as ViewGroup).addView(it, (status.parent as ViewGroup).indexOfChild(status) + 1) }
+    }
+
+    private fun finished(pl: Library.Playlist, added: Int, pending: Int = 0) {
+        busy = false; go.isEnabled = true; progress.isVisible = pending > 0
+        if (pending > 0) { progress.isIndeterminate = false; progress.max = pending; progress.progress = 0 }
         status.text = "Готово: ${pl.tracks.size} песен — плейлист «${pl.name}»" + if (added > 0) ", $added новых в «Любимом»." else "."
         done.removeAllViews()
         done.isVisible = true

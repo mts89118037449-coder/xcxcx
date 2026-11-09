@@ -14,7 +14,6 @@ import android.widget.TextView
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.isVisible
 import com.google.android.material.color.MaterialColors
-import kotlin.concurrent.thread
 
 /**
  * Медиатека: подвкладки Песни · Исполнители · Альбомы · Плейлисты · Скачано · История.
@@ -32,6 +31,33 @@ class LibraryPage(
     private var sort = Sort.RECENT
     private val bar: LinearLayout = a.findViewById(R.id.libTabBar)
     private val content: LinearLayout = a.findViewById(R.id.libContent)
+    private val scroll: androidx.core.widget.NestedScrollView = a.findViewById(R.id.libScroll)
+
+    // Длинные списки (тысячи песен после переноса) рисуем порциями по мере прокрутки, а не все сразу.
+    private var more: (() -> Boolean)? = null
+    private var shown = 0          // сколько элементов уже на экране — чтобы обновление не сбрасывало прокрутку
+    private var keepShown = 0
+
+    /** Показать [n] элементов порциями: [add] добавляет i-й. */
+    private fun paged(n: Int, add: (Int) -> Unit) {
+        var i = 0
+        fun chunk(size: Int): Boolean {
+            val end = minOf(n, i + size)
+            while (i < end) add(i++)
+            shown = i
+            return i < n
+        }
+        val first = maxOf(PAGE, keepShown)
+        more = if (chunk(first)) { { chunk(PAGE) } } else null
+    }
+
+    private fun loadMoreIfNear() {
+        val m = more ?: return
+        val child = scroll.getChildAt(0) ?: return
+        if (child.bottom - (scroll.height + scroll.scrollY) < a.dp(1200)) {
+            if (!m()) more = null
+        }
+    }
     private val onSurface = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurface, Color.WHITE)
     private val muted = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurfaceVariant, Color.GRAY)
 
@@ -41,6 +67,7 @@ class LibraryPage(
             if (items.isEmpty()) snack("Медиатека пока пуста — ставьте ♥ песням") else Playback.playQueue(a, items, 0)
         }
         buildTabs()
+        scroll.setOnScrollChangeListener { _: androidx.core.widget.NestedScrollView, _: Int, _: Int, _: Int, _: Int -> loadMoreIfNear() }
     }
 
     private fun font(id: Int) = ResourcesCompat.getFont(a, id)
@@ -53,7 +80,7 @@ class LibraryPage(
                 orientation = LinearLayout.VERTICAL
                 setPadding(a.dp(8), a.dp(4), a.dp(8), 0)
                 isClickable = true; isFocusable = true
-                setOnClickListener { tab = t; buildTabs(); refresh() }
+                setOnClickListener { tab = t; buildTabs(); refresh(reset = true) }
             }
             cell.addView(TextView(a).apply {
                 text = t.label; textSize = 15f; typeface = font(R.font.onest_semibold)
@@ -85,7 +112,11 @@ class LibraryPage(
         })
     }
 
-    fun refresh() {
+    /** [reset] — другая вкладка/сортировка: с начала. Иначе (♥, загрузка) — сохраняем, сколько было пролистано. */
+    fun refresh(reset: Boolean = false) {
+        keepShown = if (reset) 0 else shown
+        more = null; shown = 0
+        if (reset) scroll.scrollTo(0, 0)
         content.removeAllViews()
         when (tab) {
             Tab.SONGS -> songsTab()
@@ -95,6 +126,7 @@ class LibraryPage(
             Tab.DOWNLOADED -> downloadedTab()
             Tab.HISTORY -> historyTab()
         }
+        scroll.post { loadMoreIfNear() }
     }
 
     /** «Умный микс» — карточка ауры с кнопкой. */
@@ -150,11 +182,12 @@ class LibraryPage(
                     if (on) setColor(MaterialColors.getColor(a, com.google.android.material.R.attr.colorSurfaceContainerHighest, Color.DKGRAY))
                     else setStroke(a.dp(1), androidx.core.content.ContextCompat.getColor(a, R.color.line))
                 }
-                setOnClickListener { sort = s; refresh() }
+                setOnClickListener { sort = s; refresh(reset = true) }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = a.dp(6) })
         }
         content.addView(chips, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = a.dp(6) })
-        items.forEachIndexed { i, q ->
+        paged(items.size) { i ->
+            val q = items[i]
             content.addView(row(content, q.track, q.local, Rows.statusOf(q.track, q.local), false) { Playback.playQueue(a, items, i) })
         }
     }
@@ -169,7 +202,9 @@ class LibraryPage(
         content.addView(TextView(a).apply { text = "${groups.size} исполнителей · из любимого и скачанного"; textSize = 13f; setTextColor(muted); setPadding(0, 0, 0, a.dp(12)) })
         val grid = GridLayout(a).apply { columnCount = 3 }
         val fresh = News.releases.map { Match.norm(it.album.artist) }.toSet()
-        groups.forEach { (name, list) ->
+        content.addView(grid)
+        paged(groups.size) { gi ->
+            val (name, list) = groups[gi]
             val cell = LinearLayout(a).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(0, 0, 0, a.dp(16)); isClickable = true
@@ -190,9 +225,17 @@ class LibraryPage(
             cell.addView(TextView(a).apply { text = name; textSize = 14f; typeface = font(R.font.onest_semibold); setTextColor(onSurface); gravity = Gravity.CENTER; maxLines = 1; setPadding(0, a.dp(8), 0, 0) })
             cell.addView(TextView(a).apply { text = songsWord(list.size); textSize = 12f; setTextColor(muted) })
             grid.addView(cell, GridLayout.LayoutParams(GridLayout.spec(GridLayout.UNDEFINED), GridLayout.spec(GridLayout.UNDEFINED, 1f)).apply { width = 0 })
-            thread { val ar = runCatching { Catalog.artistByName(name) }.getOrNull(); a.runOnUiThread { ar?.picture?.let { Images.into(img, it, R.drawable.ph_artist) } } }
+            artistPicture(name) { pic -> Images.into(img, pic, R.drawable.ph_artist) }
         }
-        content.addView(grid)
+    }
+
+    /** Фото исполнителя: из памяти сразу, иначе — в фоне, не больше 4 запросов одновременно. */
+    private fun artistPicture(name: String, set: (String) -> Unit) {
+        pictures[name]?.let { if (it.isNotEmpty()) set(it); return }
+        photoPool.execute {
+            val pic = pictures[name] ?: runCatching { Catalog.artistByName(name)?.picture }.getOrNull().orEmpty().also { pictures[name] = it }
+            if (pic.isNotEmpty()) a.runOnUiThread { set(pic) }
+        }
     }
 
     private fun songsWord(n: Int) = "$n " + when {
@@ -304,19 +347,21 @@ class LibraryPage(
         val videos = Jobs.all.filter { it.status == Status.DONE && it.kind == Kind.VIDEO }
         if (music.isEmpty() && videos.isEmpty()) return empty("Скачанного пока нет.\nСкачайте песню или поставьте ♥ — она появится здесь.")
         val items = music.map { (t, f) -> Playback.QItem(t, f) }
-        items.forEachIndexed { i, q -> content.addView(row(content, q.track, q.local, "на телефоне", false) { Playback.playQueue(a, items, i) }) }
         if (videos.isNotEmpty()) {
             content.addView(TextView(a, null, 0, R.style.SectionTitle).apply { text = "Видео" })
             videos.forEach { j ->
                 content.addView(row(content, Track(j.title, j.site, cover = j.coverUrl), null, "видео", true) { Playback.play(a, j.files.map { it to null }, 0) })
             }
+            if (items.isNotEmpty()) content.addView(TextView(a, null, 0, R.style.SectionTitle).apply { text = "Музыка" })
         }
+        paged(items.size) { i -> val q = items[i]; content.addView(row(content, q.track, q.local, "на телефоне", false) { Playback.playQueue(a, items, i) }) }
     }
 
     private fun historyTab() {
         val all = History.all
         if (all.isEmpty()) return empty("Здесь будет всё, что вы слушали и смотрели.\nПовторное включение — мгновенно.")
-        all.forEach { e ->
+        paged(all.size) { ei ->
+            val e = all[ei]
             val local = e.local ?: if (e.kind == Kind.MUSIC) Library.localFor(e.track) else null
             val video = e.kind == Kind.VIDEO
             content.addView(row(content, e.track, local, listOfNotNull(if (video) "видео" else Rows.statusOf(e.track, local), ago(e.time)).joinToString(" · "), video) {
@@ -337,6 +382,12 @@ class LibraryPage(
             m < 60 * 24 -> "${m / 60} ч назад"
             else -> "${m / 60 / 24} дн назад"
         }
+    }
+
+    companion object {
+        private const val PAGE = 40
+        private val pictures = java.util.concurrent.ConcurrentHashMap<String, String>()
+        private val photoPool = java.util.concurrent.Executors.newFixedThreadPool(4)
     }
 
     @Suppress("unused") private fun hide(v: View) { v.isVisible = false }
