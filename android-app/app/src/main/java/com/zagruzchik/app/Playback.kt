@@ -393,6 +393,17 @@ object Playback {
             }
             // Фрагмент не открылся — показываем «готовлю», полная версия включится сама, как только найдётся.
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                // Файл из памяти не играет — выбрасываем его и включаем ту же песню из сети.
+                val m = c.currentMediaItem?.mediaMetadata
+                if (m?.extras?.getString(X_SOURCE) == "памяти") {
+                    val t = Track(m.title?.toString().orEmpty(), m.artist?.toString().orEmpty(), cover = m.artworkUri?.toString())
+                    MediaCache.forget(t)
+                    val i = c.currentMediaItemIndex
+                    val rest = queue.drop(maxOf(0, nextToAdd - (c.mediaItemCount - i)))
+                    val here = rest.firstOrNull { Library.key(it.track) == Library.key(t) } ?: QItem(t, null, m.extras?.getString(X_SOURCE_URL))
+                    main.post { playQueue(app, listOf(here) + rest.filter { it !== here }, 0, openScreen = false) }
+                    return
+                }
                 if (c.currentMediaItem?.mediaMetadata?.extras?.getBoolean(X_PREVIEW) == true && waitingFull != null)
                     Pending.set(waitingFull, loading = true, error = null)
             }

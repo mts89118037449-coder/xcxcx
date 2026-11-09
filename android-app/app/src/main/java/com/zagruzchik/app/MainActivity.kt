@@ -1197,6 +1197,9 @@ class MainActivity : AppCompatActivity() {
         settingRow(appearance, R.drawable.ic_equalizer, "Эквалайзер",
             if (AudioFx.enabled(this)) "Включён · ${AudioFx.preset(this)}" else "Выключен",
             "Пресеты, своя кривая, усиление баса и объём") { startActivity(Intent(this, EqualizerActivity::class.java)) }
+        val ly = Settings.lyricsInPlayer(this)
+        settingRow(appearance, R.drawable.ic_lyrics, "Текст песни в плеере", if (ly) "Показывать" else "Скрыт",
+            "Строки идут вместе с музыкой; нажмите — весь текст") { Settings.setLyricsInPlayer(this, !ly); refreshMusicSettings() }
         val jm = Settings.joinMode(this)
         settingRow(appearance, R.drawable.ic_skip_next, "Переход на полную версию", jm.label, jm.hint) {
             choose("Переход с фрагмента на полную", Settings.JoinMode.entries.map { "${it.label} — ${it.hint}" }, jm.ordinal) {

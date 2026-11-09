@@ -180,6 +180,7 @@
         </LinearLayout>
 
         <!-- «Перемешать» в этом варианте живёт в нижней панели -->
+        <include layout="@layout/np_lyrics" />
         <include layout="@layout/np_status" />
         <include layout="@layout/np_actions_ring" />
     </LinearLayout>

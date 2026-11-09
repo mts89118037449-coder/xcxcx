@@ -24,8 +24,30 @@ object MediaCache {
         runCatching { JSONObject(indexFile.readText()) }.getOrNull()?.let { o ->
             o.keys().forEach { k -> index[k] = o.getJSONObject(k) }
         }
-        index.entries.removeAll { !File(dir, it.value.optString("file")).exists() }
+        // Обрывки недокачанного (раньше могли попасть в память и обрывать песню через пару минут) — удаляем.
+        index.entries.removeAll { e ->
+            val f = File(dir, e.value.optString("file"))
+            val bad = !f.exists() || !isFinal(f.name)
+            if (bad) f.delete()
+            bad
+        }
+        val known = index.values.map { it.optString("file") }.toSet() + indexFile.name
+        dir.listFiles().orEmpty().filter { it.isFile && it.name !in known && !it.name.endsWith(".tmp") }.forEach { it.delete() }
+        save()
     }
+
+    private val AUDIO = setOf("m4a", "mp4", "webm", "opus", "ogg", "mp3", "aac", "flac", "mka", "wav")
+
+    /** Готовый файл, а не кусок загрузки (.part, -Frag12, .ytdl, .temp). */
+    private fun isFinal(name: String) = name.substringAfterLast('.').lowercase() in AUDIO &&
+        listOf(".part", "-frag", ".ytdl", ".temp").none { name.lowercase().contains(it) }
+
+    /** Длительность файла, мс (0 — не читается: значит, файл битый или недокачан). */
+    private fun durationMs(f: File): Long = runCatching {
+        val m = android.media.MediaMetadataRetriever()
+        try { m.setDataSource(f.absolutePath); m.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L }
+        finally { m.release() }
+    }.getOrDefault(0L)
 
     @Synchronized
     fun fileFor(t: Track): File? {
@@ -59,9 +81,14 @@ object MediaCache {
                     addOption("-N", "4")
                     addOption("-o", File(dir, "$name.%(ext)s").absolutePath)
                 }
-                runCatching { Ytdlp.inBackground { Ytdlp.execute(r, timeoutSec = 600) } }
-                val f = dir.listFiles().orEmpty().firstOrNull { it.name.startsWith("$name.") && !it.name.endsWith(".part") && !it.name.endsWith(".ytdl") }
-                    ?: return@execute
+                val ok = runCatching { Ytdlp.inBackground { Ytdlp.execute(r, timeoutSec = 600) } }.isSuccess
+                val pieces = dir.listFiles().orEmpty().filter { it.name.startsWith("$name.") }
+                val f = pieces.firstOrNull { isFinal(it.name) }
+                // В память — только целиком скачанное: загрузка завершилась и длительность файла как у песни.
+                val dur = f?.let { durationMs(it) } ?: 0L
+                val whole = ok && f != null && dur > 0 && (t.durationSec <= 0 || dur >= t.durationSec * 1000L * 0.9)
+                if (!whole) { pieces.forEach { it.delete() }; return@execute }
+                pieces.filter { it != f }.forEach { it.delete() }
                 synchronized(this) {
                     index[key] = JSONObject().put("file", f.name).put("size", f.length()).put("used", System.currentTimeMillis())
                         .put("title", t.title).put("artist", t.artist).put("cover", t.cover ?: "")
@@ -72,6 +99,13 @@ object MediaCache {
                 synchronized(this) { pending -= key }
             }
         }
+    }
+
+    /** Убрать песню из памяти (файл не играет) — в следующий раз она снова придёт из сети. */
+    @Synchronized
+    fun forget(t: Track) {
+        index.remove(Library.key(t))?.let { File(dir, it.optString("file")).delete() }
+        save()
     }
 
     /** Скопировать песню из памяти — например, чтобы сохранить её в «Загрузки» без повторного скачивания. */

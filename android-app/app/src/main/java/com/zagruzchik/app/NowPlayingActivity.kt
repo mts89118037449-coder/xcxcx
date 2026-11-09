@@ -54,9 +54,10 @@ class NowPlayingActivity : AppCompatActivity() {
     private val ticker = object : Runnable {
         override fun run() {
             updateProgress()
+            updateLyrics()
             // Пока играет фрагмент — обновляем «найдена · продолжит через N с».
             if (extras()?.getBoolean(Playback.X_PREVIEW) == true) render()
-            seekView.postDelayed(this, 500)
+            seekView.postDelayed(this, 250)
         }
     }
 
@@ -126,6 +127,7 @@ class NowPlayingActivity : AppCompatActivity() {
             currentTrack()?.let { TransferActivity.openTrack(this, it, extras()?.getString(Playback.X_SOURCE_URL)) }
         }
         download.setOnClickListener { downloadCurrent() }
+        findViewById<View>(R.id.npLyricsPeek).setOnClickListener { findViewById<View>(R.id.npLyrics).performClick() }
         findViewById<View>(R.id.npFx).setOnClickListener { startActivity(Intent(this, EqualizerActivity::class.java)) }
         findViewById<View>(R.id.npLyrics).setOnClickListener {
             val t = currentTrack() ?: return@setOnClickListener
@@ -182,6 +184,55 @@ class NowPlayingActivity : AppCompatActivity() {
 
     // Метки песни (фрагмент или полная, откуда играет) — из текущего элемента очереди. Общие данные
     // проигрывателя не обновляются при переходе фрагмент → полная: название, исполнитель и обложка те же.
+    // ---------------- Текст песни в плеере ----------------
+
+    private var lyricsKey: String? = null
+    private var lyrics: Lyrics.Result? = null
+    private var lyricLine = -2
+
+    /** Текст новой песни — фоном; синхронный (LRCLIB) — строки пойдут вместе с музыкой. */
+    private fun loadLyrics(t: Track) {
+        if (t.title.isBlank() || !Settings.lyricsInPlayer(this)) return
+        val key = Library.key(t)
+        if (key == lyricsKey) return
+        lyricsKey = key; lyrics = null; lyricLine = -2
+        findViewById<View>(R.id.npLyricsPeek).isVisible = false
+        Thread {
+            val r = runCatching { Lyrics.find(t) }.getOrNull()
+            runOnUiThread { if (lyricsKey == key && !isDestroyed) { lyrics = r; updateLyrics() } }
+        }.start()
+    }
+
+    private fun updateLyrics() {
+        val peek = findViewById<View>(R.id.npLyricsPeek)
+        val r = lyrics
+        val c = controller
+        val preview = extras()?.getBoolean(Playback.X_PREVIEW) == true
+        if (r == null || c == null || preview || showingPending()) { peek.isVisible = false; return }
+        val prev = findViewById<TextView>(R.id.npLyrPrev)
+        val now = findViewById<TextView>(R.id.npLyrNow)
+        val next = findViewById<TextView>(R.id.npLyrNext)
+        if (r.synced.isEmpty()) {
+            // Только обычный текст — первые строки; весь — по нажатию.
+            if (lyricLine == -1) return
+            lyricLine = -1
+            val lines = r.text.lines().filter { it.isNotBlank() && !it.startsWith("[") }
+            prev.isVisible = false
+            now.text = lines.getOrNull(0).orEmpty(); next.text = lines.getOrNull(1).orEmpty()
+            peek.isVisible = lines.isNotEmpty()
+            return
+        }
+        val pos = Playback.position(c) + 300
+        val i = r.synced.indexOfLast { it.timeMs <= pos }
+        if (i == lyricLine && peek.isVisible) return
+        lyricLine = i
+        prev.isVisible = true
+        prev.text = r.synced.getOrNull(i - 1)?.text.orEmpty()
+        now.text = r.synced.getOrNull(i)?.text?.ifEmpty { "♪" } ?: "♪"
+        next.text = r.synced.getOrNull(i + 1)?.text.orEmpty()
+        peek.isVisible = true
+    }
+
     private fun extras(): Bundle? = controller?.currentMediaItem?.mediaMetadata?.extras
 
     /** Пока поток готовится — показываем песню из запроса, когда заиграла — из проигрывателя. */
@@ -243,6 +294,8 @@ class NowPlayingActivity : AppCompatActivity() {
                 src != null -> src.replaceFirstChar { it.uppercase() }
                 else -> "Сейчас играет"
             }
+            if (!isPreview) loadLyrics(Track(m.title?.toString().orEmpty(), m.artist?.toString().orEmpty(),
+                (Playback.duration(c) / 1000).toInt().coerceAtLeast(0)))
             // Рисунок «волны» — свой у каждой песни.
             (seekView as? WaveSeekView)?.let { w -> val s = (m.title?.toString() + m.artist).hashCode(); if (w.seed != s) w.seed = s }
         }
@@ -255,7 +308,8 @@ class NowPlayingActivity : AppCompatActivity() {
         shuffle.alpha = if (c?.shuffleModeEnabled == true) 1f else 0.45f
         repeat.alpha = if (c?.repeatMode == Player.REPEAT_MODE_OFF || c == null) 0.45f else 1f
         repeat.setIconResource(if (c?.repeatMode == Player.REPEAT_MODE_ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat)
-        val local = extras()?.getString(Playback.X_LOCAL_URI) != null && !pending
+        // «Скачано» — только для файла в Загрузках; память прослушанного — не загрузка.
+        val local = extras()?.getString(Playback.X_LOCAL_URI) != null && extras()?.getString(Playback.X_SOURCE) == "Скачано" && !pending
         download.isEnabled = !local && !pending
         download.alpha = if (download.isEnabled || local) 1f else 0.45f
         findViewById<TextView>(R.id.npDownloadText).text = if (local) "Скачано" else "Скачать"

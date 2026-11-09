@@ -32,6 +32,10 @@ object Settings {
     fun joinMode(ctx: Context) = runCatching { JoinMode.valueOf(prefs(ctx).getString("joinMode", null)!!) }.getOrDefault(JoinMode.SEAMLESS)
     fun setJoinMode(ctx: Context, m: JoinMode) = prefs(ctx).edit().putString("joinMode", m.name).apply()
 
+    /** Текст песни прямо в плеере (идёт вместе с музыкой). */
+    fun lyricsInPlayer(ctx: Context) = prefs(ctx).getBoolean("lyricsInPlayer", true)
+    fun setLyricsInPlayer(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("lyricsInPlayer", on).apply()
+
     /** Как играть медиатеку. */
     enum class PlayMode(val hint: String) {
         ORDER("Подряд, как в списке"),
