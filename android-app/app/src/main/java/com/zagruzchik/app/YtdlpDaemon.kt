@@ -157,7 +157,7 @@ object YtdlpDaemon {
     }
 
     /** Плоский поиск: «scsearch8:…», «ytsearch8:…» или ссылка на страницу поиска. */
-    internal fun search(query: String, source: String, timeoutSec: Long = 30, tag: String? = null): List<Downloader.Candidate> {
+    internal fun search(query: String, source: String, timeoutSec: Long = 15, tag: String? = null): List<Downloader.Candidate> {
         val a = call("search", query, JSONObject().put("extract_flat", "in_playlist").put("playlistend", 8), timeoutSec, tag) as? JSONArray
             ?: return emptyList()
         return (0 until a.length()).mapNotNull { i ->
@@ -171,6 +171,6 @@ object YtdlpDaemon {
     }
 
     /** Ссылки на поток для страницы: [format] — выбор yt-dlp. */
-    fun stream(pageUrl: String, format: String, timeoutSec: Long = 40): JSONObject? =
+    fun stream(pageUrl: String, format: String, timeoutSec: Long = 20): JSONObject? =
         call("stream", pageUrl, cookies(JSONObject().put("format", format).put("noplaylist", true)), timeoutSec) as? JSONObject
 }

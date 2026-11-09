@@ -172,13 +172,25 @@ object Streams {
                 if (seniorsDone || System.currentTimeMillis() - started > 4000) return s
             }
             if (jobs.all { it.isDone }) break
+            // Основные площадки отвечают дольше 25 с — не ждём их, идём к запасным.
+            if (System.currentTimeMillis() - started > 25_000) break
             Thread.sleep(40)
         }
         // Нет на SoundCloud/YouTube (удалили) — другие площадки: Яндекс, Rutube, Internet Archive…
         // (их опрашиваем только теперь — не нагружаем сеть, когда песня и так нашлась).
-        for (w in runCatching { WebSearch.extraCandidates(t) }.getOrDefault(emptyList()).take(4)) {
-            val s = if (w.direct) StreamInfo(w.url, w.url, w.source, w.cover, w.title)
-            else Downloader.streamOf(w.url, w.source, w.title)
+        // Все разом, а не по очереди (раньше — до 40 с на каждую, итого минуты). Берём лучшую из ответивших за 20 с.
+        val extras = runCatching { WebSearch.extraCandidates(t) }.getOrDefault(emptyList()).take(4).map { w ->
+            searchPool.submit<StreamInfo?> {
+                Ytdlp.withBackground(bg) {
+                    if (w.direct) StreamInfo(w.url, w.url, w.source, w.cover, w.title)
+                    else Downloader.streamOf(w.url, w.source, w.title, problems)
+                }
+            }
+        }
+        val extraDeadline = System.currentTimeMillis() + 20_000
+        for (f in extras) {
+            val left = extraDeadline - System.currentTimeMillis()
+            val s = runCatching { f.get(maxOf(1, left), java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrNull()
             if (s != null) return s
         }
         // Честно: где песня есть и почему не играет (чаще всего — платная на SoundCloud).

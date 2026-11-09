@@ -219,18 +219,20 @@ object Playback {
         } else {
             Pending.set(first.track, loading = true, error = null)
         }
+        // Место стыка нужно найти, пока фрагмент ещё играет (с запасом на подгрузку полной).
+        // Не успели — полная встанет сразу за фрагментом с начала песни: без паузы, а не через минуты.
+        val alignDeadline = System.currentTimeMillis() + PREVIEW_END_MS - 2500
         // Пока играет фрагмент — разбираем его звук, чтобы потом найти это место в полной версии.
         val previewPcm = preview?.let { url -> alignPool.submit<ShortArray?> { runCatching { Align.pcm(app, url, 31) }.getOrNull() } }
         worker.execute {
             try {
                 val stream = try { fullSoon.get() } catch (e: java.util.concurrent.ExecutionException) { throw e.cause ?: e }
                 val full = streamItem(first, stream)
-                MediaCache.store(app, first.track, stream.pageUrl) // в следующий раз — мгновенно
                 val align = previewPcm?.let { f ->
                     runCatching {
-                        val pv = f.get() ?: return@runCatching null
+                        val pv = f.get(maxOf(1, alignDeadline - System.currentTimeMillis()), java.util.concurrent.TimeUnit.MILLISECONDS) ?: return@runCatching null
                         val d = first.track.durationSec
-                        Align.findInStream(app, pv, stream.url, d, joinSec = PREVIEW_END_MS / 1000.0)
+                        Align.findInStream(app, pv, stream.url, d, joinSec = PREVIEW_END_MS / 1000.0, deadline = alignDeadline)
                     }.getOrNull()
                 }
                 main.post {
@@ -239,6 +241,8 @@ object Playback {
                     Pending.set(null, loading = false, error = null)
                     if (preview != null) continueFromPreview(app, gen, full, preview, align) else start(app, gen, full)
                 }
+                // В память — уже после стыка, чтобы скачивание не мешало искать место.
+                MediaCache.store(app, first.track, stream.pageUrl) // в следующий раз — мгновенно
             } catch (e: Exception) {
                 val msg = (e as? UserError)?.message ?: "Не получилось включить: ${e.message}"
                 main.post {

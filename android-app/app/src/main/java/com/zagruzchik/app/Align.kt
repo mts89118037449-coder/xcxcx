@@ -55,12 +55,18 @@ object Align {
      * фрагменты почти всегда из первых двух минут, поэтому обычно хватает первого окна,
      * и не нужно скачивать всю песню. Окна перекрываются, чтобы фрагмент не разрезало.
      */
-    fun findInStream(ctx: Context, preview: ShortArray, url: String, durationSec: Int, joinSec: Double? = null): Result? {
+    fun findInStream(
+        ctx: Context, preview: ShortArray, url: String, durationSec: Int, joinSec: Double? = null,
+        /** До какого момента (System.currentTimeMillis) нужен ответ: позже он бесполезен — фрагмент уже кончится. */
+        deadline: Long = Long.MAX_VALUE,
+    ): Result? {
         val end = if (durationSec in 40..900) durationSec else 400
         var start = 0
         while (start < end) {
+            val left = (deadline - System.currentTimeMillis()) / 1000
+            if (left < 2) return null // не успеваем — лучше полная с начала без паузы, чем ждать
             val len = minOf(110, end - start)
-            val chunk = pcm(ctx, url, len, start) ?: return null
+            val chunk = pcm(ctx, url, len, start, limitSec = minOf(90, left)) ?: return null
             find(preview, chunk)?.let { r ->
                 // Уточняем смещение у места стыковки до долей миллисекунды — иначе на стыке слышна «запинка».
                 val fine = joinSec?.let { refine(preview, chunk, r.offsetAt(it), it) }
@@ -74,7 +80,7 @@ object Align {
     }
 
     /** Звук по ссылке → моно 8 кГц, не дольше [maxSec] секунд, начиная с [fromSec]. */
-    fun pcm(ctx: Context, url: String, maxSec: Int, fromSec: Int = 0): ShortArray? {
+    fun pcm(ctx: Context, url: String, maxSec: Int, fromSec: Int = 0, limitSec: Long = 90): ShortArray? {
         App.awaitReadyOrNull() ?: return null
         val bin = File(ctx.applicationInfo.nativeLibraryDir, "libffmpeg.so")
         val pkgs = File(ctx.noBackupFilesDir, "youtubedl-android/packages")
@@ -89,7 +95,7 @@ object Align {
             redirectError(File("/dev/null"))
         }.start()
         // Сторож: не дольше 90 секунд на кусок, что бы ни случилось со связью.
-        val watchdog = Thread { runCatching { if (!p.waitFor(90, TimeUnit.SECONDS)) p.destroy() } }.apply { isDaemon = true; start() }
+        val watchdog = Thread { runCatching { if (!p.waitFor(limitSec, TimeUnit.SECONDS)) p.destroy() } }.apply { isDaemon = true; start() }
         val bytes = try {
             p.inputStream.use { it.readBytes() }
         } finally {
