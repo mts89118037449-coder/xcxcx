@@ -18,7 +18,6 @@ import androidx.media3.session.MediaController
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.imageview.ShapeableImageView
-import com.google.android.material.slider.Slider
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.R as M
 
@@ -34,11 +33,12 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var title: TextView
     private lateinit var artist: TextView
     private lateinit var source: TextView
-    private lateinit var seek: Slider
+    private lateinit var seekView: View
+    private val seek: AuraSeek get() = seekView as AuraSeek
     private lateinit var pos: TextView
     private lateinit var dur: TextView
     private lateinit var play: MaterialButton
-    private lateinit var shuffle: MaterialButton
+    private lateinit var shuffle: View
     private lateinit var repeat: MaterialButton
     private lateinit var download: View
     private lateinit var loading: View
@@ -46,7 +46,6 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var retry: View
     private var coverBitmap: Bitmap? = null
     private var coverKey: Any? = null
-    private var seeking = false
 
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) = render()
@@ -55,7 +54,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private val ticker = object : Runnable {
         override fun run() {
             updateProgress()
-            seek.postDelayed(this, 500)
+            seekView.postDelayed(this, 500)
         }
     }
 
@@ -63,16 +62,16 @@ class NowPlayingActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_now_playing)
+        // Два вида плеера — выбираются в настройках: «Кольцо» (диск и кольцо ауры) или «Волна».
+        setContentView(if (Settings.playerStyle(this) == Settings.PlayerStyle.WAVE) R.layout.activity_now_playing_wave else R.layout.activity_now_playing)
         cover = findViewById(R.id.npCover)
         title = findViewById(R.id.npTitle)
         artist = findViewById(R.id.npArtist)
         source = findViewById(R.id.npSource)
-        seek = findViewById(R.id.npSeek)
+        seekView = findViewById(R.id.npSeek)
         pos = findViewById(R.id.npPos)
         dur = findViewById(R.id.npDur)
         play = findViewById(R.id.npPlay)
-        Aura.playButton(play)
         glow = Aura.Glow(findViewById(R.id.npAura))
         shuffle = findViewById(R.id.npShuffle)
         repeat = findViewById(R.id.npRepeat)
@@ -85,7 +84,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val box = findViewById<View>(R.id.npCoverBox)
         val frame = findViewById<View>(R.id.npCoverFrame)
         box.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
-            val side = (minOf(r - l, b - t) * 0.88f).toInt() // чуть меньше места — вокруг светится аура
+            val side = minOf(r - l, b - t)
             if (frame.layoutParams.width != side) frame.post { frame.layoutParams = frame.layoutParams.apply { width = side; height = side } }
         }
 
@@ -105,16 +104,13 @@ class NowPlayingActivity : AppCompatActivity() {
                 }
             }
         }
-        seek.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
-            override fun onStartTrackingTouch(slider: Slider) { seeking = true }
-            override fun onStopTrackingTouch(slider: Slider) {
-                seeking = false
-                controller?.let { c -> val d = Playback.duration(c); if (d > 0) Playback.seek(c, (slider.value / 1000f * d).toLong()) }
-            }
-        })
-        seek.addOnChangeListener { _, value, fromUser ->
+        // Перемотка: по кольцу пальцем по кругу или по волне — влево-вправо.
+        seek.onScrub = { f ->
             val d = controller?.let { Playback.duration(it) } ?: 0
-            if (fromUser && d > 0) pos.text = time((value / 1000f * d).toLong())
+            if (d > 0) pos.text = time((f * d).toLong())
+        }
+        seek.onSeek = { f ->
+            controller?.let { c -> val d = Playback.duration(c); if (d > 0) Playback.seek(c, (f * d).toLong()) }
         }
         retry.setOnClickListener { Playback.Pending.track?.let { Playback.playTrack(this, it) } }
         val share = View.OnClickListener { share() }
@@ -146,7 +142,7 @@ class NowPlayingActivity : AppCompatActivity() {
                 MediaCache.has(t) -> "В любимом · сохраняю на телефон из памяти"
                 else -> "В любимом · скачиваю на телефон"
             }
-            Snackbar.make(seek, msg, Snackbar.LENGTH_SHORT).show()
+            Snackbar.make(seekView, msg, Snackbar.LENGTH_SHORT).show()
             render()
         }
         setupCastButton(findViewById(R.id.npCast))
@@ -161,7 +157,7 @@ class NowPlayingActivity : AppCompatActivity() {
             render()
         }
         render()
-        seek.post(ticker)
+        seekView.post(ticker)
     }
 
     override fun onDestroy() {
@@ -173,7 +169,7 @@ class NowPlayingActivity : AppCompatActivity() {
         Playback.Pending.unlisten(pendingListener)
         controller?.removeListener(listener)
         controller = null
-        seek.removeCallbacks(ticker)
+        seekView.removeCallbacks(ticker)
         super.onStop()
     }
 
@@ -208,7 +204,8 @@ class NowPlayingActivity : AppCompatActivity() {
             title.text = t.title
             artist.text = t.artist
             source.text = if (p.error != null) "Не получилось включить" else "Ищу, где послушать: SoundCloud, YouTube Music, YouTube"
-            status.text = p.error ?: "Готовлю…"
+            status.text = p.error ?: "Ищу полную версию на SoundCloud и YouTube…"
+            findViewById<TextView>(R.id.npHeader).text = "Сейчас играет"
             findViewById<View>(R.id.npSpinner).isVisible = p.error == null
             retry.isVisible = p.error != null
             setCover(t.cover ?: LinkCache.get(t)?.track?.cover, null)
@@ -226,8 +223,19 @@ class NowPlayingActivity : AppCompatActivity() {
                 else -> "Играет из $src · без скачивания"
             }
             setCover(m.artworkUri?.toString(), m.artworkData)
+            // Вверху — откуда играет: площадка, память, телефон или ТВ.
+            findViewById<TextView>(R.id.npHeader).text = when {
+                tv != null -> tv
+                src == "Скачано" -> "С телефона"
+                m.extras?.getBoolean(Playback.X_PREVIEW) == true -> "Фрагмент"
+                src != null -> src.replaceFirstChar { it.uppercase() }
+                else -> "Сейчас играет"
+            }
+            // Рисунок «волны» — свой у каждой песни.
+            (seekView as? WaveSeekView)?.let { w -> val s = (m.title?.toString() + m.artist).hashCode(); if (w.seed != s) w.seed = s }
         }
         val playing = c?.isPlaying == true
+        findViewById<EqBarsView>(R.id.npEq).playing(playing)
         play.setIconResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play_arrow)
         glow.playing(playing) // аура «дышит», пока играет
         play.contentDescription = if (playing) "Пауза" else "Играть"
@@ -243,6 +251,9 @@ class NowPlayingActivity : AppCompatActivity() {
         val liked = currentTrack()?.let { Library.isSaved(it) } == true
         findViewById<MaterialButton>(R.id.npLike).apply {
             setIconResource(if (liked) R.drawable.ic_favorite else R.drawable.ic_favorite_border)
+            // В «кольце» сердечко само красится в цвет ауры, в «волне» оно на градиентном круге.
+            if (seekView is RingProgressView) iconTint = android.content.res.ColorStateList.valueOf(
+                if (liked) AuraColors.c3(this@NowPlayingActivity) else MaterialColors.getColor(this, M.attr.colorOnSurfaceVariant))
             contentDescription = if (liked) "Убрать из библиотеки" else "В библиотеку"
         }
         updateProgress()
@@ -286,12 +297,12 @@ class NowPlayingActivity : AppCompatActivity() {
     private fun updateProgress() {
         val c = controller ?: return
         if (showingPending()) {
-            seek.value = 0f; pos.text = "0:00"; dur.text = "0:00"; return
+            seek.progress = 0f; pos.text = "0:00"; dur.text = "0:00"; return
         }
         val d = Playback.duration(c)
         val p = Playback.position(c)
-        if (d > 0 && !seeking) {
-            seek.value = (p * 1000f / d).coerceIn(0f, 1000f)
+        if (d > 0 && !seek.isScrubbing) {
+            seek.progress = (p.toFloat() / d).coerceIn(0f, 1f)
             pos.text = time(p)
         }
         dur.text = if (d > 0) time(d) else "0:00"
@@ -317,7 +328,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val url = x.getString(Playback.X_PAGE_URL) ?: x.getString(Playback.X_SOURCE_URL) ?: return
         val t = currentTrack()
         DownloadService.enqueue(this, url, Format.MP3, t?.label)
-        Snackbar.make(seek, "Скачиваю «${t?.title ?: "песню"}»", Snackbar.LENGTH_LONG)
+        Snackbar.make(seekView, "Скачиваю «${t?.title ?: "песню"}»", Snackbar.LENGTH_LONG)
             .setAction("Загрузки") {
                 startActivity(Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_SHOW_JOBS, true)
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))

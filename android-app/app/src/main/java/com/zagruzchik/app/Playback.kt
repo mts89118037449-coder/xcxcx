@@ -365,6 +365,7 @@ object Playback {
                     if (j > 0 && c.getMediaItemAt(j - 1).mediaMetadata.extras?.getBoolean(X_PREVIEW) == true) c.removeMediaItem(j - 1)
                 }
                 learn(reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_SEEK)
+                nowPlayingKey = mediaItem?.mediaMetadata?.title?.toString()?.let { Library.key(Track(it, mediaItem.mediaMetadata.artist?.toString().orEmpty())) }
                 current = mediaItem?.takeIf { it.mediaMetadata.extras?.getBoolean(X_PREVIEW) != true }
                     ?.mediaMetadata?.let { m -> m.title?.toString()?.let { Track(it, m.artist?.toString().orEmpty()) } }
                 currentSince = System.currentTimeMillis()
@@ -386,6 +387,9 @@ object Playback {
             }
         })
     }
+
+    /** Что играет сейчас (ключ песни) — в списках у неё пляшут столбики. */
+    @Volatile var nowPlayingKey: String? = null
 
     // Что играет и с какого момента — чтобы понять, дослушали песню или пролистнули.
     private var current: Track? = null

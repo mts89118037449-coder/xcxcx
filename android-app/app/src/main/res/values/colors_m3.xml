@@ -1,33 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- SoundAura: фиолетово-розовая «аура», как на иконке -->
+<!-- SoundAura: светлая тема -->
 <resources>
     <color name="m3_primary">#5B2EE6</color>
     <color name="m3_onPrimary">#FFFFFF</color>
-    <color name="m3_primaryContainer">#E9DDFF</color>
-    <color name="m3_onPrimaryContainer">#22005D</color>
+    <color name="m3_primaryContainer">#6236E8</color>
+    <color name="m3_onPrimaryContainer">#FFFFFF</color>
     <color name="m3_secondary">#B0306F</color>
     <color name="m3_onSecondary">#FFFFFF</color>
-    <color name="m3_secondaryContainer">#FFD8E8</color>
-    <color name="m3_onSecondaryContainer">#3E0021</color>
-    <color name="m3_tertiary">#006878</color>
+    <color name="m3_secondaryContainer">#EEEBF3</color>
+    <color name="m3_onSecondaryContainer">#1B1922</color>
+    <color name="m3_tertiary">#C7346E</color>
     <color name="m3_onTertiary">#FFFFFF</color>
-    <color name="m3_tertiaryContainer">#A9EDFF</color>
-    <color name="m3_onTertiaryContainer">#001F25</color>
+    <color name="m3_tertiaryContainer">#E6E2EE</color>
+    <color name="m3_onTertiaryContainer">#1B1922</color>
     <color name="m3_error">#BA1A1A</color>
     <color name="m3_onError">#FFFFFF</color>
     <color name="m3_errorContainer">#FFDAD6</color>
     <color name="m3_onErrorContainer">#410002</color>
-    <color name="m3_background">#FCF8FF</color>
-    <color name="m3_onBackground">#1C1A22</color>
-    <color name="m3_surface">#FCF8FF</color>
-    <color name="m3_onSurface">#1C1A22</color>
-    <color name="m3_surfaceVariant">#E7E0EF</color>
-    <color name="m3_onSurfaceVariant">#4A4456</color>
-    <color name="m3_outline">#7B7488</color>
-    <color name="m3_outlineVariant">#CBC3D9</color>
+    <color name="m3_background">#FAF9FC</color>
+    <color name="m3_onBackground">#15131B</color>
+    <color name="m3_surface">#FAF9FC</color>
+    <color name="m3_onSurface">#15131B</color>
+    <color name="m3_surfaceVariant">#EEEBF3</color>
+    <color name="m3_onSurfaceVariant">#5B5768</color>
+    <color name="m3_outline">#C9C5D3</color>
+    <color name="m3_outlineVariant">#E2DEEA</color>
     <color name="m3_surfaceContainerLowest">#FFFFFF</color>
-    <color name="m3_surfaceContainerLow">#F7F1FD</color>
-    <color name="m3_surfaceContainer">#F1EBF8</color>
-    <color name="m3_surfaceContainerHigh">#EBE5F3</color>
-    <color name="m3_surfaceContainerHighest">#E5DFED</color>
+    <color name="m3_surfaceContainerLow">#F5F3F9</color>
+    <color name="m3_surfaceContainer">#FFFFFF</color>
+    <color name="m3_surfaceContainerHigh">#EEEBF3</color>
+    <color name="m3_surfaceContainerHighest">#E6E2EE</color>
 </resources>

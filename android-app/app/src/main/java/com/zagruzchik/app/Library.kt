@@ -15,6 +15,7 @@ object Library {
     private val listeners = mutableSetOf<() -> Unit>()
 
     fun init(ctx: Context) {
+        loadAlbums(ctx)
         file = File(ctx.filesDir, "library.json")
         saved.clear()
         savedKeys = null
@@ -31,6 +32,41 @@ object Library {
 
     // Ключ песни считается через нормализацию текста — недёшево, а в списках он нужен десятки раз: запоминаем.
     private val keys = java.util.concurrent.ConcurrentHashMap<Track, String>()
+
+    // ---------------- Сохранённые альбомы (♥ на странице альбома) ----------------
+
+    private lateinit var albumsFile: File
+    private val savedAlbums = mutableListOf<Album>()
+    val albums: List<Album> get() = savedAlbums.toList()
+
+    private fun albumKey(a: Album) = a.id?.toString() ?: (Match.base(a.title) + "|" + Match.norm(a.artist))
+    fun isAlbumSaved(a: Album) = savedAlbums.any { albumKey(it) == albumKey(a) }
+
+    fun toggleAlbum(a: Album): Boolean {
+        val was = savedAlbums.removeAll { albumKey(it) == albumKey(a) }
+        if (!was) savedAlbums.add(0, a)
+        runCatching {
+            val arr = JSONArray()
+            savedAlbums.forEach { x ->
+                arr.put(JSONObject().put("id", x.id ?: 0).put("title", x.title).put("artist", x.artist).put("cover", x.cover ?: "")
+                    .put("year", x.year ?: "").put("explicit", x.explicit).put("type", x.type))
+            }
+            File(albumsFile.path + ".tmp").apply { writeText(arr.toString()) }.renameTo(albumsFile)
+        }
+        listeners.toList().forEach { it() }
+        return !was
+    }
+
+    private fun loadAlbums(ctx: Context) {
+        albumsFile = File(ctx.filesDir, "library_albums.json")
+        savedAlbums.clear()
+        val arr = runCatching { JSONArray(albumsFile.readText()) }.getOrNull() ?: return
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            savedAlbums += Album(o.optLong("id").takeIf { it > 0 }, o.optString("title"), o.optString("artist"), o.optString("cover").ifEmpty { null },
+                o.optString("year").ifEmpty { null }, o.optBoolean("explicit"), o.optString("type", "album"))
+        }
+    }
 
     fun key(t: Track): String = keys[t] ?: (Match.base(t.title) + "|" + Match.norm(t.artist)).also {
         if (keys.size > 5000) keys.clear()

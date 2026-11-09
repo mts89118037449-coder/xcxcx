@@ -36,8 +36,9 @@ object Rows {
         beforePlay: () -> Unit = {},
     ): View {
         val row = LayoutInflater.from(act).inflate(R.layout.item_search, parent, false)
-        Images.into(row.findViewById(R.id.srCover), t.cover, R.drawable.ic_music_note)
-        row.findViewById<TextView>(R.id.srTitle).text = (number?.let { "$it. " } ?: "") + t.title + if (t.explicit) "  🅴" else ""
+        Images.into(row.findViewById(R.id.srCover), t.cover, R.drawable.ph_cover)
+        row.findViewById<TextView>(R.id.srTitle).text = t.title + if (t.explicit) "  🅴" else ""
+        row.findViewById<TextView>(R.id.srNumber).apply { isVisible = number != null; text = number?.toString() }
         val d = if (t.durationSec > 0) "%d:%02d".format(t.durationSec / 60, t.durationSec % 60) else null
         val st = status ?: statusOf(t, local)
         row.findViewById<TextView>(R.id.srSub).text = listOfNotNull((subtitle ?: t.artist).ifBlank { null }, d, st).joinToString(" · ")
@@ -70,31 +71,16 @@ object Rows {
                 false
             }
             row.setOnTouchListener(touch)
-            row.findViewById<View>(R.id.srPlay).setOnTouchListener(touch)
         }
-        row.findViewById<View>(R.id.srPlay).setOnClickListener(play)
         if (!video && t.artist.isNotBlank()) row.setOnLongClickListener { openArtist(act, t.artist); true }
-        val like = row.findViewById<MaterialButton>(R.id.srLike)
-        fun paintLike() = like.setIconResource(if (Library.isSaved(t)) R.drawable.ic_favorite else R.drawable.ic_favorite_border)
-        paintLike()
-        like.isVisible = !video
-        like.setOnClickListener {
-            val inCache = MediaCache.has(t)
-            val saved = Library.like(act, t, pageUrl ?: directUrl, t.url)
-            snack(when {
-                !saved -> "Убрано из любимого"
-                local != null || !Settings.saveLiked(act) -> "«${t.title}» — в любимом"
-                inCache -> "«${t.title}» — в любимом, сохраняю из памяти"
-                else -> "«${t.title}» — в любимом, скачиваю на телефон"
-            })
-            paintLike()
-        }
-        val dl = row.findViewById<View>(R.id.srDownload)
-        dl.isVisible = local == null && !video
-        dl.setOnClickListener {
-            val u = directUrl ?: pageUrl ?: t.url ?: return@setOnClickListener snack("Эту песню можно только послушать")
-            DownloadService.enqueue(act, u, Format.MP3, t.label)
-            snack("Скачиваю «${t.title}»")
+        // Играет сейчас — столбики ауры справа.
+        val playingNow = Playback.nowPlayingKey == Library.key(t)
+        row.findViewById<EqBarsView>(R.id.srEq).apply { isVisible = playingNow; playing(playingNow) }
+        row.findViewById<View>(R.id.srMore).apply {
+            isVisible = !video
+            setOnClickListener {
+                TrackActions.show(act, t, snack, pageUrl = pageUrl, directUrl = directUrl, local = local)
+            }
         }
         return row
     }
@@ -115,7 +101,7 @@ object Rows {
         val v = LayoutInflater.from(act).inflate(R.layout.item_card, parent, false)
         val img = v.findViewById<ShapeableImageView>(R.id.cardImage)
         if (round) img.shapeAppearanceModel = ShapeAppearanceModel.builder().setAllCornerSizes(ShapeAppearanceModel.PILL).build()
-        Images.into(img, image, if (round) R.drawable.ic_person_outline else R.drawable.ic_library_music)
+        Images.into(img, image, if (round) R.drawable.ph_artist else R.drawable.ph_cover)
         v.findViewById<TextView>(R.id.cardTitle).apply {
             text = title
             textAlignment = if (round) View.TEXT_ALIGNMENT_CENTER else View.TEXT_ALIGNMENT_VIEW_START

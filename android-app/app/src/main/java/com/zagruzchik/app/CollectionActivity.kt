@@ -25,20 +25,23 @@ class CollectionActivity : AppCompatActivity() {
         content = findViewById(R.id.colContent)
         findViewById<View>(R.id.colBack).setOnClickListener { finish() }
         findViewById<View>(R.id.colPlay).setOnClickListener { playAll(shuffle = false) }
-        Aura.primaryButton(findViewById(R.id.colPlay))
         findViewById<View>(R.id.colShuffle).setOnClickListener { playAll(shuffle = true) }
 
         val i = intent
         val title = i.getStringExtra(X_TITLE).orEmpty()
         findViewById<TextView>(R.id.colTitle).text = title
-        Images.into(findViewById(R.id.colImage), i.getStringExtra(X_IMAGE), R.drawable.ic_library_music)
+        Images.into(findViewById(R.id.colImage), i.getStringExtra(X_IMAGE), R.drawable.ph_cover)
         when (i.getStringExtra(X_KIND)) {
+            KIND_LIST -> loadList(i.getStringExtra(X_ID_S).orEmpty())
             KIND_ALBUM -> loadAlbum(
                 Album(i.getLongExtra(X_ID, 0).takeIf { it > 0 }, title, i.getStringExtra(X_ARTIST).orEmpty(), i.getStringExtra(X_IMAGE))
             )
             else -> {
-                findViewById<ShapeableImageView>(R.id.colImage).shapeAppearanceModel =
-                    ShapeAppearanceModel.builder().setAllCornerSizes(ShapeAppearanceModel.PILL).build()
+                // Исполнитель — фото на всю ширину, имя поверх.
+                findViewById<View>(R.id.colHero).isVisible = true
+                findViewById<View>(R.id.colHead).isVisible = false
+                findViewById<TextView>(R.id.colHeroName).text = title
+                Images.load(i.getStringExtra(X_IMAGE)) { findViewById<android.widget.ImageView>(R.id.colHeroImage).setImageBitmap(it) }
                 loadArtist(i.getLongExtra(X_ID, 0).takeIf { it > 0 }, title)
             }
         }
@@ -60,10 +63,48 @@ class CollectionActivity : AppCompatActivity() {
                         if (total > 0) "${total / 60} мин" else null).joinToString(" · ")
                     setOnClickListener { Rows.openArtist(this@CollectionActivity, full.artist) }
                 }
-                Images.into(findViewById(R.id.colImage), full.cover, R.drawable.ic_library_music)
+                Images.into(findViewById(R.id.colImage), full.cover, R.drawable.ph_cover)
+                // ♥ — альбом в медиатеку (вкладка «Альбомы»).
+                findViewById<android.widget.ImageButton>(R.id.colLike).apply {
+                    isVisible = true
+                    fun paint() = setImageResource(if (Library.isAlbumSaved(full)) R.drawable.ic_favorite else R.drawable.ic_favorite_border)
+                    paint()
+                    setOnClickListener { snack(if (Library.toggleAlbum(full)) "Альбом — в медиатеке" else "Альбом убран из медиатеки"); paint() }
+                }
                 tracks = list
                 showTracks(list, numbered = true)
                 Streams.prefetchMany(list, 6)
+            }
+        }
+    }
+
+    /** Чарт России, мировой чарт или новинки — полный список с «Слушать». */
+    private fun loadList(which: String) {
+        val (name, sub) = when (which) {
+            LIST_RU -> "Чарт России" to "Apple Music · обновляется каждый день"
+            LIST_WORLD -> "Мировой чарт" to "Deezer · самое популярное в мире"
+            else -> "Новинки для вас" to "Свежие релизы ваших исполнителей"
+        }
+        findViewById<TextView>(R.id.colTitle).text = name
+        findViewById<TextView>(R.id.colSub).text = sub
+        findViewById<android.widget.ImageView>(R.id.colImage).setImageResource(R.drawable.ic_logo_mark)
+        thread {
+            val list = runCatching {
+                when (which) {
+                    LIST_RU -> Catalog.chartRu()
+                    LIST_WORLD -> Catalog.chartWorld()
+                    else -> News.tracks
+                }
+            }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                findViewById<View>(R.id.colProgress).isVisible = false
+                list.onFailure { return@runOnUiThread error(it) }
+                val l = list.getOrThrow()
+                if (l.isEmpty()) return@runOnUiThread error(UserError(if (which == LIST_NEWS) "Ставьте ♥ песням — здесь появятся новинки ваших исполнителей" else "Не загрузилось. Проверьте интернет."))
+                tracks = l
+                showTracks(l, numbered = which != LIST_NEWS)
+                Streams.prefetchMany(l, 6)
             }
         }
     }
@@ -80,10 +121,10 @@ class CollectionActivity : AppCompatActivity() {
                 findViewById<View>(R.id.colProgress).isVisible = false
                 r.onFailure { return@runOnUiThread error(it) }
                 val p = r.getOrThrow()
-                findViewById<TextView>(R.id.colTitle).text = p.artist.name
-                findViewById<TextView>(R.id.colSub).text =
-                    if (p.artist.fans > 0) "Исполнитель · ${fans(p.artist.fans)} слушателей" else "Исполнитель"
-                Images.into(findViewById(R.id.colImage), p.artist.picture, R.drawable.ic_person_outline)
+                findViewById<TextView>(R.id.colHeroName).text = p.artist.name
+                findViewById<TextView>(R.id.colHeroSub).text =
+                    if (p.artist.fans > 0) "${fans(p.artist.fans)} слушателей" else "Исполнитель"
+                p.artist.picture?.let { url -> Images.load(url) { findViewById<android.widget.ImageView>(R.id.colHeroImage).setImageBitmap(it) } }
                 findViewById<View>(R.id.colRadio).apply {
                     isVisible = true
                     setOnClickListener { radio(p.artist) }
@@ -177,6 +218,14 @@ class CollectionActivity : AppCompatActivity() {
         private const val X_IMAGE = "image"
         private const val KIND_ALBUM = "album"
         private const val KIND_ARTIST = "artist"
+        private const val KIND_LIST = "list"
+        private const val X_ID_S = "list_id"
+        const val LIST_RU = "ru"
+        const val LIST_WORLD = "world"
+        const val LIST_NEWS = "news"
+
+        fun list(ctx: Context, which: String) = Intent(ctx, CollectionActivity::class.java)
+            .putExtra(X_KIND, KIND_LIST).putExtra(X_ID_S, which)
 
         fun album(ctx: Context, a: Album) = Intent(ctx, CollectionActivity::class.java)
             .putExtra(X_KIND, KIND_ALBUM).putExtra(X_ID, a.id ?: 0L).putExtra(X_TITLE, a.title)

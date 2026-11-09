@@ -51,102 +51,106 @@
                 android:visibility="gone" />
         </FrameLayout>
 
-        <!-- Мини-проигрыватель: что играет сейчас -->
-        <com.google.android.material.card.MaterialCardView
+        <!-- Мини-проигрыватель: тёмная карточка, слева — свечение в цвет обложки,
+             вокруг кнопки «пауза» — кольцо прогресса ауры -->
+        <FrameLayout
             android:id="@+id/miniPlayer"
-            style="?attr/materialCardViewFilledStyle"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="8dp"
-            android:layout_marginBottom="6dp"
-            android:visibility="gone"
-            app:cardBackgroundColor="@android:color/transparent"
-            app:cardCornerRadius="20dp"
-            app:cardElevation="0dp"
-            app:strokeWidth="0dp">
+            android:layout_height="64dp"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/bg_mini_player"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone">
+
+            <View
+                android:id="@+id/miniGlow"
+                android:layout_width="180dp"
+                android:layout_height="match_parent"
+                android:importantForAccessibility="no" />
 
             <LinearLayout
-                android:background="@drawable/bg_mini_player"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingEnd="4dp">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/miniCover"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/ic_music_note"
+                    app:shapeAppearanceOverlay="@style/MiniCoverShape" />
 
                 <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="64dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingStart="8dp"
-                    android:paddingEnd="4dp">
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
 
-                    <com.google.android.material.imageview.ShapeableImageView
-                        android:id="@+id/miniCover"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:background="?attr/colorSurfaceContainerHighest"
-                        android:scaleType="centerCrop"
-                        android:src="@drawable/ic_music_note"
-                        app:shapeAppearanceOverlay="@style/MiniCoverShape" />
-
-                    <LinearLayout
-                        android:layout_width="0dp"
+                    <TextView
+                        android:id="@+id/miniTitle"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="12dp"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textAppearance="?attr/textAppearanceTitleSmall"
+                        android:textColor="?attr/colorOnSurface" />
 
-                        <TextView
-                            android:id="@+id/miniTitle"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:ellipsize="end"
-                            android:maxLines="1"
-                            android:textAppearance="?attr/textAppearanceTitleSmall"
-                            android:textColor="?attr/colorOnSecondaryContainer" />
+                    <TextView
+                        android:id="@+id/miniArtist"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+                </LinearLayout>
 
-                        <TextView
-                            android:id="@+id/miniArtist"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:ellipsize="end"
-                            android:maxLines="1"
-                            android:textAppearance="?attr/textAppearanceBodySmall"
-                            android:textColor="?attr/colorOnSecondaryContainer" />
-                    </LinearLayout>
+                <FrameLayout
+                    android:layout_width="48dp"
+                    android:layout_height="48dp">
+
+                    <com.zagruzchik.app.RingProgressView
+                        android:id="@+id/miniRing"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/miniPlay"
                         style="?attr/materialIconButtonStyle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:layout_gravity="center"
                         android:contentDescription="Пауза"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
                         app:icon="@drawable/ic_pause"
-                        app:iconTint="?attr/colorOnSecondaryContainer" />
+                        app:iconTint="?attr/colorOnSurface" />
+                </FrameLayout>
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/miniNext"
-                        style="?attr/materialIconButtonStyle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:contentDescription="Следующий"
-                        app:icon="@drawable/ic_skip_next"
-                        app:iconTint="?attr/colorOnSecondaryContainer" />
-                </LinearLayout>
-
-                <com.google.android.material.progressindicator.LinearProgressIndicator
-                    android:id="@+id/miniProgress"
-                    android:layout_width="match_parent"
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/miniNext"
+                    style="?attr/materialIconButtonStyle"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:max="1000"
-                    app:trackThickness="3dp" />
+                    android:contentDescription="Следующая"
+                    app:icon="@drawable/ic_skip_next"
+                    app:iconTint="?attr/colorOnSurface" />
             </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+        </FrameLayout>
 
-        <com.google.android.material.bottomnavigation.BottomNavigationView
+        <!-- Нижнее меню: плавающая «таблетка» -->
+        <com.zagruzchik.app.PillNav
             android:id="@+id/bottomNav"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:labelVisibilityMode="labeled"
-            app:menu="@menu/bottom_nav" />
+            android:layout_height="60dp"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginBottom="12dp" />
     </LinearLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

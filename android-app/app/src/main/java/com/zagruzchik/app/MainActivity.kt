@@ -23,7 +23,6 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.card.MaterialCardView
@@ -40,7 +39,7 @@ import com.google.android.material.R as M
 class MainActivity : AppCompatActivity() {
 
     private lateinit var toolbar: MaterialToolbar
-    private lateinit var nav: BottomNavigationView
+    private lateinit var nav: PillNav
     private lateinit var pages: Map<Int, View>
 
     // Вкладка «Скачать»
@@ -68,7 +67,7 @@ class MainActivity : AppCompatActivity() {
     private var siteFilter: String? = null
 
     // Мини-проигрыватель
-    private lateinit var mini: MaterialCardView
+    private lateinit var mini: View
     private var controller: androidx.media3.session.MediaController? = null
     private val miniTicker = object : Runnable {
         override fun run() {
@@ -112,7 +111,14 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_jobs to findViewById(R.id.pageJobs),
             R.id.nav_settings to findViewById(R.id.pageSettings),
         )
-        nav.setOnItemSelectedListener { applyPage(it.itemId); true }
+        nav.setItems(listOf(
+            PillNav.Item(R.id.nav_music, "Музыка", R.drawable.ic_headphones),
+            PillNav.Item(R.id.nav_library, "Медиатека", R.drawable.ic_library_music),
+            PillNav.Item(R.id.nav_download, "Скачать", R.drawable.ic_download),
+            PillNav.Item(R.id.nav_jobs, "Загрузки", R.drawable.ic_folder_open),
+            PillNav.Item(R.id.nav_settings, "Настройки", R.drawable.ic_settings),
+        ))
+        nav.listener = { applyPage(it) }
         toolbar.setOnMenuItemClickListener {
             if (it.itemId == R.id.action_clear) Jobs.clearFinished()
             true
@@ -200,10 +206,10 @@ class MainActivity : AppCompatActivity() {
         }
         toolbar.menu.clear()
         // На «Музыке» своя шапка с логотипом SoundAura — обычный заголовок не нужен.
-        toolbar.isVisible = id != R.id.nav_music
+        toolbar.isVisible = id != R.id.nav_music && id != R.id.nav_library
         // Медиатека: первые песни, которых нет на телефоне и в памяти, готовим заранее.
         if (id == R.id.nav_library && ::musicSearch.isInitialized) Streams.prefetchMany(
-            libraryItems().filter { it.local == null && it.pageUrl == null && !MediaCache.has(it.track) }.map { it.track }, 4)
+            Library.favorites.filter { Library.localFor(it) == null && !MediaCache.has(it) }, 4)
         if (id == R.id.nav_jobs) toolbar.inflateMenu(R.menu.jobs)
         refreshSummary()
     }
@@ -301,15 +307,29 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var musicSearch: TextInputEditText
     private var musicSeq = 0
-    private var libraryMode = 0 // 0 — избранное, 1 — скачанное
+    private var library: LibraryPage? = null
     private val musicSearchRun = Runnable { runMusicSearch() }
     private val libraryListener: () -> Unit = { refreshLibrary() }
 
     private fun setupMusicPage() {
         musicSearch = findViewById(R.id.musicSearch)
-        Aura.gradientText(findViewById(R.id.brandTitle))
         findViewById<TextView>(R.id.brandGreeting).text = Aura.greeting()
-        Aura.primaryButton(findViewById(R.id.libPlayAll))
+        // Поиск — по кнопке в шапке: поле выезжает, главная остаётся под ним.
+        val searchBox = findViewById<View>(R.id.musicSearchLayout)
+        fun openSearch(open: Boolean) {
+            searchBox.isVisible = open
+            if (open) {
+                musicSearch.requestFocus()
+                getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showSoftInput(musicSearch, 0)
+            } else { musicSearch.setText(""); hideKeyboard() }
+        }
+        findViewById<View>(R.id.searchOpen).setOnClickListener { openSearch(!searchBox.isVisible) }
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (nav.selectedItemId == R.id.nav_music && searchBox.isVisible) openSearch(false)
+                else { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
+            }
+        })
         musicSearch.doAfterTextChanged {
             val q = it?.toString()?.trim().orEmpty()
             findViewById<View>(R.id.musicResults).isVisible = q.length >= 2
@@ -321,21 +341,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         musicSearch.setOnEditorActionListener { _, _, _ -> hideKeyboard(); true }
-        findViewById<com.google.android.material.chip.ChipGroup>(R.id.libTabs).setOnCheckedStateChangeListener { _, ids ->
-            libraryMode = when (ids.firstOrNull()) { R.id.libDownloaded -> 1; R.id.libVideo -> 2; R.id.libHistory -> 3; else -> 0 }
-            refreshLibrary()
-        }
-        findViewById<View>(R.id.libPlayAll).setOnClickListener { playLibrary() }
-        val modeGroup = findViewById<MaterialButtonToggleGroup>(R.id.libMode)
-        modeGroup.check(when (Settings.playMode(this)) {
-            Settings.PlayMode.ORDER -> R.id.modeOrder
-            Settings.PlayMode.RANDOM -> R.id.modeRandom
-            Settings.PlayMode.SMART -> R.id.modeSmart
-        })
-        modeGroup.addOnButtonCheckedListener { _, id, checked ->
-            if (!checked) return@addOnButtonCheckedListener
-            Settings.setPlayMode(this, when (id) { R.id.modeOrder -> Settings.PlayMode.ORDER; R.id.modeRandom -> Settings.PlayMode.RANDOM; else -> Settings.PlayMode.SMART })
-            refreshLibrary()
+        library = LibraryPage(this, ::snack) { parent, t, local, status, video, onPlay ->
+            trackRow(parent, t, local = local, status = status, video = video, onPlay = onPlay)
         }
         loadHome()
     }
@@ -348,6 +355,7 @@ class MainActivity : AppCompatActivity() {
         if (homeLoaded || homeLoading) return
         homeLoading = true
         val home = findViewById<LinearLayout>(R.id.homeSection)
+        if (home.childCount == 0) renderHome(home, emptyList(), emptyList(), emptyList(), emptyList(), last = false) // каркас сразу
         thread {
             // 1) Мгновенно — то, что сохранено с прошлого раза; 2) затем свежее из сети.
             for (offline in listOf(true, false)) {
@@ -367,90 +375,80 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Чарт: первые 5 песен, «Весь чарт», «Слушать» — весь список подряд. */
-    private fun chartSection(home: LinearLayout, title: String, c: List<Track>, prefetch: Boolean) {
-        val items = c.map { Playback.QItem(it, Library.localFor(it), it.url) }
-        home.addView(sectionHeader(title, "Слушать") { Playback.playQueue(this, items, 0) })
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        fun show(n: Int) {
-            list.removeAllViews()
-            c.take(n).forEachIndexed { i, t -> list.addView(trackRow(list, t, number = i + 1, onPlay = { Playback.playQueue(this, items, i) })) }
-        }
-        show(5)
-        home.addView(list)
-        if (c.size > 5) home.addView(MaterialButton(this, null, androidx.appcompat.R.attr.borderlessButtonStyle).apply {
-            text = "Весь чарт · ${c.size}"
-            setOnClickListener { show(c.size); isVisible = false }
-        })
-        if (prefetch) Streams.prefetchMany(c, 6) // первые песни чарта включатся сразу с начала
+    // Последние данные главной — чтобы перерисовать её, когда пришли новинки.
+    private var homeData: List<Any> = emptyList()
+    private val newsListener: () -> Unit = { homeData.takeIf { it.size == 4 }?.let { renderHomeAgain() } }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun renderHomeAgain() {
+        val d = homeData
+        renderHome(findViewById(R.id.homeSection), d[0] as List<Track>, d[1] as List<Track>, d[2] as List<Album>, d[3] as List<Artist>, last = false)
     }
 
-    private fun renderHome(home: LinearLayout, c: List<Track>, w: List<Track>, al: List<Album>, ar: List<Artist>, last: Boolean) {
-            run {
-                if (last) homeLoading = false
-                if (isDestroyed) return
-                home.removeAllViews()
-                home.addView(newsBox) // сверху — новинки любимых исполнителей
-                renderNews()
-                if (c.isEmpty() && w.isEmpty() && al.isEmpty() && ar.isEmpty()) return
-                if (last) homeLoaded = true
-                if (c.isNotEmpty()) chartSection(home, "Чарт России", c, prefetch = last)
-                if (w.isNotEmpty()) chartSection(home, "Мировой чарт", w, prefetch = false)
-                if (al.isNotEmpty()) {
-                    home.addView(sectionHeader("Популярные альбомы"))
-                    val (scroll, inner) = Rows.shelf(this)
-                    al.forEach { inner.addView(Rows.albumCard(this, inner, it)) }
-                    home.addView(scroll)
-                }
-                if (ar.isNotEmpty()) {
-                    home.addView(sectionHeader("Исполнители"))
-                    val (scroll, inner) = Rows.shelf(this)
-                    ar.forEach { inner.addView(Rows.artistCard(this, inner, it)) }
-                    home.addView(scroll)
-                }
-            }
-    }
-
-    private val newsBox by lazy { LinearLayout(this).apply { orientation = LinearLayout.VERTICAL } }
-    private val newsListener: () -> Unit = { renderNews() }
-
-    /** «Новинки ваших исполнителей»: свежие релизы (с пометкой «новое») и их песни. */
-    private fun renderNews() {
-        if (newsBox.parent == null) {
-            findViewById<LinearLayout>(R.id.homeSection).addView(newsBox, 0)
-        }
-        newsBox.removeAllViews()
-        val list = News.releases
-        if (list.isEmpty()) {
-            val hint = when {
-                News.checking -> "Проверяю новинки ваших исполнителей…"
-                Taste.favoriteArtists(1).isEmpty() -> "Ставьте ♥ песням — здесь появятся новинки ваших исполнителей"
-                else -> "За последние 3 месяца у ваших исполнителей новинок нет. Проверяю при каждом запуске."
-            }
-            newsBox.addView(sectionHeader("Новинки для вас"))
-            newsBox.addView(TextView(this).apply {
-                text = hint
-                setTextAppearance(M.style.TextAppearance_Material3_BodyMedium)
-                setTextColor(MaterialColors.getColor(this, M.attr.colorOnSurfaceVariant))
-                setPadding(dp(4), 0, dp(4), dp(4))
-            })
-            return
-        }
-        val fresh = list.count { it.isNew }
-        val tracks = News.tracks
-        val items = tracks.map { Playback.QItem(it, Library.localFor(it), it.url) }
-        newsBox.addView(sectionHeader(if (fresh > 0) "Новинки для вас · $fresh новых" else "Новинки для вас", "Слушать") {
-            Playback.playQueue(this, items, 0)
-        })
+    /** Полка карточек с заголовком раздела. */
+    private fun shelf(home: LinearLayout, title: String, action: String? = null, onAction: (() -> Unit)? = null, fill: (LinearLayout) -> Unit) {
+        home.addView(sectionHeader(title, action, onAction))
         val (scroll, inner) = Rows.shelf(this)
-        list.forEach { r ->
-            val a = r.album
-            val sub = listOfNotNull(if (r.isNew) "🆕 новое" else null, a.artist, if (a.isSingle) "сингл" else "альбом").joinToString(" · ")
-            inner.addView(Rows.card(this, inner, a.title + if (a.explicit) " 🅴" else "", sub, a.cover, false) { Rows.openAlbum(this, a) })
+        fill(inner)
+        home.addView(scroll)
+    }
+
+    /**
+     * Главная SoundAura: «Аура дня», плитки разделов (чарт России, новинки, мировой чарт, радио),
+     * недавно слушали, ваши исполнители, популярное.
+     */
+    private fun renderHome(home: LinearLayout, c: List<Track>, w: List<Track>, al: List<Album>, ar: List<Artist>, last: Boolean) {
+        if (last) homeLoading = false
+        if (isDestroyed) return
+        homeData = listOf(c, w, al, ar)
+        home.removeAllViews()
+        val fav = Taste.favoriteArtists(3)
+        home.addView(HomeViews.hero(this,
+            if (fav.isEmpty()) "Лучшее из чарта — в порядке под ваш вкус" else fav.joinToString(", ") + " и похожее — без повторов",
+        ) { HomeViews.playAura(this, ::snack) })
+
+        val releases = News.releases
+        val fresh = releases.count { it.isNew }
+        val chartTile = HomeViews.tile(this, "Чарт России", if (c.isEmpty()) "загружаю…" else "${c.size} песен · сегодня",
+            c.take(3).map { it.cover }, null, c.firstOrNull()?.let { "1. ${it.title} — ${it.artist}" }, tall = true,
+        ) { startActivity(CollectionActivity.list(this, CollectionActivity.LIST_RU)) }
+        val newsTile = HomeViews.tile(this, "Новинки", if (releases.isEmpty()) "ставьте ♥ — тут появятся" else "ваших исполнителей",
+            releases.take(3).map { it.album.cover }, if (fresh > 0) "$fresh новых" else null,
+            releases.firstOrNull()?.let { "${it.album.artist} — «${it.album.title}»" }, tall = true,
+        ) { startActivity(CollectionActivity.list(this, CollectionActivity.LIST_NEWS)) }
+        val worldTile = HomeViews.tile(this, "Мировой чарт", w.take(2).joinToString(", ") { it.artist }.ifEmpty { "Deezer" },
+            emptyList(), null, null, tall = false,
+        ) { startActivity(CollectionActivity.list(this, CollectionActivity.LIST_WORLD)) }
+        val radioTile = HomeViews.tile(this, "Радио", "похожее на последнюю песню", emptyList(), null, null, tall = false,
+        ) { HomeViews.playRadio(this, ::snack) }
+        home.addView(HomeViews.grid(this, listOf(chartTile to newsTile, worldTile to radioTile), listOf(168, 92)))
+
+        // Вы недавно слушали — из истории, включаются мгновенно, если есть в памяти.
+        val recent = History.all.filter { it.kind == Kind.MUSIC }.take(12)
+        if (recent.isNotEmpty()) shelf(home, "Вы недавно слушали", "История", { showPage(R.id.nav_library) }) { inner ->
+            val items = recent.map { e -> Playback.QItem(e.track, e.local ?: Library.localFor(e.track), e.sourceUrl, e.pageUrl) }
+            recent.forEachIndexed { i, e ->
+                inner.addView(Rows.card(this, inner, e.track.title, e.track.artist, e.track.cover, false) { Playback.playQueue(this, items, i) })
+            }
         }
-        newsBox.addView(scroll)
-        tracks.take(4).forEachIndexed { i, t ->
-            newsBox.addView(trackRow(newsBox, t, onPlay = { Playback.playQueue(this, items, i) }))
+
+        // Ваши исполнители — по любимому и прослушанному; фото подгружаются фоном.
+        val mine = Taste.favoriteArtists(10)
+        if (mine.isNotEmpty()) shelf(home, "Ваши исполнители") { inner ->
+            mine.forEach { name ->
+                val card = Rows.card(this, inner, name, null, null, true) { Rows.openArtist(this, name) }
+                inner.addView(card)
+                pool { runCatching { Catalog.artistByName(name) }.getOrNull() }.let { f ->
+                    thread { val a = runCatching { f.get() }.getOrNull(); runOnUiThread { a?.picture?.let { Images.into(card.findViewById(R.id.cardImage), it, R.drawable.ph_artist) } } }
+                }
+            }
+        }
+
+        if (al.isNotEmpty()) shelf(home, "Популярные альбомы") { inner -> al.forEach { inner.addView(Rows.albumCard(this, inner, it)) } }
+        if (ar.isNotEmpty()) shelf(home, "Популярные исполнители") { inner -> ar.forEach { inner.addView(Rows.artistCard(this, inner, it)) } }
+        if (last) {
+            homeLoaded = c.isNotEmpty() || al.isNotEmpty()
+            Streams.prefetchMany(c, 6) // первые песни чарта включатся сразу с начала
         }
     }
 
@@ -466,19 +464,28 @@ class MainActivity : AppCompatActivity() {
         row.addView(TextView(this, null, 0, R.style.SectionTitle).apply {
             text = title
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                topMargin = dp(20); bottomMargin = dp(8); marginStart = dp(4)
+                topMargin = dp(22); bottomMargin = dp(10); marginStart = dp(2)
             }
         })
-        if (action != null && onAction != null) row.addView(MaterialButton(this).apply {
-            text = action
-            setIconResource(R.drawable.ic_play_arrow)
-            Aura.primaryButton(this) // градиент ауры
-            minHeight = dp(40); minimumHeight = dp(40)
-            insetTop = 0; insetBottom = 0
-            setPadding(dp(16), 0, dp(18), 0)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(12) }
-            setOnClickListener { onAction() }
-        })
+        if (action != null && onAction != null) {
+            // «Слушать» — главная кнопка ауры; остальное («Все», «История») — тихая ссылка.
+            val primary = action == "Слушать"
+            row.addView(MaterialButton(this, null, if (primary) com.google.android.material.R.attr.materialButtonStyle else androidx.appcompat.R.attr.borderlessButtonStyle).apply {
+                text = action
+                if (primary) {
+                    setIconResource(R.drawable.ic_play_arrow)
+                    Aura.primaryButton(this)
+                    setPadding(dp(14), 0, dp(16), 0)
+                } else {
+                    setTextColor(MaterialColors.getColor(this, M.attr.colorOnSurfaceVariant))
+                    setPadding(dp(8), 0, dp(8), 0)
+                }
+                minHeight = dp(40); minimumHeight = dp(40)
+                insetTop = 0; insetBottom = 0
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(12) }
+                setOnClickListener { onAction() }
+            })
+        }
         return row
     }
 
@@ -612,86 +619,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Музыкальные элементы раздела (для «Слушать всё»): любимое, вся музыка, история песен. */
-    /** Список раздела: в «умном» режиме любимое и часто слушаемое — сверху (кроме истории — она по времени). */
-    private fun libraryItems(): List<Playback.QItem> = rawLibraryItems().let { items ->
-        if (libraryMode != 3 && Settings.playMode(this) == Settings.PlayMode.SMART) Taste.smartStable(items) { it.track } else items
-    }
-
-    /** Очередь от песни [i]: по порядку — дальше по списку, случайно — остальные вперемешку. */
-    private fun queueFrom(items: List<Playback.QItem>, i: Int): Pair<List<Playback.QItem>, Int> =
-        if (Settings.playMode(this) == Settings.PlayMode.RANDOM) (listOf(items[i]) + (items - items[i]).shuffled()) to 0 else items to i
-
-    private fun rawLibraryItems(): List<Playback.QItem> = when (libraryMode) {
-        1 -> Library.downloaded().map { (t, f) -> Playback.QItem(t, f) }
-        2 -> emptyList()
-        3 -> History.all.filter { it.kind == Kind.MUSIC }.map { e -> Playback.QItem(e.track, e.local ?: Library.localFor(e.track), e.sourceUrl, e.pageUrl) }
-        else -> Library.favorites.map { t -> Playback.QItem(t, Library.localFor(t), t.url) }
-    }
-
     private fun statusOf(t: Track, local: SavedFile?) = Rows.statusOf(t, local)
 
-    private fun refreshLibrary() {
-        if (!::musicSearch.isInitialized) return
-        val videos = Jobs.all.filter { it.status == Status.DONE && it.kind == Kind.VIDEO }
-        val chip = { id: Int, text: String -> findViewById<com.google.android.material.chip.Chip>(id).text = text }
-        chip(R.id.libFav, "Любимое · ${Library.favorites.size}")
-        chip(R.id.libDownloaded, "Музыка · ${Library.downloaded().size}")
-        chip(R.id.libVideo, "Видео · ${videos.size}")
-        chip(R.id.libHistory, "История · ${History.all.size}")
-
-        val list = findViewById<LinearLayout>(R.id.libList)
-        list.removeAllViews()
-        val items = libraryItems()
-        findViewById<View>(R.id.libButtons).isVisible = items.isNotEmpty()
-        findViewById<TextView>(R.id.libModeHint).text = Settings.playMode(this).hint
-        when (libraryMode) {
-            2 -> videos.forEach { j ->
-                list.addView(trackRow(list, Track(j.title, j.site, cover = j.coverUrl), video = true, status = "на телефоне",
-                    onPlay = { Playback.play(this, j.files.map { it to null }, 0) }))
-            }
-            3 -> History.all.forEach { e ->
-                val local = e.local ?: if (e.kind == Kind.MUSIC) Library.localFor(e.track) else null
-                val video = e.kind == Kind.VIDEO
-                list.addView(trackRow(list, e.track, pageUrl = e.pageUrl, local = local, video = video,
-                    status = listOfNotNull(if (video) "видео" else statusOf(e.track, local), ago(e.time)).joinToString(" · "),
-                    onPlay = {
-                        when {
-                            local != null -> Playback.play(this, listOf(local to null), 0)
-                            video && e.pageUrl != null -> Playback.playVideoPage(this, e.pageUrl, e.track.title)
-                            else -> Playback.playQueue(this, listOf(Playback.QItem(e.track, null, e.sourceUrl, e.pageUrl)), 0)
-                        }
-                    }))
-            }
-            else -> items.forEachIndexed { i, q ->
-                list.addView(trackRow(list, q.track, local = q.local, status = statusOf(q.track, q.local),
-                    onPlay = { val (q, at) = queueFrom(items, i); Playback.playQueue(this, q, at) }))
-            }
-        }
-        val empty = findViewById<TextView>(R.id.libEmpty)
-        empty.isVisible = list.childCount == 0
-        empty.text = when (libraryMode) {
-            1 -> "Скачанной музыки пока нет.\nСкачайте песню или поставьте ♥ — она появится здесь."
-            2 -> "Скачанных видео пока нет."
-            3 -> "Здесь будет всё, что вы слушали и смотрели.\nПовторное включение — мгновенно."
-            else -> "Ставьте ♥ песням — они сохранятся на телефон\nи будут играть мгновенно, даже без интернета."
-        }
-    }
-
-    private fun ago(time: Long): String {
-        val m = (System.currentTimeMillis() - time) / 60000
-        return when {
-            m < 1 -> "только что"
-            m < 60 -> "$m мин назад"
-            m < 60 * 24 -> "${m / 60} ч назад"
-            else -> "${m / 60 / 24} дн назад"
-        }
-    }
-
-    private fun playLibrary() {
-        val items = libraryItems().let { if (Settings.playMode(this) == Settings.PlayMode.RANDOM) it.shuffled() else it }
-        Playback.playQueue(this, items, 0)
-    }
+    private fun refreshLibrary() { library?.refresh() }
 
     /** Строка песни — общая с экранами исполнителя и альбома. */
     private fun trackRow(
@@ -763,10 +693,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshSummary() {
         val all = Jobs.all
         val active = all.filter { it.active }
-        nav.getOrCreateBadge(R.id.nav_jobs).apply {
-            isVisible = active.isNotEmpty()
-            number = active.size
-        }
+        nav.setBadge(R.id.nav_jobs, active.size)
         activeCard.isVisible = active.isNotEmpty()
         if (active.isNotEmpty()) {
             val running = active.firstOrNull { it.status == Status.RUNNING }
@@ -1116,6 +1043,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupMiniPlayer() {
         mini = findViewById(R.id.miniPlayer)
+        mini.clipToOutline = true
+        findViewById<RingProgressView>(R.id.miniRing).apply {
+            stroke = dp(2).toFloat(); knob = false; seekable = false
+            trackColor(androidx.core.content.ContextCompat.getColor(this@MainActivity, R.color.line))
+        }
         mini.setOnClickListener { startActivity(Intent(this, NowPlayingActivity::class.java)) }
         findViewById<View>(R.id.miniPlay).setOnClickListener {
             controller?.let { if (it.isPlaying) it.pause() else it.play() }
@@ -1140,15 +1072,38 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.miniNext).isVisible = Playback.hasNext(c)
         val cover = findViewById<com.google.android.material.imageview.ShapeableImageView>(R.id.miniCover)
         val art = m.artworkData?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
-        if (art != null) cover.setImageBitmap(art) else cover.setImageResource(R.drawable.ic_music_note)
+        val url = m.artworkUri?.toString()
+        when {
+            art != null -> { cover.setImageBitmap(art); miniGlow(art) }
+            url != null && url != miniCoverUrl -> {
+                miniCoverUrl = url
+                Images.into(cover, url, R.drawable.ph_cover)
+                Images.load(url) { b -> if (miniCoverUrl == url) miniGlow(b) }
+            }
+            url == null -> { cover.setImageResource(R.drawable.ph_cover); miniCoverUrl = null; miniGlow(null) }
+        }
         updateMiniProgress()
+    }
+
+    private var miniCoverUrl: String? = null
+
+    /** Слева в мини-плеере — мягкое свечение в цвет обложки. */
+    private fun miniGlow(b: android.graphics.Bitmap?) {
+        val glow = findViewById<View>(R.id.miniGlow)
+        if (b == null) { glow.background = null; return }
+        val c = androidx.core.graphics.ColorUtils.setAlphaComponent(Images.dominant(b), 0x80)
+        glow.background = android.graphics.drawable.GradientDrawable().apply {
+            gradientType = android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT
+            gradientRadius = dp(110).toFloat()
+            setGradientCenter(0.15f, 0.5f)
+            colors = intArrayOf(c, android.graphics.Color.TRANSPARENT)
+        }
     }
 
     private fun updateMiniProgress() {
         val c = controller ?: return
         val d = Playback.duration(c)
-        val p = findViewById<LinearProgressIndicator>(R.id.miniProgress)
-        if (d > 0) p.setProgressCompat((Playback.position(c) * 1000 / d).toInt(), false) else p.progress = 0
+        findViewById<RingProgressView>(R.id.miniRing).progress = if (d > 0) Playback.position(c).toFloat() / d else 0f
     }
 
     private fun open(job: Job) {
@@ -1237,6 +1192,12 @@ class MainActivity : AppCompatActivity() {
         val appearance = findViewById<LinearLayout>(R.id.appearanceSettings)
         appearance.removeAllViews()
         val theme = Settings.theme(this)
+        val ps = Settings.playerStyle(this)
+        settingRow(appearance, R.drawable.ic_headphones, "Вид плеера", ps.label, ps.hint) {
+            choose("Вид плеера", Settings.PlayerStyle.entries.map { "${it.label} — ${it.hint}" }, ps.ordinal) {
+                Settings.setPlayerStyle(this, Settings.PlayerStyle.entries[it]); refreshMusicSettings()
+            }
+        }
         settingRow(appearance, R.drawable.ic_settings, "Тема", theme.label, "Тёмная бережёт глаза и батарею на AMOLED-экранах") {
             choose("Тема", Settings.Theme.entries.map { it.label }, theme.ordinal) {
                 Settings.setTheme(this, Settings.Theme.entries[it])

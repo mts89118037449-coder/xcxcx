@@ -1,21 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Строка песни: обложка, название, исполнитель, «…» -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="?attr/selectableItemBackground"
     android:gravity="center_vertical"
-    android:minHeight="68dp"
+    android:minHeight="64dp"
     android:orientation="horizontal"
     android:paddingVertical="6dp">
 
+    <TextView
+        android:id="@+id/srNumber"
+        android:layout_width="24dp"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:gravity="end"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:visibility="gone" />
+
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/srCover"
-        android:layout_width="52dp"
-        android:layout_height="52dp"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
         android:importantForAccessibility="no"
         android:scaleType="centerCrop"
-        app:shapeAppearanceOverlay="@style/JobCoverShape" />
+        app:shapeAppearanceOverlay="@style/MiniCoverShape" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -30,39 +41,33 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textAppearance="?attr/textAppearanceTitleSmall" />
+            android:textAppearance="?attr/textAppearanceTitleSmall"
+            android:textColor="?attr/colorOnSurface" />
 
         <TextView
             android:id="@+id/srSub"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
             android:ellipsize="end"
             android:maxLines="1"
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorOnSurfaceVariant" />
     </LinearLayout>
 
+    <com.zagruzchik.app.EqBarsView
+        android:id="@+id/srEq"
+        android:layout_width="16dp"
+        android:layout_height="14dp"
+        android:layout_marginStart="8dp"
+        android:visibility="gone" />
+
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/srLike"
+        android:id="@+id/srMore"
         style="?attr/materialIconButtonStyle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:contentDescription="В библиотеку"
-        app:icon="@drawable/ic_favorite_border" />
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/srDownload"
-        style="?attr/materialIconButtonStyle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:contentDescription="Скачать"
-        app:icon="@drawable/ic_download" />
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/srPlay"
-        style="?attr/materialIconButtonFilledTonalStyle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:contentDescription="Слушать"
-        app:icon="@drawable/ic_play_arrow" />
+        android:contentDescription="Действия"
+        app:icon="@drawable/ic_more_horiz"
+        app:iconTint="?attr/colorOnSurfaceVariant" />
 </LinearLayout>

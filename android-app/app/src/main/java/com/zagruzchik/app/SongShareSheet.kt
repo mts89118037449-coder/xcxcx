@@ -44,7 +44,7 @@ object SongShareSheet {
         v.findViewById<TextView>(R.id.shTitle).text = track.title
         v.findViewById<TextView>(R.id.shArtist).text = track.artist
         val coverView = v.findViewById<ShapeableImageView>(R.id.shCover)
-        if (cover != null) coverView.setImageBitmap(cover) else Images.into(coverView, entry.track.cover ?: track.cover, R.drawable.ic_music_note)
+        if (cover != null) coverView.setImageBitmap(cover) else Images.into(coverView, entry.track.cover ?: track.cover, R.drawable.ph_cover)
 
         val status = v.findViewById<TextView>(R.id.shStatus)
         val spinner = v.findViewById<View>(R.id.shSpinner)

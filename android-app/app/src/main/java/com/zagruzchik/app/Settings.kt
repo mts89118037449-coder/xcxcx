@@ -14,6 +14,15 @@ object Settings {
         SOUNDCLOUD("Сначала SoundCloud", "Потом YouTube Music и YouTube"),
     }
 
+    /** Вид плеера: «Кольцо» — обложка-диск и кольцо прогресса; «Волна» — обложка и звуковая волна. */
+    enum class PlayerStyle(val label: String, val hint: String) {
+        RING("Кольцо", "Обложка-диск, прогресс — кольцо ауры вокруг неё"),
+        WAVE("Волна", "Большая обложка, перемотка — звуковая волна"),
+    }
+
+    fun playerStyle(ctx: Context) = runCatching { PlayerStyle.valueOf(prefs(ctx).getString("playerStyle", null)!!) }.getOrDefault(PlayerStyle.RING)
+    fun setPlayerStyle(ctx: Context, s: PlayerStyle) = prefs(ctx).edit().putString("playerStyle", s.name).apply()
+
     /** Как играть медиатеку. */
     enum class PlayMode(val hint: String) {
         ORDER("Подряд, как в списке"),

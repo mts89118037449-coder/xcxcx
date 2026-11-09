@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Material 3 в фирменных цветах SoundAura. Фон окна — с мягким свечением ауры. -->
     <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/m3_primary</item>
@@ -34,8 +34,39 @@
         <item name="actionMenuTextAppearance">@style/MenuText</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">?attr/colorSurfaceContainer</item>
-        <item name="android:windowBackground">@drawable/bg_aura</item>
+        <item name="android:windowBackground">@color/m3_background</item>
+        <!-- Шрифты: Onest для всего, Unbounded для крупных заголовков -->
+        <item name="android:fontFamily">@font/onest</item>
+        <item name="fontFamily">@font/onest</item>
+        <item name="textAppearanceDisplaySmall">@style/TA.Display</item>
+        <item name="textAppearanceHeadlineLarge">@style/TA.Headline</item>
+        <item name="textAppearanceHeadlineMedium">@style/TA.Headline</item>
+        <item name="textAppearanceHeadlineSmall">@style/TA.HeadlineSmall</item>
+        <item name="textAppearanceTitleLarge">@style/TA.TitleLarge</item>
+        <item name="textAppearanceTitleMedium">@style/TA.TitleMedium</item>
+        <item name="textAppearanceTitleSmall">@style/TA.TitleSmall</item>
+        <item name="textAppearanceBodyLarge">@style/TA.BodyLarge</item>
+        <item name="textAppearanceBodyMedium">@style/TA.BodyMedium</item>
+        <item name="textAppearanceBodySmall">@style/TA.BodySmall</item>
+        <item name="textAppearanceLabelLarge">@style/TA.LabelLarge</item>
+        <item name="textAppearanceLabelMedium">@style/TA.LabelMedium</item>
+        <item name="textAppearanceLabelSmall">@style/TA.LabelSmall</item>
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31">@color/m3_background</item>
     </style>
+
+    <!-- Типографика SoundAura -->
+    <style name="TA.Display" parent="TextAppearance.Material3.DisplaySmall"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
+    <style name="TA.Headline" parent="TextAppearance.Material3.HeadlineMedium"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
+    <style name="TA.HeadlineSmall" parent="TextAppearance.Material3.HeadlineSmall"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
+    <style name="TA.TitleLarge" parent="TextAppearance.Material3.TitleLarge"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textFontWeight">600</item></style>
+    <style name="TA.TitleMedium" parent="TextAppearance.Material3.TitleMedium"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textFontWeight">600</item></style>
+    <style name="TA.TitleSmall" parent="TextAppearance.Material3.TitleSmall"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textFontWeight">600</item><item name="android:textSize">15sp</item></style>
+    <style name="TA.BodyLarge" parent="TextAppearance.Material3.BodyLarge"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item></style>
+    <style name="TA.BodyMedium" parent="TextAppearance.Material3.BodyMedium"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item></style>
+    <style name="TA.BodySmall" parent="TextAppearance.Material3.BodySmall"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textSize">13sp</item></style>
+    <style name="TA.LabelLarge" parent="TextAppearance.Material3.LabelLarge"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textFontWeight">600</item></style>
+    <style name="TA.LabelMedium" parent="TextAppearance.Material3.LabelMedium"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textFontWeight">600</item></style>
+    <style name="TA.LabelSmall" parent="TextAppearance.Material3.LabelSmall"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textFontWeight">600</item></style>
 
     <!-- Прозрачное окно, поверх которого выезжает нижняя панель «Поделиться». -->
     <style name="ShareTheme" parent="AppTheme">
@@ -60,8 +91,9 @@
         <item name="android:layout_marginTop">20dp</item>
         <item name="android:layout_marginBottom">8dp</item>
         <item name="android:layout_marginStart">4dp</item>
-        <item name="android:textAppearance">?attr/textAppearanceTitleMedium</item>
-        <item name="android:textColor">?attr/colorPrimary</item>
+        <item name="android:textAppearance">@style/TA.TitleLarge</item>
+        <item name="android:textSize">19sp</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
     </style>
 
     <style name="MenuText" parent="TextAppearance.Material3.LabelLarge">
@@ -77,6 +109,16 @@
     <style name="JobCoverShape">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">14dp</item>
+    </style>
+
+    <style name="DiscShape">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
+    <style name="WaveCoverShape">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">32dp</item>
     </style>
 
     <style name="NowPlayingCoverShape">
