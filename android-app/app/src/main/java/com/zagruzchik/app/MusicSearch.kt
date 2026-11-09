@@ -201,6 +201,7 @@ object Streams {
             else if (problems.isNotEmpty()) append("Нашёл, но не играет: ${problems.first()}.")
             else append("Не нашёл «${t.label}».")
             if (missing.isNotEmpty()) append(" На ${missing.joinToString(" и ")} её нет.")
+            append(" Искал: SoundCloud, YouTube, YouTube Music, Яндекс, Rutube, Internet Archive, Dailymotion, Audius.")
             append(" Можно открыть в своём сервисе — кнопка «Сервисы».")
         })
     }

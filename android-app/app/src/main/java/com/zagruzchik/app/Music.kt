@@ -117,18 +117,26 @@ object Match {
     private fun artists(a: String) = norm(a.replace(Regex("""\b(feat|ft)\b""", RegexOption.IGNORE_CASE), ","))
         .split(Regex("""\s*(,|&|\band\b|\bи\b|\bx\b)\s*""")).map { it.trim() }.filter { it.isNotEmpty() }
 
+    // Кириллица и латиница, которые выглядят одинаково (МАЯК Х и МАЯК X): для сравнения — одно и то же.
+    private val LOOKALIKE = mapOf('а' to 'a', 'в' to 'b', 'е' to 'e', 'ё' to 'e', 'к' to 'k', 'м' to 'm', 'н' to 'h', 'о' to 'o',
+        'р' to 'p', 'с' to 'c', 'т' to 't', 'у' to 'y', 'х' to 'x', 'і' to 'i')
+
+    fun fold(s: String) = String(CharArray(s.length) { i -> LOOKALIKE[s[i]] ?: s[i] })
+
     /** Оценка похожести кандидата на исходный трек; null — точно не он. */
     fun score(src: Track, title: String, artist: String, durationSec: Int = 0): Int? {
         if (durationSec in 1..59 && (src.durationSec == 0 || src.durationSec >= 75)) return null // 30-секундные превью
-        val sb = base(src.title)
-        val cb = base(title)
+        val sb = fold(base(src.title))
+        val cb = fold(base(title))
+        val nt = fold(norm(title))
         if (sb.isEmpty() || cb.isEmpty()) return null
-        if (sb != cb && !norm(title).contains(sb) && !sb.contains(cb)) return null
-        var s = if (norm(title) == norm(src.title)) 3 else if (sb == cb) 2 else 0
+        if (sb != cb && !nt.contains(sb) && !sb.contains(cb)) return null
+        var s = if (nt == fold(norm(src.title))) 3 else if (sb == cb) 2 else 0
 
         if (src.artist.isNotBlank()) {
-            val a = norm(artist)
-            val hit = artists(src.artist).any { it.isNotEmpty() && (a.contains(it) || it.contains(a) && a.isNotEmpty()) }
+            val a = fold(norm(artist))
+            // Перезаливы часто пишут исполнителя только в названии: «Не вспоминать МАЯК Х».
+            val hit = artists(src.artist).map(::fold).any { it.isNotEmpty() && (a.contains(it) || it.contains(a) && a.isNotEmpty() || nt.contains(it)) }
             if (!hit) return null
             s += 2
         }
