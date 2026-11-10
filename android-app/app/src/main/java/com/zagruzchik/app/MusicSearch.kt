@@ -155,12 +155,35 @@ object Streams {
 
     private fun cached(k: String) = done[k]?.let { (time, s) -> s.takeIf { System.currentTimeMillis() - time < TTL_MS } }
 
+    // ---- Своя ссылка для песни: если поиск не находит, человек указывает страницу сам — запоминаем навсегда. ----
+    private val pins by lazy { App.instance.getSharedPreferences("pins", 0) }
+    fun pinned(t: Track): String? = pins.getString(key(t), null)
+    fun pin(t: Track, url: String?) {
+        val k = key(t)
+        pins.edit().apply { if (url.isNullOrBlank()) remove(k) else putString(k, url.trim()) }.apply()
+        failed.remove(k); done.remove(k)
+    }
+
+    /** Что ответила каждая площадка в последнем поиске этой песни — чтобы понять, почему не нашлась. */
+    private val reports = java.util.concurrent.ConcurrentHashMap<String, String>()
+    fun report(t: Track): String? = reports[key(t)]
+
     private fun find(t: Track): StreamInfo {
         App.awaitReady()
+        pinned(t)?.let { url ->
+            Downloader.streamOf(url, Describe.site(url), t.title)?.let { return it }
+        }
+        val log = java.util.concurrent.ConcurrentLinkedQueue<String>()
+        try { return search(t, log) } finally {
+            reports[key(t)] = "Искал: «${t.query}»" + (if (t.durationSec > 0) " (${t.durationSec} с)" else "") + "\n\n" + log.sorted().joinToString("\n\n")
+        }
+    }
+
+    private fun search(t: Track, log: java.util.Queue<String>): StreamInfo {
         val sources = listOf(
             "SoundCloud" to "scsearch8:${t.query}",
             "YouTube Music" to "https://music.youtube.com/search?q=" + Http.enc(t.query) + "#songs",
-            "YouTube" to "ytsearch6:${t.query}",
+            "YouTube" to "ytsearch8:${t.query}",
             // Перезаливы часто названы иначе («Не вспоминать МАЯК Х») — ищем и по одному названию;
             // чужие песни с таким же названием отсеивает проверка исполнителя.
             "SoundCloud" to "scsearch10:${Match.base(t.title).ifEmpty { t.title }}",
@@ -175,6 +198,8 @@ object Streams {
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                 val raw = runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
                 val candidates = Match.ranked(t, raw) { Triple(it.title, it.author, it.duration) }
+                log += "$name [${query.take(40)}]: результатов ${raw.size}, подошло ${candidates.size}" +
+                    raw.take(5).joinToString("") { c -> "\n  ${if (c in candidates) "✓" else "✗"} ${c.title.take(60)} | ${c.author.take(30)} | ${c.duration} с" }
                 // Вкладка «Песни» YouTube Music пуста (так бывает) — берём общий поиск YouTube Music. Там в выдаче
                 // нет исполнителя, поэтому совпавшие по названию проверяем по самой странице.
                 if (name == "YouTube Music" && raw.isEmpty()) {
@@ -224,6 +249,7 @@ object Streams {
             val s = runCatching { f.get(maxOf(1, left), java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrNull()
             if (s != null) return s
         }
+        if (problems.isNotEmpty()) log += "Ошибки:\n  " + problems.distinct().joinToString("\n  ") { it.take(160) }
         // Честно: где песня есть и почему не играет (чаще всего — платная на SoundCloud).
         val drm = problems.filter { it.contains("DRM") || it.contains("платн", ignoreCase = true) }.map { it.substringBefore(":") }.distinct()
         val missing = listOf("SoundCloud", "YouTube").filter { it !in foundOn }
@@ -233,7 +259,7 @@ object Streams {
             else append("Не нашёл «${t.label}».")
             if (missing.isNotEmpty()) append(" На ${missing.joinToString(" и ")} её нет.")
             append(" Искал: SoundCloud, YouTube, YouTube Music, Яндекс, Rutube, Internet Archive, Dailymotion, Audius.")
-            append(" Можно открыть в своём сервисе — кнопка «Сервисы».")
+            append(" Нажмите на это сообщение — можно указать ссылку на песню вручную.")
         })
     }
 }

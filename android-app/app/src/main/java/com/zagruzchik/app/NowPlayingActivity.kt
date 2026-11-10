@@ -120,6 +120,8 @@ class NowPlayingActivity : AppCompatActivity() {
             controller?.let { c -> val d = Playback.duration(c); if (d > 0) Playback.seek(c, (f * d).toLong()) }
         }
         retry.setOnClickListener { Playback.retry(this) }
+        // Не нашлась — по нажатию на сообщение: что ответили площадки и поле для своей ссылки.
+        status.setOnClickListener { Playback.Pending.track?.takeIf { Playback.Pending.error != null }?.let(::notFoundDialog) }
         val share = View.OnClickListener { share() }
         findViewById<View>(R.id.npShare).setOnClickListener(share)
         findViewById<View>(R.id.npShareTop).setOnClickListener(share)
@@ -413,5 +415,30 @@ class NowPlayingActivity : AppCompatActivity() {
             .show()
         download.isEnabled = false
         findViewById<TextView>(R.id.npDownloadText).text = "Качаю…"
+    }
+
+    private fun notFoundDialog(t: Track) {
+        val report = (Streams.report(t) ?: "Отчёта пока нет — нажмите «Ещё раз».")
+        val input = android.widget.EditText(this).apply {
+            hint = "Ссылка на песню: YouTube, SoundCloud, VK Видео…"; setSingleLine()
+            setText(Streams.pinned(t).orEmpty())
+        }
+        val text = TextView(this).apply { this.text = report; textSize = 12f; setTextIsSelectable(true); setPadding(0, dp(12), 0, 0) }
+        val box = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL; setPadding(dp(22), dp(8), dp(22), 0)
+            addView(input); addView(text)
+        }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("«${t.title}» не нашлась")
+            .setView(android.widget.ScrollView(this).apply { addView(box) })
+            .setPositiveButton("Играть по ссылке") { _, _ ->
+                val url = Links.extract(input.text.toString()) ?: input.text.toString().trim()
+                if (url.startsWith("http")) { Streams.pin(t, url); Playback.retry(this) }
+            }
+            .setNeutralButton("Скопировать отчёт") { _, _ ->
+                getSystemService(android.content.ClipboardManager::class.java)
+                    ?.setPrimaryClip(android.content.ClipData.newPlainText("SoundAura", "${t.artist} — ${t.title}\n$report"))
+            }
+            .setNegativeButton("Закрыть", null).show()
     }
 }

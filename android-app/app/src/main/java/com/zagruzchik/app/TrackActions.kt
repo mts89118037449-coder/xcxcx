@@ -72,6 +72,23 @@ object TrackActions {
             }
         }
         item(R.drawable.ic_link, "Где ещё послушать") { TransferActivity.openTrack(a, t, t.url) }
+        // Поиск не находит или включает не ту версию — человек сам даёт страницу песни, запоминаем.
+        item(R.drawable.ic_link, if (Streams.pinned(t) != null) "Своя ссылка: изменить" else "Указать свою ссылку на песню") {
+            val input = android.widget.EditText(a).apply { hint = "YouTube, SoundCloud, VK Видео…"; setSingleLine(); setText(Streams.pinned(t).orEmpty()) }
+            val box = android.widget.FrameLayout(a).apply { setPadding(a.dp(22), a.dp(8), a.dp(22), 0); addView(input) }
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(a)
+                .setTitle("Откуда играть «${t.title}»")
+                .setMessage("Вставьте ссылку на страницу песни — дальше она всегда будет играть оттуда. Пусто — снова обычный поиск.")
+                .setView(box)
+                .setPositiveButton("Сохранить") { _, _ ->
+                    val raw = input.text.toString().trim()
+                    val url = Links.extract(raw) ?: raw
+                    if (raw.isEmpty()) { Streams.pin(t, null); snack("Ссылка убрана — буду искать сам") }
+                    else if (url.startsWith("http")) { MediaCache.forget(t); Streams.pin(t, url); snack("Запомнил — «${t.title}» играет по вашей ссылке") }
+                    else snack("Это не ссылка")
+                }
+                .setNegativeButton("Отмена", null).show()
+        }
         dlg.setContentView(root)
         dlg.show()
     }
