@@ -34,7 +34,8 @@ object Library {
     }
 
     // Ключ песни считается через нормализацию текста — недёшево, а в списках он нужен десятки раз: запоминаем.
-    private val keys = java.util.concurrent.ConcurrentHashMap<Track, String>()
+    private val keys = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val looseKeys = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     // ---------------- Сохранённые альбомы (♥ на странице альбома) ----------------
 
@@ -162,9 +163,12 @@ object Library {
         else main.post { listeners.toList().forEach { it() } }
     }
 
-    fun key(t: Track): String = keys[t] ?: (Match.base(t.title) + "|" + Match.norm(t.artist)).also {
-        if (keys.size > 100_000) keys.clear()
-        keys[t] = it
+    fun key(t: Track): String {
+        val id = t.title + "\u0000" + t.artist
+        return keys[id] ?: (Match.base(t.title) + "|" + Match.norm(t.artist)).also {
+            if (keys.size > 100_000) keys.clear()
+            keys[id] = it
+        }
     }
 
     @Volatile private var savedKeys: Set<String>? = null
@@ -174,7 +178,13 @@ object Library {
     fun mainArtist(a: String) = a.split(Regex("""\s*(,|&|;| x | feat\.? | ft\.? | и )\s*""", RegexOption.IGNORE_CASE)).first().trim()
 
     /** Ключ попроще: название + основной исполнитель (совместные песни записаны в сервисах по-разному). */
-    fun looseKey(t: Track) = Match.base(t.title) + "|" + Match.fold(Match.norm(mainArtist(t.artist)))
+    fun looseKey(t: Track): String {
+        val id = t.title + "\u0000" + t.artist
+        return looseKeys[id] ?: (Match.base(t.title) + "|" + Match.fold(Match.norm(mainArtist(t.artist)))).also {
+            if (looseKeys.size > 100_000) looseKeys.clear()
+            looseKeys[id] = it
+        }
+    }
 
     /** Есть ли среди исполнителей песни [artist]. */
     fun hasArtist(t: Track, artist: String): Boolean {

@@ -192,9 +192,20 @@ class CollectionActivity : AppCompatActivity() {
     private fun showTracks(list: List<Track>, numbered: Boolean) {
         findViewById<View>(R.id.colButtons).isVisible = list.isNotEmpty()
         val items = list.map { Playback.QItem(it, Library.localFor(it), it.url) }
-        list.forEachIndexed { i, t ->
-            content.addView(Rows.track(this, content, t, ::snack, local = items[i].local, number = if (numbered) i + 1 else null,
-                onPlay = { Playback.playQueue(this, items, i) }))
+        // Длинные списки (перенесённый плейлист на тысячи песен) — порциями по мере прокрутки.
+        var next = 0
+        fun more() {
+            val end = minOf(list.size, next + 40)
+            while (next < end) {
+                val i = next++
+                content.addView(Rows.track(this, content, list[i], ::snack, local = items[i].local, number = if (numbered) i + 1 else null,
+                    onPlay = { Playback.playQueue(this, items, i) }))
+            }
+        }
+        more()
+        val scroll = findViewById<androidx.core.widget.NestedScrollView>(R.id.colScroll)
+        scroll.setOnScrollChangeListener { v: androidx.core.widget.NestedScrollView, _: Int, y: Int, _: Int, _: Int ->
+            if (next < list.size && v.getChildAt(0).bottom - (v.height + y) < dp(1200)) more()
         }
     }
 

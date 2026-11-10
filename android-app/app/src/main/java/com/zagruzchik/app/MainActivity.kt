@@ -196,6 +196,7 @@ class MainActivity : AppCompatActivity() {
     /** Показать содержимое вкладки. Вызывается нижней панелью при выборе вкладки. */
     private fun applyPage(id: Int) {
         pages.forEach { (k, v) -> v.isVisible = k == id }
+        if (id == R.id.nav_library && libraryDirty) refreshLibrary()
         toolbar.title = when (id) {
             R.id.nav_music -> "Музыка"
             R.id.nav_library -> "Медиатека"
@@ -309,7 +310,12 @@ class MainActivity : AppCompatActivity() {
     private var musicSeq = 0
     private var library: LibraryPage? = null
     private val musicSearchRun = Runnable { runMusicSearch() }
-    private val libraryListener: () -> Unit = { refreshLibrary() }
+    // Изменения сыплются пачками (перенос, обложки в фоне) — перерисовываем один раз, а не на каждое.
+    private val libraryRefresh = Runnable { refreshLibrary() }
+    private val libraryListener: () -> Unit = {
+        window.decorView.removeCallbacks(libraryRefresh)
+        window.decorView.postDelayed(libraryRefresh, 400)
+    }
 
     private fun setupMusicPage() {
         musicSearch = findViewById(R.id.musicSearch)
@@ -621,7 +627,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun statusOf(t: Track, local: SavedFile?) = Rows.statusOf(t, local)
 
-    private fun refreshLibrary() { library?.refresh() }
+    // Медиатека не на экране — не пересобираем её зря (тысячи песен), обновим при открытии вкладки.
+    private var libraryDirty = true
+    private fun refreshLibrary() {
+        if (pages[R.id.nav_library]?.isVisible != true) { libraryDirty = true; return }
+        libraryDirty = false
+        library?.refresh()
+    }
 
     /** Строка песни — общая с экранами исполнителя и альбома. */
     private fun trackRow(

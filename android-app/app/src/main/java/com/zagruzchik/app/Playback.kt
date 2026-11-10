@@ -150,11 +150,25 @@ object Playback {
      * а через пару секунд его сменяет полная версия (SoundCloud → YouTube Music → YouTube).
      * Следующие песни готовятся заранее, пока играет текущая, — переход без пауз.
      */
-    fun playQueue(ctx: Context, items: List<QItem>, start: Int, openScreen: Boolean = true) {
+    fun playQueue(ctx: Context, items: List<QItem>, start: Int, openScreen: Boolean = true) = playQueue(ctx, items, start, openScreen, auto = false)
+
+    private var startIndex = 0
+    private var skips = 0 // сколько песен подряд пропустили сами (не нашлись) — чтобы не листать очередь бесконечно
+
+    /** «Ещё раз»: искать ту же песню заново, не теряя очередь. */
+    fun retry(ctx: Context) {
+        val q = queue.getOrNull(startIndex) ?: return
+        Streams.forgetFailure(q.track)
+        playQueue(ctx, queue, startIndex, openScreen = false)
+    }
+
+    private fun playQueue(ctx: Context, items: List<QItem>, start: Int, openScreen: Boolean, auto: Boolean) {
         if (items.isEmpty()) return
         val app = ctx.applicationContext
         val gen = ++queueGen
+        if (!auto) skips = 0
         queue = items
+        startIndex = start.coerceIn(0, items.lastIndex)
         nextToAdd = start + 1
         filling = false
         val first = items[start.coerceIn(0, items.lastIndex)]
@@ -253,6 +267,14 @@ object Playback {
                         // Фрагмент уже играет — не прерываем, но честно говорим, что полной версии не будет.
                         Pending.set(first.track, loading = false, error = "Полную версию не нашёл — играет фрагмент.\n$msg")
                         fill(app, gen)
+                    } else if (nextToAdd < queue.size && skips < 5) {
+                        // Ничего не играет и не заиграет — не стоим на месте, включаем следующую из очереди.
+                        Pending.set(first.track, loading = false, error = "Включаю следующую — эту бесплатно не нашёл.\n$msg")
+                        main.postDelayed({
+                            if (gen != queueGen) return@postDelayed
+                            skips++
+                            playQueue(app, queue, nextToAdd, openScreen = false, auto = true)
+                        }, 2500)
                     } else {
                         Pending.set(first.track, loading = false, error = msg)
                     }

@@ -116,13 +116,21 @@ object Streams {
     fun resolve(t: Track): StreamInfo {
         val k = key(t)
         cached(k)?.let { return it }
+        // Недавно искали и не нашли (платная, удалена) — не ищем те же полминуты заново.
+        failed[k]?.let { (time, e) -> if (System.currentTimeMillis() - time < FAIL_TTL_MS) throw e else failed.remove(k) }
         pending[k]?.let { f ->
             // Ещё в очереди подготовки — не ждём её, ищем сами сразу; уже ищется — ждём (так быстрее).
             if (f.cancel(false)) pending.remove(k, f)
             else try { return f.get() } catch (e: java.util.concurrent.ExecutionException) { throw e.cause ?: e } catch (_: java.util.concurrent.CancellationException) {}
         }
-        return find(t).also { done[k] = System.currentTimeMillis() to it }
+        return try { find(t).also { done[k] = System.currentTimeMillis() to it } }
+        catch (e: UserError) { failed[k] = System.currentTimeMillis() to e; throw e }
     }
+
+    private const val FAIL_TTL_MS = 20 * 60 * 1000L
+    private val failed = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, UserError>>()
+    /** «Ещё раз» — искать заново, даже если недавно не нашли. */
+    fun forgetFailure(t: Track) { failed.remove(key(t)) }
 
     // Конкретная страница (результат «Везде в интернете», история): ссылка на звук — тоже заранее.
     private val pages = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.Future<StreamInfo?>>()
@@ -182,7 +190,7 @@ object Streams {
                 if (!f.isDone) continue
                 val s = runCatching { f.get() }.getOrNull() ?: continue
                 val seniorsDone = jobs.take(i).all { it.isDone }
-                if (seniorsDone || System.currentTimeMillis() - started > 4000) return s
+                if (seniorsDone || System.currentTimeMillis() - started > 2500) return s
             }
             if (jobs.all { it.isDone }) break
             // Основные площадки отвечают дольше 25 с — не ждём их, идём к запасным.
@@ -200,7 +208,7 @@ object Streams {
                 }
             }
         }
-        val extraDeadline = System.currentTimeMillis() + 20_000
+        val extraDeadline = System.currentTimeMillis() + 10_000
         for (f in extras) {
             val left = extraDeadline - System.currentTimeMillis()
             val s = runCatching { f.get(maxOf(1, left), java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrNull()

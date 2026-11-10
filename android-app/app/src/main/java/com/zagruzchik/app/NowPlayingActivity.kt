@@ -119,7 +119,7 @@ class NowPlayingActivity : AppCompatActivity() {
         seek.onSeek = { f ->
             controller?.let { c -> val d = Playback.duration(c); if (d > 0) Playback.seek(c, (f * d).toLong()) }
         }
-        retry.setOnClickListener { Playback.Pending.track?.let { Playback.playTrack(this, it) } }
+        retry.setOnClickListener { Playback.retry(this) }
         val share = View.OnClickListener { share() }
         findViewById<View>(R.id.npShare).setOnClickListener(share)
         findViewById<View>(R.id.npShareTop).setOnClickListener(share)
