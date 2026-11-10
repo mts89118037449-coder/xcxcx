@@ -77,7 +77,11 @@ object WebSearch {
     fun extraCandidates(t: Track): List<WebResult> {
         val q = t.query
         val jobs = listOf(::yandex, ::archive, ::rutube, ::dailymotion, ::audius).map { f -> pool.submit<List<WebResult>> { runCatching { f(q) }.getOrDefault(emptyList()) } }
-        val all = jobs.flatMap { runCatching { it.get() }.getOrDefault(emptyList()) }
+        // Ждём все площадки не дольше 6 с суммарно: медленная не задерживает остальных.
+        val deadline = System.currentTimeMillis() + 6000
+        val all = jobs.flatMap { j ->
+            runCatching { j.get(maxOf(1, deadline - System.currentTimeMillis()), java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrDefault(emptyList())
+        }
         return Match.ranked(t, all) { Triple(it.title, it.artist + " | " + it.title.substringBefore(" - ", ""), it.duration) }
     }
 

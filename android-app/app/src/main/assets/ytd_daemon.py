@@ -51,6 +51,7 @@ def handle(req):
             fmts = info.get("requested_formats") or [info]
             res = {"urls": [f.get("url") for f in fmts if f.get("url")], "thumbnail": info.get("thumbnail"),
                    "page": info.get("webpage_url"), "title": info.get("title"), "duration": info.get("duration"),
+                   "artist": info.get("artist") or (info.get("artists") or [None])[0] or info.get("creator") or info.get("uploader") or info.get("channel"),
                    "abr": max([f.get("abr") or 0 for f in fmts] or [0]), "ext": fmts[0].get("ext"), "acodec": fmts[0].get("acodec")}
         out({"id": rid, "ok": True, "data": res})
     except BaseException as e:

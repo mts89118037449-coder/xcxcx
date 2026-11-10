@@ -314,6 +314,21 @@ object Downloader {
     /** Лучший звук, который можно играть по ссылке (HTTP, затем HLS). */
     private const val STREAM_FORMAT = "bestaudio[protocol^=http]/bestaudio[protocol=m3u8_native]/bestaudio"
 
+    /**
+     * То же, но для результата без исполнителя в выдаче (общий поиск YouTube Music): исполнителя и длительность
+     * узнаём уже со страницы и проверяем, что это та самая песня [t]. null — не она или не играет.
+     */
+    fun streamVerified(pageUrl: String, source: String, t: Track): StreamInfo? {
+        val d = try { YtdlpDaemon.stream(pageUrl, STREAM_FORMAT) } catch (_: Exception) { null } ?: return null
+        val url = d.optJSONArray("urls")?.optString(0)?.takeIf { it.startsWith("http") } ?: return null
+        val title = d.optString("title")
+        val artist = d.optString("artist").takeIf { it != "null" }.orEmpty().removeSuffix(" - Topic")
+        val score = Match.score(t, title, artist + " | " + title.substringBefore(" - ", ""), d.optDouble("duration", 0.0).toInt()) ?: return null
+        if (score < 0) return null
+        return StreamInfo(url, d.optString("page").takeIf { it.startsWith("http") } ?: pageUrl, source,
+            d.optString("thumbnail").takeIf { it.startsWith("http") }, title)
+    }
+
     /** Прямая ссылка на звук для одной страницы (SoundCloud/YouTube). null — не играет (DRM и т.п.). */
     fun streamOf(pageUrl: String, source: String, title: String, problems: MutableCollection<String>? = null): StreamInfo? {
         try {

@@ -265,7 +265,7 @@ object Playback {
                     waitingFull = null
                     if (preview != null) {
                         // Фрагмент уже играет — не прерываем, но честно говорим, что полной версии не будет.
-                        Pending.set(first.track, loading = false, error = "Полную версию не нашёл — играет фрагмент.\n$msg")
+                        Pending.set(first.track, loading = false, error = "Бесплатной полной версии нет — только фрагмент, дальше включу следующую.\n$msg")
                         fill(app, gen)
                     } else if (nextToAdd < queue.size && skips < 5) {
                         // Ничего не играет и не заиграет — не стоим на месте, включаем следующую из очереди.
@@ -535,7 +535,12 @@ object Playback {
                 filling = false
                 nextToAdd++
                 prefetchAhead(nextToAdd) // окно подготовки сдвигается вместе с очередью
-                if (item != null) c.addMediaItem(item)
+                if (item != null) {
+                    // Проигрыватель уже доиграл (фрагмент кончился, а полной версии нет) — сам он не продолжит: включаем добавленную.
+                    val stalled = c.playbackState == androidx.media3.common.Player.STATE_ENDED || c.playbackState == androidx.media3.common.Player.STATE_IDLE
+                    c.addMediaItem(item)
+                    if (stalled) { c.seekToDefaultPosition(c.mediaItemCount - 1); c.prepare(); c.play() }
+                }
                 fill(app, gen)
             }
         }

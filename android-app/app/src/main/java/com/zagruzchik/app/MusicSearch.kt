@@ -173,8 +173,18 @@ object Streams {
         val foundOn = java.util.concurrent.ConcurrentLinkedQueue<String>()
         val jobs = sources.map { (name, query) ->
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
-                val candidates = runCatching { Match.ranked(t, Downloader.searchCandidates(query, name)) { Triple(it.title, it.author, it.duration) } }
-                    .getOrDefault(emptyList())
+                val raw = runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
+                val candidates = Match.ranked(t, raw) { Triple(it.title, it.author, it.duration) }
+                // Вкладка «Песни» YouTube Music пуста (так бывает) — берём общий поиск YouTube Music. Там в выдаче
+                // нет исполнителя, поэтому совпавшие по названию проверяем по самой странице.
+                if (name == "YouTube Music" && raw.isEmpty()) {
+                    val want = Match.fold(Match.base(t.title))
+                    val plain = runCatching { Downloader.searchCandidates(query.substringBefore("#"), name) }.getOrDefault(emptyList())
+                        .filter { it.url.contains("watch?v=") && Match.fold(Match.base(it.title.substringAfter(" - ").substringAfter(" — ").substringAfter(" – "))).let { b -> b == want || Match.fold(Match.base(it.title)) == want } }
+                    if (plain.isNotEmpty()) foundOn += name
+                    return@withBackground plain.take(3).map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) { Downloader.streamVerified(c.url, name, t) } } }
+                        .firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
+                }
                 // Ссылки для двух лучших берём одновременно (лучший может оказаться платным — DRM), третий — если оба не играют.
                 if (candidates.isNotEmpty()) foundOn += name
                 // Ссылки берём по две одновременно (лучший вариант может оказаться платным — DRM), до 4 вариантов.
