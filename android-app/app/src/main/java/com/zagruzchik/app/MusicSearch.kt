@@ -202,19 +202,27 @@ object Streams {
                     raw.take(5).joinToString("") { c -> "\n  ${if (c in candidates) "✓" else "✗"} ${c.title.take(60)} | ${c.author.take(30)} | ${c.duration} с" }
                 // Вкладка «Песни» YouTube Music пуста (так бывает) — берём общий поиск YouTube Music. Там в выдаче
                 // нет исполнителя, поэтому совпавшие по названию проверяем по самой странице.
-                if (name == "YouTube Music" && raw.isEmpty()) {
+                // И вкладка «Песни» обычно отдаёт только названия, без исполнителя — тот же путь с проверкой.
+                if (name == "YouTube Music" && candidates.isEmpty()) {
                     val want = Match.fold(Match.base(t.title))
-                    val plain = runCatching { Downloader.searchCandidates(query.substringBefore("#"), name) }.getOrDefault(emptyList())
+                    val plain = (raw.ifEmpty { runCatching { Downloader.searchCandidates(query.substringBefore("#"), name) }.getOrDefault(emptyList()) })
                         .filter { it.url.contains("watch?v=") && Match.fold(Match.base(it.title.substringAfter(" - ").substringAfter(" — ").substringAfter(" – "))).let { b -> b == want || Match.fold(Match.base(it.title)) == want } }
                     if (plain.isNotEmpty()) foundOn += name
-                    return@withBackground plain.take(3).map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) { Downloader.streamVerified(c.url, name, t) } } }
+                    log += "$name: по названию совпало ${plain.size} — проверяю исполнителя на странице"
+                    return@withBackground plain.take(3).map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
+                        val t0 = System.currentTimeMillis()
+                        Downloader.streamVerified(c.url, name, t).also { log += "$name звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не тот/не играет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
+                    } } }
                         .firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
                 }
                 // Ссылки для двух лучших берём одновременно (лучший может оказаться платным — DRM), третий — если оба не играют.
                 if (candidates.isNotEmpty()) foundOn += name
                 // Ссылки берём по две одновременно (лучший вариант может оказаться платным — DRM), до 4 вариантов.
                 candidates.take(4).chunked(2).firstNotNullOfOrNull { pair ->
-                    pair.map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) { Downloader.streamOf(c.url, name, c.title, problems) } } }
+                    pair.map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
+                        val t0 = System.currentTimeMillis()
+                        Downloader.streamOf(c.url, name, c.title, problems).also { log += "$name звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
+                    } } }
                         .firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
                 }
             } }
@@ -229,7 +237,7 @@ object Streams {
             }
             if (jobs.all { it.isDone }) break
             // Основные площадки отвечают дольше 25 с — не ждём их, идём к запасным.
-            if (System.currentTimeMillis() - started > 25_000) break
+            if (System.currentTimeMillis() - started > 40_000) { log += "Ждал основные площадки 40 с — не дождался"; break }
             Thread.sleep(40)
         }
         // Нет на SoundCloud/YouTube (удалили) — другие площадки: Яндекс, Rutube, Internet Archive…

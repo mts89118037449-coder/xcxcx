@@ -36,8 +36,22 @@ def handle(req):
         return
     try:
         opts = dict(BASE); opts.update(req.get("opts") or {})
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(req["url"], download=False)
+        info = None
+        url = req["url"]
+        # Звук с YouTube: сначала лёгкий клиент без JavaScript (секунды вместо десятков секунд на телефоне);
+        # не вышло — обычный путь.
+        if req.get("op") not in ("search", "playlist") and ("youtube.com/" in url or "youtu.be/" in url) and not opts.get("cookiefile"):
+            try:
+                fast = dict(opts); fast.pop("js_runtimes", None)
+                fast["extractor_args"] = {"youtube": {"player_client": ["visionos"]}}
+                with yt_dlp.YoutubeDL(fast) as ydl:
+                    got = ydl.extract_info(url, download=False)
+                if any(f.get("url") for f in (got.get("requested_formats") or [got])): info = got
+            except BaseException:
+                info = None
+        if info is None:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
         if req.get("op") == "playlist":
             res = {"title": info.get("title"), "entries": [{"url": e.get("url") or e.get("webpage_url"), "title": e.get("title"),
                     "artist": e.get("artist") or e.get("uploader") or e.get("channel"), "duration": e.get("duration")}

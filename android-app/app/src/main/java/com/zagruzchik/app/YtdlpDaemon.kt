@@ -178,6 +178,6 @@ object YtdlpDaemon {
     }
 
     /** Ссылки на поток для страницы: [format] — выбор yt-dlp. */
-    fun stream(pageUrl: String, format: String, timeoutSec: Long = 20): JSONObject? =
+    fun stream(pageUrl: String, format: String, timeoutSec: Long = 35): JSONObject? =
         call("stream", pageUrl, cookies(JSONObject().put("format", format).put("noplaylist", true)), timeoutSec) as? JSONObject
 }
