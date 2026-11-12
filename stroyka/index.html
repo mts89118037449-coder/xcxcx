@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Стройка 3D</title>
+<meta name="description" content="3D-визуализация хода строительства МКД с синхронизацией с Google Таблицами: прогресс по этажам, люди и поставки материалов по датам.">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/three.module.js",
+  "three/addons/": "./vendor/three/addons/"
+} }
+</script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 21V9l5-3v15M9 21V3l11 4v14M2 21h20M12 8h2M12 11h2M12 14h2M16 9h1M16 12h1M16 15h1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </div>
+    <button class="obj-pick" id="btnObj" type="button" title="Сменить объект или создать новый">
+      <span class="obj-cap">Объект</span>
+      <h1><span id="objName">Ход строительства</span> <span class="obj-chev" aria-hidden="true">▾</span></h1>
+      <p class="sub">—</p>
+    </button>
+  </div>
+  <div class="top-actions">
+    <span class="pill" id="status" title="">—</span>
+    <button class="btn ghost" id="btnReload" title="Перечитать таблицу">⟳<span class="hide-sm"> Обновить</span></button>
+    <button class="btn ghost hide-sm" id="btnTheme" title="Светлая / тёмная тема">Тема</button>
+    <button class="btn" id="btnSettings" aria-label="Настройки и бэкап"><span class="show-sm">⚙</span><span class="hide-sm">Таблица…</span></button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="stage" id="stage" aria-label="3D-модель корпуса">
+    <div class="stage-ui">
+      <button class="btn small view-btn" id="btnViewPanel" aria-haspopup="true" aria-expanded="false"><span id="viewLabel">Вид: как сейчас</span> ▾</button>
+      <button class="btn ghost small" id="btnView" title="Вернуть вид по умолчанию" aria-label="Вид по умолчанию">⌂</button>
+      <button class="btn ghost small" id="btnTour" title="3D-тур по прокрутке">▶ Тур</button>
+      <button class="btn ghost small btn-legend" id="btnLegend" title="Что означают цвета" aria-label="Что означают цвета">ⓘ</button>
+      <button class="btn ghost small" id="btnExpand" title="3D на весь экран" aria-label="3D на весь экран">⤢</button>
+    </div>
+    <div class="view-panel" id="viewPanel" hidden>
+      <div class="vp-group"><div class="vp-h">Какие работы</div>
+        <div class="seg small" id="metric" role="tablist">
+          <button data-m="avg" class="on">Все работы</button>
+          <button data-m="Наружные стены">Наружные стены</button>
+          <button data-m="Перегородки">Перегородки</button>
+          <button data-m="Инженерка">Инженерка</button>
+        </div></div>
+      <div class="vp-group"><div class="vp-h">Вид модели</div>
+        <div class="seg small" id="viewMode">
+          <button data-v="fact" class="on">Как сейчас</button>
+          <button data-v="progress">Проценты цветом</button>
+          <button data-v="project">Как будет</button>
+        </div>
+        <p class="vp-note" id="viewNote">Готовое — как на проекте, остальное — каркас. Зелёная полоса — процент этажа.</p></div>
+      <div class="vp-group"><div class="vp-h">Время и погода</div>
+        <div class="seg small" id="timeMode">
+          <button data-t="now" class="on">Сейчас в Мурманске</button>
+          <button data-t="day">День</button>
+        </div>
+        <p class="vp-note" id="sunNote"></p></div>
+      <div class="vp-group"><div class="vp-h">Качество картинки</div>
+        <div class="seg small" id="qualityMode">
+          <button data-q="hq">Высокое — тени и свечение</button>
+          <button data-q="fast">Быстрое</button>
+        </div></div>
+      <button class="btn small vp-close" id="vpClose">Готово</button>
+    </div>
+    <div class="hint-tap" id="hintTap" hidden>Нажмите на этаж — откроются его объёмы и материалы</div>
+    <div class="legend" id="legend">
+      <span><i class="sw sw-facade"></i>готово</span>
+      <span><i class="sw sw-strip"></i>полоса — % этажа</span>
+      <span><i class="sw sw-shell"></i>каркас, не начато</span>
+      <span><i class="sw sw-red"></i>открытые замечания</span>
+      <span class="hint">Клик по этажу — редактирование · колесо — масштаб</span>
+    </div>
+    <div class="stage-kpis" id="kpis"></div>
+  </section>
+
+  <aside class="side">
+    <nav class="tabs" role="tablist">
+      <button data-tab="summary" class="on"><i aria-hidden="true">▦</i><span>Обзор</span></button>
+      <button data-tab="floor"><i aria-hidden="true">≡</i><span>Этаж</span></button>
+      <button data-tab="calendar"><i aria-hidden="true">▤</i><span>Календарь</span></button>
+      <button data-tab="stock"><i aria-hidden="true">▣</i><span>Склад</span></button>
+      <button data-tab="money"><i aria-hidden="true">₽</i><span>Финансы</span></button>
+    </nav>
+    <div class="tab" id="tab-summary"></div>
+    <div class="tab" id="tab-floor" hidden></div>
+    <div class="tab" id="tab-calendar" hidden></div>
+    <div class="tab" id="tab-stock" hidden></div>
+    <div class="tab" id="tab-money" hidden></div>
+  </aside>
+</main>
+<button class="lay-btn" id="btnLayout" type="button" aria-label="Подробнее"></button>
+
+<dialog id="settings">
+  <form method="dialog" class="dlg">
+    <h2>Подключение к Google Таблице</h2>
+    <p class="muted">Чтобы данные шли онлайн и правки (проценты, люди, поставки, расходы, замечания) записывались обратно, один раз подключается скрипт из <code>stroyka/apps-script/Code.gs</code> — от имени владельца Google-аккаунта. Объекты и их таблицы выбираются потом в самом приложении (нажмите на название вверху).</p>
+    <ol class="steps">
+      <li>Таблица → <b>Расширения → Apps Script</b>, вставьте код из <code>Code.gs</code>, сохраните.</li>
+      <li>Запустите функцию <code>setup</code>: она создаст листы «Прогресс» и «Журнал» и триггер, который сообщает приложению о правках в таблице.</li>
+      <li><b>Начать развертывание → Веб-приложение</b>: «Запуск от имени: я», «Доступ: все». Скопируйте URL.</li>
+      <li>Вставьте URL ниже. Если в свойствах скрипта задан <code>TOKEN</code> — укажите его.</li>
+    </ol>
+    <label>URL веб-приложения<input id="cfgUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
+    <label>Токен (необязательно)<input id="cfgToken" type="text" autocomplete="off"></label>
+    <div class="dlg-row show-sm"><button class="btn ghost" type="button" id="btnTheme2">◐ Светлая / тёмная тема</button></div>
+    <fieldset class="backup" id="finBox">
+      <legend>Режим руководителя</legend>
+      <p class="muted" id="finState">Финансы и управление объектами — по паролю.</p>
+      <div class="backup-actions" id="finActs"></div>
+    </fieldset>
+    <fieldset class="backup">
+      <legend>Резервная копия данных</legend>
+      <p class="muted">Скачайте копию, чтобы данные не зависели от одного сервера. На каждом устройстве автоматически хранится последняя загруженная версия: если сервер станет недоступен, приложение покажет её.</p>
+      <div class="backup-actions">
+        <button class="btn" type="button" id="bkJson">⬇ Скачать копию (JSON)</button>
+        <button class="btn ghost" type="button" data-csv="expenses">CSV: расходы</button>
+        <button class="btn ghost" type="button" data-csv="journal">CSV: люди и поставки</button>
+        <button class="btn ghost" type="button" data-csv="progress">CSV: прогресс</button>
+        <label class="btn ghost file-btn">⬆ Восстановить из файла<input type="file" id="bkFile" accept=".json,.gz,application/json" hidden></label>
+      </div>
+    </fieldset>
+    <div class="dlg-actions">
+      <button class="btn ghost" value="cancel">Отмена</button>
+      <button class="btn ghost" id="btnDemoReset" value="cancel" type="button">Удалить локальные правки</button>
+      <button class="btn" id="btnSave" value="ok">Подключить</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="tour" id="tour" hidden aria-label="3D-тур по прокрутке">
+  <button class="btn tour-close" id="tourClose">✕ Закрыть тур</button>
+  <div class="tour-progress"><i id="tourBar"></i></div>
+  <div class="tour-steps" id="tourSteps"></div>
+</div>
+
+<dialog id="confirmDlg">
+  <form method="dialog" class="dlg">
+    <h2 id="cfTitle">Записать в Google-таблицу?</h2>
+    <ul class="cf-list" id="cfList"></ul>
+    <p class="muted" id="cfWhere"></p>
+    <label class="cf-skip"><input type="checkbox" id="cfSkip"> Не спрашивать 10 минут на этом устройстве</label>
+    <div class="dlg-actions">
+      <button class="btn ghost" value="no">Отмена</button>
+      <button class="btn" value="yes" id="cfYes">Записать</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="editDlg">
+  <form method="dialog" class="dlg">
+    <h2 id="edTitle">Изменить</h2>
+    <div id="edFields" class="ed-fields"></div>
+    <p class="muted" id="edWhere"></p>
+    <div class="dlg-actions">
+      <button class="btn ghost" value="no">Отмена</button>
+      <button class="btn" value="yes">Записать в таблицу</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="syncDlg">
+  <form method="dialog" class="dlg">
+    <h2>Синхронизация с таблицами</h2>
+    <p class="muted" id="syncState"></p>
+    <ul class="sync-list" id="syncList"></ul>
+    <div class="dlg-actions">
+      <button class="btn ghost" type="button" id="syncCheck">Проверить таблицы сейчас</button>
+      <button class="btn" value="ok">Закрыть</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="objDlg">
+  <form method="dialog" class="dlg">
+    <h2>Ваши объекты</h2>
+    <p class="muted">Нажмите на объект, чтобы открыть его. У каждого объекта своя Google-таблица (↗ — открыть её).</p>
+    <ul class="obj-list" id="objList"></ul>
+    <div class="obj-add" id="objAdd">
+      <h3>Добавить объект</h3>
+      <div class="obj-step">
+        <b>Новый — из универсального шаблона</b>
+        <div class="obj-row"><input id="noQuickName" placeholder="Название, например «ЖК Север · отделка»" maxlength="80"><button class="btn" type="button" id="noCopy">Создать</button></div>
+        <p class="muted small-note">В папке «Стройка 3D» появится копия шаблона со всеми листами. Заполните её — данные сразу будут в приложении.</p>
+      </div>
+      <div class="obj-step">
+        <b>Готовая таблица — по ссылке</b>
+        <div class="obj-row"><input id="noUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/…"><button class="btn" type="button" id="noAdd">Подключить</button></div>
+        <p class="muted small-note">Подойдёт копия шаблона (<a id="tplCopy" target="_blank" rel="noopener">сделать копию вручную ↗</a>) или своя таблица — недостающие листы допишутся сами, существующие не изменятся. Доступ к таблице — «Редактор» для <span id="noMe">аккаунта скрипта</span>.</p>
+      </div>
+      <details class="obj-new" id="objNew">
+      <summary class="link-sum">Настроить новый объект вручную: части, уровни, виды работ</summary>
+      <div class="ed-fields">
+        <label>Название<input id="noName" placeholder="ЖК Север · отделка квартир" maxlength="80"></label>
+        <div class="seg small" id="noKind">
+          <button type="button" data-k="mkd" class="on">МКД</button><button type="button" data-k="flat">Квартиры</button><button type="button" data-k="office">Офис</button><button type="button" data-k="industrial">Цех / склад</button>
+        </div>
+        <label><span id="noPartsL">Секции</span><input id="noParts" placeholder="4, 5"></label>
+        <label><span id="noLevelsL">Этажей</span><input id="noLevels" placeholder="16"></label>
+        <label>Виды работ <small class="muted">— по одному в строке, единица через запятую</small><textarea id="noWorks" rows="6"></textarea></label>
+        <p class="muted small-note">Будет создана одна Google-таблица в папке «Стройка 3D»: лист на каждую часть (уровень × вид работ, формулы «Выполнено» и «Итого», недели), «Журнал» людей и поставок, «Расходы», «Замечания», «Документы» ИС/АОСР и «Проект». Ничего общего с другими объектами.</p>
+        <button class="btn" type="button" id="noCreate">Создать таблицу и открыть объект</button>
+      </div>
+      </details>
+    </div>
+    <div class="dlg-actions"><button class="btn ghost" value="ok">Закрыть</button></div>
+  </form>
+</dialog>
+
+<dialog id="loginDlg">
+  <form method="dialog" class="dlg" id="loginForm">
+    <h2>🔒 Вход руководителя</h2>
+    <p class="muted">Откроются финансы и управление объектами. На этом устройстве вход сохранится на 30 дней.</p>
+    <label>Пароль<input id="loginPass" type="password" autocomplete="current-password" inputmode="text" required></label>
+    <p class="err-t" id="loginErr" hidden></p>
+    <div class="dlg-actions">
+      <button class="btn ghost" value="no" formnovalidate>Отмена</button>
+      <button class="btn" type="submit" id="loginGo">Войти</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="renderDlg" class="render-dlg"><form method="dialog"><img id="renderImg" alt="Проектная визуализация"><button class="btn" value="ok">Закрыть</button></form></dialog>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-labelledby="sheetTitle">
+  <div class="sheet-grip" id="sheetGrip"><i aria-hidden="true"></i><b id="sheetTitle">Этаж</b><button class="btn ghost small" id="sheetClose" aria-label="Закрыть">✕</button></div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<button class="fab" id="fab" type="button" aria-label="Добавить запись" title="Добавить запись">＋</button>
+<div class="fab-menu" id="fabMenu" hidden role="menu"></div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

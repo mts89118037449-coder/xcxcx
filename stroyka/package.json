@@ -1,0 +1,11 @@
+{
+  "name": "stroyka-3d",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server/server.js",
+    "backup": "node server/server.js backup",
+    "pull": "node server/server.js pull"
+  }
+}
