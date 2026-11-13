@@ -23,6 +23,7 @@ class App : Application() {
         News.init(this)
         News.checkOnLaunch() // новинки любимых исполнителей — проверяем при каждом запуске
         MediaCache.init(this)
+        runCatching { Telegram.start(this) } // если аккаунт Telegram уже подключён — поднимаем его сразу
         Shortcuts.publish(this)
         // Первый запуск распаковывает Python и ffmpeg — делаем это в фоне.
         thread(name = "ytdl-init") {

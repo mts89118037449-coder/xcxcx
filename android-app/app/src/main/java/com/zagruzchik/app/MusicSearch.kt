@@ -129,6 +129,8 @@ object Streams {
 
     private const val FAIL_TTL_MS = 20 * 60 * 1000L
     private val failed = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, UserError>>()
+    /** Подключили новый источник (Telegram) — то, что раньше «не нашлось», стоит поискать снова. */
+    fun forgetFailures() { failed.clear() }
     /** «Ещё раз» — искать заново, даже если недавно не нашли. */
     fun forgetFailure(t: Track) { failed.remove(key(t)) }
 
@@ -187,6 +189,13 @@ object Streams {
             val u = runCatching { ZaycevSource.streamUrl(id) }.getOrNull() ?: return null
             return StreamInfo(u, u, "Zaycev · MP3 ${p.getOrNull(2) ?: ""}".trim(), t.cover, t.title)
         }
+        if (where.startsWith("tg:")) {
+            // Файл Telegram: играет, только пока аккаунт подключён.
+            if (!Telegram.ready) throw UserError("Telegram не подключён")
+            val id = where.removePrefix("tg:").substringBefore('|')
+            val u = Telegram.streamUrl(id)
+            return StreamInfo(u, u, where.substringAfter('|', "Telegram"), t.cover, t.title)
+        }
         App.awaitReady()
         return Downloader.streamOf(where, Describe.site(where), t.title)
     }
@@ -214,14 +223,14 @@ object Streams {
         }
         if (!searchOnly) knownRaw(k)?.takeIf { !it.startsWith("none:") }?.let { where ->
             runCatching { fromKnown(t, where) }.getOrNull()?.let { return it }
-            // Больше не играет оттуда (удалили, закрыли) — забываем и ищем заново.
-            remember(k, null)
+            // Больше не играет оттуда (удалили, закрыли) — забываем и ищем заново. Запись Telegram оставляем, если он просто не подключён.
+            if (!where.startsWith("tg:") || Telegram.ready) remember(k, null)
         }
         val log = java.util.concurrent.ConcurrentLinkedQueue<String>()
-        val picked = java.util.concurrent.atomic.AtomicReference<String?>()
+        val picked = java.util.concurrent.ConcurrentHashMap<String, String>()
         try {
             return search(t, log, picked).also { s ->
-                val where = if (s.source.startsWith("Zaycev")) picked.get() else s.pageUrl.takeIf { it != s.url && it.startsWith("http") }
+                val where = picked[s.source.substringBefore(" ·")] ?: s.pageUrl.takeIf { it != s.url && it.startsWith("http") }
                 if (where != null) remember(k, where)
             }
         } finally {
@@ -229,7 +238,7 @@ object Streams {
         }
     }
 
-    private fun search(t: Track, log: java.util.Queue<String>, picked: java.util.concurrent.atomic.AtomicReference<String?>): StreamInfo {
+    private fun search(t: Track, log: java.util.Queue<String>, picked: MutableMap<String, String>): StreamInfo {
         val sources = listOf(
             "SoundCloud" to "scsearch8:${t.query}",
             "YouTube Music" to "https://music.youtube.com/search?q=" + Http.enc(t.query) + "#songs",
@@ -255,12 +264,29 @@ object Streams {
             // Из подходящих — лучший по качеству среди первых трёх.
             ok.take(3).sortedByDescending { it.bitrate }.firstNotNullOfOrNull { c ->
                 runCatching { ZaycevSource.streamUrl(c.id) }.getOrNull()?.let { u ->
-                    picked.set("zaycev:${c.id}:${c.bitrate}")
+                    picked["Zaycev"] = "zaycev:${c.id}:${c.bitrate}"
                     StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title)
                 }
             }.also { log += "Zaycev звук: ${if (it != null) "готов" else "нет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
         }
-        val jobs = listOf(zaycev) + sources.map { (name, query) ->
+        // Telegram (свой аккаунт): встроенный поиск музыки, файлы обычно 320 kbps, бывает FLAC. Только по нажатию —
+        // в фоновой подготовке не используем: Telegram ограничивает частые запросы.
+        val telegram = searchPool.submit<StreamInfo?> {
+            if (bg || !Telegram.available) return@submit null
+            val t0 = System.currentTimeMillis()
+            val raw = try { Telegram.search(t.query) } catch (e: Exception) { log += "Telegram: ${(e as? UserError)?.message ?: e.message}"; return@submit null }
+            val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
+            log += "Telegram [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" +
+                raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗"} ${c.title.take(60)} | ${c.artist.take(30)} | ${c.durationSec} с | ${c.format} ${c.kbps}" } +
+                "\n  за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
+            // Из подходящих — без потерь, затем лучший битрейт (среди первых трёх).
+            val best = ok.take(3).sortedWith(compareByDescending<Telegram.Found> { it.format == "FLAC" }.thenByDescending { it.kbps }).firstOrNull() ?: return@submit null
+            foundOn += "Telegram"
+            picked["Telegram"] = "tg:${best.remoteId}|${best.label}"
+            val u = Telegram.streamUrl(best.remoteId)
+            StreamInfo(u, u, best.label, t.cover, best.title)
+        }
+        val jobs = listOf(zaycev, telegram) + sources.map { (name, query) ->
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                 App.awaitReady() // Zaycev (выше) движок не нужен — он отвечает, даже пока тот запускается
                 val raw = runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
@@ -333,7 +359,7 @@ object Streams {
             else if (problems.isNotEmpty()) append("Нашёл, но не играет: ${problems.first()}.")
             else append("Не нашёл «${t.label}».")
             if (missing.isNotEmpty()) append(" На ${missing.joinToString(" и ")} её нет.")
-            append(" Искал: SoundCloud, YouTube, YouTube Music, Яндекс, Rutube, Internet Archive, Dailymotion, Audius.")
+            append(" Искал: Zaycev," + (if (Telegram.ready) " Telegram," else "") + " SoundCloud, YouTube, YouTube Music, Яндекс, Rutube, Internet Archive, Dailymotion, Audius.")
             append(" Нажмите на это сообщение — можно указать ссылку на песню вручную.")
         })
     }

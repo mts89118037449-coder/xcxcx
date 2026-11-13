@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Библиотека Telegram просит доступ к общей памяти — нам он не нужен (всё лежит в папке приложения). -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
     <!-- Эквалайзер и эффекты звука -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -38,7 +41,9 @@
         android:name=".App"
         android:icon="@mipmap/ic_launcher"
         android:label="SoundAura"
+        tools:replace="android:label"
         android:extractNativeLibs="true"
+        android:networkSecurityConfig="@xml/network_security"
         android:theme="@style/AppTheme">
 
         <activity
@@ -160,5 +165,9 @@
             android:name=".DownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <activity
+            android:name=".TelegramActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

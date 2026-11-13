@@ -68,4 +68,5 @@ dependencies {
     implementation("androidx.mediarouter:mediarouter:1.7.0") // кнопка трансляции
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    implementation("com.github.tdlibx:td:1.8.56") // Telegram: поиск музыки через свой аккаунт
 }
