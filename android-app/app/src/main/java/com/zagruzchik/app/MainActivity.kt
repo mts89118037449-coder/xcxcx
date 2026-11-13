@@ -101,6 +101,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        VisiblePrefetch.install(this) // всё, что видно на экране, готовится к мгновенному старту
         setContentView(R.layout.activity_main)
         toolbar = findViewById(R.id.toolbar)
         nav = findViewById(R.id.bottomNav)

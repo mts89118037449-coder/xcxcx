@@ -21,6 +21,7 @@ class CollectionActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        VisiblePrefetch.install(this)
         setContentView(R.layout.activity_collection)
         content = findViewById(R.id.colContent)
         findViewById<View>(R.id.colBack).setOnClickListener { finish() }

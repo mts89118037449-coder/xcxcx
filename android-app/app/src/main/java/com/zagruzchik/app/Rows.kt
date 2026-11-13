@@ -36,6 +36,8 @@ object Rows {
         beforePlay: () -> Unit = {},
     ): View {
         val row = LayoutInflater.from(act).inflate(R.layout.item_search, parent, false)
+        // Песня из каталога (не файл и не конкретная страница) — помечаем: пока строка на экране, готовим её к мгновенному старту.
+        if (local == null && pageUrl == null && directUrl == null && !video) row.setTag(R.id.libContent, t)
         Images.into(row.findViewById(R.id.srCover), t.cover, R.drawable.ph_cover)
         row.findViewById<TextView>(R.id.srTitle).text = t.title + if (t.explicit) "  🅴" else ""
         row.findViewById<TextView>(R.id.srNumber).apply { isVisible = number != null; text = number?.toString() }
@@ -127,4 +129,33 @@ object Rows {
     fun openAlbum(act: Activity, a: Album) = act.startActivity(CollectionActivity.album(act, a))
     fun openArtist(act: Activity, a: Artist) = act.startActivity(CollectionActivity.artist(act, a.id, a.name, a.picture))
     fun openArtist(act: Activity, name: String) = act.startActivity(CollectionActivity.artistByName(act, name))
+}
+
+/**
+ * Мгновенный старт и для новых песен: всё, что видно на экране (поиск, чарт, альбом, исполнитель, медиатека),
+ * готовится заранее — находится источник и сохраняется начало полной версии. Нажать можно только на то, что видно,
+ * так что к нажатию песня обычно уже готова.
+ */
+object VisiblePrefetch {
+    fun install(a: Activity) {
+        val root = a.window.decorView
+        val run = Runnable {
+            val screen = android.graphics.Rect(0, 0, root.width, root.height)
+            val found = mutableListOf<Track>()
+            val r = android.graphics.Rect()
+            fun walk(v: View) {
+                if (found.size >= 14 || v.visibility != View.VISIBLE) return
+                (v.getTag(R.id.libContent) as? Track)?.let { t ->
+                    if (v.isShown && v.getGlobalVisibleRect(r) && android.graphics.Rect.intersects(r, screen) && !MediaCache.has(t) && !HeadCache.has(t)) found += t
+                    return
+                }
+                if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
+            }
+            walk(root)
+            if (found.isNotEmpty()) Streams.prefetchMany(found, 14)
+        }
+        val kick = { root.removeCallbacks(run); root.postDelayed(run, 350) }
+        root.viewTreeObserver.addOnScrollChangedListener { kick() }
+        root.viewTreeObserver.addOnGlobalLayoutListener { kick() }
+    }
 }

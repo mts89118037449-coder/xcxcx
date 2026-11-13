@@ -57,7 +57,7 @@ object Streams {
     private val done = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, StreamInfo>>()
     private val pending = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.Future<StreamInfo>>()
     // Подготовка заранее: 3 одновременно, свежие экраны — первыми (очередь «последним пришёл — первым готовим»).
-    private val pool = java.util.concurrent.ThreadPoolExecutor(3, 3, 30, java.util.concurrent.TimeUnit.SECONDS,
+    private val pool = java.util.concurrent.ThreadPoolExecutor(4, 4, 30, java.util.concurrent.TimeUnit.SECONDS,
         java.util.concurrent.LinkedBlockingDeque<Runnable>().let { q ->
             object : java.util.concurrent.LinkedBlockingDeque<Runnable>() {
                 override fun offer(e: Runnable) = offerFirst(e) // LIFO
@@ -75,7 +75,11 @@ object Streams {
         if (cached(k) != null) return null
         pending[k]?.takeIf { !it.isCancelled }?.let { return it }
         val f = pool.submit<StreamInfo> {
-            try { Ytdlp.inBackground { find(t) }.also { done[k] = System.currentTimeMillis() to it; HeadCache.storeAsync(t, it) } } finally { pending.remove(k) }
+            try {
+                // Сначала быстрые источники без Python (Zaycev, YouTube Music) — секунда-две; не нашлось — полный поиск.
+                Ytdlp.inBackground { runCatching { find(t, light = true) }.getOrElse { find(t) } }
+                    .also { done[k] = System.currentTimeMillis() to it; HeadCache.storeAsync(t, it) }
+            } finally { pending.remove(k) }
         }
         pending[k] = f
         return f
