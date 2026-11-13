@@ -182,6 +182,8 @@ object Streams {
         sourcesPrefs.edit().apply { if (where == null) remove(k) else putString(k, where) }.apply()
     }
 
+    private fun isYoutube(url: String) = Service.of(url).let { it == Service.YOUTUBE || it == Service.YOUTUBE_MUSIC }
+
     private fun fromKnown(t: Track, where: String): StreamInfo? {
         if (where.startsWith("zaycev:")) {
             val p = where.split(':')
@@ -196,7 +198,7 @@ object Streams {
             val u = Telegram.streamUrl(id)
             return StreamInfo(u, u, where.substringAfter('|', "Telegram"), t.cover, t.title)
         }
-        App.awaitReady()
+        if (!isYoutube(where)) App.awaitReady() // YouTube берём средствами телефона — движок ждать не нужно
         return Downloader.streamOf(where, Describe.site(where), t.title)
     }
 
@@ -218,7 +220,7 @@ object Streams {
     private fun find(t: Track, searchOnly: Boolean = false): StreamInfo {
         val k = key(t)
         pinned(t)?.let { url ->
-            App.awaitReady()
+            if (!isYoutube(url)) App.awaitReady()
             Downloader.streamOf(url, Describe.site(url), t.title)?.let { return it }
         }
         if (!searchOnly) knownRaw(k)?.takeIf { !it.startsWith("none:") }?.let { where ->
@@ -241,7 +243,6 @@ object Streams {
     private fun search(t: Track, log: java.util.Queue<String>, picked: MutableMap<String, String>): StreamInfo {
         val sources = listOf(
             "SoundCloud" to "scsearch8:${t.query}",
-            "YouTube Music" to "https://music.youtube.com/search?q=" + Http.enc(t.query) + "#songs",
             "YouTube" to "ytsearch8:${t.query}",
             // Перезаливы часто названы иначе («Не вспоминать МАЯК Х») — ищем и по одному названию;
             // чужие песни с таким же названием отсеивает проверка исполнителя.
@@ -286,28 +287,30 @@ object Streams {
             val u = Telegram.streamUrl(best.remoteId)
             StreamInfo(u, u, best.label, t.cover, best.title)
         }
-        val jobs = listOf(zaycev, telegram) + sources.map { (name, query) ->
+        // YouTube Music, вкладка «Песни»: с исполнителем и длительностью — находит и официальные авто-треки («Исполнитель – Topic»),
+        // которых нет в обычном поиске YouTube. Ищем на самом телефоне, без Python; не вышло — через открытые зеркала.
+        val ytm = searchPool.submit<StreamInfo?> {
+            val t0 = System.currentTimeMillis()
+            var via = ""
+            val raw = runCatching { NewPipeSource.searchSongs(t.query) { via = it } }.getOrDefault(emptyList())
+            val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
+            log += "YouTube Music [${t.query.take(40)}; $via]: результатов ${raw.size}, подошло ${ok.size}" +
+                raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗"} ${c.title.take(60)} | ${c.artist.take(30)} | ${c.durationSec} с" } +
+                "\n  поиск за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
+            if (ok.isNotEmpty()) foundOn += "YouTube Music"
+            ok.take(3).firstNotNullOfOrNull { c ->
+                val t1 = System.currentTimeMillis()
+                Ytdlp.withBackground(bg) { Downloader.streamOf(c.url, "YouTube Music", c.title, problems) }
+                    .also { log += "YouTube Music звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет"} за ${(System.currentTimeMillis() - t1) / 100 / 10.0} с" }
+            }
+        }
+        val viaYtdlp = sources.map { (name, query) ->
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                 App.awaitReady() // Zaycev (выше) движок не нужен — он отвечает, даже пока тот запускается
                 val raw = runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
                 val candidates = Match.ranked(t, raw) { Triple(it.title, it.author, it.duration) }
                 log += "$name [${query.take(40)}]: результатов ${raw.size}, подошло ${candidates.size}" +
                     raw.take(5).joinToString("") { c -> "\n  ${if (c in candidates) "✓" else "✗"} ${c.title.take(60)} | ${c.author.take(30)} | ${c.duration} с" }
-                // Вкладка «Песни» YouTube Music пуста (так бывает) — берём общий поиск YouTube Music. Там в выдаче
-                // нет исполнителя, поэтому совпавшие по названию проверяем по самой странице.
-                // И вкладка «Песни» обычно отдаёт только названия, без исполнителя — тот же путь с проверкой.
-                if (name == "YouTube Music" && candidates.isEmpty()) {
-                    val want = Match.fold(Match.base(t.title))
-                    val plain = (raw.ifEmpty { runCatching { Downloader.searchCandidates(query.substringBefore("#"), name) }.getOrDefault(emptyList()) })
-                        .filter { it.url.contains("watch?v=") && Match.fold(Match.base(it.title.substringAfter(" - ").substringAfter(" — ").substringAfter(" – "))).let { b -> b == want || Match.fold(Match.base(it.title)) == want } }
-                    if (plain.isNotEmpty()) foundOn += name
-                    log += "$name: по названию совпало ${plain.size} — проверяю исполнителя на странице"
-                    return@withBackground plain.take(3).map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
-                        val t0 = System.currentTimeMillis()
-                        Downloader.streamVerified(c.url, name, t).also { log += "$name звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не тот/не играет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
-                    } } }
-                        .firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
-                }
                 // Ссылки для двух лучших берём одновременно (лучший может оказаться платным — DRM), третий — если оба не играют.
                 if (candidates.isNotEmpty()) foundOn += name
                 // Ссылки берём по две одновременно (лучший вариант может оказаться платным — DRM), до 4 вариантов.
@@ -320,6 +323,8 @@ object Streams {
                 }
             } }
         }
+        // Старшинство: Zaycev → Telegram → SoundCloud → YouTube Music → YouTube → SoundCloud по одному названию.
+        val jobs = listOf(zaycev, telegram, viaYtdlp[0], ytm, viaYtdlp[1], viaYtdlp[2])
         val started = System.currentTimeMillis()
         while (true) {
             for ((i, f) in jobs.withIndex()) {

@@ -331,6 +331,14 @@ object Downloader {
 
     /** Прямая ссылка на звук для одной страницы (SoundCloud/YouTube). null — не играет (DRM и т.п.). */
     fun streamOf(pageUrl: String, source: String, title: String, problems: MutableCollection<String>? = null): StreamInfo? {
+        // YouTube: сначала средствами телефона (около секунды, движок yt-dlp не нужен и может ещё запускаться);
+        // не вышло — обычным путём ниже.
+        if (Service.of(pageUrl).let { it == Service.YOUTUBE || it == Service.YOUTUBE_MUSIC }) {
+            runCatching { NewPipeSource.audio(pageUrl) }.getOrNull()?.let { a ->
+                return StreamInfo(a.url, pageUrl, source, a.cover, title)
+            }
+            App.awaitReadyOrNull() ?: return null
+        }
         try {
             val d = YtdlpDaemon.stream(pageUrl, STREAM_FORMAT) ?: return null
             val url = d.optJSONArray("urls")?.optString(0)?.takeIf { it.startsWith("http") } ?: return null

@@ -50,6 +50,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true // NewPipeExtractor пользуется новыми классами Java
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -68,5 +69,7 @@ dependencies {
     implementation("androidx.mediarouter:mediarouter:1.7.0") // кнопка трансляции
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.27.1") // YouTube Music: поиск песен с исполнителем и длительностью
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
     implementation("com.github.tdlibx:td:1.8.56") // Telegram: поиск музыки через свой аккаунт
 }

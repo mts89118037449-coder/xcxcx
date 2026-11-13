@@ -1,0 +1,109 @@
+package com.zagruzchik.app
+
+import org.json.JSONObject
+import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.downloader.Downloader
+import org.schabi.newpipe.extractor.downloader.Request
+import org.schabi.newpipe.extractor.downloader.Response
+import org.schabi.newpipe.extractor.localization.ContentCountry
+import org.schabi.newpipe.extractor.localization.Localization
+import org.schabi.newpipe.extractor.search.SearchInfo
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
+import org.schabi.newpipe.extractor.stream.StreamInfo
+import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import java.net.HttpURLConnection
+import java.net.URL
+
+/**
+ * Песни YouTube Music с исполнителем и длительностью — так находятся и официальные авто-треки
+ * («Исполнитель – Topic»), которых нет в обычном поиске YouTube.
+ * Сначала — на самом телефоне (библиотека NewPipeExtractor, без Python); не вышло — через открытые зеркала Piped.
+ */
+object NewPipeSource {
+    class Found(val url: String, val title: String, val artist: String, val durationSec: Int)
+    class Audio(val url: String, val kbps: Int, val format: String, val cover: String?)
+
+    private val ready by lazy {
+        NewPipe.init(object : Downloader() {
+            override fun execute(request: Request): Response {
+                val c = URL(request.url()).openConnection() as HttpURLConnection
+                c.requestMethod = request.httpMethod()
+                c.connectTimeout = 8000; c.readTimeout = 12000
+                c.instanceFollowRedirects = true
+                c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
+                request.headers().forEach { (k, vs) -> vs.forEachIndexed { i, v -> if (i == 0) c.setRequestProperty(k, v) else c.addRequestProperty(k, v) } }
+                request.dataToSend()?.let { body -> c.doOutput = true; c.outputStream.use { it.write(body) } }
+                try {
+                    val code = c.responseCode
+                    val body = runCatching { (if (code in 200..399) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } }.getOrNull().orEmpty()
+                    return Response(code, c.responseMessage.orEmpty(), c.headerFields.filterKeys { it != null }, body, c.url.toString())
+                } finally { c.disconnect() }
+            }
+        }, Localization("ru", "RU"), ContentCountry("RU"))
+        true
+    }
+
+    /** Песни по запросу. [via] — чем нашли (для отчёта о поиске). */
+    fun searchSongs(query: String, via: (String) -> Unit = {}): List<Found> {
+        val local = runCatching { onDevice(query) }
+        local.getOrNull()?.takeIf { it.isNotEmpty() }?.let { via("на телефоне"); return it }
+        val mirror = runCatching { piped(query) }
+        mirror.getOrNull()?.takeIf { it.isNotEmpty() }?.let { via("зеркало ${lastMirror.orEmpty()}"); return it }
+        via("нет ответа: " + listOfNotNull(local.exceptionOrNull()?.message, mirror.exceptionOrNull()?.message).joinToString("; ").take(120))
+        return emptyList()
+    }
+
+    internal fun onDevice(query: String): List<Found> {
+        ready
+        val yt = ServiceList.YouTube
+        val handler = yt.searchQHFactory.fromQuery(query, listOf(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS), "")
+        return SearchInfo.getInfo(yt, handler).relatedItems.filterIsInstance<StreamInfoItem>().map {
+            Found(it.url, it.name.orEmpty(), it.uploaderName.orEmpty().removeSuffix(" - Topic"), it.duration.toInt().coerceAtLeast(0))
+        }
+    }
+
+    // ---- Открытые зеркала Piped: тот же поиск песен, если с телефона не получилось ----
+    private val MIRRORS = listOf(
+        "pipedapi.ducks.party", "pipedapi.kavin.rocks", "pipedapi.adminforge.de", "api.piped.private.coffee",
+        "pipedapi.leptons.xyz", "pipedapi.reallyaweso.me", "pipedapi.nosebs.ru", "piped-api.privacy.com.de",
+    )
+    @Volatile private var lastMirror: String? = null
+
+    private fun piped(query: String): List<Found> {
+        // Последнее ответившее зеркало — первым; остальные по очереди, каждому не больше 4 с.
+        val order = listOfNotNull(lastMirror) + MIRRORS.filter { it != lastMirror }
+        var last: Exception? = null
+        for (host in order.take(4)) {
+            try {
+                val items = JSONObject(Http.get("https://$host/search?q=${Http.enc(query)}&filter=music_songs", Http.DESKTOP_UA, 4000)).optJSONArray("items") ?: continue
+                val found = (0 until items.length()).mapNotNull { i ->
+                    val o = items.optJSONObject(i) ?: return@mapNotNull null
+                    val id = o.optString("url").substringAfter("v=", "").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    Found("https://music.youtube.com/watch?v=$id", o.optString("title"), o.optString("uploaderName").removeSuffix(" - Topic"), o.optInt("duration").coerceAtLeast(0))
+                }
+                if (found.isNotEmpty()) { lastMirror = host; return found }
+            } catch (e: Exception) { last = e; if (lastMirror == host) lastMirror = null }
+        }
+        throw last ?: UserError("зеркала не ответили")
+    }
+
+    /**
+     * Лучший звук для страницы YouTube средствами телефона — около секунды, без Python.
+     * Ссылку сразу проверяем (YouTube иногда отдаёт нерабочую): null — не отдаётся, тогда берём обычным путём.
+     */
+    fun audio(pageUrl: String): Audio? {
+        ready
+        val info = StreamInfo.getInfo(ServiceList.YouTube, pageUrl)
+        val streams = info.audioStreams.filter { it.isUrl && !it.content.isNullOrBlank() }.sortedByDescending { it.averageBitrate }
+        val best = streams.firstOrNull { plays(it.content) } ?: return null
+        return Audio(best.content, best.averageBitrate, best.format?.name ?: "", info.thumbnails.maxByOrNull { it.height }?.url)
+    }
+
+    private fun plays(url: String): Boolean = runCatching {
+        val c = URL(url).openConnection() as HttpURLConnection
+        c.connectTimeout = 4000; c.readTimeout = 4000
+        c.setRequestProperty("Range", "bytes=0-1")
+        try { c.responseCode in 200..299 } finally { c.disconnect() }
+    }.getOrDefault(false)
+}
