@@ -92,18 +92,23 @@ object NewPipeSource {
      * Лучший звук для страницы YouTube средствами телефона — около секунды, без Python.
      * Ссылку сразу проверяем (YouTube иногда отдаёт нерабочую): null — не отдаётся, тогда берём обычным путём.
      */
-    fun audio(pageUrl: String): Audio? {
+    fun audio(pageUrl: String, wantTotal: Long? = null): Audio? {
         ready
         val info = StreamInfo.getInfo(ServiceList.YouTube, pageUrl)
         val streams = info.audioStreams.filter { it.isUrl && !it.content.isNullOrBlank() }.sortedByDescending { it.averageBitrate }
-        val best = streams.firstOrNull { plays(it.content) } ?: return null
+        // [wantTotal] — нужна именно та запись, начало которой уже лежит на телефоне (тот же размер файла).
+        val best = streams.firstOrNull { s -> size(s.content).let { if (wantTotal != null) it == wantTotal else it > 0 } } ?: return null
         return Audio(best.content, best.averageBitrate, best.format?.name ?: "", info.thumbnails.maxByOrNull { it.height }?.url)
     }
 
-    private fun plays(url: String): Boolean = runCatching {
+    /** Размер файла по ссылке (заодно проверка, что она играет). -1 — не отдаётся. */
+    private fun size(url: String): Long = runCatching {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 4000; c.readTimeout = 4000
         c.setRequestProperty("Range", "bytes=0-1")
-        try { c.responseCode in 200..299 } finally { c.disconnect() }
-    }.getOrDefault(false)
+        try {
+            if (c.responseCode !in 200..299) -1L
+            else c.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull() ?: c.contentLengthLong.coerceAtLeast(1)
+        } finally { c.disconnect() }
+    }.getOrDefault(-1L)
 }

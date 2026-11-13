@@ -1224,9 +1224,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val wm = Settings.warm(this)
-        settingRow(appearance, R.drawable.ic_download, "Готовить медиатеку заранее",
-            wm.label + (Warm.left.takeIf { it > 0 }?.let { " · осталось $it" } ?: ""), wm.hint) {
-            choose("Готовить медиатеку заранее", Settings.Warm.entries.map { "${it.label} — ${it.hint}" }, wm.ordinal) {
+        settingRow(appearance, R.drawable.ic_download, "Мгновенный старт",
+            wm.label + " · готово ${HeadCache.count}" + (Warm.left.takeIf { it > 0 }?.let { ", осталось $it" } ?: ""), wm.hint) {
+            choose("Мгновенный старт", Settings.Warm.entries.map { "${it.label} — ${it.hint}" }, wm.ordinal) {
                 Settings.setWarm(this, Settings.Warm.entries[it]); Warm.start(this); refreshMusicSettings()
             }
         }

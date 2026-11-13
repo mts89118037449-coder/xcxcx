@@ -75,7 +75,7 @@ object Streams {
         if (cached(k) != null) return null
         pending[k]?.takeIf { !it.isCancelled }?.let { return it }
         val f = pool.submit<StreamInfo> {
-            try { Ytdlp.inBackground { find(t) }.also { done[k] = System.currentTimeMillis() to it } } finally { pending.remove(k) }
+            try { Ytdlp.inBackground { find(t) }.also { done[k] = System.currentTimeMillis() to it; HeadCache.storeAsync(t, it) } } finally { pending.remove(k) }
         }
         pending[k] = f
         return f
@@ -95,7 +95,7 @@ object Streams {
         if (cached(k) != null) return
         pending[k]?.let { f -> if (!f.cancel(false)) return; pending.remove(k, f) }
         pending[k] = searchPool.submit<StreamInfo> {
-            try { find(t).also { done[k] = System.currentTimeMillis() to it } } finally { pending.remove(k) }
+            try { find(t).also { done[k] = System.currentTimeMillis() to it; HeadCache.storeAsync(t, it) } } finally { pending.remove(k) }
         }
     }
 
@@ -184,7 +184,13 @@ object Streams {
 
     private fun isYoutube(url: String) = Service.of(url).let { it == Service.YOUTUBE || it == Service.YOUTUBE_MUSIC }
 
-    private fun fromKnown(t: Track, where: String): StreamInfo? {
+    /** Где лежит песня (своя ссылка или запомненный источник). null — неизвестно. */
+    fun whereOf(t: Track): String? = pinned(t) ?: knownRaw(key(t))?.takeIf { !it.startsWith("none:") }
+
+    /** Звук из известного источника; [wantTotal] — нужна запись именно такого размера (продолжение уже сохранённого начала). */
+    fun streamFrom(t: Track, where: String, wantTotal: Long? = null): StreamInfo? = runCatching { fromKnown(t, where, wantTotal) }.getOrNull()
+
+    private fun fromKnown(t: Track, where: String, wantTotal: Long? = null): StreamInfo? {
         if (where.startsWith("zaycev:")) {
             val p = where.split(':')
             val id = p.getOrNull(1)?.toLongOrNull() ?: return null
@@ -199,31 +205,32 @@ object Streams {
             return StreamInfo(u, u, where.substringAfter('|', "Telegram"), t.cover, t.title)
         }
         if (!isYoutube(where)) App.awaitReady() // YouTube берём средствами телефона — движок ждать не нужно
-        return Downloader.streamOf(where, Describe.site(where), t.title)
+        return Downloader.streamOf(where, Describe.site(where), t.title, wantTotal = wantTotal)
     }
 
-    /** Подготовка медиатеки: узнать и запомнить источник песни. true — искали (false — уже известен, пропуск). */
-    fun warm(t: Track): Boolean {
+    /**
+     * Подготовка медиатеки: узнать (и запомнить) источник песни и вернуть ссылку на звук — по ней сохраняется начало.
+     * null — не нашлась (повторяем не чаще раза в неделю) или не получилось.
+     */
+    fun warm(t: Track): StreamInfo? {
         val k = key(t)
-        if (pinned(t) != null) return false
+        cached(k)?.let { return it }
         knownRaw(k)?.let { w ->
-            // «Не нашлась» — повторяем не чаще раза в неделю.
-            if (!w.startsWith("none:")) return false
-            if (System.currentTimeMillis() / 86_400_000L - (w.substringAfter(':').toLongOrNull() ?: 0) < 7) return false
+            if (w.startsWith("none:") && System.currentTimeMillis() / 86_400_000L - (w.substringAfter(':').toLongOrNull() ?: 0) < 7) return null
         }
-        try { find(t, searchOnly = true).also { done[k] = System.currentTimeMillis() to it } }
-        catch (_: UserError) { remember(k, "none:" + System.currentTimeMillis() / 86_400_000L) }
-        catch (_: Exception) {}
-        return true
+        // Только быстрые источники без Python (Zaycev, YouTube Music): так медиатека готовится в несколько потоков.
+        return try { find(t, light = true).also { done[k] = System.currentTimeMillis() to it } }
+        catch (_: UserError) { remember(k, "none:" + System.currentTimeMillis() / 86_400_000L); null }
+        catch (_: Exception) { null }
     }
 
-    private fun find(t: Track, searchOnly: Boolean = false): StreamInfo {
+    private fun find(t: Track, light: Boolean = false): StreamInfo {
         val k = key(t)
         pinned(t)?.let { url ->
             if (!isYoutube(url)) App.awaitReady()
             Downloader.streamOf(url, Describe.site(url), t.title)?.let { return it }
         }
-        if (!searchOnly) knownRaw(k)?.takeIf { !it.startsWith("none:") }?.let { where ->
+        knownRaw(k)?.takeIf { !it.startsWith("none:") }?.let { where ->
             runCatching { fromKnown(t, where) }.getOrNull()?.let { return it }
             // Больше не играет оттуда (удалили, закрыли) — забываем и ищем заново. Запись Telegram оставляем, если он просто не подключён.
             if (!where.startsWith("tg:") || Telegram.ready) remember(k, null)
@@ -231,7 +238,7 @@ object Streams {
         val log = java.util.concurrent.ConcurrentLinkedQueue<String>()
         val picked = java.util.concurrent.ConcurrentHashMap<String, String>()
         try {
-            return search(t, log, picked).also { s ->
+            return search(t, log, picked, light).also { s ->
                 val where = picked[s.source.substringBefore(" ·")] ?: s.pageUrl.takeIf { it != s.url && it.startsWith("http") }
                 if (where != null) remember(k, where)
             }
@@ -240,7 +247,7 @@ object Streams {
         }
     }
 
-    private fun search(t: Track, log: java.util.Queue<String>, picked: MutableMap<String, String>): StreamInfo {
+    private fun search(t: Track, log: java.util.Queue<String>, picked: MutableMap<String, String>, light: Boolean = false): StreamInfo {
         val sources = listOf(
             "SoundCloud" to "scsearch8:${t.query}",
             "YouTube" to "ytsearch8:${t.query}",
@@ -304,7 +311,7 @@ object Streams {
                     .also { log += "YouTube Music звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет"} за ${(System.currentTimeMillis() - t1) / 100 / 10.0} с" }
             }
         }
-        val viaYtdlp = sources.map { (name, query) ->
+        val viaYtdlp = (if (light) emptyList() else sources).map { (name, query) ->
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                 App.awaitReady() // Zaycev (выше) движок не нужен — он отвечает, даже пока тот запускается
                 val raw = runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
@@ -323,8 +330,9 @@ object Streams {
                 }
             } }
         }
-        // Старшинство: Zaycev → Telegram → SoundCloud → YouTube Music → YouTube → SoundCloud по одному названию.
-        val jobs = listOf(zaycev, telegram, viaYtdlp[0], ytm, viaYtdlp[1], viaYtdlp[2])
+        // Старшинство: Zaycev → Telegram → YouTube Music → SoundCloud → YouTube → SoundCloud по одному названию.
+        // YouTube Music выше SoundCloud: официальные записи, Opus 160 против ~128 у SoundCloud, и для него работает мгновенный старт.
+        val jobs = listOf(zaycev, telegram, ytm) + viaYtdlp
         val started = System.currentTimeMillis()
         while (true) {
             for ((i, f) in jobs.withIndex()) {
@@ -338,6 +346,7 @@ object Streams {
             if (System.currentTimeMillis() - started > 40_000) { log += "Ждал основные площадки 40 с — не дождался"; break }
             Thread.sleep(40)
         }
+        if (light) throw UserError("В быстрых источниках не нашлась")
         // Нет на SoundCloud/YouTube (удалили) — другие площадки: Яндекс, Rutube, Internet Archive…
         // (их опрашиваем только теперь — не нагружаем сеть, когда песня и так нашлась).
         // Все разом, а не по очереди (раньше — до 40 с на каждую, итого минуты). Берём лучшую из ответивших за 20 с.
@@ -375,7 +384,8 @@ object Streams {
  * После этого нажатие включает песню сразу, без поиска и без фрагмента.
  */
 object Warm {
-    private val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private const val THREADS = 3
+    private val pool = java.util.concurrent.Executors.newFixedThreadPool(THREADS + 1)
     @Volatile private var running = false
     @Volatile var left = 0; private set
 
@@ -385,15 +395,26 @@ object Warm {
         running = true
         pool.execute {
             try {
-                App.awaitReadyOrNull() ?: return@execute
-                val list = Library.favorites.filter { !Streams.known(it) && Library.localFor(it) == null && !MediaCache.has(it) }
-                left = list.size
-                for (t in list) {
-                    if (!allowed(app)) return@execute
-                    val searched = runCatching { Ytdlp.inBackground { Streams.warm(t) } }.getOrDefault(true)
-                    left--
-                    if (searched) Thread.sleep(700) // не грузим сеть и площадки
+                // Всё, что ещё не лежит на телефоне целиком и чьё начало не сохранено. Новые любимые — первыми.
+                // SoundCloud отдаёт звук нарезкой — начало для него сохранить нельзя, такие песни не перебираем заново.
+                val list = Library.favorites.filter {
+                    Library.localFor(it) == null && !MediaCache.has(it) && !HeadCache.has(it) && Streams.whereOf(it)?.contains("soundcloud") != true
                 }
+                val remaining = java.util.concurrent.atomic.AtomicInteger(list.size)
+                left = list.size
+                val next = java.util.concurrent.atomic.AtomicInteger(0)
+                (1..THREADS).map {
+                    pool.submit {
+                        while (true) {
+                            val i = next.getAndIncrement()
+                            if (i >= list.size || !allowed(app)) break
+                            val t = list[i]
+                            runCatching { Ytdlp.inBackground { Streams.warm(t) }?.let { s -> HeadCache.store(t, s) } }
+                            left = remaining.decrementAndGet()
+                            Thread.sleep(250) // не грузим сеть и площадки
+                        }
+                    }
+                }.forEach { runCatching { it.get() } }
             } finally { running = false; left = 0 }
         }
     }

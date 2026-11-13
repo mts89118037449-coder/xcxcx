@@ -32,7 +32,8 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(MergingFactory(DefaultMediaSourceFactory(this)))
+            // «aura://head/…» — начало песни с телефона, продолжение из сети (мгновенный старт); остальное — как обычно.
+            .setMediaSourceFactory(MergingFactory(DefaultMediaSourceFactory(AuraDataSourceFactory(this))))
             // Начинаем играть, как только есть 0,7 с звука (по умолчанию ждёт 2,5 с), и держим запас на минуту вперёд.
             .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder()
                 .setBufferDurationsMs(30_000, 90_000, 700, 2_000).build())

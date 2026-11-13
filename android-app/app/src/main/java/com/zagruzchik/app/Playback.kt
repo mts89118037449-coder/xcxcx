@@ -120,6 +120,7 @@ object Playback {
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
     const val X_PREVIEW = "preview"
+    const val X_HEAD = "head"              // играет с сохранённого начала (мгновенный старт)
 
     /** Песня в очереди: из интернета или уже скачанная (тогда играет мгновенно и без сети). */
     class QItem(
@@ -185,6 +186,12 @@ object Playback {
         MediaCache.fileFor(first.track)?.let { f ->
             Pending.set(null, loading = false, error = null)
             start(app, gen, cachedItem(first, f))
+            return
+        }
+        // Начало полной версии уже на телефоне — играем сразу, остальное подтянется из сети.
+        if (first.pageUrl == null && first.directUrl == null) HeadCache.entry(first.track)?.let { e ->
+            Pending.set(null, loading = false, error = null)
+            start(app, gen, headItem(first, e))
             return
         }
         val ready = when {
@@ -442,9 +449,11 @@ object Playback {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 // Файл из памяти не играет — выбрасываем его и включаем ту же песню из сети.
                 val m = c.currentMediaItem?.mediaMetadata
-                if (m?.extras?.getString(X_SOURCE) == "памяти") {
-                    val t = Track(m.title?.toString().orEmpty(), m.artist?.toString().orEmpty(), cover = m.artworkUri?.toString())
-                    MediaCache.forget(t)
+                val fromHead = m?.extras?.getBoolean(X_HEAD) == true
+                // То же, если не удалось продолжить песню после сохранённого начала (источник изменился) — играем обычным путём.
+                if (m?.extras?.getString(X_SOURCE) == "памяти" || fromHead) {
+                    val t = Track(m!!.title?.toString().orEmpty(), m.artist?.toString().orEmpty(), cover = m.artworkUri?.toString())
+                    if (fromHead) HeadCache.drop(t) else MediaCache.forget(t)
                     val i = c.currentMediaItemIndex
                     val rest = queue.drop(maxOf(0, nextToAdd - (c.mediaItemCount - i)))
                     val here = rest.firstOrNull { Library.key(it.track) == Library.key(t) } ?: QItem(t, null, m.extras?.getString(X_SOURCE_URL))
@@ -554,6 +563,7 @@ object Playback {
         queueWorker.execute {
             val item = q.local?.let { item(it).withTrack(q.track) }
                 ?: MediaCache.fileFor(q.track)?.let { cachedItem(q, it) }
+                ?: (if (q.pageUrl == null && q.directUrl == null) HeadCache.entry(q.track)?.let { headItem(q, it) } else null)
                 ?: runCatching { Ytdlp.inBackground { resolve(q) }.also { MediaCache.store(app, q.track, it.pageUrl) }.let { streamItem(q, it) } }.getOrNull() // не нашлась — пропускаем
             main.post {
                 if (gen != queueGen) return@post
@@ -618,6 +628,13 @@ object Playback {
         .setUri(s.url).setMediaId(s.url)
         .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(s.url)).build())
         .setMediaMetadata(meta(q, s.source) { putString(X_PAGE_URL, s.pageUrl) })
+        .build()
+
+    /** Мгновенный старт: начало с телефона, продолжение той же записи — из сети. */
+    private fun headItem(q: QItem, e: HeadCache.Entry): MediaItem = MediaItem.Builder()
+        .setUri(e.uri).setMediaId(e.uri.toString())
+        .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(e.uri).build())
+        .setMediaMetadata(meta(q, e.label.ifBlank { "интернета" }) { putBoolean(X_HEAD, true); if (e.where.startsWith("http")) putString(X_PAGE_URL, e.where) })
         .build()
 
     private fun cachedItem(q: QItem, f: java.io.File): MediaItem {
