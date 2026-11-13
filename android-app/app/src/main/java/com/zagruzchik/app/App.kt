@@ -37,6 +37,7 @@ class App : Application() {
             ready.countDown()
             if (initError == null) {
                 YtdlpDaemon.warmUp() // постоянный yt-dlp — первый поиск уже без ожидания старта Python
+                Warm.start(this) // в фоне узнаём источники любимых песен — потом включаются сразу
                 updateIfNeeded()
             }
         }

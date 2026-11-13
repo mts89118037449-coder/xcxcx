@@ -171,18 +171,65 @@ object Streams {
     private val reports = java.util.concurrent.ConcurrentHashMap<String, String>()
     fun report(t: Track): String? = reports[key(t)]
 
-    private fun find(t: Track): StreamInfo {
+    // ---- Где лежит песня: запоминаем после первого поиска. Дальше поиск не нужен — сразу берём звук (секунда вместо нескольких). ----
+    private val sourcesPrefs by lazy { App.instance.getSharedPreferences("sources", 0) }
+    private fun knownRaw(k: String): String? = sourcesPrefs.getString(k, null)
+    /** Источник этой песни уже известен (включится быстро, без поиска). */
+    fun known(t: Track): Boolean = pinned(t) != null || knownRaw(key(t))?.startsWith("none:") == false
+    private fun remember(k: String, where: String?) {
+        sourcesPrefs.edit().apply { if (where == null) remove(k) else putString(k, where) }.apply()
+    }
+
+    private fun fromKnown(t: Track, where: String): StreamInfo? {
+        if (where.startsWith("zaycev:")) {
+            val p = where.split(':')
+            val id = p.getOrNull(1)?.toLongOrNull() ?: return null
+            val u = runCatching { ZaycevSource.streamUrl(id) }.getOrNull() ?: return null
+            return StreamInfo(u, u, "Zaycev · MP3 ${p.getOrNull(2) ?: ""}".trim(), t.cover, t.title)
+        }
         App.awaitReady()
+        return Downloader.streamOf(where, Describe.site(where), t.title)
+    }
+
+    /** Подготовка медиатеки: узнать и запомнить источник песни. true — искали (false — уже известен, пропуск). */
+    fun warm(t: Track): Boolean {
+        val k = key(t)
+        if (pinned(t) != null) return false
+        knownRaw(k)?.let { w ->
+            // «Не нашлась» — повторяем не чаще раза в неделю.
+            if (!w.startsWith("none:")) return false
+            if (System.currentTimeMillis() / 86_400_000L - (w.substringAfter(':').toLongOrNull() ?: 0) < 7) return false
+        }
+        try { find(t, searchOnly = true).also { done[k] = System.currentTimeMillis() to it } }
+        catch (_: UserError) { remember(k, "none:" + System.currentTimeMillis() / 86_400_000L) }
+        catch (_: Exception) {}
+        return true
+    }
+
+    private fun find(t: Track, searchOnly: Boolean = false): StreamInfo {
+        val k = key(t)
         pinned(t)?.let { url ->
+            App.awaitReady()
             Downloader.streamOf(url, Describe.site(url), t.title)?.let { return it }
         }
+        if (!searchOnly) knownRaw(k)?.takeIf { !it.startsWith("none:") }?.let { where ->
+            runCatching { fromKnown(t, where) }.getOrNull()?.let { return it }
+            // Больше не играет оттуда (удалили, закрыли) — забываем и ищем заново.
+            remember(k, null)
+        }
         val log = java.util.concurrent.ConcurrentLinkedQueue<String>()
-        try { return search(t, log) } finally {
+        val picked = java.util.concurrent.atomic.AtomicReference<String?>()
+        try {
+            return search(t, log, picked).also { s ->
+                val where = if (s.source.startsWith("Zaycev")) picked.get() else s.pageUrl.takeIf { it != s.url && it.startsWith("http") }
+                if (where != null) remember(k, where)
+            }
+        } finally {
             reports[key(t)] = "Искал: «${t.query}»" + (if (t.durationSec > 0) " (${t.durationSec} с)" else "") + "\n\n" + log.sorted().joinToString("\n\n")
         }
     }
 
-    private fun search(t: Track, log: java.util.Queue<String>): StreamInfo {
+    private fun search(t: Track, log: java.util.Queue<String>, picked: java.util.concurrent.atomic.AtomicReference<String?>): StreamInfo {
         val sources = listOf(
             "SoundCloud" to "scsearch8:${t.query}",
             "YouTube Music" to "https://music.youtube.com/search?q=" + Http.enc(t.query) + "#songs",
@@ -207,11 +254,15 @@ object Streams {
             if (ok.isNotEmpty()) foundOn += "Zaycev"
             // Из подходящих — лучший по качеству среди первых трёх.
             ok.take(3).sortedByDescending { it.bitrate }.firstNotNullOfOrNull { c ->
-                runCatching { ZaycevSource.streamUrl(c.id) }.getOrNull()?.let { u -> StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title) }
+                runCatching { ZaycevSource.streamUrl(c.id) }.getOrNull()?.let { u ->
+                    picked.set("zaycev:${c.id}:${c.bitrate}")
+                    StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title)
+                }
             }.also { log += "Zaycev звук: ${if (it != null) "готов" else "нет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
         }
         val jobs = listOf(zaycev) + sources.map { (name, query) ->
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
+                App.awaitReady() // Zaycev (выше) движок не нужен — он отвечает, даже пока тот запускается
                 val raw = runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
                 val candidates = Match.ranked(t, raw) { Triple(it.title, it.author, it.duration) }
                 log += "$name [${query.take(40)}]: результатов ${raw.size}, подошло ${candidates.size}" +
@@ -285,5 +336,42 @@ object Streams {
             append(" Искал: SoundCloud, YouTube, YouTube Music, Яндекс, Rutube, Internet Archive, Dailymotion, Audius.")
             append(" Нажмите на это сообщение — можно указать ссылку на песню вручную.")
         })
+    }
+}
+
+/**
+ * Подготовка медиатеки заранее: в фоне, по одной песне, узнаём и запоминаем, где лежит каждая любимая.
+ * После этого нажатие включает песню сразу, без поиска и без фрагмента.
+ */
+object Warm {
+    private val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+    @Volatile private var running = false
+    @Volatile var left = 0; private set
+
+    fun start(ctx: android.content.Context) {
+        val app = ctx.applicationContext
+        if (running || Settings.warm(app) == Settings.Warm.OFF) return
+        running = true
+        pool.execute {
+            try {
+                App.awaitReadyOrNull() ?: return@execute
+                val list = Library.favorites.filter { !Streams.known(it) && Library.localFor(it) == null && !MediaCache.has(it) }
+                left = list.size
+                for (t in list) {
+                    if (!allowed(app)) return@execute
+                    val searched = runCatching { Ytdlp.inBackground { Streams.warm(t) } }.getOrDefault(true)
+                    left--
+                    if (searched) Thread.sleep(700) // не грузим сеть и площадки
+                }
+            } finally { running = false; left = 0 }
+        }
+    }
+
+    private fun allowed(ctx: android.content.Context): Boolean = when (Settings.warm(ctx)) {
+        Settings.Warm.OFF -> false
+        Settings.Warm.ALWAYS -> true
+        Settings.Warm.WIFI -> runCatching {
+            !ctx.getSystemService(android.net.ConnectivityManager::class.java).isActiveNetworkMetered
+        }.getOrDefault(false)
     }
 }

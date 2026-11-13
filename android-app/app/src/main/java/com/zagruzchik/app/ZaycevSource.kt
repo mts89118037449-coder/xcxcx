@@ -14,23 +14,18 @@ object ZaycevSource {
 
     class Found(val id: Long, val title: String, val artist: String, val durationSec: Int, val bitrate: Int, val cover: String?)
 
-    /** Результаты поиска (только те, что можно слушать). */
+    /** Результаты поиска (только те, что можно слушать), в порядке выдачи. Ответ — около килобайта. */
     fun search(query: String): List<Found> {
-        val html = Http.get("$BASE/search?query_search=${Http.enc(query)}&type=all", Http.DESKTOP_UA, 8000)
-        val data = Regex("""<script id="__NEXT_DATA__"[^>]*>(.*?)</script>""", RegexOption.DOT_MATCHES_ALL).find(html)?.groupValues?.get(1) ?: return emptyList()
-        val playlist = JSONObject(data).optJSONObject("props")?.optJSONObject("initialReduxState")?.optJSONObject("playlist") ?: return emptyList()
-        val info = playlist.optJSONObject("info") ?: return emptyList()
-        // Только список результатов поиска (на странице есть и другие — «популярное», история), в порядке выдачи.
-        val order = mutableListOf<String>()
-        playlist.optJSONObject("trackIds")?.let { ids ->
-            ids.keys().forEach { k -> if (k.startsWith("search")) ids.optJSONArray(k)?.let { a -> for (i in 0 until a.length()) order += a.optString(i) } }
-        }
-        return order.distinct().mapNotNull { id ->
-            val o = info.optJSONObject(id) ?: return@mapNotNull null
-            if (!o.optBoolean("playbackEnabled")) return@mapNotNull null
-            val dur = o.optString("duration").split(':').mapNotNull { it.toIntOrNull() }.fold(0) { acc, x -> acc * 60 + x }
-            Found(id.toLongOrNull() ?: return@mapNotNull null, o.optString("track"), o.optString("artistName"), dur, o.optInt("bitrate"),
-                o.optString("imageJpg").takeIf { it.isNotBlank() }?.let { if (it.startsWith("//")) "https:$it" else it })
+        val o = JSONObject(Http.get("$BASE/api/external/pages/search/tracks?q=${Http.enc(query)}&page=1&limit=10", Http.DESKTOP_UA, 6000))
+        val ids = o.optJSONArray("trackIds") ?: return emptyList()
+        val info = o.optJSONObject("tracksInfo") ?: return emptyList()
+        return (0 until ids.length()).mapNotNull { i ->
+            val id = ids.optLong(i)
+            val t = info.optJSONObject(id.toString()) ?: return@mapNotNull null
+            if (!t.optBoolean("playbackEnabled")) return@mapNotNull null
+            val dur = t.optString("duration").split(':').mapNotNull { it.toIntOrNull() }.fold(0) { acc, x -> acc * 60 + x }
+            Found(id, t.optString("track"), t.optString("artistName"), dur, t.optInt("bitrate"),
+                t.optString("imageJpg").takeIf { it.isNotBlank() }?.let { if (it.startsWith("//")) "https:$it" else it })
         }
     }
 

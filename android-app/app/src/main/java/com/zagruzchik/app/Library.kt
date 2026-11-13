@@ -135,6 +135,7 @@ object Library {
         savedKeys = null; savedLoose = null
         save()
         changed()
+        if (fresh.isNotEmpty()) runCatching { Warm.start(App.instance) } // перенесённое — тоже готовим заранее
         return fresh.size
     }
 

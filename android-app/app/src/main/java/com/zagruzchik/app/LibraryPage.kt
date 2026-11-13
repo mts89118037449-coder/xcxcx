@@ -51,6 +51,16 @@ class LibraryPage(
         more = if (chunk(first)) { { chunk(PAGE) } } else null
     }
 
+    // Прокрутка остановилась — готовим звук для песен, которые сейчас на экране: нажатие включит сразу.
+    private val prefetchVisible = Runnable {
+        val top = scroll.scrollY; val bottom = top + scroll.height
+        val visible = (0 until content.childCount).mapNotNull { i ->
+            val v = content.getChildAt(i)
+            if (v.bottom > top && v.top < bottom) v.getTag(R.id.libContent) as? Track else null
+        }.filter { !MediaCache.has(it) }
+        if (visible.isNotEmpty()) Streams.prefetchMany(visible, 12)
+    }
+
     private fun loadMoreIfNear() {
         val m = more ?: return
         val child = scroll.getChildAt(0) ?: return
@@ -67,7 +77,10 @@ class LibraryPage(
             if (items.isEmpty()) snack("Медиатека пока пуста — ставьте ♥ песням") else Playback.playQueue(a, items, 0)
         }
         buildTabs()
-        scroll.setOnScrollChangeListener { _: androidx.core.widget.NestedScrollView, _: Int, _: Int, _: Int, _: Int -> loadMoreIfNear() }
+        scroll.setOnScrollChangeListener { _: androidx.core.widget.NestedScrollView, _: Int, _: Int, _: Int, _: Int ->
+            loadMoreIfNear()
+            scroll.removeCallbacks(prefetchVisible); scroll.postDelayed(prefetchVisible, 400)
+        }
     }
 
     private fun font(id: Int) = ResourcesCompat.getFont(a, id)
@@ -127,6 +140,7 @@ class LibraryPage(
             Tab.HISTORY -> historyTab()
         }
         scroll.post { loadMoreIfNear() }
+        scroll.removeCallbacks(prefetchVisible); scroll.postDelayed(prefetchVisible, 600)
     }
 
     /** «Умный микс» — карточка ауры с кнопкой. */
@@ -188,7 +202,8 @@ class LibraryPage(
         content.addView(chips, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = a.dp(6) })
         paged(items.size) { i ->
             val q = items[i]
-            content.addView(row(content, q.track, q.local, Rows.statusOf(q.track, q.local), false) { Playback.playQueue(a, items, i) })
+            content.addView(row(content, q.track, q.local, Rows.statusOf(q.track, q.local), false) { Playback.playQueue(a, items, i) }
+                .also { v -> if (q.local == null) v.setTag(R.id.libContent, q.track) })
         }
     }
 

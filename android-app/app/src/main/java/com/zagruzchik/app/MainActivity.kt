@@ -1212,6 +1212,19 @@ class MainActivity : AppCompatActivity() {
         val ly = Settings.lyricsInPlayer(this)
         settingRow(appearance, R.drawable.ic_lyrics, "Текст песни в плеере", if (ly) "Показывать" else "Скрыт",
             "Строки идут вместе с музыкой; нажмите — весь текст") { Settings.setLyricsInPlayer(this, !ly); refreshMusicSettings() }
+        val sm = Settings.startMode(this)
+        settingRow(appearance, R.drawable.ic_play_arrow, "Начало песни", sm.label, sm.hint) {
+            choose("Начало песни", Settings.StartMode.entries.map { "${it.label} — ${it.hint}" }, sm.ordinal) {
+                Settings.setStartMode(this, Settings.StartMode.entries[it]); refreshMusicSettings()
+            }
+        }
+        val wm = Settings.warm(this)
+        settingRow(appearance, R.drawable.ic_download, "Готовить медиатеку заранее",
+            wm.label + (Warm.left.takeIf { it > 0 }?.let { " · осталось $it" } ?: ""), wm.hint) {
+            choose("Готовить медиатеку заранее", Settings.Warm.entries.map { "${it.label} — ${it.hint}" }, wm.ordinal) {
+                Settings.setWarm(this, Settings.Warm.entries[it]); Warm.start(this); refreshMusicSettings()
+            }
+        }
         val jm = Settings.joinMode(this)
         settingRow(appearance, R.drawable.ic_skip_next, "Переход на полную версию", jm.label, jm.hint) {
             choose("Переход с фрагмента на полную", Settings.JoinMode.entries.map { "${it.label} — ${it.hint}" }, jm.ordinal) {

@@ -29,6 +29,23 @@ object Settings {
         IMMEDIATE("Сразу", "Как только полная нашлась — переключаемся на неё с того же места (пауза меньше секунды)"),
     }
 
+    /** С чего начинать песню, которой ещё нет под рукой. */
+    enum class StartMode(val label: String, val hint: String) {
+        FULL("Сразу полная", "Ждём полную версию несколько секунд; фрагмент — только если поиск затянулся"),
+        PREVIEW("Фрагмент сразу", "Мгновенно играет 30-секундный фрагмент, полная подхватывает"),
+    }
+    fun startMode(ctx: Context) = runCatching { StartMode.valueOf(prefs(ctx).getString("startMode", null)!!) }.getOrDefault(StartMode.FULL)
+    fun setStartMode(ctx: Context, m: StartMode) = prefs(ctx).edit().putString("startMode", m.name).apply()
+
+    /** Готовить медиатеку заранее (узнавать источник каждой любимой песни в фоне). */
+    enum class Warm(val label: String, val hint: String) {
+        WIFI("Только по Wi‑Fi", "В фоне узнаём, где лежит каждая любимая песня, — потом она включается сразу"),
+        ALWAYS("Всегда", "То же и через мобильный интернет (примерно 1 МБ на песню)"),
+        OFF("Выключено", "Источник ищется в момент нажатия"),
+    }
+    fun warm(ctx: Context) = runCatching { Warm.valueOf(prefs(ctx).getString("warm", null)!!) }.getOrDefault(Warm.WIFI)
+    fun setWarm(ctx: Context, m: Warm) = prefs(ctx).edit().putString("warm", m.name).apply()
+
     fun joinMode(ctx: Context) = runCatching { JoinMode.valueOf(prefs(ctx).getString("joinMode", null)!!) }.getOrDefault(JoinMode.SEAMLESS)
     fun setJoinMode(ctx: Context, m: JoinMode) = prefs(ctx).edit().putString("joinMode", m.name).apply()
 

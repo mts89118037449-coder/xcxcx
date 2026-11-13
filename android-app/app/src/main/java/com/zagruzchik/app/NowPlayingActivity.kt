@@ -265,8 +265,8 @@ class NowPlayingActivity : AppCompatActivity() {
             val t = p.track!!
             title.text = t.title
             artist.text = t.artist
-            source.text = if (p.error != null) "Не получилось включить" else "Ищу, где послушать: SoundCloud, YouTube Music, YouTube"
-            status.text = p.error ?: "Ищу полную версию на SoundCloud и YouTube…"
+            source.text = if (p.error != null) "Не получилось включить" else "Включаю…"
+            status.text = p.error ?: "Беру полную версию: Zaycev, SoundCloud, YouTube…"
             findViewById<TextView>(R.id.npHeader).text = "Сейчас играет"
             findViewById<View>(R.id.npSpinner).isVisible = p.error == null
             retry.isVisible = p.error != null

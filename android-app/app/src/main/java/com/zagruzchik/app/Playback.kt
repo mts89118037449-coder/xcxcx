@@ -203,6 +203,31 @@ object Playback {
         val preview = first.track.preview
         // Конкретная страница/файл (результат «Везде в интернете») — фрагмента у неё нет, просто ждём.
         val canPreview = first.pageUrl == null && first.directUrl == null
+        // «Сразу полная»: источник известен или найдётся за пару секунд — ждём её и начинаем с начала, без фрагмента.
+        // Фрагмент — только если поиск затянулся.
+        if (canPreview && Settings.startMode(app) == Settings.StartMode.FULL) {
+            Pending.set(first.track, loading = true, error = null)
+            val wait = if (Streams.known(first.track)) 8000L else 4500L
+            worker.execute {
+                val s = runCatching { fullSoon.get(wait, java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrNull()
+                main.post {
+                    if (gen != queueGen) return@post
+                    if (s != null) {
+                        Pending.set(null, loading = false, error = null)
+                        start(app, gen, streamItem(first, s))
+                        worker.execute { MediaCache.store(app, first.track, s.pageUrl) }
+                    } else viaPreview(app, gen, first, fullSoon)
+                }
+            }
+            return
+        }
+        viaPreview(app, gen, first, fullSoon)
+    }
+
+    /** Полной версии под рукой нет: фрагмент сразу, полная подхватывает. */
+    private fun viaPreview(app: Context, gen: Int, first: QItem, fullSoon: java.util.concurrent.Future<StreamInfo>) {
+        val preview = first.track.preview
+        val canPreview = first.pageUrl == null && first.directUrl == null
         if (!canPreview || (preview != null && Previews.fresh(preview))) return previewThenFull(app, gen, first, fullSoon)
         // Фрагмента нет или ссылка устарела (Deezer даёт её на ~15 минут) — берём свежую, это доли секунды.
         Pending.set(first.track, loading = true, error = null)
