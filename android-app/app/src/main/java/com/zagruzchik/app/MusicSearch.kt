@@ -153,7 +153,10 @@ object Streams {
     /** Готовый поток, если уже нашли (тогда фрагмент не нужен — сразу полная версия). */
     fun cachedFor(t: Track): StreamInfo? = cached(key(t))
 
-    private fun cached(k: String) = done[k]?.let { (time, s) -> s.takeIf { System.currentTimeMillis() - time < TTL_MS } }
+    // Ссылки Zaycev живут меньше часа (привязаны к текущему часу) — держим их 10 минут.
+    private fun cached(k: String) = done[k]?.let { (time, s) ->
+        s.takeIf { System.currentTimeMillis() - time < if (s.source.startsWith("Zaycev")) 10 * 60 * 1000L else TTL_MS }
+    }
 
     // ---- Своя ссылка для песни: если поиск не находит, человек указывает страницу сам — запоминаем навсегда. ----
     private val pins by lazy { App.instance.getSharedPreferences("pins", 0) }
@@ -194,7 +197,20 @@ object Streams {
         val bg = Ytdlp.isBackground // подготовка заранее не мешает нажатому
         val problems = java.util.concurrent.ConcurrentLinkedQueue<String>()
         val foundOn = java.util.concurrent.ConcurrentLinkedQueue<String>()
-        val jobs = sources.map { (name, query) ->
+        // Zaycev — MP3 до 320 kbps, отвечает быстро: первым по старшинству.
+        val zaycev = searchPool.submit<StreamInfo?> {
+            val t0 = System.currentTimeMillis()
+            val raw = runCatching { ZaycevSource.search(t.query) }.getOrDefault(emptyList())
+            val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
+            log += "Zaycev [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" +
+                raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗"} ${c.title.take(60)} | ${c.artist.take(30)} | ${c.durationSec} с | ${c.bitrate} kbps" }
+            if (ok.isNotEmpty()) foundOn += "Zaycev"
+            // Из подходящих — лучший по качеству среди первых трёх.
+            ok.take(3).sortedByDescending { it.bitrate }.firstNotNullOfOrNull { c ->
+                runCatching { ZaycevSource.streamUrl(c.id) }.getOrNull()?.let { u -> StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title) }
+            }.also { log += "Zaycev звук: ${if (it != null) "готов" else "нет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
+        }
+        val jobs = listOf(zaycev) + sources.map { (name, query) ->
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                 val raw = runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
                 val candidates = Match.ranked(t, raw) { Triple(it.title, it.author, it.duration) }
