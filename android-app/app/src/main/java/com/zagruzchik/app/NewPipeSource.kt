@@ -29,7 +29,7 @@ object NewPipeSource {
             override fun execute(request: Request): Response {
                 val c = Net.open(URL(request.url())) // YouTube — при необходимости мимо VPN
                 c.requestMethod = request.httpMethod()
-                c.connectTimeout = 8000; c.readTimeout = 12000
+                c.connectTimeout = 4000; c.readTimeout = 6000
                 c.instanceFollowRedirects = true
                 c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
                 request.headers().forEach { (k, vs) -> vs.forEachIndexed { i, v -> if (i == 0) c.setRequestProperty(k, v) else c.addRequestProperty(k, v) } }

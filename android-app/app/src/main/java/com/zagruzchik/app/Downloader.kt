@@ -333,28 +333,47 @@ object Downloader {
 
     /** Прямая ссылка на звук для одной страницы (SoundCloud/YouTube). null — не играет (DRM и т.п.). */
     fun streamOf(pageUrl: String, source: String, title: String, problems: MutableCollection<String>? = null, wantTotal: Long? = null): StreamInfo? {
-        // YouTube: сначала средствами телефона (около секунды, движок yt-dlp не нужен и может ещё запускаться);
-        // не вышло — обычным путём ниже.
+        // YouTube: средствами телефона и через yt-dlp — одновременно, берём того, кто ответил первым.
+        // (Раньше шли по очереди: пока первый путь не сдастся, второй не начинал — отсюда долгие ожидания.)
         if (Service.of(pageUrl).let { it == Service.YOUTUBE || it == Service.YOUTUBE_MUSIC }) {
-            var np = runCatching { NewPipeSource.audio(pageUrl, wantTotal) }
-            np.getOrNull()?.let { a -> return StreamInfo(a.url, pageUrl, source, a.cover, title) }
-            fun blocked(r: kotlin.Result<*>) = r.exceptionOrNull()?.toString().orEmpty().let { it.contains("bot", true) || it.contains("SignIn") || it.contains("LOGIN_REQUIRED") }
-            // Адрес VPN YouTube не устраивает — берём YouTube напрямую, через обычную сеть телефона (остальное остаётся в VPN).
-            if (blocked(np) && !Net.youtubeDirect && Net.vpnActive() && Net.physical() != null) {
-                Net.youtubeDirect = true
-                np = runCatching { NewPipeSource.audio(pageUrl, wantTotal) }
-                np.getOrNull()?.let { a -> return StreamInfo(a.url, pageUrl, source, a.cover, title) }
-                Net.youtubeDirect = false // напрямую тоже не вышло — возвращаемся
+            fun blocked(e: Throwable?) = e?.toString().orEmpty().let { it.contains("bot", true) || it.contains("SignIn") || it.contains("LOGIN_REQUIRED") }
+            val bg = Ytdlp.isBackground
+            val fast = streamPool.submit<StreamInfo?> {
+                var np = runCatching { NewPipeSource.audio(pageUrl, wantTotal) }
+                // Адрес VPN YouTube не устраивает — пробуем напрямую, через обычную сеть телефона (остальное остаётся в VPN).
+                if (blocked(np.exceptionOrNull()) && !Net.youtubeDirect && Net.vpnActive() && Net.physical() != null) {
+                    Net.youtubeDirect = true
+                    np = runCatching { NewPipeSource.audio(pageUrl, wantTotal) }
+                    if (np.getOrNull() == null) Net.youtubeDirect = false
+                } else if (np.getOrNull() == null && Net.youtubeDirect && !blocked(np.exceptionOrNull())) {
+                    Net.youtubeDirect = false // напрямую перестало работать — возвращаемся в VPN
+                }
+                np.exceptionOrNull()?.let { e ->
+                    if (blocked(e)) { Streams.youtubeBlockedAt = System.currentTimeMillis(); problems?.add("$source: $YT_BLOCKED") }
+                    else problems?.add("$source (на телефоне): ${e.javaClass.simpleName} ${e.message.orEmpty().take(120)}")
+                }
+                np.getOrNull()?.let { a -> StreamInfo(a.url, pageUrl, source, a.cover, title) }
             }
-            val why = np.exceptionOrNull()?.toString().orEmpty()
-            // YouTube требует «подтвердите, что вы не робот» — так он отвечает адресам VPN и дата-центров.
-            // Без входа в YouTube обычный путь упрётся в то же самое, только через полминуты: не ждём.
-            if (why.contains("bot", true) || why.contains("SignIn") || why.contains("LOGIN_REQUIRED")) {
-                Streams.youtubeBlockedAt = System.currentTimeMillis()
-                if (!Cookies.file(App.instance).exists()) { problems?.add("$source: $YT_BLOCKED"); return null }
-            } else if (why.isNotEmpty()) problems?.add("$source (быстрый путь): ${why.substringAfter(": ").take(140)}")
-            App.awaitReadyOrNull() ?: return null
+            // Запись нужного размера (продолжение сохранённого начала) умеет подобрать только путь «на телефоне».
+            val slow = if (wantTotal != null) null else streamPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
+                App.awaitReadyOrNull() ?: return@withBackground null
+                viaYtdlp(pageUrl, source, title, problems)
+            } }
+            val deadline = System.currentTimeMillis() + 40_000
+            while (System.currentTimeMillis() < deadline) {
+                if (fast.isDone) runCatching { fast.get() }.getOrNull()?.let { return it }
+                if (slow != null && slow.isDone) runCatching { slow.get() }.getOrNull()?.let { return it }
+                if (fast.isDone && (slow == null || slow.isDone)) return null
+                Thread.sleep(25)
+            }
+            return null
         }
+        return viaYtdlp(pageUrl, source, title, problems)
+    }
+
+    private val streamPool = java.util.concurrent.Executors.newCachedThreadPool()
+
+    private fun viaYtdlp(pageUrl: String, source: String, title: String, problems: MutableCollection<String>?): StreamInfo? {
         try {
             val d = YtdlpDaemon.stream(pageUrl, STREAM_FORMAT) ?: return null
             val url = d.optJSONArray("urls")?.optString(0)?.takeIf { it.startsWith("http") } ?: return null

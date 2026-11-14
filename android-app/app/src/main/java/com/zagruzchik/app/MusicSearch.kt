@@ -176,8 +176,14 @@ object Streams {
     /** Что ответила каждая площадка в последнем поиске этой песни — чтобы понять, почему не нашлась. */
     private val reports = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val live = java.util.concurrent.ConcurrentHashMap<String, java.util.Queue<String>>()
+    private val waitingOn = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
     /** Что происходит прямо сейчас, пока песня ищется (для экрана плеера): последние ответы площадок. */
-    fun progress(t: Track): String? = live[key(t)]?.toList()?.takeLast(4)?.joinToString("\n") { it.lineSequence().first().replace(Regex("""\s*\[[^\]]*]"""), "").take(170) }?.takeIf { it.isNotBlank() }
+    fun progress(t: Track): String? {
+        val k = key(t)
+        val done = live[k]?.toList()?.takeLast(3)?.joinToString("\n") { it.lineSequence().first().replace(Regex("""\s*\[[^\]]*]"""), "").take(150) }.orEmpty()
+        val wait = waitingOn[k]?.toList()?.takeIf { it.isNotEmpty() }?.let { "Ещё ищут: " + it.joinToString(", ") }.orEmpty()
+        return listOf(done, wait).filter { it.isNotBlank() }.joinToString("\n").takeIf { it.isNotBlank() }
+    }
 
     /** Причина сбоя — коротко, для отчёта и экрана плеера (раньше ошибки терялись, и было видно только «результатов 0»). */
     private fun why(e: Throwable?, where: String = ""): String = if (e == null) "" else
@@ -257,7 +263,7 @@ object Streams {
                 if (where != null) remember(k, where)
             }
         } finally {
-            live.remove(k)
+            live.remove(k); waitingOn.remove(k)
             reports[key(t)] = "Искал: «${t.query}»" + (if (t.durationSec > 0) " (${t.durationSec} с)" else "") + "\n\n" + log.sorted().joinToString("\n\n")
         }
     }
@@ -276,6 +282,7 @@ object Streams {
         val bg = Ytdlp.isBackground // подготовка заранее не мешает нажатому
         val problems = java.util.concurrent.ConcurrentLinkedQueue<String>()
         val foundOn = java.util.concurrent.ConcurrentLinkedQueue<String>()
+        val waiting = java.util.concurrent.ConcurrentHashMap.newKeySet<String>().also { waitingOn[key(t)] = it }
         // Zaycev — MP3 до 320 kbps, отвечает быстро: первым по старшинству.
         val zaycev = searchPool.submit<StreamInfo?> {
             val t0 = System.currentTimeMillis()
@@ -283,7 +290,7 @@ object Streams {
             val raw = got.getOrDefault(emptyList())
             val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
             log += "Zaycev [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" + why(got.exceptionOrNull()) +
-                raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗"} ${c.title.take(60)} | ${c.artist.take(30)} | ${c.durationSec} с | ${c.bitrate} kbps" }
+                raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗ " + Match.reason(t, c.title, c.artist, c.durationSec)} · ${c.title.take(50)} | ${c.artist.take(26)} | ${c.durationSec} с | ${c.bitrate} kbps" }
             if (ok.isNotEmpty()) foundOn += "Zaycev"
             // Из подходящих — лучший по качеству среди первых трёх.
             ok.take(3).sortedByDescending { it.bitrate }.firstNotNullOfOrNull { c ->
@@ -318,7 +325,7 @@ object Streams {
             val raw = runCatching { NewPipeSource.searchSongs(t.query) { via = it } }.getOrDefault(emptyList())
             val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
             log += "YouTube Music [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size} · $via" +
-                raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗"} ${c.title.take(60)} | ${c.artist.take(30)} | ${c.durationSec} с" } +
+                raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗ " + Match.reason(t, c.title, c.artist, c.durationSec)} · ${c.title.take(50)} | ${c.artist.take(26)} | ${c.durationSec} с" } +
                 "\n  поиск за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
             if (ok.isNotEmpty()) foundOn += "YouTube Music"
             ok.take(3).firstNotNullOfOrNull { c ->
@@ -327,36 +334,49 @@ object Streams {
                     .also { log += "YouTube Music звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет"} за ${(System.currentTimeMillis() - t1) / 100 / 10.0} с" }
             }
         }
-        val viaYtdlp = (if (light) emptyList() else sources).map { (name, query) ->
-            searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
-                // Поиск — средствами телефона (без Python, около секунды); не вышло — через yt-dlp.
-                val words = query.substringAfter(':')
-                val fast = runCatching { NewPipeSource.search(name == "SoundCloud", words) }
-                val quick = fast.getOrNull()?.takeIf { it.isNotEmpty() }?.take(10)?.map {
-                    Downloader.Candidate(it.url, it.title, listOf(it.artist, it.title.substringBefore(" - ", "")).filter { x -> x.isNotBlank() }.joinToString(" | "), it.durationSec, name, 0)
+        // Каждая площадка ищется двумя путями сразу — средствами телефона и через yt-dlp. Это отдельные участники гонки:
+        // раньше второй путь ждал, пока сдастся первый, и медленный отказ одного задерживал всё.
+        fun lines(raw: List<Downloader.Candidate>, ok: List<Downloader.Candidate>) = raw.take(5).joinToString("") { c ->
+            "\n  ${if (c in ok) "✓" else "✗ " + Match.reason(t, c.title, c.author, c.duration)} · ${c.title.take(50)} | ${c.author.take(26)} | ${c.duration} с"
+        }
+        fun sounds(name: String, candidates: List<Downloader.Candidate>): StreamInfo? =
+            // Ссылки берём по две одновременно (лучший вариант может оказаться платным — DRM), до 4 вариантов.
+            candidates.take(4).chunked(2).firstNotNullOfOrNull { pair ->
+                pair.map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
+                    val t0 = System.currentTimeMillis()
+                    if (Service.of(c.url).let { it != Service.YOUTUBE && it != Service.YOUTUBE_MUSIC }) App.awaitReady() // звук SoundCloud берёт yt-dlp
+                    Downloader.streamOf(c.url, name.substringBefore(" ("), c.title, problems).also { log += "$name звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
+                } } }.firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
+            }
+        val onPhone = (if (light) emptyList() else sources.take(2)).map { (site, query) ->
+            val name = "$site (на телефоне)"
+            waiting += name
+            searchPool.submit<StreamInfo?> { try {
+                val got = runCatching { NewPipeSource.search(site == "SoundCloud", query.substringAfter(':')) }
+                val raw = got.getOrNull().orEmpty().take(10).map {
+                    Downloader.Candidate(it.url, it.title, listOf(it.artist, it.title.substringBefore(" - ", "")).filter { x -> x.isNotBlank() }.joinToString(" | "), it.durationSec, site, 0)
                 }
-                if (quick == null || name == "SoundCloud") App.awaitReady() // звук SoundCloud берёт yt-dlp
-                val slow = if (quick == null) runCatching { Downloader.searchOrThrow(query, name) } else null
-                val raw = quick ?: slow?.getOrNull().orEmpty()
-                val candidates = Match.ranked(t, raw) { Triple(it.title, it.author, it.duration) }
-                log += "$name [${query.take(40)}]: результатов ${raw.size}, подошло ${candidates.size}" +
-                    (if (raw.isEmpty()) why(fast.exceptionOrNull(), "на телефоне") + why(slow?.exceptionOrNull(), "yt-dlp") else "") +
-                    raw.take(5).joinToString("") { c -> "\n  ${if (c in candidates) "✓" else "✗"} ${c.title.take(60)} | ${c.author.take(30)} | ${c.duration} с" }
-                // Ссылки для двух лучших берём одновременно (лучший может оказаться платным — DRM), третий — если оба не играют.
-                if (candidates.isNotEmpty()) foundOn += name
-                // Ссылки берём по две одновременно (лучший вариант может оказаться платным — DRM), до 4 вариантов.
-                candidates.take(4).chunked(2).firstNotNullOfOrNull { pair ->
-                    pair.map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
-                        val t0 = System.currentTimeMillis()
-                        Downloader.streamOf(c.url, name, c.title, problems).also { log += "$name звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
-                    } } }
-                        .firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
-                }
-            } }
+                val ok = Match.ranked(t, raw) { Triple(it.title, it.author, it.duration) }
+                log += "$name: результатов ${raw.size}, подошло ${ok.size}" + why(got.exceptionOrNull()) + lines(raw, ok)
+                if (ok.isNotEmpty()) foundOn += site
+                sounds(name, ok)
+            } finally { waiting -= name } }
+        }
+        val viaYtdlp = (if (light) emptyList() else sources).map { (site, query) ->
+            val name = if (query.startsWith("scsearch10")) "$site по названию" else "$site (yt-dlp)"
+            waiting += name
+            searchPool.submit<StreamInfo?> { try { Ytdlp.withBackground(bg) {
+                App.awaitReady()
+                val got = runCatching { Downloader.searchOrThrow(query, site) }
+                val raw = got.getOrNull().orEmpty()
+                val ok = Match.ranked(t, raw) { Triple(it.title, it.author, it.duration) }
+                log += "$name: результатов ${raw.size}, подошло ${ok.size}" + why(got.exceptionOrNull()) + lines(raw, ok)
+                if (ok.isNotEmpty()) foundOn += site
+                sounds(name, ok)
+            } } finally { waiting -= name } }
         }
         // Старшинство: Zaycev → Telegram → YouTube Music → SoundCloud → YouTube → SoundCloud по одному названию.
-        // YouTube Music выше SoundCloud: официальные записи, Opus 160 против ~128 у SoundCloud, и для него работает мгновенный старт.
-        val jobs = listOf(zaycev, telegram, ytm) + viaYtdlp
+        val jobs = listOf(zaycev, telegram, ytm) + listOfNotNull(onPhone.getOrNull(0), viaYtdlp.getOrNull(0), onPhone.getOrNull(1), viaYtdlp.getOrNull(1), viaYtdlp.getOrNull(2))
         val started = System.currentTimeMillis()
         while (true) {
             for ((i, f) in jobs.withIndex()) {

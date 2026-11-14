@@ -114,6 +114,9 @@ object Match {
             .substringBefore(" — ")
     )
 
+    // Приписки, которые не делают запись другой версией: «official audio», «лирик видео», «премьера трека»…
+    private val PLAIN_TAGS = listOf("official", "audio", "lyric", "лирик", "текст", "премьера", "visualizer", "визуал", "клип", "video", "видео", "hd", "hq", "4k")
+
     private fun artists(a: String) = norm(a.replace(Regex("""\b(feat|ft)\b""", RegexOption.IGNORE_CASE), ","))
         .split(Regex("""\s*(,|&|\band\b|\bи\b|\bx\b)\s*""")).map { it.trim() }.filter { it.isNotEmpty() }
 
@@ -145,12 +148,13 @@ object Match {
         if (isUncensored(title) && !isUncensored(src.title)) s += 2 // без цензуры — лучше
         // Лишняя приписка в скобках, которой нет у исходного трека («Pianoforte», «Sped Up»…) — скорее всего, другая версия.
         val extra = Regex("""[(\[]([^)\]]+)[)\]]""").findAll(title).filter { !isUncensored(it.value) }.map { norm(it.groupValues[1]) }
-            .filter { it.isNotEmpty() && !srcLow.contains(it) && !it.startsWith("feat") && !it.startsWith("ft ") }
+            .filter { it.isNotEmpty() && !srcLow.contains(it) && !it.startsWith("feat") && !it.startsWith("ft ") && !PLAIN_TAGS.any { tag -> it.contains(tag) } }
         if (extra.any()) s -= 3
         if (src.durationSec > 0 && durationSec > 0) {
             val d = kotlin.math.abs(src.durationSec - durationSec)
             // Сильно другая длительность — это другая версия, превью или клип с длинным вступлением.
-            if (d > 45) return null
+            // Но если название и исполнитель совпали точно — не отбрасываем (длительность в медиатеке бывает неверной), а ставим ниже.
+            if (d > 45) { return if (sb == cb && src.artist.isNotBlank()) s - 4 else null }
             s += when {
                 d <= 3 -> 2
                 d <= 10 -> 1
@@ -159,6 +163,21 @@ object Match {
             }
         }
         return s
+    }
+
+    /** Почему кандидат не подошёл — коротко, для отчёта о поиске. null — подошёл. */
+    fun reason(src: Track, title: String, artist: String, durationSec: Int = 0): String? {
+        val sc = score(src, title, artist, durationSec)
+        if (sc != null && sc >= 0) return null
+        val sb = fold(base(src.title)); val cb = fold(base(title)); val nt = fold(norm(title))
+        if (durationSec in 1..59 && (src.durationSec == 0 || src.durationSec >= 75)) return "короче минуты"
+        if (sb.isEmpty() || cb.isEmpty() || (sb != cb && !nt.contains(sb) && !sb.contains(cb))) return "другое название"
+        if (src.artist.isNotBlank()) {
+            val a = fold(norm(artist))
+            if (!artists(src.artist).map(::fold).any { it.isNotEmpty() && (a.contains(it) || it.contains(a) && a.isNotEmpty() || nt.contains(it)) }) return "другой исполнитель"
+        }
+        if (src.durationSec > 0 && durationSec > 0 && kotlin.math.abs(src.durationSec - durationSec) > 45) return "длительность $durationSec с вместо ${src.durationSec} с"
+        return "другая версия (ремикс, live, кавер…)"
     }
 
     /** Все подходящие кандидаты, от лучшего к худшему (оценка ≥ 0). */
