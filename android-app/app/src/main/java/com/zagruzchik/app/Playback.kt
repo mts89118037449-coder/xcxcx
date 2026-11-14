@@ -168,6 +168,7 @@ object Playback {
         val app = ctx.applicationContext
         val gen = ++queueGen
         if (!auto) skips = 0
+        tapAt = System.currentTimeMillis(); startInfo = null
         queue = items
         startIndex = start.coerceIn(0, items.lastIndex)
         nextToAdd = start + 1
@@ -179,19 +180,19 @@ object Playback {
 
         first.local?.let { f ->
             Pending.set(null, loading = false, error = null)
-            start(app, gen, item(f).withTrack(first.track))
+            startPath = "файл на телефоне"; start(app, gen, item(f).withTrack(first.track))
             return
         }
         // Уже звучала — играем из памяти: мгновенно и без интернета.
         MediaCache.fileFor(first.track)?.let { f ->
             Pending.set(null, loading = false, error = null)
-            start(app, gen, cachedItem(first, f))
+            startPath = "из памяти"; start(app, gen, cachedItem(first, f))
             return
         }
         // Начало полной версии уже на телефоне — играем сразу, остальное подтянется из сети.
         if (first.pageUrl == null && first.directUrl == null) HeadCache.entry(first.track)?.let { e ->
             Pending.set(null, loading = false, error = null)
-            start(app, gen, headItem(first, e))
+            startPath = "начало на телефоне"; start(app, gen, headItem(first, e))
             return
         }
         val ready = when {
@@ -201,7 +202,7 @@ object Playback {
         }
         if (ready != null) {
             Pending.set(null, loading = false, error = null)
-            start(app, gen, streamItem(first, ready))
+            startPath = if (tapAt > 0 && System.currentTimeMillis() - tapAt < 150) "ссылка была готова" else "нашёл по нажатию"; start(app, gen, streamItem(first, ready))
             return
         }
         // Без пауз: полная версия готова (выше) — играет с начала; нет — сразу фрагмент, а полная
@@ -221,7 +222,7 @@ object Playback {
                     if (gen != queueGen) return@post
                     if (s != null) {
                         Pending.set(null, loading = false, error = null)
-                        start(app, gen, streamItem(first, s))
+                        startPath = "нашёл по нажатию"; start(app, gen, streamItem(first, s))
                         worker.execute { MediaCache.store(app, first.track, s.pageUrl) }
                     } else viaPreview(app, gen, first, fullSoon)
                 }
@@ -245,7 +246,7 @@ object Playback {
                 if (gen != queueGen) return@post
                 if (ready != null) {
                     Pending.set(null, loading = false, error = null)
-                    start(app, gen, streamItem(first, ready))
+                    startPath = if (tapAt > 0 && System.currentTimeMillis() - tapAt < 150) "ссылка была готова" else "нашёл по нажатию"; start(app, gen, streamItem(first, ready))
                     worker.execute { MediaCache.store(app, first.track, ready.pageUrl) }
                 } else {
                     val q = QItem(first.track.copy(preview = fresh), first.local, first.sourceUrl, first.pageUrl, first.directUrl, first.directSource)
@@ -262,7 +263,7 @@ object Playback {
         if (preview != null) {
             Pending.set(null, loading = false, error = null)
             waitingFull = first.track
-            start(app, gen, previewItem(first, preview), fill = false)
+            startPath = "фрагмент"; start(app, gen, previewItem(first, preview), fill = false)
         } else {
             Pending.set(first.track, loading = true, error = null)
         }
@@ -407,6 +408,11 @@ object Playback {
         }
     }
 
+    // Замер «от нажатия до звука» — показываем в плеере, чтобы было видно, что и где тормозит.
+    private var tapAt = 0L
+    private var startPath = ""
+    @Volatile var startInfo: String? = null; private set
+
     private fun start(app: Context, gen: Int, item: MediaItem, fill: Boolean = true) {
         controller(app) { c ->
             if (gen != queueGen) return@controller
@@ -465,6 +471,13 @@ object Playback {
             }
 
             // Фрагмент закончился, а полная версия ещё не готова — не тишина, а «подхватываю».
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying && tapAt > 0) {
+                    startInfo = "$startPath · ${(System.currentTimeMillis() - tapAt) / 100 / 10.0} с"
+                    tapAt = 0
+                }
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == androidx.media3.common.Player.STATE_ENDED) { learn(skipped = false); current = null }
                 if (state == androidx.media3.common.Player.STATE_ENDED &&

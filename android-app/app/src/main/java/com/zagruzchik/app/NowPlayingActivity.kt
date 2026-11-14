@@ -285,7 +285,7 @@ class NowPlayingActivity : AppCompatActivity() {
                 src == "Скачано" -> "Из загрузок · без интернета"
                 isPreview -> Playback.joinIn(c)?.let { s -> "Полная версия найдена · продолжит без паузы через $s с" }
                     ?: "Фрагмент · ищу полную версию, продолжит с этого же места"
-                else -> "Играет из $src · без скачивания"
+                else -> "Играет из $src" + (Playback.startInfo?.let { " · старт: $it" } ?: "")
             }
             setCover(m.artworkUri?.toString(), m.artworkData)
             // Вверху — откуда играет: площадка, память, телефон или ТВ.
