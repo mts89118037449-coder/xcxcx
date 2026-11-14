@@ -560,7 +560,7 @@ object Playback {
     fun previous(ctx: Context) = controller(ctx.applicationContext) { it.seekToPrevious() }
 
     /** Следующие 8 песен очереди готовим заранее — переходы без ожидания. */
-    private const val AHEAD = 8
+    private const val AHEAD = 2 // больше — и подготовка душит сеть и ту песню, которую нажали
 
     private fun prefetchAhead(from: Int) {
         val next = queue.drop(from).take(AHEAD).filter { it.local == null && it.directUrl == null && !MediaCache.has(it.track) }

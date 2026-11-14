@@ -144,7 +144,7 @@ object VisiblePrefetch {
             val found = mutableListOf<Track>()
             val r = android.graphics.Rect()
             fun walk(v: View) {
-                if (found.size >= 14 || v.visibility != View.VISIBLE) return
+                if (found.size >= 3 || v.visibility != View.VISIBLE) return
                 (v.getTag(R.id.libContent) as? Track)?.let { t ->
                     if (v.isShown && v.getGlobalVisibleRect(r) && android.graphics.Rect.intersects(r, screen) && !MediaCache.has(t) && !HeadCache.has(t)) found += t
                     return
@@ -152,7 +152,7 @@ object VisiblePrefetch {
                 if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
             }
             walk(root)
-            if (found.isNotEmpty()) Streams.prefetchMany(found, 14)
+            if (found.isNotEmpty()) Streams.prefetchMany(found, 3)
         }
         val kick = { root.removeCallbacks(run); root.postDelayed(run, 350) }
         root.viewTreeObserver.addOnScrollChangedListener { kick() }

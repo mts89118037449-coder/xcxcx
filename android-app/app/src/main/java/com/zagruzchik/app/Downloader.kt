@@ -312,7 +312,8 @@ object Downloader {
     }
 
     /** Лучший звук, который можно играть по ссылке (HTTP, затем HLS). */
-    private const val STREAM_FORMAT = "bestaudio[protocol^=http]/bestaudio[protocol=m3u8_native]/bestaudio"
+    // Последние варианты — для площадок, где звук не отдаётся отдельно от картинки (Rutube, Dailymotion): берём самый лёгкий ролик со звуком.
+    private const val STREAM_FORMAT = "bestaudio[protocol^=http]/bestaudio[protocol=m3u8_native]/bestaudio/worst[acodec!=none]/worst"
 
     /**
      * То же, но для результата без исполнителя в выдаче (общий поиск YouTube Music): исполнителя и длительность

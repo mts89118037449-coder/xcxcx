@@ -11,8 +11,8 @@ android {
         applicationId = "com.zagruzchik.app"
         minSdk = 29 // Android 10+
         targetSdk = 35
-        versionCode = 60
-        versionName = "8.0"
+        versionCode = 61
+        versionName = "8.1"
     }
 
     // Один постоянный ключ, чтобы новые версии ставились поверх старых без удаления.

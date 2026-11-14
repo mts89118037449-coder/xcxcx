@@ -157,7 +157,7 @@ object YtdlpDaemon {
     }
 
     /** Плоский поиск: «scsearch8:…», «ytsearch8:…» или ссылка на страницу поиска. */
-    internal fun search(query: String, source: String, timeoutSec: Long = 15, tag: String? = null): List<Downloader.Candidate> {
+    internal fun search(query: String, source: String, timeoutSec: Long = 8, tag: String? = null): List<Downloader.Candidate> {
         val a = call("search", query, JSONObject().put("extract_flat", "in_playlist").put("playlistend", 8), timeoutSec, tag) as? JSONArray
             ?: return emptyList()
         return (0 until a.length()).mapNotNull { i ->
