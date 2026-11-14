@@ -177,7 +177,11 @@ object Streams {
     private val reports = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val live = java.util.concurrent.ConcurrentHashMap<String, java.util.Queue<String>>()
     /** Что происходит прямо сейчас, пока песня ищется (для экрана плеера): последние ответы площадок. */
-    fun progress(t: Track): String? = live[key(t)]?.toList()?.takeLast(3)?.joinToString("\n") { it.lineSequence().first().replace(Regex("""\s*\[[^\]]*]"""), "").take(70) }?.takeIf { it.isNotBlank() }
+    fun progress(t: Track): String? = live[key(t)]?.toList()?.takeLast(4)?.joinToString("\n") { it.lineSequence().first().replace(Regex("""\s*\[[^\]]*]"""), "").take(170) }?.takeIf { it.isNotBlank() }
+
+    /** Причина сбоя — коротко, для отчёта и экрана плеера (раньше ошибки терялись, и было видно только «результатов 0»). */
+    private fun why(e: Throwable?, where: String = ""): String = if (e == null) "" else
+        " · ошибка${if (where.isEmpty()) "" else " ($where)"}: ${e.javaClass.simpleName} ${(e.cause?.message ?: e.message).orEmpty().take(90)}"
     /** Когда YouTube последний раз потребовал «вы не робот» (0 — не требовал). */
     @Volatile var youtubeBlockedAt = 0L
     fun report(t: Track): String? = reports[key(t)]
@@ -275,9 +279,10 @@ object Streams {
         // Zaycev — MP3 до 320 kbps, отвечает быстро: первым по старшинству.
         val zaycev = searchPool.submit<StreamInfo?> {
             val t0 = System.currentTimeMillis()
-            val raw = runCatching { ZaycevSource.search(t.query) }.getOrDefault(emptyList())
+            val got = runCatching { ZaycevSource.search(t.query) }
+            val raw = got.getOrDefault(emptyList())
             val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
-            log += "Zaycev [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" +
+            log += "Zaycev [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" + why(got.exceptionOrNull()) +
                 raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗"} ${c.title.take(60)} | ${c.artist.take(30)} | ${c.durationSec} с | ${c.bitrate} kbps" }
             if (ok.isNotEmpty()) foundOn += "Zaycev"
             // Из подходящих — лучший по качеству среди первых трёх.
@@ -312,7 +317,7 @@ object Streams {
             var via = ""
             val raw = runCatching { NewPipeSource.searchSongs(t.query) { via = it } }.getOrDefault(emptyList())
             val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
-            log += "YouTube Music [${t.query.take(40)}; $via]: результатов ${raw.size}, подошло ${ok.size}" +
+            log += "YouTube Music [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size} · $via" +
                 raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗"} ${c.title.take(60)} | ${c.artist.take(30)} | ${c.durationSec} с" } +
                 "\n  поиск за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
             if (ok.isNotEmpty()) foundOn += "YouTube Music"
@@ -326,13 +331,16 @@ object Streams {
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                 // Поиск — средствами телефона (без Python, около секунды); не вышло — через yt-dlp.
                 val words = query.substringAfter(':')
-                val quick = runCatching { NewPipeSource.search(name == "SoundCloud", words) }.getOrNull()?.takeIf { it.isNotEmpty() }?.take(10)?.map {
+                val fast = runCatching { NewPipeSource.search(name == "SoundCloud", words) }
+                val quick = fast.getOrNull()?.takeIf { it.isNotEmpty() }?.take(10)?.map {
                     Downloader.Candidate(it.url, it.title, listOf(it.artist, it.title.substringBefore(" - ", "")).filter { x -> x.isNotBlank() }.joinToString(" | "), it.durationSec, name, 0)
                 }
                 if (quick == null || name == "SoundCloud") App.awaitReady() // звук SoundCloud берёт yt-dlp
-                val raw = quick ?: runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
+                val slow = if (quick == null) runCatching { Downloader.searchOrThrow(query, name) } else null
+                val raw = quick ?: slow?.getOrNull().orEmpty()
                 val candidates = Match.ranked(t, raw) { Triple(it.title, it.author, it.duration) }
                 log += "$name [${query.take(40)}]: результатов ${raw.size}, подошло ${candidates.size}" +
+                    (if (raw.isEmpty()) why(fast.exceptionOrNull(), "на телефоне") + why(slow?.exceptionOrNull(), "yt-dlp") else "") +
                     raw.take(5).joinToString("") { c -> "\n  ${if (c in candidates) "✓" else "✗"} ${c.title.take(60)} | ${c.author.take(30)} | ${c.duration} с" }
                 // Ссылки для двух лучших берём одновременно (лучший может оказаться платным — DRM), третий — если оба не играют.
                 if (candidates.isNotEmpty()) foundOn += name

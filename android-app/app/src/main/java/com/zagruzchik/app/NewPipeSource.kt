@@ -56,7 +56,9 @@ object NewPipeSource {
             if (local.isDone && mirror.isDone) break
             Thread.sleep(30)
         }
-        via("нет ответа")
+        fun err(f: java.util.concurrent.Future<List<Found>>, name: String) = if (!f.isDone) "$name: не ответил за 6 с" else
+            runCatching { f.get() }.exceptionOrNull()?.let { e -> (e.cause ?: e).let { "$name: ${it.javaClass.simpleName} ${it.message.orEmpty().take(80)}" } } ?: "$name: пусто"
+        via("ошибка — " + err(local, "телефон") + "; " + err(mirror, "зеркало"))
         return emptyList()
     }
 

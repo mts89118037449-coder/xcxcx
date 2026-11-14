@@ -128,7 +128,12 @@ class CollectionActivity : AppCompatActivity() {
                 findViewById<View>(R.id.colProgress).isVisible = false
                 list.onFailure { return@runOnUiThread error(it) }
                 val l = list.getOrThrow()
-                if (l.isEmpty()) return@runOnUiThread error(UserError(if (which == LIST_NEWS) "Ставьте ♥ песням — здесь появятся новинки ваших исполнителей" else "Не загрузилось. Проверьте интернет."))
+                if (l.isEmpty()) return@runOnUiThread error(UserError(when {
+                    which != LIST_NEWS -> "Не загрузилось. Проверьте интернет."
+                    Library.favorites.isEmpty() -> "Ставьте ♥ песням — здесь появятся новинки ваших исполнителей"
+                    // Любимые есть, а новинок нет: либо за последние недели ничего не вышло, либо проверка не прошла — запускаем её заново.
+                    else -> { News.check(); "Свежих релизов ваших исполнителей пока не нашлось. Проверяю ещё раз — загляните через минуту." }
+                }))
                 tracks = l
                 showTracks(l, numbered = which != LIST_NEWS)
                 Streams.prefetchMany(l, 6)
