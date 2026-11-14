@@ -336,8 +336,16 @@ object Downloader {
         // YouTube: сначала средствами телефона (около секунды, движок yt-dlp не нужен и может ещё запускаться);
         // не вышло — обычным путём ниже.
         if (Service.of(pageUrl).let { it == Service.YOUTUBE || it == Service.YOUTUBE_MUSIC }) {
-            val np = runCatching { NewPipeSource.audio(pageUrl, wantTotal) }
+            var np = runCatching { NewPipeSource.audio(pageUrl, wantTotal) }
             np.getOrNull()?.let { a -> return StreamInfo(a.url, pageUrl, source, a.cover, title) }
+            fun blocked(r: kotlin.Result<*>) = r.exceptionOrNull()?.toString().orEmpty().let { it.contains("bot", true) || it.contains("SignIn") || it.contains("LOGIN_REQUIRED") }
+            // Адрес VPN YouTube не устраивает — берём YouTube напрямую, через обычную сеть телефона (остальное остаётся в VPN).
+            if (blocked(np) && !Net.youtubeDirect && Net.vpnActive() && Net.physical() != null) {
+                Net.youtubeDirect = true
+                np = runCatching { NewPipeSource.audio(pageUrl, wantTotal) }
+                np.getOrNull()?.let { a -> return StreamInfo(a.url, pageUrl, source, a.cover, title) }
+                Net.youtubeDirect = false // напрямую тоже не вышло — возвращаемся
+            }
             val why = np.exceptionOrNull()?.toString().orEmpty()
             // YouTube требует «подтвердите, что вы не робот» — так он отвечает адресам VPN и дата-центров.
             // Без входа в YouTube обычный путь упрётся в то же самое, только через полминуты: не ждём.

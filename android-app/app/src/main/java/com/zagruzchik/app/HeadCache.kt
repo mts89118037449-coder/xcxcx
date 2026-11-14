@@ -84,7 +84,7 @@ object HeadCache {
         if (!storable(s)) return false
         val where = Streams.whereOf(t) ?: return false // без памяти источника продолжить ту же запись не получится
         val id = java.util.UUID.nameUUIDFromBytes((key + "|" + where).toByteArray()).toString().replace("-", "")
-        val c = URL(s.url).openConnection() as HttpURLConnection
+        val c = Net.open(URL(s.url))
         c.connectTimeout = 8000; c.readTimeout = 15000
         c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
         c.setRequestProperty("Range", "bytes=0-${HEAD - 1}")
@@ -159,7 +159,7 @@ object HeadCache {
     private val pool2 = Executors.newCachedThreadPool()
 
     private fun totalOf(url: String, from: Long): Long {
-        val c = URL(url).openConnection() as HttpURLConnection
+        val c = Net.open(URL(url))
         c.connectTimeout = 6000; c.readTimeout = 6000
         c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
         c.setRequestProperty("Range", "bytes=$from-${from + 1}")
@@ -209,7 +209,8 @@ private class Chunked(private val base: DataSource.Factory, private val listener
     /** Открыть следующий кусок; возвращает полный размер файла (из ответа сервера) или -1. */
     private fun openChunk(): Long {
         runCatching { ds?.close() }
-        val d = base.createDataSource().also { x -> listeners.forEach(x::addTransferListener) }
+        // Ссылка YouTube привязана к адресу, с которого её взяли: если брали мимо VPN — и читаем мимо VPN.
+        val d = if (Net.youtubeDirect) NetDataSource() else base.createDataSource().also { x -> listeners.forEach(x::addTransferListener) }
         val want = if (remaining > 0) minOf(CHUNK, remaining) else CHUNK
         d.open(DataSpec.Builder().setUri(uri!!).setPosition(pos).setLength(want).build())
         ds = d

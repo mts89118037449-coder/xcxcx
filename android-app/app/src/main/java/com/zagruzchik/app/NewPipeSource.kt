@@ -27,7 +27,7 @@ object NewPipeSource {
     private val ready by lazy {
         NewPipe.init(object : Downloader() {
             override fun execute(request: Request): Response {
-                val c = URL(request.url()).openConnection() as HttpURLConnection
+                val c = Net.open(URL(request.url())) // YouTube — при необходимости мимо VPN
                 c.requestMethod = request.httpMethod()
                 c.connectTimeout = 8000; c.readTimeout = 12000
                 c.instanceFollowRedirects = true
@@ -121,7 +121,7 @@ object NewPipeSource {
 
     /** Размер файла по ссылке (заодно проверка, что она играет). -1 — не отдаётся. */
     private fun size(url: String): Long = runCatching {
-        val c = URL(url).openConnection() as HttpURLConnection
+        val c = Net.open(URL(url))
         c.connectTimeout = 4000; c.readTimeout = 4000
         c.setRequestProperty("Range", "bytes=0-1")
         try {
