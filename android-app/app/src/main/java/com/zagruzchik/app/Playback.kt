@@ -215,16 +215,20 @@ object Playback {
         // Фрагмент — только если поиск затянулся.
         if (canPreview && Settings.startMode(app) == Settings.StartMode.FULL) {
             Pending.set(first.track, loading = true, error = null)
-            val wait = if (Streams.known(first.track)) 8000L else 4500L
             worker.execute {
-                val s = runCatching { fullSoon.get(wait, java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrNull()
+                // Фрагмент не включаем вообще: ждём полную, пока идёт поиск.
+                val s = runCatching { fullSoon.get() }.getOrNull()
                 main.post {
                     if (gen != queueGen) return@post
                     if (s != null) {
                         Pending.set(null, loading = false, error = null)
                         startPath = "нашёл по нажатию"; start(app, gen, streamItem(first, s))
                         worker.execute { MediaCache.store(app, first.track, s.pageUrl) }
-                    } else viaPreview(app, gen, first, fullSoon)
+                    } else {
+                        // Не нашлась нигде — сообщение и переход к следующей (без фрагмента).
+                        val q = QItem(first.track.copy(preview = null), first.local, first.sourceUrl, first.pageUrl, first.directUrl, first.directSource)
+                        previewThenFull(app, gen, q, fullSoon)
+                    }
                 }
             }
             return

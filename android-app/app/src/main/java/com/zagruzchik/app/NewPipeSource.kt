@@ -46,11 +46,17 @@ object NewPipeSource {
 
     /** Песни по запросу. [via] — чем нашли (для отчёта о поиске). */
     fun searchSongs(query: String, via: (String) -> Unit = {}): List<Found> {
-        val local = runCatching { onDevice(query) }
-        local.getOrNull()?.takeIf { it.isNotEmpty() }?.let { via("на телефоне"); return it }
-        val mirror = runCatching { piped(query) }
-        mirror.getOrNull()?.takeIf { it.isNotEmpty() }?.let { via("зеркало ${lastMirror.orEmpty()}"); return it }
-        via("нет ответа: " + listOfNotNull(local.exceptionOrNull()?.message, mirror.exceptionOrNull()?.message).joinToString("; ").take(120))
+        // Телефон и зеркало — одновременно; берём того, кто первым ответил непустым списком (раньше шли по очереди — до 16 с).
+        val local = pool.submit<List<Found>> { onDevice(query) }
+        val mirror = pool.submit<List<Found>> { piped(query) }
+        val deadline = System.currentTimeMillis() + 6000
+        while (System.currentTimeMillis() < deadline) {
+            if (local.isDone) runCatching { local.get() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { via("на телефоне"); return it }
+            if (mirror.isDone) runCatching { mirror.get() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { via("зеркало ${lastMirror.orEmpty()}"); return it }
+            if (local.isDone && mirror.isDone) break
+            Thread.sleep(30)
+        }
+        via("нет ответа")
         return emptyList()
     }
 
@@ -80,14 +86,15 @@ object NewPipeSource {
         "pipedapi.leptons.xyz", "pipedapi.reallyaweso.me", "pipedapi.nosebs.ru", "piped-api.privacy.com.de",
     )
     @Volatile private var lastMirror: String? = null
+    private val pool = java.util.concurrent.Executors.newCachedThreadPool()
 
     private fun piped(query: String): List<Found> {
         // Последнее ответившее зеркало — первым; остальные по очереди, каждому не больше 4 с.
         val order = listOfNotNull(lastMirror) + MIRRORS.filter { it != lastMirror }
         var last: Exception? = null
-        for (host in order.take(4)) {
+        for (host in order.take(2)) {
             try {
-                val items = JSONObject(Http.get("https://$host/search?q=${Http.enc(query)}&filter=music_songs", Http.DESKTOP_UA, 4000)).optJSONArray("items") ?: continue
+                val items = JSONObject(Http.get("https://$host/search?q=${Http.enc(query)}&filter=music_songs", Http.DESKTOP_UA, 2500)).optJSONArray("items") ?: continue
                 val found = (0 until items.length()).mapNotNull { i ->
                     val o = items.optJSONObject(i) ?: return@mapNotNull null
                     val id = o.optString("url").substringAfter("v=", "").takeIf { it.isNotBlank() } ?: return@mapNotNull null

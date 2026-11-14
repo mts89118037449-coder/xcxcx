@@ -71,6 +71,19 @@ class NowPlayingActivity : AppCompatActivity() {
         title = findViewById(R.id.npTitle)
         artist = findViewById(R.id.npArtist)
         source = findViewById(R.id.npSource)
+        // Нажатие на строку «Играет из…» — что ответила каждая площадка и за сколько (чтобы видеть, что тормозит).
+        source.setOnClickListener {
+            val t = currentTrack() ?: return@setOnClickListener
+            val report = "Старт: ${Playback.startInfo ?: "—"}\n\n" + (Streams.report(t) ?: "Поиска не было: источник уже был известен или песня играла с телефона.")
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("Как включилась «${t.title}»")
+                .setMessage(report)
+                .setPositiveButton("Скопировать") { _, _ ->
+                    getSystemService(android.content.ClipboardManager::class.java)
+                        ?.setPrimaryClip(android.content.ClipData.newPlainText("SoundAura", "${t.artist} — ${t.title}\n$report"))
+                }
+                .setNegativeButton("Закрыть", null).show()
+        }
         seekView = findViewById(R.id.npSeek)
         pos = findViewById(R.id.npPos)
         dur = findViewById(R.id.npDur)

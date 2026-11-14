@@ -16,7 +16,7 @@ object ZaycevSource {
 
     /** Результаты поиска (только те, что можно слушать), в порядке выдачи. Ответ — около килобайта. */
     fun search(query: String): List<Found> {
-        val o = JSONObject(Http.get("$BASE/api/external/pages/search/tracks?q=${Http.enc(query)}&page=1&limit=10", Http.DESKTOP_UA, 6000))
+        val o = JSONObject(Http.get("$BASE/api/external/pages/search/tracks?q=${Http.enc(query)}&page=1&limit=10", Http.DESKTOP_UA, 3000))
         val ids = o.optJSONArray("trackIds") ?: return emptyList()
         val info = o.optJSONObject("tracksInfo") ?: return emptyList()
         return (0 until ids.length()).mapNotNull { i ->
@@ -33,7 +33,7 @@ object ZaycevSource {
     fun streamUrl(id: Long): String? {
         val meta = post("$BASE/api/external/track/filezmeta", JSONObject().put("trackIds", JSONArray().put(id)).put("subscription", false).toString())
         val hash = JSONObject(meta).optJSONArray("tracks")?.optJSONObject(0)?.optString("streaming")?.takeIf { it.isNotBlank() && it != "false" && it != "null" } ?: return null
-        return JSONObject(Http.get("$BASE/api/external/track/play/$hash", Http.DESKTOP_UA, 8000)).optString("url").takeIf { it.startsWith("http") }
+        return JSONObject(Http.get("$BASE/api/external/track/play/$hash", Http.DESKTOP_UA, 3000)).optString("url").takeIf { it.startsWith("http") }
     }
 
     private fun post(url: String, body: String): String {
@@ -42,7 +42,7 @@ object ZaycevSource {
         c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
         c.setRequestProperty("Content-Type", "application/json")
         c.setRequestProperty("Referer", "$BASE/")
-        c.connectTimeout = 8000; c.readTimeout = 8000
+        c.connectTimeout = 3000; c.readTimeout = 3000
         try {
             c.outputStream.use { it.write(body.toByteArray()) }
             if (c.responseCode !in 200..299) throw Http.HttpError(c.responseCode, url)

@@ -348,7 +348,7 @@ object Streams {
                 if (!f.isDone) continue
                 val s = runCatching { f.get() }.getOrNull() ?: continue
                 val seniorsDone = jobs.take(i).all { it.isDone }
-                if (seniorsDone || System.currentTimeMillis() - started > 2500) return s
+                if (seniorsDone || System.currentTimeMillis() - started > 1200) return s
             }
             if (jobs.all { it.isDone }) break
             // Основные площадки отвечают дольше 25 с — не ждём их, идём к запасным.
