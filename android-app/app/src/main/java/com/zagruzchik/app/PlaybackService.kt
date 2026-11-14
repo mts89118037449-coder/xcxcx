@@ -33,10 +33,10 @@ class PlaybackService : MediaSessionService() {
         super.onCreate()
         val player = ExoPlayer.Builder(this)
             // «aura://head/…» — начало песни с телефона, продолжение из сети (мгновенный старт); остальное — как обычно.
-            .setMediaSourceFactory(MergingFactory(DefaultMediaSourceFactory(AuraDataSourceFactory(this))))
+            .setMediaSourceFactory(MergingFactory(DefaultMediaSourceFactory(this), DefaultMediaSourceFactory(AuraDataSourceFactory(this))))
             // Начинаем играть, как только есть 0,7 с звука (по умолчанию ждёт 2,5 с), и держим запас на минуту вперёд.
             .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                .setBufferDurationsMs(30_000, 90_000, 700, 2_000).build())
+                .setBufferDurationsMs(50_000, 50_000, 1_000, 2_500).build())
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
                 true, // ставить на паузу при звонке и других приложениях
@@ -129,12 +129,16 @@ class PlaybackService : MediaSessionService() {
      * Видео с YouTube при просмотре во время загрузки приходит двумя потоками: картинка и звук.
      * Если у элемента есть ссылка на отдельный звук — склеиваем их на лету.
      */
-    private class MergingFactory(private val base: DefaultMediaSourceFactory) : MediaSource.Factory {
-        override fun setDrmSessionManagerProvider(p: DrmSessionManagerProvider) = apply { base.setDrmSessionManagerProvider(p) }
-        override fun setLoadErrorHandlingPolicy(p: LoadErrorHandlingPolicy) = apply { base.setLoadErrorHandlingPolicy(p) }
-        override fun getSupportedTypes() = base.supportedTypes
+    private class MergingFactory(private val plain: DefaultMediaSourceFactory, private val aura: DefaultMediaSourceFactory) : MediaSource.Factory {
+        override fun setDrmSessionManagerProvider(p: DrmSessionManagerProvider) = apply { plain.setDrmSessionManagerProvider(p); aura.setDrmSessionManagerProvider(p) }
+        override fun setLoadErrorHandlingPolicy(p: LoadErrorHandlingPolicy) = apply { plain.setLoadErrorHandlingPolicy(p); aura.setLoadErrorHandlingPolicy(p) }
+        override fun getSupportedTypes() = plain.supportedTypes
 
         override fun createMediaSource(mediaItem: MediaItem): MediaSource {
+            // Свой источник данных — только для «начала с телефона» и для YouTube (чтение кусками).
+            // Всё остальное (SoundCloud, файлы, Zaycev, Telegram) идёт стандартным путём проигрывателя.
+            val u = mediaItem.localConfiguration?.uri
+            val base = if (u?.scheme == "aura" || u?.host?.endsWith("googlevideo.com") == true) aura else plain
             val audio = mediaItem.requestMetadata.extras?.getString(Playback.EXTRA_AUDIO_URL)
             val main = base.createMediaSource(mediaItem)
             if (audio.isNullOrEmpty()) return main

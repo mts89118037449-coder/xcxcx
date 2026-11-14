@@ -133,6 +133,9 @@ object Streams {
 
     private const val FAIL_TTL_MS = 20 * 60 * 1000L
     private val failed = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, UserError>>()
+    /** Найденная ссылка не заиграла — забываем её и запомненный источник: следующий раз ищем с нуля. */
+    fun forget(t: Track) { val k = key(t); done.remove(k); remember(k, null) }
+
     /** Подключили новый источник (Telegram) — то, что раньше «не нашлось», стоит поискать снова. */
     fun forgetFailures() { failed.clear() }
     /** «Ещё раз» — искать заново, даже если недавно не нашли. */
@@ -264,6 +267,7 @@ object Streams {
             }
         } finally {
             live.remove(k); waitingOn.remove(k)
+            AppLog.add("ПОИСК «${t.label}» (${t.durationSec} с)\n" + log.sorted().joinToString("\n"))
             reports[key(t)] = "Искал: «${t.query}»" + (if (t.durationSec > 0) " (${t.durationSec} с)" else "") + "\n\n" + log.sorted().joinToString("\n\n")
         }
     }
@@ -345,7 +349,11 @@ object Streams {
                 pair.map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                     val t0 = System.currentTimeMillis()
                     if (Service.of(c.url).let { it != Service.YOUTUBE && it != Service.YOUTUBE_MUSIC }) App.awaitReady() // звук SoundCloud берёт yt-dlp
-                    Downloader.streamOf(c.url, name.substringBefore(" ("), c.title, problems).also { log += "$name звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
+                    val errs = java.util.concurrent.ConcurrentLinkedQueue<String>()
+                    Downloader.streamOf(c.url, name.substringBefore(" ("), c.title, errs).also {
+                        problems += errs
+                        log += "$name звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет — " + (errs.joinToString("; ").ifBlank { "без объяснения" }).take(160)} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
+                    }
                 } } }.firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
             }
         val onPhone = (if (light) emptyList() else sources.take(2)).map { (site, query) ->

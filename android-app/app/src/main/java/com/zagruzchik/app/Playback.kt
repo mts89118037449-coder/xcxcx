@@ -169,6 +169,7 @@ object Playback {
         val gen = ++queueGen
         if (!auto) skips = 0
         tapAt = System.currentTimeMillis(); startInfo = null
+        AppLog.add("НАЖАТИЕ «${items.getOrNull(start)?.track?.label}» (очередь ${items.size})")
         queue = items
         startIndex = start.coerceIn(0, items.lastIndex)
         nextToAdd = start + 1
@@ -470,14 +471,22 @@ object Playback {
                     main.post { playQueue(app, listOf(here) + rest.filter { it !== here }, 0, openScreen = false) }
                     return
                 }
-                if (c.currentMediaItem?.mediaMetadata?.extras?.getBoolean(X_PREVIEW) == true && waitingFull != null)
+                if (c.currentMediaItem?.mediaMetadata?.extras?.getBoolean(X_PREVIEW) == true && waitingFull != null) {
                     Pending.set(waitingFull, loading = true, error = null)
+                    return
+                }
+                // Любая другая ошибка проигрывателя: раньше она терялась — песня «включалась» и молчала. Теперь видно на экране и в журнале.
+                AppLog.error("проигрыватель: «${m?.title}» из ${m?.extras?.getString(X_SOURCE)} (${error.errorCodeName})", error)
+                val t = Track(m?.title?.toString().orEmpty(), m?.artist?.toString().orEmpty(), cover = m?.artworkUri?.toString())
+                Streams.forget(t) // ссылка не играет — в следующий раз ищем заново, а не берём её же
+                Pending.set(t, loading = false, error = "Звук не пошёл: ${error.errorCodeName}. ${error.cause?.message.orEmpty().take(120)}\nНажмите «Ещё раз» — найду заново.")
             }
 
             // Фрагмент закончился, а полная версия ещё не готова — не тишина, а «подхватываю».
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying && tapAt > 0) {
                     startInfo = "$startPath · ${(System.currentTimeMillis() - tapAt) / 100 / 10.0} с"
+                    AppLog.add("ЗВУК ПОШЁЛ «${c.mediaMetadata.title}» из ${c.mediaMetadata.extras?.getString(X_SOURCE)}: $startInfo")
                     tapAt = 0
                 }
             }

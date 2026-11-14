@@ -1218,6 +1218,8 @@ class MainActivity : AppCompatActivity() {
             Telegram.ready -> "Подключён" + (Telegram.me.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
             else -> "Нужно закончить вход"
         }, "Свой аккаунт Telegram как источник: встроенный поиск музыки, часто 320 kbps") { TelegramActivity.open(this) }
+        settingRow(appearance, R.drawable.ic_upload_file, "Отправить журнал", "Что искали и почему не включилось",
+            "Файл с ответами площадок и ошибками плеера — отправьте его, если песня не заиграла") { AppLog.share(this) }
         val sm = Settings.startMode(this)
         settingRow(appearance, R.drawable.ic_play_arrow, "Начало песни", sm.label, sm.hint) {
             choose("Начало песни", Settings.StartMode.entries.map { "${it.label} — ${it.hint}" }, sm.ordinal) {

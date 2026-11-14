@@ -84,6 +84,7 @@ class NowPlayingActivity : AppCompatActivity() {
                     getSystemService(android.content.ClipboardManager::class.java)
                         ?.setPrimaryClip(android.content.ClipData.newPlainText("SoundAura", "${t.artist} — ${t.title}\n$report"))
                 }
+                .setNeutralButton("Отправить журнал") { _, _ -> AppLog.share(this) }
                 .setNegativeButton("Закрыть", null).show()
         }
         seekView = findViewById(R.id.npSeek)
@@ -450,10 +451,7 @@ class NowPlayingActivity : AppCompatActivity() {
                 val url = Links.extract(input.text.toString()) ?: input.text.toString().trim()
                 if (url.startsWith("http")) { Streams.pin(t, url); Playback.retry(this) }
             }
-            .setNeutralButton("Скопировать отчёт") { _, _ ->
-                getSystemService(android.content.ClipboardManager::class.java)
-                    ?.setPrimaryClip(android.content.ClipData.newPlainText("SoundAura", "${t.artist} — ${t.title}\n$report"))
-            }
+            .setNeutralButton("Отправить журнал") { _, _ -> AppLog.share(this) }
             .setNegativeButton("Закрыть", null).show()
     }
 }
