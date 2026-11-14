@@ -37,9 +37,11 @@ object WebSearch {
     private val processIds = ThreadLocal<String?>()
 
     private val SOURCES = listOf(
-        Source("SoundCloud") { q -> ytdlp("scsearch8:$q", "SoundCloud") },
-        Source("YouTube Music") { q -> ytdlp("https://music.youtube.com/search?q=" + Http.enc(q) + "#songs", "YouTube Music") },
-        Source("YouTube") { q -> ytdlp("ytsearch8:$q", "YouTube") },
+        // Главные площадки — средствами телефона, без Python: ответ за секунду и не стоит в очереди за фоновой подготовкой.
+        // Не получилось — прежний путь через yt-dlp.
+        Source("SoundCloud") { q -> fast("SoundCloud") { NewPipeSource.search(true, q) } ?: ytdlp("scsearch8:$q", "SoundCloud") },
+        Source("YouTube Music") { q -> fast("YouTube Music") { NewPipeSource.searchSongs(q) } ?: emptyList() },
+        Source("YouTube") { q -> fast("YouTube") { NewPipeSource.search(false, q) } ?: ytdlp("ytsearch8:$q", "YouTube") },
         Source("Яндекс Музыка", ::yandex),
         Source("Rutube", ::rutube),
         Source("Internet Archive", ::archive),
@@ -108,6 +110,9 @@ object WebSearch {
     }
 
     // ---------------- Источники ----------------
+
+    private fun fast(source: String, find: () -> List<NewPipeSource.Found>): List<WebResult>? =
+        runCatching { find() }.getOrNull()?.takeIf { it.isNotEmpty() }?.take(10)?.map { WebResult(it.url, it.title, it.artist, it.durationSec, source) }
 
     private fun ytdlp(query: String, source: String): List<WebResult> {
         App.awaitReadyOrNull() ?: return emptyList()

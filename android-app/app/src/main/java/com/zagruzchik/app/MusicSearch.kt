@@ -317,8 +317,13 @@ object Streams {
         }
         val viaYtdlp = (if (light) emptyList() else sources).map { (name, query) ->
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
-                App.awaitReady() // Zaycev (выше) движок не нужен — он отвечает, даже пока тот запускается
-                val raw = runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
+                // Поиск — средствами телефона (без Python, около секунды); не вышло — через yt-dlp.
+                val words = query.substringAfter(':')
+                val quick = runCatching { NewPipeSource.search(name == "SoundCloud", words) }.getOrNull()?.takeIf { it.isNotEmpty() }?.take(10)?.map {
+                    Downloader.Candidate(it.url, it.title, listOf(it.artist, it.title.substringBefore(" - ", "")).filter { x -> x.isNotBlank() }.joinToString(" | "), it.durationSec, name, 0)
+                }
+                if (quick == null || name == "SoundCloud") App.awaitReady() // звук SoundCloud берёт yt-dlp
+                val raw = quick ?: runCatching { Downloader.searchCandidates(query, name) }.getOrDefault(emptyList())
                 val candidates = Match.ranked(t, raw) { Triple(it.title, it.author, it.duration) }
                 log += "$name [${query.take(40)}]: результатов ${raw.size}, подошло ${candidates.size}" +
                     raw.take(5).joinToString("") { c -> "\n  ${if (c in candidates) "✓" else "✗"} ${c.title.take(60)} | ${c.author.take(30)} | ${c.duration} с" }

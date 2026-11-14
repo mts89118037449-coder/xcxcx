@@ -54,6 +54,17 @@ object NewPipeSource {
         return emptyList()
     }
 
+    /** Обычный поиск на площадке средствами телефона (без Python): SoundCloud — треки, YouTube — видео. */
+    fun search(soundcloud: Boolean, query: String): List<Found> {
+        ready
+        val service = if (soundcloud) ServiceList.SoundCloud else ServiceList.YouTube
+        val filter = if (soundcloud) "tracks" else "videos"
+        val handler = service.searchQHFactory.fromQuery(query, listOf(filter), "")
+        return SearchInfo.getInfo(service, handler).relatedItems.filterIsInstance<StreamInfoItem>().map {
+            Found(it.url, it.name.orEmpty(), it.uploaderName.orEmpty().removeSuffix(" - Topic"), it.duration.toInt().coerceAtLeast(0))
+        }
+    }
+
     internal fun onDevice(query: String): List<Found> {
         ready
         val yt = ServiceList.YouTube
