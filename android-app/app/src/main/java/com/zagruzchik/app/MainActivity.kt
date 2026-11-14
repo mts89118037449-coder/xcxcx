@@ -1335,16 +1335,17 @@ class MainActivity : AppCompatActivity() {
         val text = TextView(this).apply {
             setPadding(dp(24), dp(12), dp(24), dp(8))
             setTextIsSelectable(true)
-            text = "Проверяю на этом телефоне… (около минуты)"
+            text = "Проверяю на этом телефоне каждое звено: сеть, поиск, ссылку и сам звук… (1–3 минуты)"
         }
         MaterialAlertDialogBuilder(this)
-            .setTitle("Проверка источников")
+            .setTitle("Проверка и журнал")
             .setView(android.widget.ScrollView(this).apply { addView(text) })
             .setPositiveButton("Закрыть", null)
+            .setNeutralButton("Отправить журнал") { _, _ -> AppLog.share(this) }
             .show()
         val lines = mutableListOf<String>()
         thread {
-            Diagnostics.run(this) { l -> runOnUiThread { lines += l; text.text = lines.joinToString("\n\n") } }
+            Diagnostics.run(this) { l -> runOnUiThread { lines += l; text.text = lines.joinToString("\n") } }
         }
     }
 
