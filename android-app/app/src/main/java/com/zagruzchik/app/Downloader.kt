@@ -329,14 +329,22 @@ object Downloader {
             d.optString("thumbnail").takeIf { it.startsWith("http") }, title)
     }
 
+    const val YT_BLOCKED = "YouTube не отдаёт звук этому интернет-адресу (проверка «вы не робот» — обычно из-за VPN)"
+
     /** Прямая ссылка на звук для одной страницы (SoundCloud/YouTube). null — не играет (DRM и т.п.). */
     fun streamOf(pageUrl: String, source: String, title: String, problems: MutableCollection<String>? = null, wantTotal: Long? = null): StreamInfo? {
         // YouTube: сначала средствами телефона (около секунды, движок yt-dlp не нужен и может ещё запускаться);
         // не вышло — обычным путём ниже.
         if (Service.of(pageUrl).let { it == Service.YOUTUBE || it == Service.YOUTUBE_MUSIC }) {
-            runCatching { NewPipeSource.audio(pageUrl, wantTotal) }.getOrNull()?.let { a ->
-                return StreamInfo(a.url, pageUrl, source, a.cover, title)
-            }
+            val np = runCatching { NewPipeSource.audio(pageUrl, wantTotal) }
+            np.getOrNull()?.let { a -> return StreamInfo(a.url, pageUrl, source, a.cover, title) }
+            val why = np.exceptionOrNull()?.toString().orEmpty()
+            // YouTube требует «подтвердите, что вы не робот» — так он отвечает адресам VPN и дата-центров.
+            // Без входа в YouTube обычный путь упрётся в то же самое, только через полминуты: не ждём.
+            if (why.contains("bot", true) || why.contains("SignIn") || why.contains("LOGIN_REQUIRED")) {
+                Streams.youtubeBlockedAt = System.currentTimeMillis()
+                if (!Cookies.file(App.instance).exists()) { problems?.add("$source: $YT_BLOCKED"); return null }
+            } else if (why.isNotEmpty()) problems?.add("$source (быстрый путь): ${why.substringAfter(": ").take(140)}")
             App.awaitReadyOrNull() ?: return null
         }
         try {

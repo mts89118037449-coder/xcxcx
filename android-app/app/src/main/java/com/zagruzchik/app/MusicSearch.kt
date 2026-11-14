@@ -175,6 +175,11 @@ object Streams {
 
     /** Что ответила каждая площадка в последнем поиске этой песни — чтобы понять, почему не нашлась. */
     private val reports = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val live = java.util.concurrent.ConcurrentHashMap<String, java.util.Queue<String>>()
+    /** Что происходит прямо сейчас, пока песня ищется (для экрана плеера): последние ответы площадок. */
+    fun progress(t: Track): String? = live[key(t)]?.toList()?.takeLast(3)?.joinToString("\n") { it.lineSequence().first().replace(Regex("""\s*\[[^\]]*]"""), "").take(70) }?.takeIf { it.isNotBlank() }
+    /** Когда YouTube последний раз потребовал «вы не робот» (0 — не требовал). */
+    @Volatile var youtubeBlockedAt = 0L
     fun report(t: Track): String? = reports[key(t)]
 
     // ---- Где лежит песня: запоминаем после первого поиска. Дальше поиск не нужен — сразу берём звук (секунда вместо нескольких). ----
@@ -240,6 +245,7 @@ object Streams {
             if (!where.startsWith("tg:") || Telegram.ready) remember(k, null)
         }
         val log = java.util.concurrent.ConcurrentLinkedQueue<String>()
+        live[k] = log
         val picked = java.util.concurrent.ConcurrentHashMap<String, String>()
         try {
             return search(t, log, picked, light).also { s ->
@@ -247,6 +253,7 @@ object Streams {
                 if (where != null) remember(k, where)
             }
         } finally {
+            live.remove(k)
             reports[key(t)] = "Искал: «${t.query}»" + (if (t.durationSec > 0) " (${t.durationSec} с)" else "") + "\n\n" + log.sorted().joinToString("\n\n")
         }
     }
@@ -378,7 +385,9 @@ object Streams {
         val drm = problems.filter { it.contains("DRM") || it.contains("платн", ignoreCase = true) }.map { it.substringBefore(":") }.distinct()
         val missing = listOf("SoundCloud", "YouTube").filter { it !in foundOn }
         throw UserError(buildString {
-            if (drm.isNotEmpty()) append("На ${drm.joinToString(" и ")} песня есть, но платная (DRM) — бесплатно её не включить.")
+            if (problems.any { it.contains(Downloader.YT_BLOCKED) }) append("Песня есть на YouTube, но ${Downloader.YT_BLOCKED}. " +
+                "Помогает одно из двух: войти в YouTube (Настройки → Вход на сайты → YouTube) или исключить SoundAura из VPN.")
+            else if (drm.isNotEmpty()) append("На ${drm.joinToString(" и ")} песня есть, но платная (DRM) — бесплатно её не включить.")
             else if (problems.isNotEmpty()) append("Нашёл, но не играет: ${problems.first()}.")
             else append("Не нашёл «${t.label}».")
             if (missing.isNotEmpty()) append(" На ${missing.joinToString(" и ")} её нет.")
