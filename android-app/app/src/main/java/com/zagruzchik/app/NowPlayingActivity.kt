@@ -213,7 +213,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val key = Library.key(t)
         if (key == lyricsKey) return
         lyricsKey = key; lyrics = null; lyricLine = -2
-        findViewById<View>(R.id.npLyricsPeek).isVisible = false
+        findViewById<View>(R.id.npLyricsPeek).visibility = View.INVISIBLE
         Thread {
             val r = runCatching { Lyrics.find(t) }.getOrNull()
             runOnUiThread { if (lyricsKey == key && !isDestroyed) { lyrics = r; updateLyrics() } }
@@ -225,7 +225,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val r = lyrics
         val c = controller
         val preview = extras()?.getBoolean(Playback.X_PREVIEW) == true
-        if (r == null || c == null || preview || showingPending()) { peek.isVisible = false; return }
+        if (r == null || c == null || preview || showingPending()) { peek.visibility = View.INVISIBLE; return } // место остаётся занятым — экран не прыгает
         val prev = findViewById<TextView>(R.id.npLyrPrev)
         val now = findViewById<TextView>(R.id.npLyrNow)
         val next = findViewById<TextView>(R.id.npLyrNext)
@@ -234,9 +234,9 @@ class NowPlayingActivity : AppCompatActivity() {
             if (lyricLine == -1) return
             lyricLine = -1
             val lines = r.text.lines().filter { it.isNotBlank() && !it.startsWith("[") }
-            prev.isVisible = false
+            prev.visibility = View.INVISIBLE
             now.text = lines.getOrNull(0).orEmpty(); next.text = lines.getOrNull(1).orEmpty()
-            peek.isVisible = lines.isNotEmpty()
+            peek.visibility = if (lines.isNotEmpty()) View.VISIBLE else View.INVISIBLE
             return
         }
         val pos = Playback.position(c) + 300
@@ -276,7 +276,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val pending = showingPending()
         val p = Playback.Pending
         // Место под карточку состояния занято всегда — экран не прыгает, когда она появляется и исчезает.
-        loading.visibility = if (pending) View.VISIBLE else View.INVISIBLE
+        loading.isVisible = pending // стоит в одном месте с текстом песни (np_bottom_slot) — экран не сдвигается
         // Сменилась песня — название, исполнитель и обложка мягко проявляются, а не подменяются рывком.
         val nowKey = if (pending) p.track?.let { it.title + "|" + it.artist } else c?.mediaMetadata?.let { "${it.title}|${it.artist}" }
         val changed = nowKey != null && nowKey != shownKey
