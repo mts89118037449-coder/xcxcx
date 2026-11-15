@@ -19,6 +19,7 @@ import kotlin.math.sin
  * Каждый клуб — цвета того края обложки, откуда вышел. Яркость «дышит» в ритме пульса. Пока музыка играет — дым идёт,
  * на паузе — замирает и тускнеет. Тема приложения сохраняется: без обложки и на серых краях дым — цветов ауры.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class SmokeView(ctx: Context) : View(ctx) {
     private var edge = IntArray(EDGES)                    // цвета по краю обложки, по кругу
     private var shaders = arrayOfNulls<Shader>(EDGES)
@@ -29,6 +30,7 @@ class SmokeView(ctx: Context) : View(ctx) {
     private var clock = 0f          // «время дыма»: идёт только пока играет музыка
     private var last = 0L
     private var level = 0f          // общая яркость: плавно растёт при игре и гаснет на паузе
+    private var shown = 0f          // текущая сила пульса на экране
     var playing = false
         set(v) { if (field != v) { field = v; last = SystemClock.uptimeMillis(); invalidate() } }
 
@@ -88,15 +90,19 @@ class SmokeView(ctx: Context) : View(ctx) {
         level += (target - level) * minOf(1f, dt * 2.2f)
         val t = clock
         // Пульс: мягкий удар примерно раз в 1,3 секунды — дым вспыхивает и чуть расширяется.
-        val beat = (0.5f + 0.5f * sin(t * 4.8f)).let { it * it }
-        val pulse = 0.72f + 0.28f * beat
+        // Под ритм музыки: удары берутся из самого звука (см. Exciter.beatNow). Нет данных — мягкий собственный пульс.
+        val heard = if (playing) Exciter.beatNow() else null
+        val beat = heard ?: (0.5f + 0.5f * sin(t * 4.8f)).let { it * it }
+        // Сглаживаем вспышку, чтобы яркость не дёргалась: быстрый подъём, плавный спад.
+        shown += (beat - shown) * (if (beat > shown) 0.75f else minOf(1f, dt * 5f))
+        val pulse = 0.62f + 0.38f * shown
 
         // Ореол вплотную к обложке — из него «выходит» дым.
         halo?.let { h ->
             paint.shader = h
             paint.alpha = (255 * 0.75f * level * pulse).toInt().coerceIn(0, 255)
             canvas.save(); canvas.translate(cx, cy)
-            val hs = radius * (1.55f + 0.12f * beat)
+            val hs = radius * (1.55f + 0.22f * shown)
             canvas.scale(hs, hs); canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
         }
 

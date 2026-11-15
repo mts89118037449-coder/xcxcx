@@ -10,6 +10,8 @@ import kotlin.concurrent.thread
  */
 object SourcePicker {
     fun show(a: Activity, t: Track, onChosen: () -> Unit = {}) {
+        // Список собран заранее (песня уже играет) — показываем сразу, без ожидания.
+        Streams.optionsReady(t)?.let { return list(a, t, it, onChosen) }
         val wait = MaterialAlertDialogBuilder(a)
             .setTitle("Источники «${t.title}»")
             .setMessage("Ищу, где есть эта песня… (до 25 секунд)")
@@ -21,6 +23,14 @@ object SourcePicker {
                 val cancelled = !wait.isShowing
                 runCatching { wait.dismiss() }
                 if (cancelled) return@runOnUiThread
+                list(a, t, found, onChosen)
+            }
+        }
+    }
+
+    private fun list(a: Activity, t: Track, found: List<Streams.Option>, onChosen: () -> Unit) {
+        run {
+            run {
                 val current = Streams.chosen(t)
                 val labels = listOf("Автоматически (как решит приложение)") + found.map { o ->
                     o.label + (if (o.title.isNotBlank() && !o.title.equals(t.title, true)) " — «${o.title.take(40)}»" else "")

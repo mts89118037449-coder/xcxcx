@@ -473,6 +473,8 @@ object Playback {
                 current = mediaItem?.takeIf { it.mediaMetadata.extras?.getBoolean(X_PREVIEW) != true }
                     ?.mediaMetadata?.let { m -> m.title?.toString()?.let { Track(it, m.artist?.toString().orEmpty()) } }
                 currentSince = System.currentTimeMillis()
+                // Источники этой песни собираем заранее (через пару секунд, если её не переключили) — список откроется мгновенно.
+                current?.let { playingNow -> main.postDelayed({ if (current == playingNow) Streams.prepareOptions(playingNow) }, 2500) }
                 mediaItem?.let { remember(it) }
                 fill(app, queueGen)
             }

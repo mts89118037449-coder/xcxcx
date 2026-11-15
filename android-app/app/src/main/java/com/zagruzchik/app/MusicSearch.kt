@@ -333,12 +333,33 @@ object Streams {
      * Порядок — по старшинству. Не из главного потока.
      */
     fun options(t: Track): List<Option> {
+        optionsReady(t)?.let { return it }
+        // Уже готовится (песня играет — список собирается заранее) — дожидаемся; иначе собираем сейчас, вне очереди.
+        optionJobs[key(t)]?.let { f -> runCatching { return f.get(30, java.util.concurrent.TimeUnit.SECONDS) } }
+        return collectOptions(t, urgent = true)
+    }
+
+    private val optionCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<Option>>>()
+    private val optionJobs = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.Future<List<Option>>>()
+    private val optionPool = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    /** Готовый список источников этой песни (собран заранее). null — ещё не собран. */
+    fun optionsReady(t: Track): List<Option>? = optionCache[key(t)]?.let { (time, list) -> list.takeIf { System.currentTimeMillis() - time < 30 * 60_000L } }
+
+    /** Песня заиграла — собираем её источники заранее, в фоне: по нажатию список откроется сразу. */
+    fun prepareOptions(t: Track) {
+        val k = key(t)
+        if (optionsReady(t) != null || optionJobs.containsKey(k)) return
+        optionJobs[k] = optionPool.submit<List<Option>> { try { waitForeground(); collectOptions(t, urgent = false) } finally { optionJobs.remove(k) } }
+    }
+
+    private fun collectOptions(t: Track, urgent: Boolean): List<Option> {
         App.awaitReadyOrNull()
         val out = java.util.Collections.synchronizedList(mutableListOf<Option>())
-        foreground.incrementAndGet()
-        try { runCatching { search(t, java.util.concurrent.ConcurrentLinkedQueue(), java.util.concurrent.ConcurrentHashMap(), collect = out) } }
-        finally { foreground.decrementAndGet() }
-        return out.distinctBy { it.where }
+        val run = { runCatching { search(t, java.util.concurrent.ConcurrentLinkedQueue(), java.util.concurrent.ConcurrentHashMap(), collect = out) }; Unit }
+        if (urgent) { foreground.incrementAndGet(); try { run() } finally { foreground.decrementAndGet() } }
+        else Ytdlp.inBackground { run() }
+        return out.distinctBy { it.where }.also { if (it.isNotEmpty() || urgent) optionCache[key(t)] = System.currentTimeMillis() to it }
     }
 
     /** Какой источник сейчас закреплён за песней (выбран человеком). null — выбирается автоматически. */
