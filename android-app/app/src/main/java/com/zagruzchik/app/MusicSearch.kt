@@ -162,7 +162,8 @@ object Streams {
         cached(k)?.let { return it }
         waitForeground()
         val ok = Match.ranked(t, ZaycevSource.search(t.query)) { Triple(it.title, it.artist, it.durationSec) }
-        val c = ok.take(3).maxByOrNull { it.bitrate } ?: return null
+        // Заранее готовим только то, что точно без цензуры: помеченное так на Zaycev или песню, которая и в каталоге «чистая».
+        val c = ok.take(3).filter { it.explicit || !t.explicit }.maxByOrNull { it.bitrate } ?: return null
         val u = ZaycevSource.streamUrl(c.id) ?: return null
         remember(k, "zaycev:${c.id}:${c.bitrate}")
         return StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title).also { done[k] = System.currentTimeMillis() to it }
@@ -231,8 +232,18 @@ object Streams {
     fun report(t: Track): String? = reports[key(t)]
 
     // ---- Где лежит песня: запоминаем после первого поиска. Дальше поиск не нужен — сразу берём звук (секунда вместо нескольких). ----
-    private val sourcesPrefs by lazy { App.instance.getSharedPreferences("sources", 0) }
-    private fun knownRaw(k: String): String? = sourcesPrefs.getString(k, null)
+    private val sourcesPrefs by lazy {
+        App.instance.getSharedPreferences("sources", 0).also { p ->
+            // 8.5: раньше Zaycev запоминался без оглядки на цензуру — один раз забываем такие записи, пусть найдутся заново по новым правилам.
+            if (!p.getBoolean("#uncensored_v1", false)) {
+                val e = p.edit()
+                p.all.forEach { (k, v) -> if ((v as? String)?.startsWith("zaycev:") == true) e.remove(k) }
+                e.putBoolean("#uncensored_v1", true).apply()
+                runCatching { HeadCache.dropWhere { it.startsWith("zaycev:") } }
+            }
+        }
+    }
+    private fun knownRaw(k: String): String? = runCatching { sourcesPrefs.getString(k, null) }.getOrNull()
     /** Источник этой песни уже известен (включится быстро, без поиска). */
     fun known(t: Track): Boolean = pinned(t) != null || knownRaw(key(t))?.startsWith("none:") == false
     private fun remember(k: String, where: String?) {
@@ -322,6 +333,7 @@ object Streams {
         val bg = Ytdlp.isBackground // подготовка заранее не мешает нажатому
         val problems = java.util.concurrent.ConcurrentLinkedQueue<String>()
         val foundOn = java.util.concurrent.ConcurrentLinkedQueue<String>()
+        val uncensored = java.util.concurrent.ConcurrentHashMap.newKeySet<StreamInfo>()
         val waiting = java.util.concurrent.ConcurrentHashMap.newKeySet<String>().also { waitingOn[key(t)] = it }
         // Zaycev — MP3 до 320 kbps, отвечает быстро: первым по старшинству.
         val zaycev = searchPool.submit<StreamInfo?> {
@@ -333,10 +345,14 @@ object Streams {
                 raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗ " + Match.reason(t, c.title, c.artist, c.durationSec)} · ${c.title.take(50)} | ${c.artist.take(26)} | ${c.durationSec} с | ${c.bitrate} kbps" }
             if (ok.isNotEmpty()) foundOn += "Zaycev"
             // Из подходящих — лучший по качеству среди первых трёх.
-            ok.take(3).sortedByDescending { it.bitrate }.firstNotNullOfOrNull { c ->
+            // Из подходящих — сначала помеченные «без цензуры», затем лучший битрейт (среди первых трёх).
+            ok.take(3).sortedWith(compareByDescending<ZaycevSource.Found> { it.explicit }.thenByDescending { it.bitrate }).firstNotNullOfOrNull { c ->
                 runCatching { ZaycevSource.streamUrl(c.id) }.getOrNull()?.let { u ->
                     picked["Zaycev"] = "zaycev:${c.id}:${c.bitrate}"
-                    StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title)
+                    StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title).also { s ->
+                        // Без цензуры (или песня изначально «чистая») — такой результат равен SoundCloud; иначе он запасной.
+                        if (c.explicit || !t.explicit) uncensored += s
+                    }
                 }
             }.also { log += "Zaycev звук: ${if (it != null) "готов" else "нет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
         }
@@ -439,14 +455,21 @@ object Streams {
                 else { App.awaitReady(); Downloader.streamOf(w.url, w.source, w.title, problems) }
             } } }.firstNotNullOfOrNull { runCatching { it.get(15, java.util.concurrent.TimeUnit.SECONDS) }.getOrNull() }
         }
-        val jobs = listOf(zaycev, telegram, ytm) + listOfNotNull(onPhone.getOrNull(0), viaYtdlp.getOrNull(0), onPhone.getOrNull(1), viaYtdlp.getOrNull(1), viaYtdlp.getOrNull(2)) + listOfNotNull(spare)
+        // Смысл приложения — музыка без цензуры, поэтому старшинство такое:
+        // SoundCloud (там лежат исходные версии) → Zaycev → Telegram → YouTube Music → YouTube → запасные.
+        // Все ищут одновременно; не-SoundCloud берём, только когда SoundCloud ответил, что песни нет (или молчит дольше 6 с).
+        // Исключение — запись Zaycev с пометкой «без цензуры»: она ничем не хуже, её берём сразу.
+        val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
+        val jobs = soundcloud + listOf(zaycev, telegram, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + listOfNotNull(spare)
         val started = System.currentTimeMillis()
         while (true) {
             for ((i, f) in jobs.withIndex()) {
                 if (!f.isDone) continue
                 val s = runCatching { f.get() }.getOrNull() ?: continue
                 val seniorsDone = jobs.take(i).all { it.isDone }
-                if (seniorsDone || System.currentTimeMillis() - started > 1200) return s
+                val waited = System.currentTimeMillis() - started
+                val preferred = f in soundcloud || s in uncensored
+                if (seniorsDone || (preferred && waited > 1200) || waited > 6000) return s
             }
             if (jobs.all { it.isDone }) break
             // Основные площадки отвечают дольше 25 с — не ждём их, идём к запасным.

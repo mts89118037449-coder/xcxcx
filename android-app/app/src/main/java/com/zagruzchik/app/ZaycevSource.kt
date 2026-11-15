@@ -12,7 +12,8 @@ import java.net.URL
 object ZaycevSource {
     private const val BASE = "https://zaycev.net"
 
-    class Found(val id: Long, val title: String, val artist: String, val durationSec: Int, val bitrate: Int, val cover: String?)
+    /** [explicit] — запись помечена как версия без цензуры. */
+    class Found(val id: Long, val title: String, val artist: String, val durationSec: Int, val bitrate: Int, val cover: String?, val explicit: Boolean = false)
 
     /** Результаты поиска (только те, что можно слушать), в порядке выдачи. Ответ — около килобайта. */
     fun search(query: String): List<Found> {
@@ -25,7 +26,7 @@ object ZaycevSource {
             if (!t.optBoolean("playbackEnabled")) return@mapNotNull null
             val dur = t.optString("duration").split(':').mapNotNull { it.toIntOrNull() }.fold(0) { acc, x -> acc * 60 + x }
             Found(id, t.optString("track"), t.optString("artistName"), dur, t.optInt("bitrate"),
-                t.optString("imageJpg").takeIf { it.isNotBlank() }?.let { if (it.startsWith("//")) "https:$it" else it })
+                t.optString("imageJpg").takeIf { it.isNotBlank() }?.let { if (it.startsWith("//")) "https:$it" else it }, t.optBoolean("explicit"))
         }
     }
 

@@ -28,8 +28,11 @@ SDK в контейнере нет — ставить в scratchpad: cmdline-too
 ## Как устроено проигрывание (файлы в `app/src/main/java/com/zagruzchik/app/`)
 - `Playback.kt` — очередь, `playQueue()`: файл на телефоне → `MediaCache` (уже слушали) → `HeadCache` (начало на телефоне) → готовая ссылка →
   поиск (`Streams.resolve`). Режим «Сразу полная» (`Settings.StartMode.FULL`) фрагмент не включает.
-- `MusicSearch.kt` — `Streams`: гонка источников в `search()`. Старшинство: Zaycev → Telegram → YouTube Music → SoundCloud → YouTube →
-  SoundCloud по названию → запасные (`WebSearch.extraCandidates`: Rutube, Dailymotion, Archive, Audius, Яндекс).
+- `MusicSearch.kt` — `Streams`: гонка источников в `search()`. **Смысл приложения — музыка без цензуры** (требование владельца), поэтому
+  старшинство с 8.5: SoundCloud (yt-dlp, на телефоне, по названию) → Zaycev → Telegram → YouTube Music → YouTube → запасные
+  (`WebSearch.extraCandidates`: Rutube, Dailymotion, Archive, Audius, Яндекс). Все ищут одновременно; не-SoundCloud берётся, когда SoundCloud
+  ответил «нет» или молчит > 6 с. Исключение: запись Zaycev с `explicit` (или песня в каталоге не explicit) — равна SoundCloud.
+  Подготовка заранее (`zaycevOnly`) берёт только такие записи.
   Память источника (`sources` prefs), своя ссылка (`pins`), отчёт по каждой песне (`Streams.report`), предохранители `Breaker`,
   фон ждёт нажатое (`waitForeground`). `Warm` — фоновая подготовка любимых.
 - `ZaycevSource.kt` — открытый JSON-поиск и ссылка, MP3 до 320. Без Python. **На телефоне владельца отвечает за 0,2–0,8 с — самый надёжный.**
