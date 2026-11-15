@@ -15,26 +15,20 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Цветной «дым» вокруг обложки: мягкие облака медленно плывут и клубятся по её контуру, каждое — цвета
- * ближайшего края обложки. Пока музыка играет — движется, на паузе — замирает и тускнеет.
- * Тема приложения сохраняется: цвета слегка подмешаны к фирменному фиолетовому, а без обложки дым — цветов ауры.
+ * Цветной дым из обложки: клубы рождаются у её края, расплываются по всему экрану, растут и тают — как пар.
+ * Каждый клуб — цвета того края обложки, откуда вышел. Яркость «дышит» в ритме пульса. Пока музыка играет — дым идёт,
+ * на паузе — замирает и тускнеет. Тема приложения сохраняется: без обложки и на серых краях дым — цветов ауры.
  */
 class SmokeView(ctx: Context) : View(ctx) {
-    private class Puff(val angle: Float, val speed: Float, val phase: Float, val size: Float, val reach: Float)
-
-    private val puffs = List(COUNT) { i ->
-        val f = i / COUNT.toFloat()
-        // Разные скорости и фазы — облака не ходят строем; знак скорости чередуется, чтобы они расходились и сходились.
-        Puff((f * 2 * PI).toFloat(), (0.035f + 0.02f * ((i * 7) % 5)) * (if (i % 2 == 0) 1 else -1), f * 9.7f, 0.62f + 0.09f * ((i * 3) % 4), 0.86f + 0.07f * ((i * 5) % 3))
-    }
-    private var colors = IntArray(COUNT)
-    private var shaders = arrayOfNulls<Shader>(COUNT)
+    private var edge = IntArray(EDGES)                    // цвета по краю обложки, по кругу
+    private var shaders = arrayOfNulls<Shader>(EDGES)
+    private var halo: Shader? = null
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private var cx = 0f; private var cy = 0f; private var radius = 0f
     private var clock = 0f          // «время дыма»: идёт только пока играет музыка
     private var last = 0L
-    private var level = 0f          // яркость: плавно растёт при игре и гаснет на паузе
+    private var level = 0f          // общая яркость: плавно растёт при игре и гаснет на паузе
     var playing = false
         set(v) { if (field != v) { field = v; last = SystemClock.uptimeMillis(); invalidate() } }
 
@@ -45,33 +39,43 @@ class SmokeView(ctx: Context) : View(ctx) {
         if (x != cx || y != cy || r != radius) { cx = x; cy = y; radius = r; invalidate() }
     }
 
-    /** Цвета берём с краёв обложки: каждое облако — цвета того края, у которого оно плывёт. */
+    /** Цвета берём с краёв обложки: клуб дыма — цвета того места, откуда вышел. */
     fun setCover(b: Bitmap?) {
         val theme = intArrayOf(AuraColors.c1(context), AuraColors.c2(context), AuraColors.c3(context))
         val small = b?.let { runCatching { Bitmap.createScaledBitmap(it, GRID, GRID, true) }.getOrNull() }
-        for (i in 0 until COUNT) {
-            val a = puffs[i].angle
+        var sr = 0; var sg = 0; var sb = 0
+        for (i in 0 until EDGES) {
+            val a = (i / EDGES.toFloat() * 2 * PI).toFloat()
             val c = if (small == null) theme[i % theme.size] else {
-                // Точка у края обложки в направлении облака; усредняем соседние пиксели.
-                val px = ((0.5f + 0.42f * cos(a)) * (GRID - 1)).toInt().coerceIn(1, GRID - 2)
-                val py = ((0.5f + 0.42f * sin(a)) * (GRID - 1)).toInt().coerceIn(1, GRID - 2)
+                val px = ((0.5f + 0.40f * cos(a)) * (GRID - 1)).toInt().coerceIn(1, GRID - 2)
+                val py = ((0.5f + 0.40f * sin(a)) * (GRID - 1)).toInt().coerceIn(1, GRID - 2)
                 var r = 0; var g = 0; var bl = 0
                 for (dx in -1..1) for (dy in -1..1) { val p = small.getPixel(px + dx, py + dy); r += Color.red(p); g += Color.green(p); bl += Color.blue(p) }
                 vivid(Color.rgb(r / 9, g / 9, bl / 9), theme[i % theme.size])
             }
-            colors[i] = c
-            shaders[i] = RadialGradient(0f, 0f, 1f, intArrayOf(ColorUtils.setAlphaComponent(c, 0xCC), ColorUtils.setAlphaComponent(c, 0x55), Color.TRANSPARENT),
-                floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+            edge[i] = c; sr += Color.red(c); sg += Color.green(c); sb += Color.blue(c)
+            shaders[i] = RadialGradient(0f, 0f, 1f, intArrayOf(ColorUtils.setAlphaComponent(c, 0xF0), ColorUtils.setAlphaComponent(c, 0x80), Color.TRANSPARENT),
+                floatArrayOf(0f, 0.42f, 1f), Shader.TileMode.CLAMP)
         }
+        val mean = Color.rgb(sr / EDGES, sg / EDGES, sb / EDGES)
+        halo = RadialGradient(0f, 0f, 1f, intArrayOf(ColorUtils.setAlphaComponent(mean, 0xD0), ColorUtils.setAlphaComponent(mean, 0x60), Color.TRANSPARENT),
+            floatArrayOf(0.35f, 0.62f, 1f), Shader.TileMode.CLAMP)
         invalidate()
     }
 
     /** Тусклые и серые края (чёрная обложка) не дают свечения — поднимаем яркость и насыщенность, подмешиваем цвет темы. */
     private fun vivid(c: Int, theme: Int): Int {
         val hsv = FloatArray(3); Color.colorToHSV(c, hsv)
-        if (hsv[1] < 0.18f) return ColorUtils.blendARGB(c, theme, 0.6f).let { t -> FloatArray(3).also { Color.colorToHSV(t, it); it[2] = maxOf(it[2], 0.6f) }.let(Color::HSVToColor) }
-        hsv[1] = minOf(1f, hsv[1] * 1.25f + 0.08f); hsv[2] = hsv[2].coerceIn(0.55f, 0.95f)
-        return ColorUtils.blendARGB(Color.HSVToColor(hsv), theme, 0.12f)
+        if (hsv[1] < 0.18f) return ColorUtils.blendARGB(c, theme, 0.6f).let { t -> FloatArray(3).also { Color.colorToHSV(t, it); it[2] = maxOf(it[2], 0.7f) }.let(Color::HSVToColor) }
+        hsv[1] = minOf(1f, hsv[1] * 1.3f + 0.1f); hsv[2] = hsv[2].coerceIn(0.7f, 1f)
+        return ColorUtils.blendARGB(Color.HSVToColor(hsv), theme, 0.08f)
+    }
+
+    /** Псевдослучайное число 0..1 по номеру клуба и номеру его «жизни» — каждый новый клуб летит по-своему. */
+    private fun rnd(i: Int, life: Int, salt: Int): Float {
+        var h = i * 374761393 + life * 668265263 + salt * 1274126177
+        h = (h xor (h ushr 13)) * 1274126177
+        return ((h xor (h ushr 16)) and 0xFFFF) / 65535f
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -80,33 +84,63 @@ class SmokeView(ctx: Context) : View(ctx) {
         val dt = if (last == 0L) 0f else minOf(64L, now - last) / 1000f
         last = now
         if (playing) clock += dt
-        // Плавное появление и затухание (около секунды).
-        val target = if (playing) 1f else 0.45f
+        val target = if (playing) 1f else 0.4f
         level += (target - level) * minOf(1f, dt * 2.2f)
+        val t = clock
+        // Пульс: мягкий удар примерно раз в 1,3 секунды — дым вспыхивает и чуть расширяется.
+        val beat = (0.5f + 0.5f * sin(t * 4.8f)).let { it * it }
+        val pulse = 0.72f + 0.28f * beat
 
+        // Ореол вплотную к обложке — из него «выходит» дым.
+        halo?.let { h ->
+            paint.shader = h
+            paint.alpha = (255 * 0.75f * level * pulse).toInt().coerceIn(0, 255)
+            canvas.save(); canvas.translate(cx, cy)
+            val hs = radius * (1.55f + 0.12f * beat)
+            canvas.scale(hs, hs); canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
+        }
+
+        // Как далеко уплывает дым: до краёв экрана.
+        val far = maxOf(width, height) * 0.62f
         for (i in 0 until COUNT) {
-            val p = puffs[i]
-            val t = clock
-            // Движение — сумма медленных колебаний с разными периодами: облако плывёт вдоль контура, отходит и возвращается.
-            val a = p.angle + t * p.speed + 0.35f * sin(t * 0.21f + p.phase)
-            val dist = radius * (p.reach + 0.13f * sin(t * 0.33f + p.phase * 1.7f))
-            val size = radius * (p.size + 0.12f * sin(t * 0.27f + p.phase * 0.6f))
-            val alpha = (0.55f + 0.3f * sin(t * 0.41f + p.phase * 2.3f)) * level
-            paint.shader = shaders[i]
+            val lifeSec = 7f + 5f * rnd(i, 0, 1)                    // сколько живёт клуб
+            val shifted = t + rnd(i, 0, 2) * lifeSec                 // клубы рождаются вразнобой
+            val life = (shifted / lifeSec).toInt()
+            val age = shifted / lifeSec - life                       // 0 — только вышел из обложки, 1 — растаял
+            val dir = rnd(i, life, 3) * 2 * PI.toFloat()             // откуда вышел
+            val drift = (rnd(i, life, 4) - 0.5f) * 1.3f              // закручивание в сторону
+            val rise = 0.25f + 0.35f * rnd(i, life, 5)               // пар тянется вверх
+            // Путь: от края обложки наружу, с замедлением, петляя и поднимаясь.
+            val out = 1f - (1f - age) * (1f - age)
+            val dist = radius * 0.85f + (far - radius * 0.85f) * out * (0.55f + 0.45f * rnd(i, life, 6))
+            val a = dir + drift * out + 0.25f * sin(age * 6.3f + i)
+            val x = cx + cos(a) * dist
+            val y = cy + sin(a) * dist - rise * radius * 1.6f * out
+            // Растёт и тает.
+            val size = radius * (0.55f + 1.25f * out) * (0.85f + 0.3f * rnd(i, life, 7))
+            val fade = minOf(1f, age * 7f) * (1f - age) * (1f - age * 0.35f)
+            val alpha = fade * 0.95f * level * pulse
+            if (alpha <= 0.01f) continue
+            val shader = shaders[((dir / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES]
+            paint.shader = shader
             paint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
-            canvas.save()
-            canvas.translate(cx + cos(a) * dist, cy + sin(a) * dist)
-            // Слегка вытянутое облако, повёрнутое по ходу движения, — похоже на клуб дыма, а не на ровный круг.
-            canvas.rotate(Math.toDegrees(a.toDouble()).toFloat() + 90f)
-            canvas.scale(size * 1.25f, size * 0.85f)
-            canvas.drawCircle(0f, 0f, 1f, paint)
-            canvas.restore()
+            // Клуб — два смещённых вытянутых пятна: неровная форма, как у дыма, а не ровный круг.
+            val turn = Math.toDegrees(a.toDouble()).toFloat() + 90f + 40f * sin(age * 3f + i)
+            for (k in 0..1) {
+                canvas.save()
+                canvas.translate(x + (if (k == 0) -1 else 1) * size * 0.28f * cos(a + 1.3f), y + (if (k == 0) -1 else 1) * size * 0.28f * sin(a + 1.3f))
+                canvas.rotate(turn + k * 55f)
+                canvas.scale(size * (1.15f - 0.2f * k), size * (0.7f + 0.15f * k))
+                canvas.drawCircle(0f, 0f, 1f, paint)
+                canvas.restore()
+            }
         }
         if (playing || kotlin.math.abs(level - target) > 0.01f) postInvalidateOnAnimation()
     }
 
     companion object {
-        private const val COUNT = 9
+        private const val COUNT = 22
+        private const val EDGES = 12
         private const val GRID = 20
     }
 }
