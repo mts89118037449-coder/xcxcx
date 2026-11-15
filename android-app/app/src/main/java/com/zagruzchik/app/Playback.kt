@@ -174,8 +174,10 @@ object Playback {
         if (i >= 0) playQueue(ctx, queue, i, openScreen = false) else playTrack(ctx, t, openScreen = false)
     }
 
-    private fun playQueue(ctx: Context, items: List<QItem>, start: Int, openScreen: Boolean, auto: Boolean) {
-        if (items.isEmpty()) return
+    private fun playQueue(ctx: Context, given: List<QItem>, start: Int, openScreen: Boolean, auto: Boolean) {
+        if (given.isEmpty()) return
+        // Источник, выбранный человеком для песни, главнее страницы, запомненной в истории.
+        val items = given.map { if (it.pageUrl != null && it.directUrl == null && Streams.chosen(it.track) != null) QItem(it.track, it.local, it.sourceUrl) else it }
         val app = ctx.applicationContext
         val gen = ++queueGen
         if (!auto) skips = 0
@@ -474,7 +476,7 @@ object Playback {
                     ?.mediaMetadata?.let { m -> m.title?.toString()?.let { Track(it, m.artist?.toString().orEmpty()) } }
                 currentSince = System.currentTimeMillis()
                 // Источники этой песни собираем заранее (через пару секунд, если её не переключили) — список откроется мгновенно.
-                current?.let { playingNow -> main.postDelayed({ if (current == playingNow) Streams.prepareOptions(playingNow) }, 2500) }
+                current?.let { playingNow -> main.postDelayed({ if (current == playingNow) Streams.live(playingNow) }, 1200) }
                 mediaItem?.let { remember(it) }
                 fill(app, queueGen)
             }

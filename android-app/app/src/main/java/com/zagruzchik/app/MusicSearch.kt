@@ -159,6 +159,7 @@ object Streams {
      */
     fun zaycevOnly(t: Track): StreamInfo? {
         val k = key(t)
+        if (pinned(t) != null) return null // источник выбран человеком — Zaycev сам не подставляем
         cached(k)?.let { return it }
         waitForeground()
         val ok = Match.ranked(t, ZaycevSource.search(t.query)) { Triple(it.title, it.artist, it.durationSec) }
@@ -301,10 +302,32 @@ object Streams {
         catch (_: Exception) { null }
     }
 
+    // Выбранный источник сейчас не ответил, и песня взята из другого места: такое не сохраняем на телефон,
+    // иначе «не та» запись осталась бы в памяти и играла бы вместо выбранной.
+    private val detours = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    fun detoured(t: Track): Boolean = key(t) in detours
+
     private fun find(t: Track, light: Boolean = false): StreamInfo {
+        // Пока искали, человек мог выбрать другой источник — тогда найденное уже не годится, берём заново.
+        repeat(2) {
+            val pin = pinned(t)
+            val s = findOnce(t, light, pin)
+            if (pinned(t) == pin) return s
+        }
+        return findOnce(t, light, pinned(t))
+    }
+
+    private fun findOnce(t: Track, light: Boolean, pin: String?): StreamInfo {
         val k = key(t)
         // Источник, выбранный человеком для этой песни (или своя ссылка), — всегда первым.
-        pinned(t)?.let { where -> runCatching { fromKnown(t, where) }.getOrNull()?.let { return it } }
+        if (pin != null) {
+            var err: Throwable? = null
+            repeat(2) {
+                runCatching { fromKnown(t, pin) }.onFailure { err = it }.getOrNull()?.let { detours.remove(k); return it }
+            }
+            detours += k
+            AppLog.add("ВЫБРАННЫЙ ИСТОЧНИК не ответил для «${t.label}» (${nameOf(pin)})${why(err)} — играю из другого места, выбор остаётся")
+        } else detours.remove(k)
         knownRaw(k)?.takeIf { !it.startsWith("none:") }?.let { where ->
             runCatching { fromKnown(t, where) }.getOrNull()?.let { return it }
             // Больше не играет оттуда (удалили, закрыли) — забываем и ищем заново. Запись Telegram оставляем, если он просто не подключён.
@@ -329,44 +352,55 @@ object Streams {
     class Option(val label: String, val title: String, val where: String)
 
     /**
-     * Все площадки, где песня нашлась и играет, — для выбора источника. Ждёт ответа всех (до 25 с).
-     * Порядок — по старшинству. Не из главного потока.
+     * Живой список источников песни: пополняется по мере ответа площадок. Первым в нём сразу стоит источник,
+     * откуда песня играет сейчас. [done] — опрос закончен.
      */
-    fun options(t: Track): List<Option> {
-        optionsReady(t)?.let { return it }
-        // Уже готовится (песня играет — список собирается заранее) — дожидаемся; иначе собираем сейчас, вне очереди.
-        optionJobs[key(t)]?.let { f -> runCatching { return f.get(30, java.util.concurrent.TimeUnit.SECONDS) } }
-        return collectOptions(t, urgent = true)
+    class Live {
+        val list = java.util.concurrent.CopyOnWriteArrayList<Option>()
+        @Volatile var done = false
+        val since = System.currentTimeMillis()
+        val listeners = java.util.concurrent.CopyOnWriteArraySet<() -> Unit>()
+        internal fun add(o: Option) { if (list.none { it.where == o.where }) { list += o; listeners.forEach { it() } } }
+        internal fun finish() { done = true; listeners.forEach { it() } }
     }
 
-    private val optionCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<Option>>>()
-    private val optionJobs = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.Future<List<Option>>>()
-    private val optionPool = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val lives = java.util.concurrent.ConcurrentHashMap<String, Live>()
+    private val optionPool = java.util.concurrent.Executors.newFixedThreadPool(2)
 
-    /** Готовый список источников этой песни (собран заранее). null — ещё не собран. */
-    fun optionsReady(t: Track): List<Option>? = optionCache[key(t)]?.let { (time, list) -> list.takeIf { System.currentTimeMillis() - time < 30 * 60_000L } }
-
-    /** Песня заиграла — собираем её источники заранее, в фоне: по нажатию список откроется сразу. */
-    fun prepareOptions(t: Track) {
+    /**
+     * Источники этой песни. Опрос запускается один раз (в фоне, не мешая музыке) и живёт полчаса; повторный вызов
+     * возвращает тот же список — уже с тем, что успело найтись. [urgent] — человек открыл окно: опрос идёт вне очереди.
+     */
+    fun live(t: Track, urgent: Boolean = false): Live {
         val k = key(t)
-        if (optionsReady(t) != null || optionJobs.containsKey(k)) return
-        optionJobs[k] = optionPool.submit<List<Option>> { try { waitForeground(); collectOptions(t, urgent = false) } finally { optionJobs.remove(k) } }
+        lives[k]?.takeIf { System.currentTimeMillis() - it.since < 30 * 60_000L }?.let { return it }
+        val live = Live()
+        lives[k] = live
+        // То, откуда песня играет сейчас, известно сразу.
+        whereOf(t)?.let { w -> live.add(Option(nameOf(w), t.title, w)) }
+        optionPool.execute {
+            try {
+                App.awaitReadyOrNull()
+                val run = { runCatching { search(t, java.util.concurrent.ConcurrentLinkedQueue(), java.util.concurrent.ConcurrentHashMap(), collect = live::add) }; Unit }
+                if (urgent) { foreground.incrementAndGet(); try { run() } finally { foreground.decrementAndGet() } }
+                else { waitForeground(); Ytdlp.inBackground { run() } }
+            } finally { live.finish() }
+        }
+        return live
     }
 
-    private fun collectOptions(t: Track, urgent: Boolean): List<Option> {
-        App.awaitReadyOrNull()
-        val out = java.util.Collections.synchronizedList(mutableListOf<Option>())
-        val run = { runCatching { search(t, java.util.concurrent.ConcurrentLinkedQueue(), java.util.concurrent.ConcurrentHashMap(), collect = out) }; Unit }
-        if (urgent) { foreground.incrementAndGet(); try { run() } finally { foreground.decrementAndGet() } }
-        else Ytdlp.inBackground { run() }
-        return out.distinctBy { it.where }.also { if (it.isNotEmpty() || urgent) optionCache[key(t)] = System.currentTimeMillis() to it }
+    /** Название площадки по «где лежит». */
+    private fun nameOf(where: String) = when {
+        where.startsWith("zaycev:") -> "Zaycev · MP3 ${where.split(':').getOrNull(2).orEmpty()}".trim()
+        where.startsWith("tg:") -> where.substringAfter('|', "Telegram")
+        else -> Describe.site(where)
     }
 
     /** Какой источник сейчас закреплён за песней (выбран человеком). null — выбирается автоматически. */
     fun chosen(t: Track): String? = pinned(t)
 
     private fun search(t: Track, log: java.util.Queue<String>, picked: MutableMap<String, String>, light: Boolean = false,
-                       collect: MutableList<Option>? = null): StreamInfo {
+                       collect: ((Option) -> Unit)? = null): StreamInfo {
         val sources = listOf(
             "SoundCloud" to "scsearch8:${t.query}",
             "YouTube" to "ytsearch8:${t.query}",
@@ -510,14 +544,19 @@ object Streams {
         val jobs = soundcloud + listOf(zaycev, telegram, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + listOfNotNull(spare)
         val started = System.currentTimeMillis()
         if (collect != null) {
-            // Режим «показать все источники»: ждём каждую площадку и собираем всё, что играет.
-            while (!jobs.all { it.isDone } && System.currentTimeMillis() - started < 25_000) Thread.sleep(50)
-            for (f in jobs) {
-                val s = (if (f.isDone) runCatching { f.get() }.getOrNull() else null) ?: continue
-                val where = picked[s.source.substringBefore(" ·")] ?: s.pageUrl.takeIf { it != s.url && it.startsWith("http") } ?: continue
-                collect += Option(s.source, s.title, where)
+            // Режим «показать все источники»: отдаём каждый найденный вариант сразу, как только площадка ответила.
+            val told = HashSet<Any>()
+            while (true) {
+                for (f in jobs) {
+                    if (!f.isDone || !told.add(f)) continue
+                    val s = runCatching { f.get() }.getOrNull() ?: continue
+                    val where = picked[s.source.substringBefore(" ·")] ?: s.pageUrl.takeIf { it != s.url && it.startsWith("http") } ?: continue
+                    collect(Option(s.source, s.title, where))
+                }
+                if (jobs.all { it.isDone } || System.currentTimeMillis() - started > 25_000) break
+                Thread.sleep(50)
             }
-            throw UserError("собраны источники: ${collect.size}")
+            throw UserError("источники собраны")
         }
         while (true) {
             for ((i, f) in jobs.withIndex()) {

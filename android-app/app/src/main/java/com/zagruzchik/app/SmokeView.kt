@@ -48,13 +48,7 @@ class SmokeView(ctx: Context) : View(ctx) {
         var sr = 0; var sg = 0; var sb = 0
         for (i in 0 until EDGES) {
             val a = (i / EDGES.toFloat() * 2 * PI).toFloat()
-            val c = if (small == null) theme[i % theme.size] else {
-                val px = ((0.5f + 0.40f * cos(a)) * (GRID - 1)).toInt().coerceIn(1, GRID - 2)
-                val py = ((0.5f + 0.40f * sin(a)) * (GRID - 1)).toInt().coerceIn(1, GRID - 2)
-                var r = 0; var g = 0; var bl = 0
-                for (dx in -1..1) for (dy in -1..1) { val p = small.getPixel(px + dx, py + dy); r += Color.red(p); g += Color.green(p); bl += Color.blue(p) }
-                vivid(Color.rgb(r / 9, g / 9, bl / 9), theme[i % theme.size])
-            }
+            val c = if (small == null) theme[i % theme.size] else rayColor(small, a)
             edge[i] = c; sr += Color.red(c); sg += Color.green(c); sb += Color.blue(c)
             shaders[i] = RadialGradient(0f, 0f, 1f, intArrayOf(ColorUtils.setAlphaComponent(c, 0xF0), ColorUtils.setAlphaComponent(c, 0x80), Color.TRANSPARENT),
                 floatArrayOf(0f, 0.42f, 1f), Shader.TileMode.CLAMP)
@@ -66,14 +60,35 @@ class SmokeView(ctx: Context) : View(ctx) {
     }
 
     /**
-     * Цвет дыма — цвет самой обложки, только светлее, чтобы он был виден на тёмном фоне.
-     * Серая или чёрно-белая обложка даёт серебристо-белый дым (раньше он подменялся фиолетовым цветом приложения —
-     * и дым выглядел чужим). Цвет приложения остаётся только там, где обложки нет вовсе.
+     * Цвет дыма в одну сторону — цвет самой обложки вдоль луча от её середины к краю в эту сторону.
+     * Берётся только настоящий цвет: у тёмных и серых точек оттенок случайный (шум сжатия), раньше он раздувался
+     * в яркий розовый/фиолетовый — и дым выглядел чужим. Если цвета на луче нет (чёрная, серая, чёрно-белая обложка) —
+     * дым серебристый, без оттенка. Цвет приложения остаётся только там, где обложки нет вовсе.
      */
-    private fun vivid(c: Int, @Suppress("UNUSED_PARAMETER") theme: Int): Int {
-        val hsv = FloatArray(3); Color.colorToHSV(c, hsv)
-        if (hsv[1] < 0.14f) { hsv[1] *= 0.6f; hsv[2] = (hsv[2] * 0.9f + 0.45f).coerceIn(0.62f, 0.97f); return Color.HSVToColor(hsv) }
-        hsv[1] = minOf(1f, hsv[1] * 1.25f + 0.06f); hsv[2] = hsv[2].coerceIn(0.72f, 1f)
+    private fun rayColor(small: Bitmap, a: Float): Int {
+        var wr = 0f; var wg = 0f; var wb = 0f; var w = 0f; var lum = 0f; var n = 0; var top = 0
+        var d = 0.10f
+        while (d <= 0.48f) {
+            val px = ((0.5f + d * cos(a)) * (GRID - 1)).toInt().coerceIn(0, GRID - 1)
+            val py = ((0.5f + d * sin(a)) * (GRID - 1)).toInt().coerceIn(0, GRID - 1)
+            val p = small.getPixel(px, py)
+            val r = Color.red(p); val g = Color.green(p); val bl = Color.blue(p)
+            val chroma = maxOf(r, g, bl) - minOf(r, g, bl)        // насколько точка цветная, 0..255
+            top = maxOf(top, chroma)
+            val k = (chroma * chroma).toFloat()
+            wr += r * k; wg += g * k; wb += bl * k; w += k
+            lum += (r * 0.3f + g * 0.59f + bl * 0.11f) / 255f; n++
+            d += 0.04f
+        }
+        val hsv = FloatArray(3)
+        if (top < NEUTRAL || w <= 0f) {
+            // Цвета нет: серебристый дым, светлее на светлой обложке.
+            hsv[0] = 0f; hsv[1] = 0f; hsv[2] = (0.62f + 0.33f * (lum / maxOf(1, n))).coerceIn(0.62f, 0.95f)
+            return Color.HSVToColor(hsv)
+        }
+        Color.colorToHSV(Color.rgb((wr / w).toInt(), (wg / w).toInt(), (wb / w).toInt()), hsv)
+        // Тот же оттенок, только светлее — чтобы дым был виден на тёмном фоне.
+        hsv[1] = minOf(1f, hsv[1] * 1.1f); hsv[2] = hsv[2].coerceIn(0.74f, 1f)
         return Color.HSVToColor(hsv)
     }
 
@@ -151,6 +166,7 @@ class SmokeView(ctx: Context) : View(ctx) {
     companion object {
         private const val COUNT = 22
         private const val EDGES = 12
-        private const val GRID = 20
+        private const val GRID = 24
+        private const val NEUTRAL = 34   // ниже этой «цветности» точка считается серой
     }
 }

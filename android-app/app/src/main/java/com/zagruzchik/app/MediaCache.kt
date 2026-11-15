@@ -54,6 +54,8 @@ object MediaCache {
         val e = index[Library.key(t)] ?: return null
         val f = File(dir, e.optString("file"))
         if (!f.exists()) return null
+        // За песней закреплён другой источник, чем тот, откуда этот файл, — файл не годится.
+        if (stale(t, e)) { index.remove(Library.key(t)); f.delete(); save(); return null }
         e.put("used", System.currentTimeMillis())
         save()
         return f
@@ -61,7 +63,10 @@ object MediaCache {
 
     /** Есть ли в памяти — только проверка, без записи на диск (её зовут при отрисовке списков). */
     @Synchronized
-    fun has(t: Track): Boolean = index[Library.key(t)]?.let { File(dir, it.optString("file")).exists() } == true
+    fun has(t: Track): Boolean = index[Library.key(t)]?.let { !stale(t, it) && File(dir, it.optString("file")).exists() } == true
+
+    /** Файл скачан не из того источника, который человек выбрал для этой песни. */
+    private fun stale(t: Track, e: JSONObject): Boolean = Streams.chosen(t).let { it != null && e.optString("pin") != it }
 
     val sizeBytes: Long @Synchronized get() = index.values.sumOf { it.optLong("size") }
 
@@ -89,6 +94,8 @@ object MediaCache {
 
     private fun download(ctx: Context, t: Track, url: String, keep: Boolean, direct: Boolean = false): Boolean {
         val key = Library.key(t)
+        if (Streams.detoured(t)) return false // выбранный источник не ответил, это замена — на телефон её не кладём
+        val pin = Streams.chosen(t)
         val name = key.hashCode().toUInt().toString(16)
         val ok = if (direct) runCatching {
             // Прямая ссылка на файл (Zaycev, Telegram, Archive) — качаем сами, без Python.
@@ -120,10 +127,12 @@ object MediaCache {
         val dur = f?.let { durationMs(it) } ?: 0L
         val whole = ok && f != null && dur > 0 && (t.durationSec <= 0 || dur >= t.durationSec * 1000L * 0.9)
         if (!whole) { pieces.forEach { it.delete() }; return false }
+        // Пока качали, человек выбрал другой источник — скачанное уже «не то».
+        if (Streams.chosen(t) != pin) { pieces.forEach { it.delete() }; return false }
         pieces.filter { it != f }.forEach { it.delete() }
         synchronized(this) {
             index[key] = JSONObject().put("file", f!!.name).put("size", f.length()).put("used", System.currentTimeMillis())
-                .put("title", t.title).put("artist", t.artist).put("cover", t.cover ?: "").put("keep", keep)
+                .put("title", t.title).put("artist", t.artist).put("cover", t.cover ?: "").put("keep", keep).put("pin", pin ?: "")
             trim(ctx)
             save()
         }

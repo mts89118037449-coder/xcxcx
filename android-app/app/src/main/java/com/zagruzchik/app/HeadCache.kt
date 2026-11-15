@@ -62,7 +62,14 @@ object HeadCache {
 
     val count get() = byKey.size
 
-    fun entry(t: Track): Entry? = if (::dir.isInitialized) byKey[Library.key(t)] else null
+    fun entry(t: Track): Entry? {
+        if (!::dir.isInitialized) return null
+        val e = byKey[Library.key(t)] ?: return null
+        // За песней закреплён другой источник — начало от прежнего не годится.
+        val pin = Streams.chosen(t)
+        if (pin != null && e.where != pin) { drop(t); return null }
+        return e
+    }
     fun byId(id: String?): Entry? = id?.substringBeforeLast('.')?.let { byId[it] }
     fun has(t: Track) = entry(t) != null
 
@@ -86,7 +93,7 @@ object HeadCache {
         if (!::dir.isInitialized) return false
         val key = Library.key(t)
         if (byKey.containsKey(key)) return true
-        if (!storable(s)) return false
+        if (!storable(s) || Streams.detoured(t)) return false
         val where = Streams.whereOf(t) ?: return false // без памяти источника продолжить ту же запись не получится
         val id = java.util.UUID.nameUUIDFromBytes((key + "|" + where).toByteArray()).toString().replace("-", "")
         val c = Net.open(URL(s.url))

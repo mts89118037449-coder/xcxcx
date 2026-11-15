@@ -16,6 +16,7 @@ class App : Application() {
         // Свои фирменные цвета SoundAura (фиолетово-розовая аура), а не цвета обоев.
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(Settings.theme(this).mode)
         Notifications.createChannels(this)
+        MiniBar.install(this)
         Jobs.init(this)
         Library.init(this)
         History.init(this)

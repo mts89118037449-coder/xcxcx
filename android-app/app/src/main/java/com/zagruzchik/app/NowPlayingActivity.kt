@@ -108,6 +108,8 @@ class NowPlayingActivity : AppCompatActivity() {
         if (Settings.coverSmoke(this)) {
             val aura = findViewById<View>(R.id.npAura)
             val layer = aura.parent as ViewGroup
+            // Своё свечение приложения (с фиолетовым оттенком) под дымом не нужно: оно подмешивало к цветам обложки чужой цвет.
+            aura.visibility = View.INVISIBLE
             smoke = SmokeView(this).also { layer.addView(it, layer.indexOfChild(aura) + 1, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)) }
             // Положение дыма следует за обложкой при любой раскладке (и в «кольце», и в «волне»).
             cover.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
@@ -424,7 +426,8 @@ class NowPlayingActivity : AppCompatActivity() {
     private fun paintBackground(b: Bitmap?) {
         val surface = MaterialColors.getColor(cover, M.attr.colorSurface)
         // Цвет обложки с оттенком ауры — сверху, плавно уходит в фон; вокруг обложки — свечение того же цвета.
-        val tone = b?.let { ColorUtils.blendARGB(Images.dominant(it), Aura.VIOLET, 0.25f) } ?: Aura.VIOLET
+        // С дымом — чистый цвет обложки, без подмешивания цвета приложения.
+        val tone = b?.let { if (smoke != null) Images.dominant(it) else ColorUtils.blendARGB(Images.dominant(it), Aura.VIOLET, 0.25f) } ?: Aura.VIOLET
         glow.color(tone)
         val top = ColorUtils.blendARGB(tone, surface, 0.45f)
         findViewById<View>(R.id.npBackground).background =

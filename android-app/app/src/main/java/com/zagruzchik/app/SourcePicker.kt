@@ -1,52 +1,66 @@
 package com.zagruzchik.app
 
 import android.app.Activity
+import android.graphics.Color
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import kotlin.concurrent.thread
 
 /**
- * Выбор источника песни: приложение опрашивает все площадки и показывает, где она нашлась.
- * Выбранное запоминается за этой песней — дальше она всегда играет оттуда («Автоматически» — вернуть как было).
+ * Выбор источника песни. Окно открывается сразу и музыку не останавливает: первым стоит источник, откуда песня играет
+ * сейчас, остальные добавляются в список по мере ответа площадок. Выбранное запоминается за песней.
  */
 object SourcePicker {
     fun show(a: Activity, t: Track, onChosen: () -> Unit = {}) {
-        // Список собран заранее (песня уже играет) — показываем сразу, без ожидания.
-        Streams.optionsReady(t)?.let { return list(a, t, it, onChosen) }
-        val wait = MaterialAlertDialogBuilder(a)
-            .setTitle("Источники «${t.title}»")
-            .setMessage("Ищу, где есть эта песня… (до 25 секунд)")
-            .setNegativeButton("Отмена", null).show()
-        thread {
-            val found = runCatching { Streams.options(t) }.getOrDefault(emptyList())
-            a.runOnUiThread {
-                if (a.isFinishing || a.isDestroyed) return@runOnUiThread
-                val cancelled = !wait.isShowing
-                runCatching { wait.dismiss() }
-                if (cancelled) return@runOnUiThread
-                list(a, t, found, onChosen)
-            }
-        }
-    }
+        val live = Streams.live(t, urgent = true)
+        val onSurface = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurface, Color.WHITE)
+        val muted = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurfaceVariant, Color.GRAY)
+        val rows = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(8), a.dp(4), a.dp(8), 0) }
+        val foot = TextView(a).apply { textSize = 13f; setTextColor(muted); setPadding(a.dp(18), a.dp(10), a.dp(18), a.dp(4)) }
+        val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; addView(rows); addView(foot) }
+        val dialog = MaterialAlertDialogBuilder(a)
+            .setTitle("Откуда играть «${t.title}»")
+            .setView(ScrollView(a).apply { addView(box) })
+            .setNegativeButton("Закрыть", null).create()
 
-    private fun list(a: Activity, t: Track, found: List<Streams.Option>, onChosen: () -> Unit) {
-        run {
-            run {
-                val current = Streams.chosen(t)
-                val labels = listOf("Автоматически (как решит приложение)") + found.map { o ->
-                    o.label + (if (o.title.isNotBlank() && !o.title.equals(t.title, true)) " — «${o.title.take(40)}»" else "")
-                }
-                val checked = found.indexOfFirst { it.where == current }.let { if (it < 0) 0 else it + 1 }
-                MaterialAlertDialogBuilder(a)
-                    .setTitle(if (found.isEmpty()) "«${t.title}» нигде не нашлась" else "Откуда играть «${t.title}»")
-                    .setSingleChoiceItems(labels.toTypedArray(), checked) { d, i ->
-                        d.dismiss()
-                        Streams.pin(t, if (i == 0) null else found[i - 1].where)
-                        AppLog.add("ИСТОЧНИК ВЫБРАН для «${t.label}»: " + if (i == 0) "автоматически" else found[i - 1].label)
-                        Playback.replay(a, t)
-                        onChosen()
-                    }
-                    .setNegativeButton("Закрыть", null).show()
-            }
+        fun choose(where: String?, label: String) {
+            dialog.dismiss()
+            if (where == Streams.chosen(t) && where != null) return
+            Streams.pin(t, where)
+            AppLog.add("ИСТОЧНИК ВЫБРАН для «${t.label}»: $label")
+            Playback.replay(a, t)
+            onChosen()
         }
+        fun row(text: String, sub: String?, selected: Boolean, click: () -> Unit) {
+            rows.addView(LinearLayout(a).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(a.dp(14), a.dp(11), a.dp(14), a.dp(11)); isClickable = true; isFocusable = true
+                if (selected) background = AuraColors.drawable(a, a.dp(16).toFloat()) else setBackgroundResource(android.R.drawable.list_selector_background)
+                addView(TextView(a).apply { this.text = text; textSize = 16f; setTextColor(if (selected) Color.WHITE else onSurface) })
+                if (!sub.isNullOrBlank()) addView(TextView(a).apply { this.text = sub; textSize = 12f; setTextColor(if (selected) 0xDDFFFFFF.toInt() else muted) })
+                setOnClickListener { click() }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = a.dp(4) })
+        }
+        fun render() {
+            if (a.isFinishing || a.isDestroyed) return
+            val current = Streams.chosen(t)
+            rows.removeAllViews()
+            row("Автоматически", "как решит приложение", current == null) { choose(null, "автоматически") }
+            live.list.forEach { o ->
+                val sub = if (o.title.isNotBlank() && !o.title.equals(t.title, true)) "запись: «${o.title.take(60)}»" else null
+                row(o.label, sub, o.where == current) { choose(o.where, o.label) }
+            }
+            foot.text = if (!live.done) "Ищу на остальных площадках… список пополняется"
+                else if (live.list.isEmpty()) "Песня нигде не нашлась" else "Поиск закончен: найдено ${live.list.size}"
+        }
+        val listener: () -> Unit = { a.runOnUiThread { render() } }
+        live.listeners += listener
+        dialog.setOnDismissListener { live.listeners -= listener }
+        render()
+        dialog.show()
     }
 }
