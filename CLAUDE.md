@@ -43,6 +43,9 @@ SDK в контейнере нет — ставить в scratchpad: cmdline-too
 - `AudioFx.kt` — эквалайзер и звук: выравнивание громкости (`DynamicsProcessing`), вырезание тишины (`skipSilenceEnabled`), уровень `Exciter`.
   `Exciter.kt` — свой `AudioProcessor` («восстановление верхов»), встроен в `PlaybackService` через `DefaultRenderersFactory.buildAudioSink`.
   Видеодорожка для музыки отключена там же (`setTrackTypeDisabled(TRACK_TYPE_VIDEO)`). 8.4 на телефоне не проверена.
+- `LibrarySync.kt` (9.0) — «Медиатека на телефоне»: фоновая загрузка всех любимых песен целиком в `MediaCache` (`Streams.forSync` →
+  `MediaCache.storeNow`, записи с `keep` не вытесняются). Настройка `Settings.Sync` (по умолчанию выключено, включает владелец). Это главный
+  путь к «нажал — сразу играет»: всё находится один раз заранее. Идёт, пока жив процесс приложения. На телефоне не проверено.
 - `Net.kt` — YouTube мимо VPN (если VPN-адрес получает «не робот»). `Telegram.kt`/`TelegramActivity.kt` — TDLib, встроенный аудио-поиск Telegram.
 - `Music.kt` — `Match.score/ranked/reason`: отбор кандидатов. `Library.kt`, `LibraryPage.kt`, `Importer.kt`, `ScreenImportService.kt` — медиатека и перенос.
 

@@ -88,7 +88,16 @@ object Settings {
     fun setSaveLiked(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("saveLiked", on).apply()
 
     /** Сколько места под память прослушанного (МБ). 0 — не запоминать. */
-    val CACHE_OPTIONS = listOf(0, 500, 1024, 2048, 5120)
+    val CACHE_OPTIONS = listOf(0, 500, 1024, 2048, 5120, 10240, 20480, 40960)
+
+    /** «Медиатека на телефоне»: скачивать любимые песни целиком, чтобы играли с телефона — сразу и без сети. */
+    enum class Sync(val label: String, val hint: String) {
+        OFF("Выключено", "Песни ищутся и загружаются при нажатии"),
+        WIFI("Только по Wi‑Fi", "Любимые песни скачиваются на телефон, когда есть Wi‑Fi"),
+        ALWAYS("Любая сеть", "Скачиваются и через мобильный интернет (5–8 МБ на песню)"),
+    }
+    fun sync(ctx: Context) = runCatching { Sync.valueOf(prefs(ctx).getString("sync", null)!!) }.getOrDefault(Sync.OFF)
+    fun setSync(ctx: Context, m: Sync) = prefs(ctx).edit().putString("sync", m.name).apply()
     fun cacheLimitMb(ctx: Context) = prefs(ctx).getInt("cacheMb", 2048)
     fun setCacheLimitMb(ctx: Context, mb: Int) = prefs(ctx).edit().putInt("cacheMb", mb).apply()
 

@@ -70,35 +70,64 @@ object MediaCache {
         if (Settings.cacheLimitMb(ctx) <= 0) return
         val key = Library.key(t)
         synchronized(this) { if (index.containsKey(key) || !pending.add(key)) return }
-        worker.execute {
+        worker.execute { try { download(ctx, t, url, keep = false) } finally { synchronized(this) { pending -= key } } }
+    }
+
+    /**
+     * Скачать песню целиком прямо сейчас (в потоке вызывающего) — для «Медиатеки на телефоне».
+     * [keep] — любимая: при нехватке места её не вытесняет прослушанное. true — файл на месте.
+     */
+    fun storeNow(ctx: Context, t: Track, s: StreamInfo, keep: Boolean = true): Boolean {
+        val key = Library.key(t)
+        synchronized(this) { if (index.containsKey(key)) return true; if (!pending.add(key)) return false }
+        return try { download(ctx, t, if (s.pageUrl == s.url) s.url else s.pageUrl, keep, direct = s.pageUrl == s.url && !s.url.contains(".m3u8")) }
+        finally { synchronized(this) { pending -= key } }
+    }
+
+    /** Есть ли ещё место под лимитом (с запасом на одну песню). */
+    fun hasRoom(ctx: Context): Boolean = sizeBytes < Settings.cacheLimitMb(ctx) * 1024L * 1024L - 12L * 1024 * 1024
+
+    private fun download(ctx: Context, t: Track, url: String, keep: Boolean, direct: Boolean = false): Boolean {
+        val key = Library.key(t)
+        val name = key.hashCode().toUInt().toString(16)
+        val ok = if (direct) runCatching {
+            // Прямая ссылка на файл (Zaycev, Telegram, Archive) — качаем сами, без Python.
+            val c = Net.open(java.net.URL(url))
+            c.connectTimeout = 10_000; c.readTimeout = 20_000
+            c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
             try {
-                App.awaitReadyOrNull() ?: return@execute
-                val name = key.hashCode().toUInt().toString(16)
-                val r = YoutubeDLRequest(url).apply {
-                    addOption("--no-playlist")
-                    addOption("--no-warnings")
-                    addOption("-f", "bestaudio/best")
-                    addOption("-N", "4")
-                    addOption("-o", File(dir, "$name.%(ext)s").absolutePath)
-                }
-                val ok = runCatching { Ytdlp.inBackground { Ytdlp.execute(r, timeoutSec = 600) } }.isSuccess
-                val pieces = dir.listFiles().orEmpty().filter { it.name.startsWith("$name.") }
-                val f = pieces.firstOrNull { isFinal(it.name) }
-                // В память — только целиком скачанное: загрузка завершилась и длительность файла как у песни.
-                val dur = f?.let { durationMs(it) } ?: 0L
-                val whole = ok && f != null && dur > 0 && (t.durationSec <= 0 || dur >= t.durationSec * 1000L * 0.9)
-                if (!whole) { pieces.forEach { it.delete() }; return@execute }
-                pieces.filter { it != f }.forEach { it.delete() }
-                synchronized(this) {
-                    index[key] = JSONObject().put("file", f.name).put("size", f.length()).put("used", System.currentTimeMillis())
-                        .put("title", t.title).put("artist", t.artist).put("cover", t.cover ?: "")
-                    trim(ctx)
-                    save()
-                }
-            } finally {
-                synchronized(this) { pending -= key }
+                if (c.responseCode !in 200..299) throw java.io.IOException("HTTP ${c.responseCode}")
+                val type = c.contentType.orEmpty()
+                val ext = when { type.contains("flac") -> "flac"; type.contains("mp4") || type.contains("m4a") -> "m4a"; type.contains("ogg") || type.contains("opus") -> "ogg"; type.contains("webm") -> "webm"; else -> "mp3" }
+                val tmp = File(dir, "$name.$ext.tmp")
+                c.inputStream.use { ins -> tmp.outputStream().use { out -> ins.copyTo(out, 64 * 1024) } }
+                tmp.renameTo(File(dir, "$name.$ext"))
+            } finally { c.disconnect() }
+        }.getOrDefault(false) else run {
+            App.awaitReadyOrNull() ?: return false
+            val r = YoutubeDLRequest(url).apply {
+                addOption("--no-playlist")
+                addOption("--no-warnings")
+                addOption("-f", "bestaudio/best")
+                addOption("-N", "4")
+                addOption("-o", File(dir, "$name.%(ext)s").absolutePath)
             }
+            runCatching { Ytdlp.inBackground { Ytdlp.execute(r, timeoutSec = 600) } }.isSuccess
         }
+        val pieces = dir.listFiles().orEmpty().filter { it.name.startsWith("$name.") }
+        val f = pieces.firstOrNull { isFinal(it.name) }
+        // В память — только целиком скачанное: загрузка завершилась и длительность файла как у песни.
+        val dur = f?.let { durationMs(it) } ?: 0L
+        val whole = ok && f != null && dur > 0 && (t.durationSec <= 0 || dur >= t.durationSec * 1000L * 0.9)
+        if (!whole) { pieces.forEach { it.delete() }; return false }
+        pieces.filter { it != f }.forEach { it.delete() }
+        synchronized(this) {
+            index[key] = JSONObject().put("file", f!!.name).put("size", f.length()).put("used", System.currentTimeMillis())
+                .put("title", t.title).put("artist", t.artist).put("cover", t.cover ?: "").put("keep", keep)
+            trim(ctx)
+            save()
+        }
+        return true
     }
 
     /** Убрать песню из памяти (файл не играет) — в следующий раз она снова придёт из сети. */
@@ -127,7 +156,9 @@ object MediaCache {
     private fun trim(ctx: Context) {
         val limit = Settings.cacheLimitMb(ctx) * 1024L * 1024L
         while (sizeBytes > limit && index.isNotEmpty()) {
-            val oldest = index.entries.minByOrNull { it.value.optLong("used") } ?: break
+            // Сначала уходит просто прослушанное; любимое (скачанное «Медиатекой на телефоне») — в последнюю очередь.
+            val oldest = index.entries.filter { !it.value.optBoolean("keep") }.minByOrNull { it.value.optLong("used") }
+                ?: index.entries.minByOrNull { it.value.optLong("used") } ?: break
             File(dir, oldest.value.optString("file")).delete()
             index.remove(oldest.key)
         }

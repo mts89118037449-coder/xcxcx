@@ -40,6 +40,7 @@ class App : Application() {
             if (initError == null) {
                 YtdlpDaemon.warmUp() // постоянный yt-dlp — первый поиск уже без ожидания старта Python
                 Warm.start(this) // в фоне узнаём источники любимых песен — потом включаются сразу
+                LibrarySync.start(this) // «Медиатека на телефоне», если включена
                 updateIfNeeded()
             }
         }

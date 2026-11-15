@@ -1309,6 +1309,9 @@ class MainActivity : AppCompatActivity() {
             "Когда песни закончились — дальше играет похожая музыка") {
             Settings.setRadio(this, !radio); refreshMusicSettings()
         }
+        LibrarySync.countAsync()
+        row(R.drawable.ic_download, "Медиатека на телефоне", LibrarySync.status(this),
+            "Любимые песни скачиваются целиком и играют с телефона: сразу, без сети и без пауз") { syncDialog() }
         val cacheMb = Settings.cacheLimitMb(this)
         val used = MediaCache.sizeBytes / 1024 / 1024
         row(R.drawable.ic_schedule, "Память прослушанного",
@@ -1377,6 +1380,27 @@ class MainActivity : AppCompatActivity() {
         val lines = mutableListOf<String>()
         thread {
             Diagnostics.run(this) { l -> runOnUiThread { lines += l; text.text = lines.joinToString("\n") } }
+        }
+    }
+
+    /** «Медиатека на телефоне»: включить/выключить, сеть, место. */
+    fun syncDialog() {
+        val sy = Settings.sync(this)
+        val fav = Library.favorites.size
+        val needGb = "%.0f".format(fav * 6 / 1024.0 + 0.5)
+        choose("Медиатека на телефоне · ${LibrarySync.status(this)}",
+            Settings.Sync.entries.map { "${it.label} — ${it.hint}" }, sy.ordinal) { i ->
+            val m = Settings.Sync.entries[i]
+            Settings.setSync(this, m)
+            if (m != Settings.Sync.OFF) {
+                // Места должно хватать на всю медиатеку: поднимаем лимит памяти, если он меньше нужного.
+                val needMb = fav * 7
+                val limit = Settings.CACHE_OPTIONS.firstOrNull { it >= needMb } ?: Settings.CACHE_OPTIONS.last()
+                if (Settings.cacheLimitMb(this) < limit) Settings.setCacheLimitMb(this, limit)
+                LibrarySync.start(this)
+                snack("Скачиваю медиатеку: $fav песен, примерно $needGb ГБ. Идёт, пока приложение открыто или играет музыка.")
+            }
+            refreshMusicSettings()
         }
     }
 

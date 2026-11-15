@@ -169,6 +169,14 @@ object Streams {
         return StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title).also { done[k] = System.currentTimeMillis() to it }
     }
 
+    /** Для «Медиатеки на телефоне»: полный поиск в фоне (уступает нажатому). null — нигде не нашлась или сеть не дала. */
+    fun forSync(t: Track): StreamInfo? {
+        val k = key(t)
+        cached(k)?.let { return it }
+        waitForeground()
+        return runCatching { Ytdlp.inBackground { find(t) }.also { done[k] = System.currentTimeMillis() to it } }.getOrNull()
+    }
+
     /** Найденная ссылка не заиграла — забываем её и запомненный источник: следующий раз ищем с нуля. */
     fun forget(t: Track) { val k = key(t); done.remove(k); remember(k, null) }
 

@@ -183,6 +183,13 @@ class LibraryPage(
         content.addView(mixCard("Умный микс", "${items.size} любимых · самое ваше — чаще") {
             Playback.playQueue(a, Taste.smart(items) { it.track }, 0)
         })
+        // «Медиатека на телефоне»: сколько песен уже играют без сети; нажатие — включить и настроить.
+        content.addView(TextView(a).apply {
+            LibrarySync.countAsync()
+            text = "Медиатека на телефоне: " + LibrarySync.status(a) + "  ›"
+            textSize = 13f; setTextColor(muted); setPadding(a.dp(4), 0, 0, a.dp(12))
+            setOnClickListener { (a as? MainActivity)?.syncDialog() }
+        })
         // Порядок: недавние, по алфавиту, часто слушаемые.
         val chips = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         Sort.entries.forEach { s ->
