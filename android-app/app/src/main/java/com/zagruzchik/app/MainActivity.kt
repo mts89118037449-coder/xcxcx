@@ -209,7 +209,16 @@ class MainActivity : AppCompatActivity() {
 
     /** Показать содержимое вкладки. Вызывается нижней панелью при выборе вкладки. */
     private fun applyPage(id: Int) {
-        pages.forEach { (k, v) -> v.isVisible = k == id }
+        pages.forEach { (k, v) ->
+            val show = k == id
+            if (show && !v.isVisible) {
+                // Раздел не «выпрыгивает», а коротко проявляется.
+                v.animate().cancel()
+                v.alpha = 0f; v.translationY = dp(8).toFloat()
+                v.isVisible = true
+                v.animate().alpha(1f).translationY(0f).setDuration(140).start()
+            } else v.isVisible = show
+        }
         if (id == R.id.nav_library && libraryDirty) refreshLibrary()
         toolbar.title = when (id) {
             R.id.nav_music -> "Музыка"
@@ -223,8 +232,11 @@ class MainActivity : AppCompatActivity() {
         // На «Музыке» своя шапка с логотипом SoundAura — обычный заголовок не нужен.
         toolbar.isVisible = id != R.id.nav_music && id != R.id.nav_library
         // Медиатека: первые песни, которых нет на телефоне и в памяти, готовим заранее.
-        if (id == R.id.nav_library && ::musicSearch.isInitialized) Streams.prefetchMany(
-            Library.favorites.filter { Library.localFor(it) == null && !MediaCache.has(it) }, 4)
+        // (в фоне: проверка «есть ли на телефоне» трогает диск — на всей медиатеке это давало паузу при переключении вкладки)
+        if (id == R.id.nav_library && ::musicSearch.isInitialized) thread {
+            val first = Library.favorites.take(40).filter { Library.localFor(it) == null && !MediaCache.has(it) && !HeadCache.has(it) }
+            if (first.isNotEmpty()) Streams.prefetchMany(first, 3)
+        }
         if (id == R.id.nav_jobs) toolbar.inflateMenu(R.menu.jobs)
         refreshSummary()
     }
@@ -643,9 +655,15 @@ class MainActivity : AppCompatActivity() {
 
     // Медиатека не на экране — не пересобираем её зря (тысячи песен), обновим при открытии вкладки.
     private var libraryDirty = true
+    private var libraryStamp: String? = null
     private fun refreshLibrary() {
         if (pages[R.id.nav_library]?.isVisible != true) { libraryDirty = true; return }
         libraryDirty = false
+        // Пересобираем, только если данные действительно изменились: раньше список строился заново при каждом входе во вкладку.
+        val fav = Library.favorites
+        val stamp = "${fav.size}|${fav.firstOrNull()?.let { it.title + it.artist + (it.cover ?: "") }}|${Jobs.version}|${History.all.size}|${Library.playlists.size}|${Library.albums.size}"
+        if (stamp == libraryStamp) return
+        libraryStamp = stamp
         library?.refresh()
     }
 

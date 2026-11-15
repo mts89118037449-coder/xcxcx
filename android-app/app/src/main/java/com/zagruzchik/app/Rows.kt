@@ -137,25 +137,35 @@ object Rows {
  * так что к нажатию песня обычно уже готова.
  */
 object VisiblePrefetch {
+    private val io = java.util.concurrent.Executors.newSingleThreadExecutor()
+
     fun install(a: Activity) {
         val root = a.window.decorView
         val run = Runnable {
+            // В главном потоке — только сбор видимых строк (без диска). Что из них уже готово, решает фоновый поток.
             val screen = android.graphics.Rect(0, 0, root.width, root.height)
-            val found = mutableListOf<Track>()
+            val seen = mutableListOf<Track>()
             val r = android.graphics.Rect()
             fun walk(v: View) {
-                if (found.size >= 3 || v.visibility != View.VISIBLE) return
+                if (seen.size >= 12 || v.visibility != View.VISIBLE) return
                 (v.getTag(R.id.libContent) as? Track)?.let { t ->
-                    if (v.isShown && v.getGlobalVisibleRect(r) && android.graphics.Rect.intersects(r, screen) && !MediaCache.has(t) && !HeadCache.has(t)) found += t
+                    if (v.getGlobalVisibleRect(r) && android.graphics.Rect.intersects(r, screen)) seen += t
                     return
                 }
                 if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
             }
             walk(root)
-            if (found.isNotEmpty()) Streams.prefetchMany(found, 3)
+            if (seen.isNotEmpty()) io.execute {
+                val need = seen.filter { !MediaCache.has(it) && !HeadCache.has(it) }.take(3)
+                if (need.isNotEmpty()) Streams.prefetchMany(need, 3)
+            }
         }
-        val kick = { root.removeCallbacks(run); root.postDelayed(run, 350) }
-        root.viewTreeObserver.addOnScrollChangedListener { kick() }
-        root.viewTreeObserver.addOnGlobalLayoutListener { kick() }
+        var lastLayout = 0L
+        root.viewTreeObserver.addOnScrollChangedListener { root.removeCallbacks(run); root.postDelayed(run, 400) }
+        // Раскладка меняется постоянно (ползунок мини-плеера, счётчики) — на неё реагируем не чаще раза в полторы секунды.
+        root.viewTreeObserver.addOnGlobalLayoutListener {
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastLayout > 1500) { lastLayout = now; root.removeCallbacks(run); root.postDelayed(run, 400) }
+        }
     }
 }
