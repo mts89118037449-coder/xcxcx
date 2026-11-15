@@ -48,6 +48,8 @@ SDK в контейнере нет — ставить в scratchpad: cmdline-too
   путь к «нажал — сразу играет»: всё находится один раз заранее. Идёт, пока жив процесс приложения. На телефоне не проверено.
 - `SourcePicker.kt` (9.1) — выбор источника: `Streams.options(t)` опрашивает все площадки (до 25 с), выбор хранится в `pins` (там же своя
   ссылка; значение — ссылка либо `zaycev:…`/`tg:…`) и применяется первым в `find()`; `Playback.replay` включает песню заново.
+- `SmokeView.kt` (9.2) — «дым» вокруг обложки в плеере: 9 мягких облаков цветов краёв обложки, слой вставляется над `npAura` в
+  `NowPlayingActivity`; настройка `Settings.coverSmoke`. Кадр проверен отрисовкой по тем же формулам на сервере, на телефоне не проверен.
 - `Net.kt` — YouTube мимо VPN (если VPN-адрес получает «не робот»). `Telegram.kt`/`TelegramActivity.kt` — TDLib, встроенный аудио-поиск Telegram.
 - `Music.kt` — `Match.score/ranked/reason`: отбор кандидатов. `Library.kt`, `LibraryPage.kt`, `Importer.kt`, `ScreenImportService.kt` — медиатека и перенос.
 

@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -103,6 +104,19 @@ class NowPlayingActivity : AppCompatActivity() {
         // Обложка — квадрат по меньшей стороне свободного места.
         val box = findViewById<View>(R.id.npCoverBox)
         val frame = findViewById<View>(R.id.npCoverFrame)
+        // Дым вокруг обложки: отдельный слой сразу над фоном, под обложкой и кнопками.
+        if (Settings.coverSmoke(this)) {
+            val aura = findViewById<View>(R.id.npAura)
+            val layer = aura.parent as ViewGroup
+            smoke = SmokeView(this).also { layer.addView(it, layer.indexOfChild(aura) + 1, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)) }
+            // Положение дыма следует за обложкой при любой раскладке (и в «кольце», и в «волне»).
+            cover.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                val sm = smoke ?: return@addOnLayoutChangeListener
+                val a = IntArray(2); val b = IntArray(2)
+                cover.getLocationInWindow(a); sm.getLocationInWindow(b)
+                sm.place(a[0] - b[0] + cover.width / 2f, a[1] - b[1] + cover.height / 2f, minOf(cover.width, cover.height) / 2f)
+            }
+        }
         box.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
             val side = minOf(r - l, b - t)
             if (frame.layoutParams.width != side) frame.post {
@@ -328,6 +342,7 @@ class NowPlayingActivity : AppCompatActivity() {
         findViewById<EqBarsView>(R.id.npEq).playing(playing)
         play.setIconResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play_arrow)
         glow.playing(playing) // аура «дышит», пока играет
+        smoke?.playing = playing
         play.contentDescription = if (playing) "Пауза" else "Играть"
         play.isEnabled = !pending
         shuffle.alpha = if (c?.shuffleModeEnabled == true) 1f else 0.45f
@@ -362,6 +377,7 @@ class NowPlayingActivity : AppCompatActivity() {
         if (url == null) {
             if (coverBitmap != null && showingPending()) return // пока включается следующая — держим прежнюю обложку, без мигания
             coverBitmap = null
+            smoke?.setCover(null)
             if (ring) cover.setImageDrawable(GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(MaterialColors.getColor(cover, M.attr.colorSurfaceContainerHighest)) })
             else cover.setImageResource(R.drawable.player_artwork)
             paintBackground(null)
@@ -370,6 +386,7 @@ class NowPlayingActivity : AppCompatActivity() {
         Images.load(url) { if (coverKey == key) applyCover(it) }
     }
 
+    private var smoke: SmokeView? = null
     private var shownKey: String? = null
     private var coverFade = false
 
@@ -388,6 +405,7 @@ class NowPlayingActivity : AppCompatActivity() {
             cover.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(260).start()
         }
         coverBitmap = b
+        smoke?.setCover(b)
         // «Кольцо»: обложка — круглый диск (сама картинка обрезается по кругу, по центру квадрата).
         if (ring) cover.setImageDrawable(disc(b)) else cover.setImageBitmap(b)
         paintBackground(b)

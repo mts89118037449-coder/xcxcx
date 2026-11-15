@@ -1241,6 +1241,9 @@ class MainActivity : AppCompatActivity() {
         settingRow(appearance, R.drawable.ic_equalizer, "Эквалайзер",
             if (AudioFx.enabled(this)) "Включён · ${AudioFx.preset(this)}" else "Выключен",
             "Пресеты, своя кривая, усиление баса и объём") { startActivity(Intent(this, EqualizerActivity::class.java)) }
+        val smoke = Settings.coverSmoke(this)
+        settingRow(appearance, R.drawable.ic_headphones, "Дым вокруг обложки", if (smoke) "Включён" else "Выключен",
+            "В плеере вокруг обложки плывёт цветной дым её же цветов, пока играет музыка") { Settings.setCoverSmoke(this, !smoke); refreshMusicSettings() }
         val ly = Settings.lyricsInPlayer(this)
         settingRow(appearance, R.drawable.ic_lyrics, "Текст песни в плеере", if (ly) "Показывать" else "Скрыт",
             "Строки идут вместе с музыкой; нажмите — весь текст") { Settings.setLyricsInPlayer(this, !ly); refreshMusicSettings() }

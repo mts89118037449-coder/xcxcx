@@ -50,6 +50,10 @@ object Settings {
     fun setJoinMode(ctx: Context, m: JoinMode) = prefs(ctx).edit().putString("joinMode", m.name).apply()
 
     /** Текст песни прямо в плеере (идёт вместе с музыкой). */
+    /** Цветной дым вокруг обложки в плеере (цвета — с краёв обложки). */
+    fun coverSmoke(ctx: Context) = prefs(ctx).getBoolean("coverSmoke", true)
+    fun setCoverSmoke(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("coverSmoke", on).apply()
+
     fun lyricsInPlayer(ctx: Context) = prefs(ctx).getBoolean("lyricsInPlayer", true)
     fun setLyricsInPlayer(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("lyricsInPlayer", on).apply()
 
