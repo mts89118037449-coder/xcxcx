@@ -30,7 +30,8 @@ object Library {
             )
         }
         // Перенос из файла в 6.3 мог записать вместо исполнителя «spotify:artist:…» — такие песни убираем (перенесите файл заново).
-        if (saved.removeAll { Importer.isId(it.artist) }) save()
+        // …и подписи кнопок, попавшие в медиатеку при переносе с экрана («Открыть контекстное меню для элемента…»).
+        if (saved.removeAll { Importer.isId(it.artist) || ScreenImportService.isUiText(it.artist) || ScreenImportService.isUiText(it.title) }) save()
     }
 
     // Ключ песни считается через нормализацию текста — недёшево, а в списках он нужен десятки раз: запоминаем.

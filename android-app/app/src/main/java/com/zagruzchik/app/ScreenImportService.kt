@@ -151,7 +151,7 @@ class ScreenImportService : AccessibilityService() {
 
     private fun cleanArtist(s: String) = s.replace(PREFIX, "").substringBefore(" • ").trim()
 
-    private fun junk(t: String) = t.length < 2 && t != "E" || t in JUNK || DURATION.matches(t) || t.all { it.isDigit() }
+    private fun junk(t: String) = isUiText(t) || t.length < 2 && t != "E" || t in JUNK || DURATION.matches(t) || t.all { it.isDigit() }
 
     companion object {
         @Volatile var instance: ScreenImportService? = null
@@ -168,6 +168,10 @@ class ScreenImportService : AccessibilityService() {
         private val DURATION = Regex("""\d{1,2}:\d{2}(:\d{2})?""")
         private val COUNT = Regex("""^\d[\d\s]*\s*(трек|песен|песни|песня|songs?|tracks?).*""", RegexOption.IGNORE_CASE)
         private val PREFIX = Regex("""^(Песня|Song|Трек|Track|Видео|Video)\s*•\s*""", RegexOption.IGNORE_CASE)
+
+        /** Подпись кнопки, а не название песни или исполнитель. */
+        fun isUiText(s: String) = UI_TEXT.any { s.startsWith(it, ignoreCase = true) }
+        private val UI_TEXT = listOf("Открыть контекстное меню", "Open context menu", "Ещё для", "More options for", "Дополнительные параметры")
 
         /** Включена ли служба в «Специальных возможностях». */
         fun enabled(ctx: Context): Boolean {
