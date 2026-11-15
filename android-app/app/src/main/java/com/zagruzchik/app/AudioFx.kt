@@ -129,6 +129,7 @@ object AudioFx {
         return g.last()
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     @Synchronized fun apply(ctx: Context) {
         val on = enabled(ctx)
         eq?.let { e ->
