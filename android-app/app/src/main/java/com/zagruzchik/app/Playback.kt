@@ -307,6 +307,7 @@ object Playback {
                         fill(app, gen)
                     } else if (nextToAdd < queue.size && skips < 5) {
                         // Ничего не играет и не заиграет — не стоим на месте, включаем следующую из очереди.
+                        AppLog.add("НЕ НАШЛАСЬ «${first.track.label}» — включаю следующую из очереди: «${queue.getOrNull(nextToAdd)?.track?.label}»")
                         Pending.set(first.track, loading = false, error = "Включаю следующую — эту бесплатно не нашёл.\n$msg")
                         main.postDelayed({
                             if (gen != queueGen) return@postDelayed
@@ -435,6 +436,14 @@ object Playback {
         hooked = c
         c.addListener(object : androidx.media3.common.Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // В журнал: какая песня пошла и почему (сама доиграла прошлая, человек переключил, поменялась очередь).
+                AppLog.add("СМЕНА ПЕСНИ → «${mediaItem?.mediaMetadata?.artist} — ${mediaItem?.mediaMetadata?.title}» из ${mediaItem?.mediaMetadata?.extras?.getString(X_SOURCE)} · причина: " + when (reason) {
+                    androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> "прошлая доиграла"
+                    androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> "переключили (кнопка/наушники/приложение)"
+                    androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED -> "заменена очередь"
+                    androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT -> "повтор"
+                    else -> "$reason"
+                } + " · в очереди проигрывателя ${c.mediaItemCount}, позиция ${c.currentMediaItemIndex}")
                 // Заиграла другая песня — старая ошибка/«готовлю» больше не про неё: экран плеера
                 // показывает то, что звучит (раньше оставались старые обложка и название).
                 val p = Pending.track
@@ -491,7 +500,33 @@ object Playback {
                 }
             }
 
+            // Остановки посреди песни: кто поставил на паузу и почему.
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                AppLog.add((if (playWhenReady) "ИГРАТЬ" else "ПАУЗА") + " на ${c.currentPosition / 1000} с «${c.mediaMetadata.title}» · причина: " + when (reason) {
+                    androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "кнопка (экран, уведомление, наушники)"
+                    androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> "звук забрало другое приложение / звонок / уведомление"
+                    androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> "отключились наушники"
+                    androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE -> "удалённое управление"
+                    androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM -> "конец записи"
+                    else -> "$reason"
+                })
+            }
+
+            override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                if (playbackSuppressionReason != androidx.media3.common.Player.PLAYBACK_SUPPRESSION_REASON_NONE)
+                    AppLog.add("ЗВУК ПРИГЛУШЁН системой на ${c.currentPosition / 1000} с · причина $playbackSuppressionReason (1 — временно потерян звук, например уведомление)")
+            }
+
+            private var bufferingAt = 0L
             override fun onPlaybackStateChanged(state: Int) {
+                // Подгрузка посреди песни (сеть не успевает) — с какой секунды и сколько длилась.
+                if (state == androidx.media3.common.Player.STATE_BUFFERING) {
+                    bufferingAt = System.currentTimeMillis()
+                    if (c.currentPosition > 1500) AppLog.add("ПОДГРУЗКА началась на ${c.currentPosition / 1000} с «${c.mediaMetadata.title}» из ${c.mediaMetadata.extras?.getString(X_SOURCE)} (в запасе ${(c.bufferedPosition - c.currentPosition) / 1000} с)")
+                } else if (state == androidx.media3.common.Player.STATE_READY && bufferingAt > 0) {
+                    val ms = System.currentTimeMillis() - bufferingAt; bufferingAt = 0
+                    if (ms > 700 && c.currentPosition > 1500) AppLog.add("ПОДГРУЗКА закончилась: ждали ${ms / 100 / 10.0} с")
+                } else if (state == androidx.media3.common.Player.STATE_ENDED) AppLog.add("ОЧЕРЕДЬ ПРОИГРЫВАТЕЛЯ КОНЧИЛАСЬ (следующая не была готова)")
                 if (state == androidx.media3.common.Player.STATE_ENDED) { learn(skipped = false); current = null }
                 if (state == androidx.media3.common.Player.STATE_ENDED &&
                     c.currentMediaItem?.mediaMetadata?.extras?.getBoolean(X_PREVIEW) == true && waitingFull != null
