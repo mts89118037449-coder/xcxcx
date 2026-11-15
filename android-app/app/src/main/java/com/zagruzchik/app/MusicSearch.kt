@@ -303,10 +303,8 @@ object Streams {
 
     private fun find(t: Track, light: Boolean = false): StreamInfo {
         val k = key(t)
-        pinned(t)?.let { url ->
-            if (!isYoutube(url)) App.awaitReady()
-            Downloader.streamOf(url, Describe.site(url), t.title)?.let { return it }
-        }
+        // Источник, выбранный человеком для этой песни (или своя ссылка), — всегда первым.
+        pinned(t)?.let { where -> runCatching { fromKnown(t, where) }.getOrNull()?.let { return it } }
         knownRaw(k)?.takeIf { !it.startsWith("none:") }?.let { where ->
             runCatching { fromKnown(t, where) }.getOrNull()?.let { return it }
             // Больше не играет оттуда (удалили, закрыли) — забываем и ищем заново. Запись Telegram оставляем, если он просто не подключён.
@@ -327,7 +325,27 @@ object Streams {
         }
     }
 
-    private fun search(t: Track, log: java.util.Queue<String>, picked: MutableMap<String, String>, light: Boolean = false): StreamInfo {
+    /** Один найденный вариант песни: площадка, название записи и «где лежит» (для запоминания выбора). */
+    class Option(val label: String, val title: String, val where: String)
+
+    /**
+     * Все площадки, где песня нашлась и играет, — для выбора источника. Ждёт ответа всех (до 25 с).
+     * Порядок — по старшинству. Не из главного потока.
+     */
+    fun options(t: Track): List<Option> {
+        App.awaitReadyOrNull()
+        val out = java.util.Collections.synchronizedList(mutableListOf<Option>())
+        foreground.incrementAndGet()
+        try { runCatching { search(t, java.util.concurrent.ConcurrentLinkedQueue(), java.util.concurrent.ConcurrentHashMap(), collect = out) } }
+        finally { foreground.decrementAndGet() }
+        return out.distinctBy { it.where }
+    }
+
+    /** Какой источник сейчас закреплён за песней (выбран человеком). null — выбирается автоматически. */
+    fun chosen(t: Track): String? = pinned(t)
+
+    private fun search(t: Track, log: java.util.Queue<String>, picked: MutableMap<String, String>, light: Boolean = false,
+                       collect: MutableList<Option>? = null): StreamInfo {
         val sources = listOf(
             "SoundCloud" to "scsearch8:${t.query}",
             "YouTube" to "ytsearch8:${t.query}",
@@ -470,6 +488,16 @@ object Streams {
         val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
         val jobs = soundcloud + listOf(zaycev, telegram, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + listOfNotNull(spare)
         val started = System.currentTimeMillis()
+        if (collect != null) {
+            // Режим «показать все источники»: ждём каждую площадку и собираем всё, что играет.
+            while (!jobs.all { it.isDone } && System.currentTimeMillis() - started < 25_000) Thread.sleep(50)
+            for (f in jobs) {
+                val s = (if (f.isDone) runCatching { f.get() }.getOrNull() else null) ?: continue
+                val where = picked[s.source.substringBefore(" ·")] ?: s.pageUrl.takeIf { it != s.url && it.startsWith("http") } ?: continue
+                collect += Option(s.source, s.title, where)
+            }
+            throw UserError("собраны источники: ${collect.size}")
+        }
         while (true) {
             for ((i, f) in jobs.withIndex()) {
                 if (!f.isDone) continue

@@ -72,6 +72,8 @@ class NowPlayingActivity : AppCompatActivity() {
         title = findViewById(R.id.npTitle)
         artist = findViewById(R.id.npArtist)
         source = findViewById(R.id.npSource)
+        // Верхняя плашка с названием площадки — выбор источника для этой песни.
+        findViewById<View>(R.id.npHeader).setOnClickListener { currentTrack()?.let { SourcePicker.show(this, it) } }
         // Нажатие на строку «Играет из…» — что ответила каждая площадка и за сколько (чтобы видеть, что тормозит).
         source.setOnClickListener {
             val t = currentTrack() ?: return@setOnClickListener

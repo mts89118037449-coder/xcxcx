@@ -163,6 +163,17 @@ object Playback {
         playQueue(ctx, queue, startIndex, openScreen = false)
     }
 
+    /**
+     * Включить эту песню заново с начала — после выбора другого источника. Очередь сохраняется.
+     * Всё, что было сохранено от прежнего источника (файл в памяти, начало), убирается.
+     */
+    fun replay(ctx: Context, t: Track) {
+        MediaCache.forget(t); HeadCache.drop(t)
+        val k = Library.key(t)
+        val i = queue.indexOfFirst { Library.key(it.track) == k }
+        if (i >= 0) playQueue(ctx, queue, i, openScreen = false) else playTrack(ctx, t, openScreen = false)
+    }
+
     private fun playQueue(ctx: Context, items: List<QItem>, start: Int, openScreen: Boolean, auto: Boolean) {
         if (items.isEmpty()) return
         val app = ctx.applicationContext

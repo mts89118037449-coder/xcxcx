@@ -72,6 +72,8 @@ object TrackActions {
             }
         }
         item(R.drawable.ic_link, "Где ещё послушать") { TransferActivity.openTrack(a, t, t.url) }
+        // Песня есть на нескольких площадках — выбрать, откуда играть; выбор запоминается за песней.
+        item(R.drawable.ic_headphones, "Источник песни" + if (Streams.chosen(t) != null) ": выбран" else "") { SourcePicker.show(a, t) }
         // Поиск не находит или включает не ту версию — человек сам даёт страницу песни, запоминаем.
         item(R.drawable.ic_link, if (Streams.pinned(t) != null) "Своя ссылка: изменить" else "Указать свою ссылку на песню") {
             val input = android.widget.EditText(a).apply { hint = "YouTube, SoundCloud, VK Видео…"; setSingleLine(); setText(Streams.pinned(t).orEmpty()) }
