@@ -178,6 +178,16 @@ object Catalog {
         return Taste.smart(fresh) { it }
     }
 
+    private val covers = java.util.concurrent.ConcurrentHashMap<String, String>()
+    /** Обложка песни, у которой её нет (нашлась на площадке без картинки): ищем ту же песню в каталоге. null — не нашлась. */
+    fun coverFor(t: Track): String? {
+        val k = Library.key(t)
+        covers[k]?.let { return it.ifEmpty { null } }
+        val c = runCatching { enrich(t.copy(cover = null)).cover }.getOrElse { return null } // сеть не ответила — попробуем в другой раз
+        covers[k] = c.orEmpty()
+        return c
+    }
+
     // ---------------- Разбор ----------------
 
     /** Ищем ту же песню в Deezer: превью для мгновенного старта, длительность, версия без цензуры. */

@@ -43,12 +43,12 @@ class SmokeView(ctx: Context) : View(ctx) {
 
     /** Цвета берём с краёв обложки: клуб дыма — цвета того места, откуда вышел. */
     fun setCover(b: Bitmap?) {
-        val theme = intArrayOf(AuraColors.c1(context), AuraColors.c2(context), AuraColors.c3(context))
         val small = b?.let { runCatching { Bitmap.createScaledBitmap(it, GRID, GRID, true) }.getOrNull() }
         var sr = 0; var sg = 0; var sb = 0
         for (i in 0 until EDGES) {
             val a = (i / EDGES.toFloat() * 2 * PI).toFloat()
-            val c = if (small == null) theme[i % theme.size] else rayColor(small, a)
+            // Обложки нет — дым серебристый, спокойный (раньше был ярких цветов приложения).
+            val c = if (small == null) (if (i % 2 == 0) 0xFFC9CAD6.toInt() else 0xFFA9ABBA.toInt()) else rayColor(small, a)
             edge[i] = c; sr += Color.red(c); sg += Color.green(c); sb += Color.blue(c)
             shaders[i] = RadialGradient(0f, 0f, 1f, intArrayOf(ColorUtils.setAlphaComponent(c, 0xF0), ColorUtils.setAlphaComponent(c, 0x80), Color.TRANSPARENT),
                 floatArrayOf(0f, 0.42f, 1f), Shader.TileMode.CLAMP)

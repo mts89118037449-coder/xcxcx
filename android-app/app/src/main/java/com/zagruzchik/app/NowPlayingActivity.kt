@@ -380,9 +380,24 @@ class NowPlayingActivity : AppCompatActivity() {
             if (coverBitmap != null && showingPending()) return // пока включается следующая — держим прежнюю обложку, без мигания
             coverBitmap = null
             smoke?.setCover(null)
-            if (ring) cover.setImageDrawable(GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(MaterialColors.getColor(cover, M.attr.colorSurfaceContainerHighest)) })
+            if (ring) cover.setImageDrawable(android.graphics.drawable.LayerDrawable(arrayOf(
+                GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(MaterialColors.getColor(cover, M.attr.colorSurfaceContainerHighest)) },
+                androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_music_note_white)?.mutate()?.apply { alpha = 0x55 },
+            )).apply { val p = (cover.width.takeIf { it > 0 } ?: dp(240)) * 3 / 10; setLayerInset(1, p, p, p, p) })
             else cover.setImageResource(R.drawable.player_artwork)
             paintBackground(null)
+            // Картинки нет ни у песни, ни у записи — ищем обложку этой песни в каталоге; найдётся — появится сама.
+            currentTrack()?.let { t ->
+                val k = Library.key(t)
+                kotlin.concurrent.thread(name = "cover") {
+                    val found = Catalog.coverFor(t) ?: return@thread
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed || coverKey != null || currentTrack()?.let { Library.key(it) } != k) return@runOnUiThread
+                        coverKey = found
+                        Images.load(found) { if (coverKey == found) applyCover(it) }
+                    }
+                }
+            }
             return
         }
         Images.load(url) { if (coverKey == key) applyCover(it) }
@@ -426,10 +441,10 @@ class NowPlayingActivity : AppCompatActivity() {
     private fun paintBackground(b: Bitmap?) {
         val surface = MaterialColors.getColor(cover, M.attr.colorSurface)
         // Бегунок — цвета основного акцента обложки; без обложки — фирменные цвета.
-        seek.accent = b?.let { Images.accent(it) }
+        seek.accent = b?.let { Images.accent(it) } ?: NO_COVER_ACCENT
         // Цвет обложки с оттенком ауры — сверху, плавно уходит в фон; вокруг обложки — свечение того же цвета.
         // С дымом — чистый цвет обложки, без подмешивания цвета приложения.
-        val tone = b?.let { if (smoke != null) Images.dominant(it) else ColorUtils.blendARGB(Images.dominant(it), Aura.VIOLET, 0.25f) } ?: Aura.VIOLET
+        val tone = b?.let { if (smoke != null) Images.dominant(it) else ColorUtils.blendARGB(Images.dominant(it), Aura.VIOLET, 0.25f) } ?: NO_COVER_TONE // обложки нет — спокойный нейтральный фон, а не яркий цвет приложения
         glow.color(tone)
         val top = ColorUtils.blendARGB(tone, surface, 0.45f)
         findViewById<View>(R.id.npBackground).background =
@@ -502,3 +517,7 @@ class NowPlayingActivity : AppCompatActivity() {
             .setNegativeButton("Закрыть", null).show()
     }
 }
+
+/** Песня без обложки: нейтральные цвета фона и бегунка. */
+private const val NO_COVER_TONE = 0xFF4A4C5C.toInt()
+private const val NO_COVER_ACCENT = 0xFFD8D9E3.toInt()

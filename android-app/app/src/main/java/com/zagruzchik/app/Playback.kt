@@ -684,8 +684,9 @@ object Playback {
         mediaMetadata.buildUpon().setTitle(t.title).setArtist(t.artist.ifEmpty { null }).build()
     ).build()
 
-    private fun meta(q: QItem, source: String, extra: android.os.Bundle.() -> Unit = {}): MediaMetadata {
-        val cover = q.track.cover ?: LinkCache.get(q.track)?.track?.cover
+    private fun meta(q: QItem, source: String, spare: String? = null, extra: android.os.Bundle.() -> Unit = {}): MediaMetadata {
+        // Нет обложки у песни — берём картинку записи с площадки, откуда она играет.
+        val cover = q.track.cover ?: LinkCache.get(q.track)?.track?.cover ?: spare?.takeIf { it.startsWith("http") }
         return MediaMetadata.Builder()
             .setTitle(q.track.title)
             .setArtist(q.track.artist.ifEmpty { null })
@@ -703,7 +704,7 @@ object Playback {
     private fun streamItem(q: QItem, s: StreamInfo): MediaItem = MediaItem.Builder()
         .setUri(s.url).setMediaId(s.url)
         .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(Uri.parse(s.url)).build())
-        .setMediaMetadata(meta(q, s.source) { putString(X_PAGE_URL, s.pageUrl) })
+        .setMediaMetadata(meta(q, s.source, s.cover) { putString(X_PAGE_URL, s.pageUrl) })
         .build()
 
     /** Мгновенный старт: начало с телефона, продолжение той же записи — из сети. */
