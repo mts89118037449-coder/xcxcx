@@ -24,7 +24,15 @@ class SmokeView(ctx: Context) : View(ctx) {
     private var edge = IntArray(EDGES)                    // цвета по краю обложки, по кругу
     private var shaders = arrayOfNulls<Shader>(EDGES)
     private var halo: Shader? = null
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    // «Экран»: клубы, наложенные друг на друга, складываются в свет — дым яркий, но не выгорает в белое.
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SCREEN }
+
+    /** Струя: на каждый удар из обложки вырывается быстрый поток дыма в одну сторону. */
+    private class Jet(val at: Long, val dir: Float, val power: Float, val bend: Float)
+    private val jets = ArrayDeque<Jet>()
+    private var beatWas = 0f
+    private var jetAt = 0L
+    private var jetNo = 0
 
     private var cx = 0f; private var cy = 0f; private var radius = 0f
     private var clock = 0f          // «время дыма»: идёт только пока играет музыка
@@ -50,8 +58,8 @@ class SmokeView(ctx: Context) : View(ctx) {
             // Обложки нет — дым серебристый, спокойный (раньше был ярких цветов приложения).
             val c = if (small == null) (if (i % 2 == 0) 0xFFC9CAD6.toInt() else 0xFFA9ABBA.toInt()) else rayColor(small, a)
             edge[i] = c; sr += Color.red(c); sg += Color.green(c); sb += Color.blue(c)
-            shaders[i] = RadialGradient(0f, 0f, 1f, intArrayOf(ColorUtils.setAlphaComponent(c, 0xF0), ColorUtils.setAlphaComponent(c, 0x80), Color.TRANSPARENT),
-                floatArrayOf(0f, 0.42f, 1f), Shader.TileMode.CLAMP)
+            shaders[i] = RadialGradient(0f, 0f, 1f, intArrayOf(ColorUtils.setAlphaComponent(c, 0xFF), ColorUtils.setAlphaComponent(c, 0xA8), Color.TRANSPARENT),
+                floatArrayOf(0f, 0.46f, 1f), Shader.TileMode.CLAMP)
         }
         val mean = Color.rgb(sr / EDGES, sg / EDGES, sb / EDGES)
         halo = RadialGradient(0f, 0f, 1f, intArrayOf(ColorUtils.setAlphaComponent(mean, 0xD0), ColorUtils.setAlphaComponent(mean, 0x60), Color.TRANSPARENT),
@@ -104,7 +112,8 @@ class SmokeView(ctx: Context) : View(ctx) {
         val now = SystemClock.uptimeMillis()
         val dt = if (last == 0L) 0f else minOf(64L, now - last) / 1000f
         last = now
-        if (playing) clock += dt
+        // Дым течёт в такт: между ударами еле плывёт, на ударе — рывком расходится от обложки.
+        if (playing) clock += dt * (0.5f + 2.8f * shown)
         val target = if (playing) 1f else 0.4f
         level += (target - level) * minOf(1f, dt * 2.2f)
         val t = clock
@@ -114,14 +123,24 @@ class SmokeView(ctx: Context) : View(ctx) {
         val beat = heard ?: (0.5f + 0.5f * sin(t * 4.8f)).let { it * it }
         // Сглаживаем вспышку, чтобы яркость не дёргалась: быстрый подъём, плавный спад.
         shown += (beat - shown) * (if (beat > shown) 0.75f else minOf(1f, dt * 5f))
-        val pulse = 0.62f + 0.38f * shown
+        val pulse = 0.7f + 0.3f * shown
+        // Новый удар — новые струи (сильный удар — больше струй).
+        if (playing && heard != null && heard > 0.5f && beatWas < 0.35f && now - jetAt > 170) {
+            jetAt = now
+            repeat(if (heard > 0.8f) 4 else 3) {
+                jetNo++
+                jets += Jet(now, rnd(jetNo, 1, 11) * 2 * PI.toFloat(), 0.6f + 0.4f * heard, (rnd(jetNo, 2, 12) - 0.5f) * 0.9f)
+            }
+            while (jets.size > 16) jets.removeFirst()
+        }
+        beatWas = heard ?: 0f
 
         // Ореол вплотную к обложке — из него «выходит» дым.
         halo?.let { h ->
             paint.shader = h
-            paint.alpha = (255 * 0.75f * level * pulse).toInt().coerceIn(0, 255)
+            paint.alpha = (255 * 0.9f * level * pulse).toInt().coerceIn(0, 255)
             canvas.save(); canvas.translate(cx, cy)
-            val hs = radius * (1.55f + 0.22f * shown)
+            val hs = radius * (1.6f + 0.4f * shown)
             canvas.scale(hs, hs); canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
         }
 
@@ -144,7 +163,7 @@ class SmokeView(ctx: Context) : View(ctx) {
             // Растёт и тает.
             val size = radius * (0.55f + 1.25f * out) * (0.85f + 0.3f * rnd(i, life, 7))
             val fade = minOf(1f, age * 7f) * (1f - age) * (1f - age * 0.35f)
-            val alpha = fade * 0.95f * level * pulse
+            val alpha = minOf(1f, fade * 1.25f * level * pulse)
             if (alpha <= 0.01f) continue
             val shader = shaders[((dir / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES]
             paint.shader = shader
@@ -160,11 +179,38 @@ class SmokeView(ctx: Context) : View(ctx) {
                 canvas.restore()
             }
         }
-        if (playing || kotlin.math.abs(level - target) > 0.01f) postInvalidateOnAnimation()
+        // Струи ударов: цепочка клубов, быстро вылетающая из края обложки и тающая на лету.
+        val it = jets.iterator()
+        while (it.hasNext()) {
+            val j = it.next()
+            val p = (now - j.at) / JET_MS
+            if (p >= 1f) { it.remove(); continue }
+            paint.shader = shaders[((j.dir / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES]
+            val reach = (far * 0.85f - radius) * j.power
+            for (k in 0 until 6) {
+                val q = p - k * 0.07f                       // хвост струи отстаёт от головы
+                if (q <= 0f) continue
+                val out = 1f - (1f - q) * (1f - q) * (1f - q)
+                val a = j.dir + j.bend * out
+                val d = radius * 0.9f + reach * out
+                val size = radius * (0.22f + 0.5f * out) * (1f - k * 0.08f)
+                val alpha = minOf(1f, q * 9f) * (1f - q) * (1f - q) * 1.15f * level * (1f - k * 0.1f)
+                if (alpha <= 0.01f) continue
+                paint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
+                canvas.save()
+                canvas.translate(cx + cos(a) * d, cy + sin(a) * d - radius * 0.35f * out)
+                canvas.rotate(Math.toDegrees(a.toDouble()).toFloat())
+                canvas.scale(size * 1.7f, size * 0.8f)      // вытянут вдоль полёта
+                canvas.drawCircle(0f, 0f, 1f, paint)
+                canvas.restore()
+            }
+        }
+        if (playing || jets.isNotEmpty() || kotlin.math.abs(level - target) > 0.01f) postInvalidateOnAnimation()
     }
 
     companion object {
-        private const val COUNT = 22
+        private const val COUNT = 30
+        private const val JET_MS = 1500f
         private const val EDGES = 12
         private const val GRID = 24
         private const val NEUTRAL = 34   // ниже этой «цветности» точка считается серой
