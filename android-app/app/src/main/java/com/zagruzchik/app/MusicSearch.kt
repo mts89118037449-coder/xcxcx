@@ -153,6 +153,21 @@ object Streams {
 
     private const val FAIL_TTL_MS = 20 * 60 * 1000L
     private val failed = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, UserError>>()
+    /**
+     * Только Zaycev: быстро (доли секунды) и почти без трафика — этим путём начала песен готовятся на любой сети.
+     * null — на Zaycev песни нет (ничего не запоминаем: позже её найдёт обычный поиск).
+     */
+    fun zaycevOnly(t: Track): StreamInfo? {
+        val k = key(t)
+        cached(k)?.let { return it }
+        waitForeground()
+        val ok = Match.ranked(t, ZaycevSource.search(t.query)) { Triple(it.title, it.artist, it.durationSec) }
+        val c = ok.take(3).maxByOrNull { it.bitrate } ?: return null
+        val u = ZaycevSource.streamUrl(c.id) ?: return null
+        remember(k, "zaycev:${c.id}:${c.bitrate}")
+        return StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title).also { done[k] = System.currentTimeMillis() to it }
+    }
+
     /** Найденная ссылка не заиграла — забываем её и запомненный источник: следующий раз ищем с нуля. */
     fun forget(t: Track) { val k = key(t); done.remove(k); remember(k, null) }
 
@@ -479,16 +494,34 @@ object Warm {
                 }
                 val remaining = java.util.concurrent.atomic.AtomicInteger(list.size)
                 left = list.size
+                // 1) Zaycev — на любой сети, в том числе мобильной: ответ в килобайт и 256 КБ начала песни.
+                //    Что там нашлось, включается мгновенно. Это основной путь для русскоязычной медиатеки.
+                val missed = java.util.Collections.synchronizedList(mutableListOf<Track>())
                 val next = java.util.concurrent.atomic.AtomicInteger(0)
                 (1..THREADS).map {
                     pool.submit {
                         while (true) {
                             val i = next.getAndIncrement()
-                            if (i >= list.size || !allowed(app)) break
+                            if (i >= list.size || Settings.warm(app) == Settings.Warm.OFF) break
                             val t = list[i]
+                            val s = runCatching { Streams.zaycevOnly(t) }.getOrNull()
+                            if (s != null && runCatching { HeadCache.store(t, s) }.getOrDefault(false)) left = remaining.decrementAndGet() else missed += t
+                            Thread.sleep(150)
+                        }
+                    }
+                }.forEach { runCatching { it.get() } }
+                AppLog.add("ПОДГОТОВКА: Zaycev — готово ${list.size - missed.size} из ${list.size}, начал на телефоне ${HeadCache.count}")
+                // 2) Остальное (YouTube Music) — тяжелее по трафику: только когда разрешено настройкой (по умолчанию Wi‑Fi).
+                val next2 = java.util.concurrent.atomic.AtomicInteger(0)
+                (1..THREADS).map {
+                    pool.submit {
+                        while (true) {
+                            val i = next2.getAndIncrement()
+                            if (i >= missed.size || !allowed(app)) break
+                            val t = missed[i]
                             runCatching { Ytdlp.inBackground { Streams.warm(t) }?.let { s -> HeadCache.store(t, s) } }
                             left = remaining.decrementAndGet()
-                            Thread.sleep(250) // не грузим сеть и площадки
+                            Thread.sleep(250)
                         }
                     }
                 }.forEach { runCatching { it.get() } }

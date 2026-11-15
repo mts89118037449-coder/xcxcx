@@ -58,7 +58,6 @@ class NowPlayingActivity : AppCompatActivity() {
             // Пока играет фрагмент — обновляем «найдена · продолжит через N с».
             if (extras()?.getBoolean(Playback.X_PREVIEW) == true) render()
             // Пока песня ищется — показываем, что уже ответили площадки.
-            Playback.Pending.let { p -> if (p.loading && p.error == null) p.track?.let { t -> Streams.progress(t)?.let { status.text = it } } }
             seekView.postDelayed(this, 250)
         }
     }
@@ -282,7 +281,8 @@ class NowPlayingActivity : AppCompatActivity() {
             title.text = t.title
             artist.text = t.artist
             source.text = if (p.error != null) "Не получилось включить" else "Включаю…"
-            status.text = p.error ?: Streams.progress(t) ?: "Беру полную версию: Zaycev, SoundCloud, YouTube…"
+            // На экране — только суть, как в обычном плеере. Подробности (что ответила каждая площадка) — по нажатию и в журнале.
+            status.text = if (p.error != null) "Песня сейчас недоступна" + (if (p.error!!.startsWith("Включаю следующую")) " — включаю следующую" else "") else "Загружается…"
             findViewById<TextView>(R.id.npHeader).text = "Сейчас играет"
             findViewById<View>(R.id.npSpinner).isVisible = p.error == null
             retry.isVisible = p.error != null
