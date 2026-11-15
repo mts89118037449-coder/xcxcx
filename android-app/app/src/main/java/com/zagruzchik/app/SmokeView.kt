@@ -65,12 +65,16 @@ class SmokeView(ctx: Context) : View(ctx) {
         invalidate()
     }
 
-    /** Тусклые и серые края (чёрная обложка) не дают свечения — поднимаем яркость и насыщенность, подмешиваем цвет темы. */
-    private fun vivid(c: Int, theme: Int): Int {
+    /**
+     * Цвет дыма — цвет самой обложки, только светлее, чтобы он был виден на тёмном фоне.
+     * Серая или чёрно-белая обложка даёт серебристо-белый дым (раньше он подменялся фиолетовым цветом приложения —
+     * и дым выглядел чужим). Цвет приложения остаётся только там, где обложки нет вовсе.
+     */
+    private fun vivid(c: Int, @Suppress("UNUSED_PARAMETER") theme: Int): Int {
         val hsv = FloatArray(3); Color.colorToHSV(c, hsv)
-        if (hsv[1] < 0.18f) return ColorUtils.blendARGB(c, theme, 0.6f).let { t -> FloatArray(3).also { Color.colorToHSV(t, it); it[2] = maxOf(it[2], 0.7f) }.let(Color::HSVToColor) }
-        hsv[1] = minOf(1f, hsv[1] * 1.3f + 0.1f); hsv[2] = hsv[2].coerceIn(0.7f, 1f)
-        return ColorUtils.blendARGB(Color.HSVToColor(hsv), theme, 0.08f)
+        if (hsv[1] < 0.14f) { hsv[1] *= 0.6f; hsv[2] = (hsv[2] * 0.9f + 0.45f).coerceIn(0.62f, 0.97f); return Color.HSVToColor(hsv) }
+        hsv[1] = minOf(1f, hsv[1] * 1.25f + 0.06f); hsv[2] = hsv[2].coerceIn(0.72f, 1f)
+        return Color.HSVToColor(hsv)
     }
 
     /** Псевдослучайное число 0..1 по номеру клуба и номеру его «жизни» — каждый новый клуб летит по-своему. */
