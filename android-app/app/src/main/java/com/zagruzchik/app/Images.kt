@@ -82,4 +82,30 @@ object Images {
 
     /** Основной цвет картинки — для фона плеера. */
     fun dominant(b: Bitmap): Int = Bitmap.createScaledBitmap(b, 1, 1, true).getPixel(0, 0)
+
+    /**
+     * Основной акцент обложки: самый «весомый» оттенок среди по-настоящему цветных точек (серые и тёмные не считаются),
+     * достаточно светлый, чтобы быть видным на тёмном фоне. У серой/чёрно-белой обложки — светло-серый.
+     */
+    fun accent(b: Bitmap): Int {
+        val n = 24
+        val small = runCatching { Bitmap.createScaledBitmap(b, n, n, true) }.getOrNull() ?: return 0xFFD8D8DE.toInt()
+        val px = IntArray(n * n); small.getPixels(px, 0, n, 0, 0, n, n)
+        val w = FloatArray(12); val r = FloatArray(12); val g = FloatArray(12); val bl = FloatArray(12)
+        val hsv = FloatArray(3)
+        for (p in px) {
+            val cr = android.graphics.Color.red(p); val cg = android.graphics.Color.green(p); val cb = android.graphics.Color.blue(p)
+            val chroma = maxOf(cr, cg, cb) - minOf(cr, cg, cb)
+            if (chroma < 34) continue
+            android.graphics.Color.colorToHSV(p, hsv)
+            val i = (hsv[0] / 30f).toInt().coerceIn(0, 11)
+            val k = (chroma * chroma).toFloat()
+            w[i] += k; r[i] += cr * k; g[i] += cg * k; bl[i] += cb * k
+        }
+        val i = w.indices.maxByOrNull { w[it] } ?: 0
+        if (w[i] <= 0f) return 0xFFD8D8DE.toInt()
+        android.graphics.Color.colorToHSV(android.graphics.Color.rgb((r[i] / w[i]).toInt(), (g[i] / w[i]).toInt(), (bl[i] / w[i]).toInt()), hsv)
+        hsv[2] = hsv[2].coerceIn(0.78f, 1f)
+        return android.graphics.Color.HSVToColor(hsv)
+    }
 }

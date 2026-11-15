@@ -48,7 +48,12 @@ interface AuraSeek {
     var onScrub: ((Float) -> Unit)?
     var onSeek: ((Float) -> Unit)?
     val isScrubbing: Boolean
+    /** Цвет бегунка — основной акцент обложки. null — фирменные цвета приложения. */
+    var accent: Int?
 }
+
+/** Три оттенка одного цвета (темнее → сам → светлее) — вместо фирменного градиента. */
+private fun shades(c: Int) = intArrayOf(AuraColors.mix(c, Color.BLACK, 0.22f), c, AuraColors.mix(c, Color.WHITE, 0.28f))
 
 /**
  * Кольцо прогресса ауры: дорожка + градиентная дуга, с ручкой и перемоткой пальцем по кругу
@@ -64,6 +69,8 @@ class RingProgressView @JvmOverloads constructor(ctx: Context, attrs: AttributeS
     override var onSeek: ((Float) -> Unit)? = null
     override var isScrubbing = false; private set
 
+    override var accent: Int? = null
+        set(v) { if (field != v) { field = v; invalidate() } }
     private val track = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = 0x24FFFFFF }
     private val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val knobPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
@@ -77,7 +84,8 @@ class RingProgressView @JvmOverloads constructor(ctx: Context, attrs: AttributeS
         track.strokeWidth = stroke; arc.strokeWidth = stroke
         canvas.drawOval(box, track)
         val cx = width / 2f; val cy = height / 2f
-        arc.shader = SweepGradient(cx, cy, intArrayOf(AuraColors.c1(context), AuraColors.c2(context), AuraColors.c3(context), AuraColors.c1(context)), null)
+        val g = accent?.let { shades(it) } ?: intArrayOf(AuraColors.c1(context), AuraColors.c2(context), AuraColors.c3(context))
+        arc.shader = SweepGradient(cx, cy, intArrayOf(g[0], g[1], g[2], g[0]), null)
             .apply { setLocalMatrix(android.graphics.Matrix().apply { setRotate(-90f, cx, cy) }) }
         if (progress > 0f) canvas.drawArc(box, -90f, 360f * progress, false, arc)
         if (knob) {
@@ -128,6 +136,8 @@ class WaveSeekView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? 
     var seed: Int = 0
         set(v) { field = v; heights = makeHeights(); invalidate() }
     var idleColor = 0x2EFFFFFF
+    override var accent: Int? = null
+        set(v) { if (field != v) { field = v; invalidate() } }
 
     private val bar = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
@@ -148,13 +158,16 @@ class WaveSeekView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? 
         val gap = context.dp(3).toFloat()
         val w = (width - gap * (count - 1)) / count
         val played = (progress * count).toInt()
+        val tones = accent?.let { shades(it) }
         for (i in 0 until count) {
             val h = height * heights[i]
             val x = i * (w + gap)
             rect.set(x, (height - h) / 2, x + w, (height + h) / 2)
             bar.color = when {
                 i == played -> Color.WHITE
-                i < played -> AuraColors.at(context, i / maxOf(1f, played - 1f))
+                i < played -> (i / maxOf(1f, played - 1f)).let { t ->
+                    tones?.let { g -> if (t < 0.5f) AuraColors.mix(g[0], g[1], t * 2) else AuraColors.mix(g[1], g[2], (t - 0.5f) * 2) } ?: AuraColors.at(context, t)
+                }
                 else -> idleColor
             }
             canvas.drawRoundRect(rect, w / 2, w / 2, bar)

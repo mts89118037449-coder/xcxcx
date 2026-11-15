@@ -425,6 +425,8 @@ class NowPlayingActivity : AppCompatActivity() {
     /** Фон: цвет обложки сверху, плавно уходящий в обычный фон. */
     private fun paintBackground(b: Bitmap?) {
         val surface = MaterialColors.getColor(cover, M.attr.colorSurface)
+        // Бегунок — цвета основного акцента обложки; без обложки — фирменные цвета.
+        seek.accent = b?.let { Images.accent(it) }
         // Цвет обложки с оттенком ауры — сверху, плавно уходит в фон; вокруг обложки — свечение того же цвета.
         // С дымом — чистый цвет обложки, без подмешивания цвета приложения.
         val tone = b?.let { if (smoke != null) Images.dominant(it) else ColorUtils.blendARGB(Images.dominant(it), Aura.VIOLET, 0.25f) } ?: Aura.VIOLET
