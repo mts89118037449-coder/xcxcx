@@ -142,6 +142,41 @@ class EqualizerActivity : AppCompatActivity() {
         }
         bass = slider("Усиление баса")
         virt = slider("Объём (3D-звук)")
+        // ---- Звук: громкость, верхи, стыки ----
+        root.addView(TextView(this, null, 0, R.style.SectionTitle).apply { text = "Звук" })
+        fun toggle(title: String, hint: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(8), 0, dp(8)) }
+            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(TextView(this).apply { text = title; textSize = 16f; setTextColor(onSurface) })
+            col.addView(TextView(this).apply { text = hint; textSize = 13f; setTextColor(muted); setPadding(0, dp(2), dp(12), 0) })
+            row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(MaterialSwitch(this).apply { isChecked = checked; setOnCheckedChangeListener { _, on -> onChange(on) } })
+            root.addView(row)
+        }
+        toggle("Выравнивание громкости", "Тихие песни громче, громкие тише — не нужно крутить громкость между песнями", AudioFx.leveling(this)) { AudioFx.setLeveling(this, it) }
+        toggle("Вырезать тишину", "Следующая песня начинается без паузы. Заодно укорачиваются паузы внутри песен — если это мешает, выключите", AudioFx.skipSilence(this)) { AudioFx.setSkipSilence(this, it) }
+        root.addView(TextView(this).apply { text = "Восстановление верхов"; textSize = 16f; setTextColor(onSurface); setPadding(0, dp(10), 0, 0) })
+        root.addView(TextView(this).apply {
+            text = "Добавляет яркости записям, у которых сжатие срезало верхние частоты. На хороших записях лучше выключить."
+            textSize = 13f; setTextColor(muted); setPadding(0, dp(2), 0, dp(6))
+        })
+        val exLevels = listOf("Выключено", "Легко", "Сильнее")
+        val exRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun drawEx() {
+            exRow.removeAllViews()
+            exLevels.forEachIndexed { i, name ->
+                val sel = AudioFx.exciter(this) == i
+                exRow.addView(TextView(this).apply {
+                    text = name; textSize = 14f; setTextColor(if (sel) Color.WHITE else onSurface)
+                    setPadding(dp(16), dp(9), dp(16), dp(9))
+                    background = if (sel) AuraColors.drawable(this@EqualizerActivity, dp(18).toFloat(), GradientDrawable.Orientation.LEFT_RIGHT)
+                    else GradientDrawable().apply { cornerRadius = dp(18).toFloat(); setStroke(dp(1), androidx.core.content.ContextCompat.getColor(this@EqualizerActivity, R.color.line)) }
+                    setOnClickListener { AudioFx.setExciter(this@EqualizerActivity, i); drawEx() }
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) })
+            }
+        }
+        drawEx()
+        root.addView(exRow)
         root.addView(TextView(this).apply {
             text = "Работает для музыки в приложении. При трансляции на ТВ звук настраивается на самом устройстве."
             textSize = 13f; setTextColor(muted); setPadding(0, dp(16), 0, 0)

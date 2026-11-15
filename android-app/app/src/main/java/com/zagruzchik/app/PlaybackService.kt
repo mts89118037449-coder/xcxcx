@@ -31,7 +31,13 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        val player = ExoPlayer.Builder(this)
+        // Свой обработчик звука («восстановление верхов») встраивается в вывод проигрывателя.
+        val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: android.content.Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean) =
+                androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setAudioProcessors(arrayOf<androidx.media3.common.audio.AudioProcessor>(Exciter())).build()
+        }
+        val player = ExoPlayer.Builder(this, renderers)
             // «aura://head/…» — начало песни с телефона, продолжение из сети (мгновенный старт); остальное — как обычно.
             .setMediaSourceFactory(MergingFactory(DefaultMediaSourceFactory(this), DefaultMediaSourceFactory(AuraDataSourceFactory(this))))
             // Начинаем играть, как только есть 0,7 с звука (по умолчанию ждёт 2,5 с), и держим запас на минуту вперёд.
@@ -54,6 +60,20 @@ class PlaybackService : MediaSessionService() {
                 AudioFx.attach(this@PlaybackService, audioSessionId)
             }
         })
+        // Музыке нужен только звук: картинку (если источник отдал ролик — Rutube, Dailymotion) не качаем и не декодируем.
+        // Для своих видео (загрузки, история) картинка остаётся.
+        fun videoOff(item: MediaItem?) {
+            val x = item?.mediaMetadata?.extras
+            val isVideo = x?.getBoolean(Playback.X_VIDEO) == true || x?.getString(Playback.X_LOCAL_MIME)?.startsWith("video") == true
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !isVideo).build()
+        }
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = videoOff(mediaItem)
+        })
+        // Тишина в начале и конце песен вырезается — следующая песня начинается без паузы.
+        player.skipSilenceEnabled = AudioFx.skipSilence(this)
+        AudioFx.onSkipSilence = { on -> android.os.Handler(android.os.Looper.getMainLooper()).post { runCatching { player.skipSilenceEnabled = on } } }
+        Exciter.level = AudioFx.exciter(this)
         local = player
         session = MediaSession.Builder(this, player)
             .setSessionActivity(open)
@@ -118,6 +138,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         cast?.setSessionAvailabilityListener(null)
         cast?.release()
+        AudioFx.onSkipSilence = null
         AudioFx.release()
         local?.release()
         session?.release()

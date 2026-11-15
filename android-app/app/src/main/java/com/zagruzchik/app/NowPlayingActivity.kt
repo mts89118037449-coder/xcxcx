@@ -275,7 +275,12 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         val pending = showingPending()
         val p = Playback.Pending
-        loading.isVisible = pending
+        // Место под карточку состояния занято всегда — экран не прыгает, когда она появляется и исчезает.
+        loading.visibility = if (pending) View.VISIBLE else View.INVISIBLE
+        // Сменилась песня — название, исполнитель и обложка мягко проявляются, а не подменяются рывком.
+        val nowKey = if (pending) p.track?.let { it.title + "|" + it.artist } else c?.mediaMetadata?.let { "${it.title}|${it.artist}" }
+        val changed = nowKey != null && nowKey != shownKey
+        if (changed) { shownKey = nowKey; fadeIn(title, 0); fadeIn(artist, 40); fadeIn(source, 80); coverFade = true }
         if (pending) {
             val t = p.track!!
             title.text = t.title
@@ -353,6 +358,7 @@ class NowPlayingActivity : AppCompatActivity() {
             BitmapFactory.decodeByteArray(data, 0, data.size)?.let { applyCover(it); return }
         }
         if (url == null) {
+            if (coverBitmap != null && showingPending()) return // пока включается следующая — держим прежнюю обложку, без мигания
             coverBitmap = null
             if (ring) cover.setImageDrawable(GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(MaterialColors.getColor(cover, M.attr.colorSurfaceContainerHighest)) })
             else cover.setImageResource(R.drawable.player_artwork)
@@ -362,7 +368,23 @@ class NowPlayingActivity : AppCompatActivity() {
         Images.load(url) { if (coverKey == key) applyCover(it) }
     }
 
+    private var shownKey: String? = null
+    private var coverFade = false
+
+    private fun fadeIn(v: View, delay: Long) {
+        v.animate().cancel()
+        v.alpha = 0f; v.translationY = dp(6).toFloat()
+        v.animate().alpha(1f).translationY(0f).setStartDelay(delay).setDuration(220).start()
+    }
+
     private fun applyCover(b: Bitmap) {
+        // Новая обложка проявляется поверх старой (старая не сбрасывается на заглушку — экран не мигает).
+        if (coverFade || coverBitmap != null && coverBitmap !== b) {
+            coverFade = false
+            cover.animate().cancel()
+            cover.alpha = 0.35f; cover.scaleX = 0.96f; cover.scaleY = 0.96f
+            cover.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(260).start()
+        }
         coverBitmap = b
         // «Кольцо»: обложка — круглый диск (сама картинка обрезается по кругу, по центру квадрата).
         if (ring) cover.setImageDrawable(disc(b)) else cover.setImageBitmap(b)

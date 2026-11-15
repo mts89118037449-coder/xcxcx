@@ -39,6 +39,7 @@ object AudioFx {
     private var eq: Equalizer? = null
     private var bass: BassBoost? = null
     private var virt: Virtualizer? = null
+    private var dyn: android.media.audiofx.DynamicsProcessing? = null
     private var session = 0
     private var app: Context? = null
 
@@ -53,6 +54,19 @@ object AudioFx {
             ?: PRESETS.first { it.name == preset(ctx) || it.name == "Обычный" }.gains.copyOf()
     fun bass(ctx: Context) = prefs(ctx).getInt("fx_bass", 0)
     fun virt(ctx: Context) = prefs(ctx).getInt("fx_virt", 0)
+
+    // ---- Отдельно от эквалайзера: громкость, верхи, тишина на стыках ----
+    /** Выравнивание громкости: тихие песни подтягиваются, громкие прижимаются — не надо крутить громкость между песнями. */
+    fun leveling(ctx: Context) = prefs(ctx).getBoolean("fx_level", false)
+    fun setLeveling(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("fx_level", on).apply()
+    /** Восстановление верхов: 0 — выкл, 1 — легко, 2 — сильнее. */
+    fun exciter(ctx: Context) = prefs(ctx).getInt("fx_exciter", 0)
+    fun setExciter(ctx: Context, v: Int) = prefs(ctx).edit().putInt("fx_exciter", v.coerceIn(0, 2)).apply()
+    /** Вырезать тишину — переходы без пауз. По умолчанию выключено: проигрыватель режет тишину и внутри песни тоже. */
+    fun skipSilence(ctx: Context) = prefs(ctx).getBoolean("fx_skip_silence", false)
+    fun setSkipSilence(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("fx_skip_silence", on).apply()
+    /** Проигрыватель подписывается сюда, чтобы применять «тишину» сразу. */
+    @Volatile var onSkipSilence: ((Boolean) -> Unit)? = null
 
     fun setEnabled(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("fx_on", on).apply()
     fun setGains(ctx: Context, g: FloatArray, presetName: String = CUSTOM) =
@@ -86,12 +100,23 @@ object AudioFx {
         eq = runCatching { Equalizer(0, audioSession) }.onFailure { Log.w(TAG, "no equalizer", it); available = false }.getOrNull()
         bass = runCatching { BassBoost(0, audioSession) }.getOrNull()
         virt = runCatching { Virtualizer(0, audioSession) }.getOrNull()
+        // Выравнивание громкости: один компрессор на весь спектр и ограничитель, чтобы не было перегруза.
+        dyn = runCatching {
+            val cfg = android.media.audiofx.DynamicsProcessing.Config.Builder(
+                android.media.audiofx.DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION, 2, false, 0, true, 1, false, 0, true).build()
+            android.media.audiofx.DynamicsProcessing(0, audioSession, cfg).apply {
+                for (ch in 0 until 2) {
+                    setMbcBandByChannelIndex(ch, 0, android.media.audiofx.DynamicsProcessing.MbcBand(true, 20000f, 30f, 300f, 3f, -22f, 6f, -70f, 1f, 0f, 5f))
+                    setLimiterByChannelIndex(ch, android.media.audiofx.DynamicsProcessing.Limiter(true, true, 0, 1f, 60f, 10f, -1.5f, 0f))
+                }
+            }
+        }.onFailure { Log.w(TAG, "no dynamics", it) }.getOrNull()
         apply(ctx)
     }
 
     @Synchronized fun release() {
-        runCatching { eq?.release() }; runCatching { bass?.release() }; runCatching { virt?.release() }
-        eq = null; bass = null; virt = null; session = 0
+        runCatching { eq?.release() }; runCatching { bass?.release() }; runCatching { virt?.release() }; runCatching { dyn?.release() }
+        eq = null; bass = null; virt = null; dyn = null; session = 0
     }
 
     /** Кривая в дБ на частоте [hz]: плавно между опорными точками (по логарифму частоты). */
@@ -120,5 +145,8 @@ object AudioFx {
         }
         bass?.let { b -> runCatching { b.enabled = on && bass(ctx) > 0; if (b.strengthSupported) b.setStrength(bass(ctx).toShort()) } }
         virt?.let { v -> runCatching { v.enabled = on && virt(ctx) > 0; if (v.strengthSupported) v.setStrength(virt(ctx).toShort()) } }
+        dyn?.let { d -> runCatching { d.enabled = leveling(ctx) } }
+        runCatching { Exciter.level = exciter(ctx) }
+        onSkipSilence?.invoke(skipSilence(ctx))
     }
 }

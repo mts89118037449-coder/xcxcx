@@ -37,6 +37,9 @@ SDK в контейнере нет — ставить в scratchpad: cmdline-too
 - `Downloader.kt` / `YtdlpDaemon.kt` / `assets/ytd_daemon.py` — yt-dlp (Python) постоянным процессом: поиск и ссылки SoundCloud/YouTube, загрузки.
 - `HeadCache.kt` — мгновенный старт (первые 256 КБ записи на телефоне, продолжение с того же байта), `AuraDataSource` и чтение YouTube кусками по 1 МБ.
   Свой источник данных подключён только для `aura://` и `googlevideo.com` (`PlaybackService.MergingFactory`).
+- `AudioFx.kt` — эквалайзер и звук: выравнивание громкости (`DynamicsProcessing`), вырезание тишины (`skipSilenceEnabled`), уровень `Exciter`.
+  `Exciter.kt` — свой `AudioProcessor` («восстановление верхов»), встроен в `PlaybackService` через `DefaultRenderersFactory.buildAudioSink`.
+  Видеодорожка для музыки отключена там же (`setTrackTypeDisabled(TRACK_TYPE_VIDEO)`). 8.4 на телефоне не проверена.
 - `Net.kt` — YouTube мимо VPN (если VPN-адрес получает «не робот»). `Telegram.kt`/`TelegramActivity.kt` — TDLib, встроенный аудио-поиск Telegram.
 - `Music.kt` — `Match.score/ranked/reason`: отбор кандидатов. `Library.kt`, `LibraryPage.kt`, `Importer.kt`, `ScreenImportService.kt` — медиатека и перенос.
 
