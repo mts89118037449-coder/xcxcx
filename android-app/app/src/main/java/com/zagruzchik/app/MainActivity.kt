@@ -102,6 +102,19 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         VisiblePrefetch.install(this) // всё, что видно на экране, готовится к мгновенному старту
+        // VPN на телефоне включён, а приложение идёт мимо него — говорим сразу: без этого большинство песен недоступно.
+        window.decorView.postDelayed({
+            if (!isFinishing && Net.vpnBypassed()) {
+                AppLog.add("VPN включён на телефоне, но приложение идёт мимо него")
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("SoundAura идёт мимо VPN")
+                    .setMessage("VPN на телефоне включён, но это приложение в него не входит. Без VPN YouTube и SoundCloud из России почти не отвечают, " +
+                        "поэтому песни ищутся долго или не находятся.\n\nОткройте приложение VPN → настройки → раздел про приложения " +
+                        "(«раздельное туннелирование», «исключения» или «выбранные приложения») и сделайте так, чтобы SoundAura шла через VPN.")
+                    .setPositiveButton("Настройки VPN") { _, _ -> runCatching { startActivity(Intent(android.provider.Settings.ACTION_VPN_SETTINGS)) } }
+                    .setNegativeButton("Позже", null).show()
+            }
+        }, 1500)
         setContentView(R.layout.activity_main)
         toolbar = findViewById(R.id.toolbar)
         nav = findViewById(R.id.bottomNav)

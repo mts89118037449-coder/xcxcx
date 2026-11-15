@@ -29,6 +29,15 @@ object Net {
         cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
     }.getOrDefault(false)
 
+    /**
+     * На телефоне VPN включён, но это приложение ходит в сеть мимо него (исключено в настройках VPN или VPN работает
+     * «только для выбранных приложений»). Тогда из России YouTube не отвечает, а SoundCloud еле жив.
+     */
+    @Suppress("DEPRECATION")
+    fun vpnBypassed(): Boolean = runCatching {
+        !vpnActive() && cm.allNetworks.any { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true }
+    }.getOrDefault(false)
+
     /** Обычная сеть телефона (не VPN): Wi‑Fi, иначе мобильная. null — такой нет или VPN не даёт её использовать. */
     @Suppress("DEPRECATION")
     fun physical(): Network? = runCatching {
