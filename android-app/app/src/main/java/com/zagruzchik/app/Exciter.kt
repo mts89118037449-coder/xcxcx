@@ -23,7 +23,14 @@ class Exciter : BaseAudioProcessor() {
         /** Удары: (когда прозвучит, сила 0..1). Звук уходит в динамик чуть позже обработки — поэтому время с поправкой. */
         private val beats = java.util.concurrent.ConcurrentLinkedDeque<Pair<Long, Float>>()
         @Volatile private var fedAt = 0L
-        private const val LATENCY_MS = 160L
+        /** Задержка самого выхода (динамик ~70 мс, Bluetooth заметно больше) — выставляет экран плеера. */
+        @Volatile var outputLatencyMs = 70L
+        /** Сколько звука лежит в буфере проигрывателя, мс: измеряется при каждом старте/перемотке. */
+        @Volatile private var bufferMs = 400f
+        @Volatile private var lastPlayedBeat = 0L
+
+        /** Время последнего уже прозвучавшего удара (0 — не было): меняется — значит, только что был новый удар. */
+        fun lastBeat(): Long { beatNow(); return lastPlayedBeat }
 
         /**
          * Сила пульса сейчас, 0..1: вспышка в момент удара и плавное затухание.
@@ -38,7 +45,7 @@ class Exciter : BaseAudioProcessor() {
                 val (at, strength) = it.next()
                 val age = now - at
                 if (age > 700) { it.remove(); continue }
-                if (age >= 0) v = maxOf(v, strength * (1f - age / 420f).coerceAtLeast(0f))
+                if (age >= 0) { v = maxOf(v, strength * (1f - age / 420f).coerceAtLeast(0f)); if (at > lastPlayedBeat) lastPlayedBeat = at }
             }
             return v
         }
@@ -51,7 +58,30 @@ class Exciter : BaseAudioProcessor() {
     private var inWindow = 0
     private var window = 1024
     private var average = 0f         // средняя энергия за последние ~1,5 с
-    private var lastBeatAt = 0L
+    // Время считаем по самому звуку (числу отданных отсчётов), а не по часам: звук подаётся в проигрыватель рывками,
+    // и по часам удары одного рывка слипались — ритм на экране «срывался».
+    private var frames = 0L           // сколько отсчётов прошло через обработчик
+    private var lastBeatAudio = -1e9  // когда был прошлый удар, мс по звуку
+    private var curMax = Double.NaN; private var prevMax = Double.NaN; private var bucketAt = 0L
+    private var flushAt = 0L; private var flushC = Double.NaN; private var flushMax = 0.0; private var measured = true
+
+    /** Через сколько мс прозвучит только что обработанный звук: заполненность буфера проигрывателя. */
+    private fun leadMs(audioMs: Double, now: Long): Float {
+        val c = audioMs - now   // растёт, пока буфер наполняется; на его максимуме буфер полон
+        if (flushC.isNaN()) { flushC = c; flushMax = c; flushAt = now; measured = false }
+        if (now - bucketAt >= 500) { prevMax = if (now - bucketAt < 1000) curMax else Double.NaN; curMax = Double.NaN; bucketAt = now }
+        curMax = if (curMax.isNaN()) c else maxOf(curMax, c)
+        var full = if (prevMax.isNaN()) curMax else maxOf(curMax, prevMax)
+        if (now - flushAt < 1500) {
+            flushMax = maxOf(flushMax, c)
+            full = maxOf(full, flushC + bufferMs)       // сразу после старта буфер ещё пуст
+        } else if (!measured) {
+            measured = true
+            val b = (flushMax - flushC).toFloat()
+            if (b > 100f && b < 1500f) bufferMs = b
+        }
+        return (bufferMs - (full - c).toFloat()).coerceIn(0f, bufferMs + 50f)
+    }
     private var channels = 2
     private var alpha = 0.5f               // коэффициент фильтра верхних частот
     private var lp = FloatArray(2)         // состояние фильтра по каналам
@@ -82,10 +112,13 @@ class Exciter : BaseAudioProcessor() {
                     val e = energy / window
                     val now = android.os.SystemClock.uptimeMillis()
                     fedAt = now
-                    if (e > average * 1.55f + 0.0004f && now - lastBeatAt > 230) {
-                        lastBeatAt = now
+                    frames += window
+                    val audioMs = frames * 1000.0 / rate
+                    val lead = leadMs(audioMs, now)
+                    if (e > average * 1.55f + 0.0004f && audioMs - lastBeatAudio > 230) {
+                        lastBeatAudio = audioMs
                         val strength = ((e / (average + 0.0004f) - 1f) / 2.5f).coerceIn(0.35f, 1f)
-                        beats.addLast((now + LATENCY_MS) to strength)
+                        beats.addLast((now + lead.toLong() + outputLatencyMs) to strength)
                         while (beats.size > 24) beats.pollFirst()
                     }
                     average += (e - average) * 0.045f
@@ -108,5 +141,9 @@ class Exciter : BaseAudioProcessor() {
         out.flip()
     }
 
-    override fun onFlush() { lp = FloatArray(channels); bassLp = 0f; energy = 0f; inWindow = 0; average = 0f }
+    override fun onFlush() {
+        lp = FloatArray(channels); bassLp = 0f; energy = 0f; inWindow = 0; average = 0f
+        // Перемотка/новая песня: буфер проигрывателя пуст, старые удары больше не прозвучат.
+        flushC = Double.NaN; curMax = Double.NaN; prevMax = Double.NaN; lastBeatAudio = -1e9; beats.clear()
+    }
 }

@@ -30,7 +30,7 @@ class SmokeView(ctx: Context) : View(ctx) {
     /** Струя: на каждый удар из обложки вырывается быстрый поток дыма в одну сторону. */
     private class Jet(val at: Long, val dir: Float, val power: Float, val bend: Float)
     private val jets = ArrayDeque<Jet>()
-    private var beatWas = 0f
+    private var latencyAt = 0L
     private var jetAt = 0L
     private var jetNo = 0
 
@@ -125,15 +125,23 @@ class SmokeView(ctx: Context) : View(ctx) {
         shown += (beat - shown) * (if (beat > shown) 0.75f else minOf(1f, dt * 5f))
         val pulse = 0.7f + 0.3f * shown
         // Новый удар — новые струи (сильный удар — больше струй).
-        if (playing && heard != null && heard > 0.5f && beatWas < 0.35f && now - jetAt > 170) {
-            jetAt = now
+        val beatAt = if (playing && heard != null) Exciter.lastBeat() else jetAt
+        if (heard != null && beatAt != jetAt && now - beatAt < 250) {
+            jetAt = beatAt
             repeat(if (heard > 0.8f) 4 else 3) {
                 jetNo++
                 jets += Jet(now, rnd(jetNo, 1, 11) * 2 * PI.toFloat(), 0.6f + 0.4f * heard, (rnd(jetNo, 2, 12) - 0.5f) * 0.9f)
             }
             while (jets.size > 16) jets.removeFirst()
         }
-        beatWas = heard ?: 0f
+        if (now - latencyAt > 3000) {
+            // Bluetooth-наушники играют с заметной задержкой — сдвигаем вспышки, чтобы совпадали со звуком в ушах.
+            latencyAt = now
+            val am = context.getSystemService(android.media.AudioManager::class.java)
+            val bt = runCatching { am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).any {
+                it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP || it.type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET } }.getOrDefault(false)
+            Exciter.outputLatencyMs = if (bt) 220L else 70L
+        }
 
         // Ореол вплотную к обложке — из него «выходит» дым.
         halo?.let { h ->
