@@ -192,6 +192,11 @@ SDK в контейнере нет — ставить в scratchpad: cmdline-too
   прямые кусками 1 МБ (`MediaCache` CHUNK, `store(ctx,t,StreamInfo)`), HLS не качаем; LibrarySync 1 поток, фоновый приоритет; кэш
   `Taste.artistKey`/`favoriteArtists`; дым COUNT 16, размер ≤ 0,45 ширины, тень только у Billow; старт-потоки THREAD_PRIORITY_BACKGROUND.
 
+- 9.33: звук SoundCloud — `NewPipeSource.soundcloudAudio` (HLS AAC 160k, без Python) параллельно с yt-dlp в `Downloader.streamOf`.
+  Проверено JVM-тестом с сервера (временный `ScProbeTest`, удалён): rusyarapscene/playingtheangel-ne-vybiral — OK 5,2 с (холодный client_id),
+  kempel — 1,3–1,8 с, официальный playingtheangel-sc/ne-vybiral — StreamExtractException за 0,8 с (DRM). Владелец: «SoundCloud ты когда-то
+  сломал и починить не можешь» (сломан был файлом куки до 9.19, затем перегруз yt-dlp).
+
 ## Открытые вопросы
 - Почему на телефоне не играют даже найденные записи (SoundCloud: ссылка есть, звук не идёт). Смотреть строки «байты» в проверке.
 - Работает ли NewPipeExtractor на телефоне вообще (поиск YouTube Music там ни разу не ответил).

@@ -371,6 +371,28 @@ object Downloader {
             problems?.add("$source: ссылка на звук не пришла за 15 с")
             return null
         }
+        // SoundCloud: средствами телефона (NewPipe, без Python) и через yt-dlp — одновременно, кто первый.
+        if (Service.of(pageUrl) == Service.SOUNDCLOUD) {
+            val bg = Ytdlp.isBackground
+            val fast = streamPool.submit<StreamInfo?> {
+                runCatching { NewPipeSource.soundcloudAudio(pageUrl) }
+                    .onFailure { e -> problems?.add("$source (на телефоне): ${e.javaClass.simpleName} ${e.message.orEmpty().take(120)}") }
+                    .getOrNull()?.let { a -> StreamInfo(a.url, pageUrl, source, a.cover, title) }
+            }
+            val slow = streamPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
+                App.awaitReadyOrNull() ?: return@withBackground null
+                viaYtdlp(pageUrl, source, title, problems)
+            } }
+            val deadline = System.currentTimeMillis() + 15_000
+            while (System.currentTimeMillis() < deadline) {
+                if (fast.isDone) runCatching { fast.get() }.getOrNull()?.let { slow.cancel(false); return it }
+                if (slow.isDone) runCatching { slow.get() }.getOrNull()?.let { return it }
+                if (fast.isDone && slow.isDone) return null
+                Thread.sleep(25)
+            }
+            problems?.add("$source: ссылка на звук не пришла за 15 с")
+            return null
+        }
         return viaYtdlp(pageUrl, source, title, problems)
     }
 

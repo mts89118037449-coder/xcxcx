@@ -121,6 +121,20 @@ object NewPipeSource {
         return Audio(best.content, best.averageBitrate, best.format?.name ?: "", info.thumbnails.maxByOrNull { it.height }?.url)
     }
 
+    /**
+     * Звук SoundCloud средствами телефона — без Python (yt-dlp под нагрузкой не отвечал, журнал 17.11). Проверено с сервера
+     * на треках владельца: поток AAC 160 кбит/с (HLS) за 1,3–5 с; платные (DRM) отказывают сразу. null — звука нет.
+     */
+    fun soundcloudAudio(pageUrl: String): Audio? {
+        ready
+        val info = StreamInfo.getInfo(ServiceList.SoundCloud, pageUrl)
+        val best = info.audioStreams.filter { it.isUrl && !it.content.isNullOrBlank() }
+            .sortedWith(compareByDescending<org.schabi.newpipe.extractor.stream.AudioStream> {
+                it.deliveryMethod == org.schabi.newpipe.extractor.stream.DeliveryMethod.PROGRESSIVE_HTTP }.thenByDescending { it.averageBitrate })
+            .firstOrNull() ?: return null
+        return Audio(best.content, best.averageBitrate, best.format?.name ?: "", info.thumbnails.maxByOrNull { it.height }?.url)
+    }
+
     /** Размер файла по ссылке (заодно проверка, что она играет). -1 — не отдаётся. */
     private fun size(url: String): Long = runCatching {
         val c = Net.open(URL(url))

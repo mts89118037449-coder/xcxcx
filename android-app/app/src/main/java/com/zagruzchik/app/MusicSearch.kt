@@ -291,7 +291,7 @@ object Streams {
             val u = Telegram.streamUrl(id)
             return StreamInfo(u, u, where.substringAfter('|', "Telegram"), t.cover, t.title)
         }
-        if (!isYoutube(where)) App.awaitReady() // YouTube берём средствами телефона — движок ждать не нужно
+        if (!isYoutube(where) && Service.of(where) != Service.SOUNDCLOUD) App.awaitReady() // YouTube и SoundCloud — средствами телефона, движок не ждём
         return Downloader.streamOf(where, Describe.site(where), t.title, wantTotal = wantTotal)
     }
 
@@ -512,7 +512,7 @@ object Streams {
             candidates.take(4).chunked(2).firstNotNullOfOrNull { pair ->
                 pair.map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                     val t0 = System.currentTimeMillis()
-                    if (Service.of(c.url).let { it != Service.YOUTUBE && it != Service.YOUTUBE_MUSIC }) App.awaitReady() // звук SoundCloud берёт yt-dlp
+                    if (Service.of(c.url).let { it != Service.YOUTUBE && it != Service.YOUTUBE_MUSIC && it != Service.SOUNDCLOUD }) App.awaitReady() // YouTube и SoundCloud берёт и телефон — движок не ждём
                     val errs = java.util.concurrent.ConcurrentLinkedQueue<String>()
                     Downloader.streamOf(c.url, name.substringBefore(" ("), c.title, errs).also {
                         problems += errs
