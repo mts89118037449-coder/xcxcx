@@ -11,8 +11,8 @@ android {
         applicationId = "com.zagruzchik.app"
         minSdk = 29 // Android 10+
         targetSdk = 35
-        versionCode = 97
-        versionName = "9.27"
+        versionCode = 98
+        versionName = "9.28"
     }
 
     // Один постоянный ключ, чтобы новые версии ставились поверх старых без удаления.
@@ -61,6 +61,8 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    // Профиль запуска ставится и при установке APK не из магазина: интерфейс и запуск быстрее с первого открытия.
+    implementation("androidx.profileinstaller:profileinstaller:1.3.1")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.4.1") // потоки SoundCloud и др. (.m3u8)
     implementation("androidx.media3:media3-ui:1.4.1")

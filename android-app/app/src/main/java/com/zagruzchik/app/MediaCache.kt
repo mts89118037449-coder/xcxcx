@@ -24,16 +24,21 @@ object MediaCache {
         runCatching { JSONObject(indexFile.readText()) }.getOrNull()?.let { o ->
             o.keys().forEach { k -> index[k] = o.getJSONObject(k) }
         }
-        // Обрывки недокачанного (раньше могли попасть в память и обрывать песню через пару минут) — удаляем.
-        index.entries.removeAll { e ->
-            val f = File(dir, e.value.optString("file"))
-            val bad = !f.exists() || !isFinal(f.name)
-            if (bad) f.delete()
-            bad
-        }
-        val known = index.values.map { it.optString("file") }.toSet() + indexFile.name
-        dir.listFiles().orEmpty().filter { it.isFile && it.name !in known && !it.name.endsWith(".tmp") }.forEach { it.delete() }
-        save()
+        // Проверка файлов на диске (обрывки, лишнее) — в фоне: при запуске это сотни обращений к диску в главном потоке.
+        Thread({ synchronized(this) {
+            // Обрывки недокачанного (раньше могли попасть в память и обрывать песню через пару минут) — удаляем.
+            index.entries.removeAll { e ->
+                val f = File(dir, e.value.optString("file"))
+                val bad = !f.exists() || !isFinal(f.name)
+                if (bad) f.delete()
+                bad
+            }
+            val known = index.values.map { it.optString("file") }.toSet() + indexFile.name
+            // Свежие файлы не трогаем: это может быть идущая загрузка (проверка теперь идёт в фоне, одновременно с работой).
+            dir.listFiles().orEmpty().filter { it.isFile && it.name !in known && !it.name.endsWith(".tmp") &&
+                System.currentTimeMillis() - it.lastModified() > 600_000 }.forEach { it.delete() }
+            save()
+        } }, "media-cache-check").start()
     }
 
     private val AUDIO = setOf("m4a", "mp4", "webm", "opus", "ogg", "mp3", "aac", "flac", "mka", "wav")
