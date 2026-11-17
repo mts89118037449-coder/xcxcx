@@ -36,6 +36,7 @@ class PlaybackService : MediaSessionService() {
             override fun buildAudioSink(context: android.content.Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean) =
                 androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
                     .setAudioProcessors(arrayOf<androidx.media3.common.audio.AudioProcessor>(Exciter())).build()
+                    .let { BeatSink(it) } // ритм для экрана — по часам самого звука
         }
         val player = ExoPlayer.Builder(this, renderers)
             // «aura://head/…» — начало песни с телефона, продолжение из сети (мгновенный старт); остальное — как обычно.

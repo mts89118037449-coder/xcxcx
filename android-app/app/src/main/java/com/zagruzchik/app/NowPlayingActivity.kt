@@ -134,6 +134,8 @@ class NowPlayingActivity : AppCompatActivity() {
         findViewById<View>(R.id.npNext).setOnClickListener { Playback.next(this) }
         // Свайп по обложке: вправо — следующая песня из текущего списка, влево — предыдущая.
         Swipe.attach(findViewById(R.id.npCoverFrame), onRight = { Playback.next(this) }, onLeft = { Playback.previous(this) })
+        // Нажатие на диск переворачивает его: с обратной стороны — «компакт-диск на свету».
+        findViewById<View>(R.id.npCoverFrame).setOnClickListener { flipDisc() }
         shuffle.setOnClickListener { controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
         repeat.setOnClickListener {
             controller?.let {
@@ -345,6 +347,7 @@ class NowPlayingActivity : AppCompatActivity() {
         play.setIconResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play_arrow)
         glow.playing(playing) // аура «дышит», пока играет
         smoke?.playing = playing
+        discBack.playing = playing
         play.contentDescription = if (playing) "Пауза" else "Играть"
         play.isEnabled = !pending
         shuffle.alpha = if (c?.shuffleModeEnabled == true) 1f else 0.45f
@@ -380,7 +383,7 @@ class NowPlayingActivity : AppCompatActivity() {
             if (coverBitmap != null && showingPending()) return // пока включается следующая — держим прежнюю обложку, без мигания
             coverBitmap = null
             smoke?.setCover(null)
-            if (ring) cover.setImageDrawable(android.graphics.drawable.LayerDrawable(arrayOf(
+            if (ring) setFront(android.graphics.drawable.LayerDrawable(arrayOf(
                 GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(MaterialColors.getColor(cover, M.attr.colorSurfaceContainerHighest)) },
                 androidx.core.content.ContextCompat.getDrawable(this, R.drawable.ic_music_note_white)?.mutate()?.apply { alpha = 0x55 },
             )).apply { val p = (cover.width.takeIf { it > 0 } ?: dp(240)) * 3 / 10; setLayerInset(1, p, p, p, p) })
@@ -404,6 +407,30 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private var smoke: SmokeView? = null
+
+    // ---- Диск переворачивается по нажатию ----
+    private val discBack = DiscBack()
+    private var front: android.graphics.drawable.Drawable? = null
+    private var flipping = false
+
+    /** Лицевая сторона диска (обложка или заглушка); если диск перевёрнут — на экране остаётся обратная. */
+    private fun setFront(d: android.graphics.drawable.Drawable) {
+        front = d
+        cover.setImageDrawable(if (discFlipped) discBack else d)
+    }
+
+    private fun flipDisc() {
+        if (!ring || flipping) return
+        flipping = true
+        cover.cameraDistance = resources.displayMetrics.density * 9000
+        cover.animate().rotationY(90f).setDuration(170).setInterpolator(android.view.animation.AccelerateInterpolator()).withEndAction {
+            discFlipped = !discFlipped
+            cover.setImageDrawable(if (discFlipped) discBack else front)
+            cover.rotationY = -90f
+            cover.animate().rotationY(0f).setDuration(190).setInterpolator(android.view.animation.DecelerateInterpolator())
+                .withEndAction { flipping = false }.start()
+        }.start()
+    }
     private var shownKey: String? = null
     private var coverFade = false
 
@@ -418,13 +445,14 @@ class NowPlayingActivity : AppCompatActivity() {
         if (coverFade || coverBitmap != null && coverBitmap !== b) {
             coverFade = false
             cover.animate().cancel()
+            cover.rotationY = 0f; flipping = false
             cover.alpha = 0.35f; cover.scaleX = 0.96f; cover.scaleY = 0.96f
             cover.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(260).start()
         }
         coverBitmap = b
         smoke?.setCover(b)
         // «Кольцо»: обложка — круглый диск (сама картинка обрезается по кругу, по центру квадрата).
-        if (ring) cover.setImageDrawable(disc(b)) else cover.setImageBitmap(b)
+        if (ring) setFront(disc(b)) else cover.setImageBitmap(b)
         paintBackground(b)
     }
 
@@ -517,6 +545,9 @@ class NowPlayingActivity : AppCompatActivity() {
             .setNegativeButton("Закрыть", null).show()
     }
 }
+
+/** Диск перевёрнут обратной стороной — помним, пока приложение открыто. */
+private var discFlipped = false
 
 /** Песня без обложки: нейтральные цвета фона и бегунка. */
 private const val NO_COVER_TONE = 0xFF4A4C5C.toInt()

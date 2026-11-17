@@ -663,16 +663,37 @@ object Playback {
      */
     private fun radio(app: Context, gen: Int) {
         if (queue.isEmpty() || radioGen == gen || !Settings.radio(app)) return
-        val seed = queue.last().track.takeIf { it.artist.isNotBlank() } ?: return
         radioGen = gen
         filling = true
         val played = queue.map { it.track }
+        // От чего строить продолжение: последняя песня, другие песни этой очереди, любимые — по очереди, пока что-то не найдётся.
+        // Раньше бралась только последняя: её исполнителя нет в каталоге или сеть моргнула — и музыка просто кончалась.
+        val seeds = (listOf(queue.last().track) + played.dropLast(1).shuffled().take(4) + Library.favorites.shuffled().take(4))
+            .filter { it.artist.isNotBlank() }.distinctBy { Library.mainArtist(it.artist).lowercase() }
         queueWorker.execute {
-            val more = runCatching { Catalog.radio(seed, played) }.getOrDefault(emptyList())
+            var more = emptyList<Track>()
+            var from = ""
+            for (seed in seeds) {
+                more = runCatching { Catalog.radio(seed, played) }.getOrDefault(emptyList())
+                if (more.isNotEmpty()) { from = seed.artist; break }
+            }
+            // Совсем ничего — популярное, чтобы музыка не обрывалась.
+            if (more.isEmpty()) {
+                val seen = played.map { Library.key(it) }.toHashSet()
+                more = runCatching { Catalog.chartRu() + Catalog.chartWorld() }.getOrDefault(emptyList())
+                    .filter { seen.add(Library.key(it)) && !Taste.disliked(it) }.shuffled().take(15)
+                if (more.isNotEmpty()) from = "популярное"
+            }
             main.post {
                 if (gen != queueGen) return@post
                 filling = false
-                if (more.isEmpty()) return@post
+                if (more.isEmpty()) {
+                    // Сеть не ответила — пробуем ещё раз через 15 с, пока очередь та же.
+                    AppLog.add("РАДИО: продолжение не нашлось (нет сети?) — повтор через 15 с")
+                    main.postDelayed({ if (gen == queueGen) { radioGen = -1; fill(app, gen) } }, 15_000)
+                    return@post
+                }
+                AppLog.add("РАДИО: +${more.size} песен (от «$from»)")
                 queue = queue + more.map { QItem(it, Library.localFor(it), it.url) }
                 radioGen = -1 // и дальше — когда закончится и это
                 fill(app, gen)
