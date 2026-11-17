@@ -37,7 +37,10 @@ class SmokeView(ctx: Context) : View(ctx) {
      * середина — средние, верх — поменьше и быстрее. Чем больше полос звучит разом, тем клубы шире и их больше —
      * они накладываются друг на друга.
      */
-    private class Billow(val at: Long, val dir: Float, val power: Float, val bend: Float, val band: Int, val width: Float, val seed: Int)
+    private class Billow(val at: Long, val dir: Float, val power: Float, val bend: Float, val band: Int, val width: Float, val seed: Int) {
+        /** Сколько живёт: короткая нота (полоса быстро стихла) — облако тает быстро. */
+        var life = when (band) { 0 -> 2600f; 1 -> 2200f; else -> 1600f }
+    }
     private val billows = ArrayDeque<Billow>()
     private var lastNote = Long.MIN_VALUE
     private var billowNo = 0
@@ -51,7 +54,7 @@ class SmokeView(ctx: Context) : View(ctx) {
     var playing = false
         set(v) { if (field != v) { field = v; last = SystemClock.uptimeMillis(); invalidate() } }
 
-    init { setCover(null); isClickable = false }
+    init { setCover(null); isClickable = false; Thread({ SmokeSprites.all }, "smoke").start() } // текстуру дыма готовим заранее, не в кадре
 
     /** Где обложка (центр и половина стороны) — в координатах этого слоя. */
     fun place(x: Float, y: Float, r: Float) {
@@ -192,16 +195,17 @@ class SmokeView(ctx: Context) : View(ctx) {
             val idx = ((dir / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES
             // Клуб — два смещённых вытянутых пятна: неровная форма, как у дыма, а не ровный круг.
             val turn = Math.toDegrees(a.toDouble()).toFloat() + 90f + 40f * sin(age * 3f + i)
-            for (k in 0..1)
-                layer(canvas, idx, alpha, x + (if (k == 0) -1 else 1) * size * 0.28f * cos(a + 1.3f), y + (if (k == 0) -1 else 1) * size * 0.28f * sin(a + 1.3f),
-                    turn + k * 55f, size * (1.15f - 0.2f * k), size * (0.7f + 0.15f * k))
+            // Клуб — рваное облако, медленно закручивается, пока летит.
+            layer(canvas, idx, alpha, x, y, turn + age * 70f, size * 1.25f, size * 1.05f, i * 7 + life)
         }
         // Клубы от нот: несколько мягких облаков веером, растут и расплываются, накладываясь друг на друга.
         val it = billows.iterator()
         while (it.hasNext()) {
             val j = it.next()
-            val life = when (j.band) { 0 -> 2600f; 1 -> 2000f; else -> 1500f }
-            val p = (now - j.at) / life
+            val age = now - j.at
+            // Нота коротко прозвучала и стихла — облако тает быстро; тянется — живёт дольше.
+            if (age in 150..600 && bandShown[j.band] < 0.22f) j.life = minOf(j.life, 1000f)
+            val p = age / j.life
             if (p >= 1f) { it.remove(); continue }
             val out = 1f - (1f - p) * (1f - p)
             val reach = (far - radius) * j.power * (if (j.band == 2) 0.9f else 0.75f)
@@ -216,22 +220,29 @@ class SmokeView(ctx: Context) : View(ctx) {
                 if (alpha <= 0.01f) continue
                 val idx = ((a / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES
                 layer(canvas, idx, alpha, cx + cos(a) * d, cy + sin(a) * d - radius * 0.3f * out,
-                    Math.toDegrees(a.toDouble()).toFloat() + 30f * sin(p * 3f + k), size * 1.15f, size)
+                    Math.toDegrees(a.toDouble()).toFloat() + 60f * p + k * 90f, size * 1.3f, size * 1.1f, j.seed * 3 + k)
             }
         }
         if (playing || billows.isNotEmpty() || kotlin.math.abs(level - target) > 0.01f) postInvalidateOnAnimation()
     }
 
-    /** Один слой дыма: сначала тень чуть ниже (отделяет от того, что под ним), затем само облако с ободком и контуром. */
-    private fun layer(canvas: Canvas, idx: Int, alpha: Float, x: Float, y: Float, rot: Float, sx: Float, sy: Float) {
-        paint.shader = shadow
-        paint.alpha = (alpha * 0.7f * 255).toInt().coerceIn(0, 255)
-        canvas.save(); canvas.translate(x + sx * 0.06f, y + sy * 0.14f); canvas.rotate(rot); canvas.scale(sx * 1.05f, sy * 1.05f)
-        canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
-        paint.shader = shaders[idx]
-        paint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
-        canvas.save(); canvas.translate(x, y); canvas.rotate(rot); canvas.scale(sx, sy)
-        canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
+    private val spritePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+    /**
+     * Один клуб дыма: рваная текстура в цвет края обложки. Сначала лёгкая тень чуть ниже — она отделяет новый слой от
+     * того, что под ним, — затем сам дым. Обычное наложение: новые клубы ложатся поверх старых, а не сливаются в белое.
+     */
+    private fun layer(canvas: Canvas, idx: Int, alpha: Float, x: Float, y: Float, rot: Float, sx: Float, sy: Float, seed: Int = idx) {
+        val sprite = SmokeSprites.all[(seed and 0x7fffffff) % 4]
+        val k = SmokeSprites.HALF
+        spritePaint.color = Color.BLACK
+        spritePaint.alpha = (alpha * 0.33f * 255).toInt().coerceIn(0, 255)
+        canvas.save(); canvas.translate(x + sx * 0.06f, y + sy * 0.12f); canvas.rotate(rot); canvas.scale(sx / k * 1.05f, sy / k * 1.05f)
+        canvas.drawBitmap(sprite, -k, -k, spritePaint); canvas.restore()
+        spritePaint.color = edge[idx]
+        spritePaint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
+        canvas.save(); canvas.translate(x, y); canvas.rotate(rot); canvas.scale(sx / k, sy / k)
+        canvas.drawBitmap(sprite, -k, -k, spritePaint); canvas.restore()
     }
 
     companion object {
