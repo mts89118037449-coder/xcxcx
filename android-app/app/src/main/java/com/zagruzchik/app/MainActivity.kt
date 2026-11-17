@@ -125,13 +125,7 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_jobs to findViewById(R.id.pageJobs),
             R.id.nav_settings to findViewById(R.id.pageSettings),
         )
-        nav.setItems(listOf(
-            PillNav.Item(R.id.nav_music, "Музыка", R.drawable.ic_headphones),
-            PillNav.Item(R.id.nav_library, "Медиатека", R.drawable.ic_library_music),
-            PillNav.Item(R.id.nav_download, "Скачать", R.drawable.ic_download),
-            PillNav.Item(R.id.nav_jobs, "Загрузки", R.drawable.ic_folder_open),
-            PillNav.Item(R.id.nav_settings, "Настройки", R.drawable.ic_settings),
-        ))
+        nav.setItems(navItems())
         nav.listener = { applyPage(it) }
         toolbar.setOnMenuItemClickListener {
             if (it.itemId == R.id.action_clear) Jobs.clearFinished()
@@ -192,6 +186,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        // Вкладка нижнего меню, нажатая на другом экране (подборка, эквалайзер…).
+        intent?.getIntExtra(EXTRA_PAGE, 0)?.takeIf { it != 0 && pages.containsKey(it) }?.let { showPage(it); intent.removeExtra(EXTRA_PAGE) }
         when (intent?.action) {
             ACTION_PASTE_DOWNLOAD, ACTION_PASTE_LINKS -> pendingClipAction = intent.action
         }
@@ -209,6 +205,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Показать содержимое вкладки. Вызывается нижней панелью при выборе вкладки. */
     private fun applyPage(id: Int) {
+        currentPage = id
         pages.forEach { (k, v) ->
             val show = k == id
             if (show && !v.isVisible) {
@@ -1457,6 +1454,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        /** Нижнее меню — одно на всё приложение (оно же показывается на других экранах, см. MiniBar). */
+        fun navItems() = listOf(
+            PillNav.Item(R.id.nav_music, "Музыка", R.drawable.ic_headphones),
+            PillNav.Item(R.id.nav_library, "Медиатека", R.drawable.ic_library_music),
+            PillNav.Item(R.id.nav_download, "Скачать", R.drawable.ic_download),
+            PillNav.Item(R.id.nav_jobs, "Загрузки", R.drawable.ic_folder_open),
+            PillNav.Item(R.id.nav_settings, "Настройки", R.drawable.ic_settings),
+        )
+        const val EXTRA_PAGE = "page_tab"
+        /** Вкладка, открытая на главном экране сейчас. */
+        @Volatile var currentPage = R.id.nav_music
+
         const val EXTRA_SHOW_JOBS = "showJobs"
         const val ACTION_PASTE_DOWNLOAD = "com.zagruzchik.app.PASTE_DOWNLOAD"
         const val ACTION_PASTE_LINKS = "com.zagruzchik.app.PASTE_LINKS"

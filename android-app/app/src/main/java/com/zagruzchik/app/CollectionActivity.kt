@@ -169,7 +169,7 @@ class CollectionActivity : AppCompatActivity() {
                     .map { t -> if (t.cover == null) t.copy(cover = covers[Match.base(t.title)] ?: p.artist.picture) else t }
                 if (mine.isNotEmpty()) {
                     section("В вашей медиатеке · ${mine.size}")
-                    showTracks(mine, numbered = false)
+                    showFolded(mine, 5)
                 }
                 tracks = p.top
                 if (p.top.isNotEmpty()) {
@@ -213,6 +213,28 @@ class CollectionActivity : AppCompatActivity() {
         scroll.setOnScrollChangeListener { v: androidx.core.widget.NestedScrollView, _: Int, y: Int, _: Int, _: Int ->
             if (next < list.size && v.getChildAt(0).bottom - (v.height + y) < dp(1200)) more()
         }
+    }
+
+    /**
+     * Короткий список: первые [shown] песен и «Показать все» — раскрывает остальные на месте.
+     * Раньше любимые песни исполнителя шли сплошняком, и до «Популярного» и альбомов приходилось листать все.
+     */
+    private fun showFolded(list: List<Track>, shown: Int) {
+        findViewById<View>(R.id.colButtons).isVisible = true
+        val items = list.map { Playback.QItem(it, Library.localFor(it), it.url) }
+        fun row(i: Int) = Rows.track(this, content, list[i], ::snack, local = items[i].local, onPlay = { Playback.playQueue(this, items, i) })
+        for (i in 0 until minOf(shown, list.size)) content.addView(row(i))
+        if (list.size <= shown) return
+        val more = com.google.android.material.button.MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+            text = "Показать все · ${list.size}"
+            isAllCaps = false
+        }
+        more.setOnClickListener {
+            val at = content.indexOfChild(more)
+            content.removeView(more)
+            for (i in shown until list.size) content.addView(row(i), at + i - shown)
+        }
+        content.addView(more, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
     }
 
     private fun playAll(shuffle: Boolean) {

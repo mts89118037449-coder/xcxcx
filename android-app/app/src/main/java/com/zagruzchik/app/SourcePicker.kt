@@ -15,8 +15,8 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
  * сейчас, остальные добавляются в список по мере ответа площадок. Выбранное запоминается за песней.
  */
 object SourcePicker {
-    fun show(a: Activity, t: Track, onChosen: () -> Unit = {}) {
-        val live = Streams.live(t, urgent = true)
+    fun show(a: Activity, t: Track, onChosen: () -> Unit = {}, fresh: Boolean = false) {
+        val live = Streams.live(t, urgent = true, fresh = fresh)
         val onSurface = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurface, Color.WHITE)
         val muted = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurfaceVariant, Color.GRAY)
         val rows = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(8), a.dp(4), a.dp(8), 0) }
@@ -55,7 +55,9 @@ object SourcePicker {
                 row(o.label, sub, o.where == current) { choose(o.where, o.label) }
             }
             foot.text = if (!live.done) "Ищу на остальных площадках… список пополняется"
-                else if (live.list.isEmpty()) "Песня нигде не нашлась" else "Поиск закончен: найдено ${live.list.size}"
+                else if (live.list.isEmpty()) "Площадки сейчас ничего не отдали" else "Поиск закончен: найдено ${live.list.size}"
+            // Поиск закончен — можно опросить площадки ещё раз.
+            if (live.done) row("Искать ещё раз", null, false) { dialog.dismiss(); show(a, t, onChosen, fresh = true) }
         }
         val listener: () -> Unit = { a.runOnUiThread { render() } }
         live.listeners += listener

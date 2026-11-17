@@ -371,9 +371,11 @@ object Streams {
      * Источники этой песни. Опрос запускается один раз (в фоне, не мешая музыке) и живёт полчаса; повторный вызов
      * возвращает тот же список — уже с тем, что успело найтись. [urgent] — человек открыл окно: опрос идёт вне очереди.
      */
-    fun live(t: Track, urgent: Boolean = false): Live {
+    fun live(t: Track, urgent: Boolean = false, fresh: Boolean = false): Live {
         val k = key(t)
-        lives[k]?.takeIf { System.currentTimeMillis() - it.since < 30 * 60_000L }?.let { return it }
+        // Готовый список берём, только если в нём что-то есть: пустой мог получиться, когда фоновый опрос уступил сеть
+        // самой песне (журнал 17.11: песня находилась, а окно писало «нигде не нашлась»).
+        lives[k]?.takeIf { !fresh && System.currentTimeMillis() - it.since < 30 * 60_000L && (!it.done || it.list.isNotEmpty()) }?.let { return it }
         val live = Live()
         lives[k] = live
         // То, откуда песня играет сейчас, известно сразу.
@@ -384,7 +386,10 @@ object Streams {
                 val run = { runCatching { search(t, java.util.concurrent.ConcurrentLinkedQueue(), java.util.concurrent.ConcurrentHashMap(), collect = live::add) }; Unit }
                 if (urgent) { foreground.incrementAndGet(); try { run() } finally { foreground.decrementAndGet() } }
                 else { waitForeground(); Ytdlp.inBackground { run() } }
-            } finally { live.finish() }
+            } finally {
+                if (live.list.isEmpty()) lives.remove(k, live) // пусто — в следующий раз опросить заново
+                live.finish()
+            }
         }
         return live
     }

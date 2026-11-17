@@ -93,13 +93,28 @@ object MiniBar {
             override fun onEvents(player: Player, events: Player.Events) = update()
         }
 
+        // Нижнее меню — как на главном экране: раньше при переходе в раздел оно пропадало.
+        private val nav = PillNav(a).apply {
+            setItems(MainActivity.navItems())
+            selectedItemId = MainActivity.currentPage
+            val go = { id: Int ->
+                a.startActivity(Intent(a, MainActivity::class.java).putExtra(MainActivity.EXTRA_PAGE, id)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            }
+            listener = go; onReselect = go
+        }
+
         init {
             content.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, a.dp(HEIGHT), Gravity.BOTTOM).apply {
                 leftMargin = a.dp(12); rightMargin = a.dp(12); bottomMargin = a.dp(8)
             })
+            content.addView(nav, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, a.dp(NAV), Gravity.BOTTOM).apply {
+                leftMargin = a.dp(12); rightMargin = a.dp(12); bottomMargin = a.dp(12)
+            })
             Swipe.attach(view, onRight = { Playback.next(a) }, onLeft = { Playback.previous(a) })
             // Экран может уходить под системную панель навигации — поднимаем полоску над ней.
             ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets -> place(); insets }
+            content.post { place() }
         }
 
         private fun button(icon: Int, label: String, click: () -> Unit) = ImageView(a).apply {
@@ -129,17 +144,20 @@ object MiniBar {
 
         /** Отступ снизу: над панелью навигации, если экран рисуется под ней; содержимое экрана полоской не закрываем. */
         private fun place() {
-            val nav = ViewCompat.getRootWindowInsets(content)?.getInsets(WindowInsetsCompat.Type.systemBars())?.bottom ?: 0
+            val navInset = ViewCompat.getRootWindowInsets(content)?.getInsets(WindowInsetsCompat.Type.systemBars())?.bottom ?: 0
             val under = content.rootView.height > 0 && run {
                 val at = IntArray(2); content.getLocationInWindow(at)
                 at[1] + content.height >= content.rootView.height
             }
-            val bottom = a.dp(8) + if (under) nav else 0
+            val sys = if (under) navInset else 0
+            (this.nav.layoutParams as FrameLayout.LayoutParams).let { val b = a.dp(12) + sys; if (it.bottomMargin != b) { it.bottomMargin = b; this.nav.layoutParams = it } }
+            // Полоска «сейчас играет» — над меню.
+            val bottom = a.dp(12 + NAV + 8) + sys
             (view.layoutParams as FrameLayout.LayoutParams).let { if (it.bottomMargin != bottom) { it.bottomMargin = bottom; view.layoutParams = it } }
-            val room = if (view.isVisible) a.dp(HEIGHT + 12) + (if (under) nav else 0) else 0
+            val room = a.dp(NAV + 12 + 8) + sys + if (view.isVisible) a.dp(HEIGHT + 8) else 0
             for (i in 0 until content.childCount) {
                 val child = content.getChildAt(i)
-                if (child === view) continue
+                if (child === view || child === this.nav) continue
                 val lp = child.layoutParams as? FrameLayout.LayoutParams ?: continue
                 if (lp.bottomMargin != room) { lp.bottomMargin = room; child.layoutParams = lp }
             }
@@ -148,7 +166,7 @@ object MiniBar {
         private fun update() {
             val c = controller
             val has = c != null && c.mediaItemCount > 0 && c.playbackState != Player.STATE_IDLE
-            if (view.isVisible != has) { view.isVisible = has; view.bringToFront() }
+            if (view.isVisible != has) { view.isVisible = has; view.bringToFront(); nav.bringToFront() }
             place()
             if (!has || c == null) return
             val m = c.mediaMetadata
@@ -169,4 +187,5 @@ object MiniBar {
     }
 
     private const val HEIGHT = 60
+    private const val NAV = 60
 }

@@ -229,8 +229,10 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
     private val views = mutableMapOf<Int, LinearLayout>()
     private val badges = mutableMapOf<Int, TextView>()
     var selectedItemId: Int = 0
-        set(v) { if (field != v) { field = v; paint(); listener?.invoke(v) } else paint() }
+        set(v) { if (field != v) { field = v; paint(); listener?.invoke(v) } else { paint(); onReselect?.invoke(v) } }
     var listener: ((Int) -> Unit)? = null
+    /** Нажали уже выбранную вкладку. */
+    var onReselect: ((Int) -> Unit)? = null
 
     init {
         orientation = HORIZONTAL
