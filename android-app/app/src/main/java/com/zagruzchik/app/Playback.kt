@@ -241,7 +241,7 @@ object Playback {
                     if (s != null) {
                         Pending.set(null, loading = false, error = null)
                         startPath = "нашёл по нажатию"; start(app, gen, streamItem(first, s))
-                        worker.execute { MediaCache.store(app, first.track, s.pageUrl) }
+                        worker.execute { MediaCache.store(app, first.track, s) }
                     } else {
                         // Не нашлась нигде — сообщение и переход к следующей (без фрагмента).
                         val q = QItem(first.track.copy(preview = null), first.local, first.sourceUrl, first.pageUrl, first.directUrl, first.directSource)
@@ -269,7 +269,7 @@ object Playback {
                 if (ready != null) {
                     Pending.set(null, loading = false, error = null)
                     startPath = if (tapAt > 0 && System.currentTimeMillis() - tapAt < 150) "ссылка была готова" else "нашёл по нажатию"; start(app, gen, streamItem(first, ready))
-                    worker.execute { MediaCache.store(app, first.track, ready.pageUrl) }
+                    worker.execute { MediaCache.store(app, first.track, ready) }
                 } else {
                     val q = QItem(first.track.copy(preview = fresh), first.local, first.sourceUrl, first.pageUrl, first.directUrl, first.directSource)
                     previewThenFull(app, gen, q, fullSoon)
@@ -312,7 +312,7 @@ object Playback {
                     if (preview != null) continueFromPreview(app, gen, full, preview, align) else start(app, gen, full)
                 }
                 // В память — уже после стыка, чтобы скачивание не мешало искать место.
-                MediaCache.store(app, first.track, stream.pageUrl) // в следующий раз — мгновенно
+                MediaCache.store(app, first.track, stream) // в следующий раз — мгновенно
             } catch (e: Exception) {
                 val msg = (e as? UserError)?.message ?: "Не получилось включить: ${e.message}"
                 main.post {
@@ -651,7 +651,7 @@ object Playback {
             val item = q.local?.let { item(it).withTrack(q.track) }
                 ?: MediaCache.fileFor(q.track)?.let { cachedItem(q, it) }
                 ?: (if (q.pageUrl == null && q.directUrl == null) HeadCache.entry(q.track)?.let { headItem(q, it) } else null)
-                ?: runCatching { Ytdlp.inBackground { resolve(q) }.also { MediaCache.store(app, q.track, it.pageUrl) }.let { streamItem(q, it) } }.getOrNull() // не нашлась — пропускаем
+                ?: runCatching { Ytdlp.inBackground { resolve(q) }.also { MediaCache.store(app, q.track, it) }.let { streamItem(q, it) } }.getOrNull() // не нашлась — пропускаем
             main.post {
                 if (gen != queueGen) return@post
                 filling = false

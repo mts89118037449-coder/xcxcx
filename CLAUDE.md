@@ -185,6 +185,13 @@ SDK в контейнере нет — ставить в scratchpad: cmdline-too
   ссылка не приходила до конца 25 с. 9.22: `Streams.busy/quietUntil` (фон молчит 20 с после нажатого), LibrarySync ждёт перед поиском и
   загрузкой, ссылка YouTube — не дольше 15 с (`Downloader.streamOf`).
 
+- **Журнал 17.11 22:37–22:39 (9.31):** «ЗАВИСАНИЕ ИНТЕРФЕЙСА» 2–2,7 с `Taste.favoriteArtists ← renderHome` (Match.norm ×1400),
+  6,7 с `MainActivity.onCreate:118` (setContentView при перегруженном процессоре), 0,5–7,1 с `HardwareRenderer.nSetStopped` (переход
+  в плеер, дым). yt-dlp (SoundCloud/YouTube) «не ответила за 8 с» почти везде; шла «МЕДИАТЕКА НА ТЕЛЕФОНЕ» (1075 песен), которая
+  качала через yt-dlp CLI (Python-процесс на песню, 2 потока), и `MediaCache.store` после каждой песни — тоже CLI. 9.32: загрузки только
+  прямые кусками 1 МБ (`MediaCache` CHUNK, `store(ctx,t,StreamInfo)`), HLS не качаем; LibrarySync 1 поток, фоновый приоритет; кэш
+  `Taste.artistKey`/`favoriteArtists`; дым COUNT 16, размер ≤ 0,45 ширины, тень только у Billow; старт-потоки THREAD_PRIORITY_BACKGROUND.
+
 ## Открытые вопросы
 - Почему на телефоне не играют даже найденные записи (SoundCloud: ссылка есть, звук не идёт). Смотреть строки «байты» в проверке.
 - Работает ли NewPipeExtractor на телефоне вообще (поиск YouTube Music там ни разу не ответил).

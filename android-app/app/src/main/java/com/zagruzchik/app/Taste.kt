@@ -28,21 +28,31 @@ object Taste {
     }
 
     private fun mainArtist(a: String) = a.split(Regex("""\s*(,|&| feat\.? | ft\.? )\s*""", RegexOption.IGNORE_CASE)).first().trim()
-    private fun artistKey(a: String) = Match.norm(mainArtist(a))
+    // Нормализация имени дорогая (Unicode + регулярные выражения); на 1400 любимых это 2–2,7 с в главном потоке
+    // (журнал 17.11: «ЗАВИСАНИЕ ИНТЕРФЕЙСА … Taste.favoriteArtists»). Запоминаем.
+    private val keys = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val shownNames = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private fun artistKey(a: String) = keys.getOrPut(a) { Match.norm(mainArtist(a)) }
+    private fun mainName(a: String) = shownNames.getOrPut(a) { mainArtist(a) }
+    @Volatile private var favMemo: Triple<Int, Int, List<String>>? = null // (размер медиатеки, n, ответ)
 
     /**
      * Любимые исполнители: чьи песни под ♥ (каждая — как 3 прослушивания) и кого слушаете чаще.
      * Из них собираются «Новинки».
      */
     @Synchronized fun favoriteArtists(n: Int): List<String> {
+        val fav = Library.favorites
+        favMemo?.let { (size, nn, r) -> if (size == fav.size && nn >= n && System.currentTimeMillis() - memoAt < 60_000) return r.take(n) }
         val w = HashMap<String, Double>()
         val shown = HashMap<String, String>()
-        Library.favorites.filter { it.artist.isNotBlank() }.forEach { t ->
-            val k = artistKey(t.artist); w.merge(k, 3.0, Double::plus); shown.putIfAbsent(k, mainArtist(t.artist))
+        fav.filter { it.artist.isNotBlank() }.forEach { t ->
+            val k = artistKey(t.artist); w.merge(k, 3.0, Double::plus); shown.putIfAbsent(k, mainName(t.artist))
         }
         artists.forEach { (k, c) -> if (c >= 2) { w.merge(k, c.toDouble(), Double::plus); names[k]?.let { shown.putIfAbsent(k, it) } } }
-        return w.entries.sortedByDescending { it.value }.mapNotNull { shown[it.key] }.take(n)
+        return w.entries.sortedByDescending { it.value }.mapNotNull { shown[it.key] }.take(maxOf(n, 12))
+            .also { favMemo = Triple(fav.size, maxOf(n, 12), it); memoAt = System.currentTimeMillis() }.take(n)
     }
+    @Volatile private var memoAt = 0L
 
     /** Дослушали (или почти) — плюс песне и исполнителю. */
     @Synchronized fun played(t: Track) {

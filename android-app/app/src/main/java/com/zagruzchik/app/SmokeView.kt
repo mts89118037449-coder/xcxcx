@@ -171,7 +171,7 @@ class SmokeView(ctx: Context) : View(ctx) {
                 }
             }
             // Слишком много облаков — самые старые не исчезают, а плавно тают.
-            billows.asSequence().filter { !it.fading }.toList().let { alive -> alive.take(maxOf(0, alive.size - 24)).forEach { it.fading = true } }
+            billows.asSequence().filter { !it.fading }.toList().let { alive -> alive.take(maxOf(0, alive.size - 14)).forEach { it.fading = true } }
         }
 
         // Ореол вплотную к обложке — из него «выходит» дым.
@@ -200,7 +200,7 @@ class SmokeView(ctx: Context) : View(ctx) {
             val x = cx + cos(a) * dist
             val y = cy + sin(a) * dist - rise * radius * 1.6f * out
             // Растёт и тает.
-            val size = radius * (0.55f + 1.25f * out) * (0.85f + 0.3f * rnd(i, life, 7)) * (0.9f + 0.4f * fullness)
+            val size = minOf(width * 0.45f, radius * (0.5f + 0.9f * out) * (0.85f + 0.3f * rnd(i, life, 7)) * (0.9f + 0.3f * fullness))
             val fade = minOf(1f, age * 7f) * (1f - age) * (1f - age * 0.35f)
             val alpha = minOf(0.9f, fade * 1.1f * level * pulse * (0.85f + 0.3f * fullness))
             if (alpha <= 0.01f) continue
@@ -210,7 +210,7 @@ class SmokeView(ctx: Context) : View(ctx) {
             // Клуб — рваное облако, медленно закручивается, пока летит.
             // На ударе баса весь дым толкается наружу и светлеет.
             val kick = 1f + 0.15f * shown
-            layer(canvas, idx, alpha, x, y, turn + age * 70f, size * 1.25f * kick, size * 1.05f * kick, i * 7 + life, 0.35f * shown)
+            layer(canvas, idx, alpha, x, y, turn + age * 70f, size * 1.25f * kick, size * 1.05f * kick, i * 7 + life, 0.35f * shown, shade = false)
         }
         // Клубы от нот: несколько мягких облаков веером, растут и расплываются, накладываясь друг на друга.
         val it = billows.iterator()
@@ -225,7 +225,7 @@ class SmokeView(ctx: Context) : View(ctx) {
             val out = 1f - (1f - p) * (1f - p)
             val reach = (far - radius) * j.power * (if (j.band == 2) 0.9f else 0.75f)
             val scale = when (j.band) { 0 -> 1.25f; 1 -> 0.95f; else -> 0.7f } * (0.85f + 0.3f * fullness)
-            val parts = 3 + j.band.let { if (it == 0) 2 else 1 }
+            val parts = if (j.band == 0) 4 else 3
             for (k in 0 until parts) {
                 val spread = (k / (parts - 1f) - 0.5f) * j.width * (0.6f + 0.6f * out)   // веер расходится по мере полёта
                 val a = j.dir + spread + j.bend * out + 0.15f * sin(p * 5f + j.seed + k)
@@ -248,21 +248,28 @@ class SmokeView(ctx: Context) : View(ctx) {
      * Один клуб дыма: рваная текстура в цвет края обложки. Сначала лёгкая тень чуть ниже — она отделяет новый слой от
      * того, что под ним, — затем сам дым. Обычное наложение: новые клубы ложатся поверх старых, а не сливаются в белое.
      */
-    private fun layer(canvas: Canvas, idx: Int, alpha: Float, x: Float, y: Float, rot: Float, sx: Float, sy: Float, seed: Int = idx, glow: Float = 0f) {
+    private fun layer(canvas: Canvas, idx: Int, alpha: Float, x: Float, y: Float, rot: Float, sx: Float, sy: Float, seed: Int = idx, glow: Float = 0f,
+                      shade: Boolean = true) {
         val sprite = SmokeSprites.all[(seed and 0x7fffffff) % 4]
         val k = SmokeSprites.HALF
-        spritePaint.color = Color.BLACK
-        spritePaint.alpha = (alpha * 0.33f * 255).toInt().coerceIn(0, 255)
-        canvas.save(); canvas.translate(x + sx * 0.06f, y + sy * 0.12f); canvas.rotate(rot); canvas.scale(sx / k * 1.05f, sy / k * 1.05f)
-        canvas.drawBitmap(sprite, -k, -k, spritePaint); canvas.restore()
+        if (shade) drawShade(canvas, sprite, k, alpha, x, y, rot, sx, sy)
         spritePaint.color = if (glow > 0f) ColorUtils.blendARGB(edge[idx], Color.WHITE, glow.coerceAtMost(0.5f)) else edge[idx]
         spritePaint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
         canvas.save(); canvas.translate(x, y); canvas.rotate(rot); canvas.scale(sx / k, sy / k)
         canvas.drawBitmap(sprite, -k, -k, spritePaint); canvas.restore()
     }
 
+    private fun drawShade(canvas: Canvas, sprite: Bitmap, k: Float, alpha: Float, x: Float, y: Float, rot: Float, sx: Float, sy: Float) {
+        spritePaint.color = Color.BLACK
+        spritePaint.alpha = (alpha * 0.33f * 255).toInt().coerceIn(0, 255)
+        canvas.save(); canvas.translate(x + sx * 0.06f, y + sy * 0.12f); canvas.rotate(rot); canvas.scale(sx / k * 1.05f, sy / k * 1.05f)
+        canvas.drawBitmap(sprite, -k, -k, spritePaint); canvas.restore()
+    }
+
     companion object {
-        private const val COUNT = 30
+        // Меньше и мельче клубов: каждый — слой поверх всего экрана, и десятки таких слоёв на кадр давали зависания
+        // при переходе в плеер (журнал 17.11: «ЗАВИСАНИЕ ИНТЕРФЕЙСА 2,5–7 с: HardwareRenderer»).
+        private const val COUNT = 16
         private const val EDGES = 12
         private const val GRID = 24
         private const val NEUTRAL = 34   // ниже этой «цветности» точка считается серой

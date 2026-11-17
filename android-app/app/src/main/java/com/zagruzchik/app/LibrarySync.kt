@@ -11,8 +11,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * всё, что можно найти, находится один раз и заранее, а не в момент нажатия.
  */
 object LibrarySync {
-    private const val THREADS = 2
-    private val pool = Executors.newFixedThreadPool(THREADS + 1)
+    // Одна загрузка за раз, с низким приоритетом: журнал 17.11 — две параллельные загрузки через Python душили телефон.
+    private const val THREADS = 1
+    private val pool = Executors.newFixedThreadPool(THREADS + 1) { r ->
+        Thread({ android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); r.run() }, "library-sync")
+    }
     @Volatile var running = false; private set
     /** Сколько любимых песен уже на телефоне и сколько всего (для экрана). */
     @Volatile var onPhone = 0; private set

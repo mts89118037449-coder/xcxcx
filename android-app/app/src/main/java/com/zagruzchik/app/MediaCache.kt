@@ -25,7 +25,7 @@ object MediaCache {
             o.keys().forEach { k -> index[k] = o.getJSONObject(k) }
         }
         // Проверка файлов на диске (обрывки, лишнее) — в фоне: при запуске это сотни обращений к диску в главном потоке.
-        Thread({ synchronized(this) {
+        Thread({ android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); synchronized(this) {
             // Обрывки недокачанного (раньше могли попасть в память и обрывать песню через пару минут) — удаляем.
             index.entries.removeAll { e ->
                 val f = File(dir, e.value.optString("file"))
@@ -41,6 +41,7 @@ object MediaCache {
         } }, "media-cache-check").start()
     }
 
+    private const val CHUNK = 1024L * 1024
     private val AUDIO = setOf("m4a", "mp4", "webm", "opus", "ogg", "mp3", "aac", "flac", "mka", "wav")
 
     /** Готовый файл, а не кусок загрузки (.part, -Frag12, .ytdl, .temp). */
@@ -75,12 +76,27 @@ object MediaCache {
 
     val sizeBytes: Long @Synchronized get() = index.values.sumOf { it.optLong("size") }
 
+    /**
+     * Сохранить песню в память по ссылке на звук, которая уже есть (без yt-dlp: раньше на каждую прослушанную песню
+     * запускался отдельный процесс Python — журнал 17.11: телефон захлёбывался, поиск и интерфейс стояли).
+     * Потоки по кусочкам (HLS, SoundCloud) не сохраняем — это снова Python.
+     */
+    fun store(ctx: Context, t: Track, s: StreamInfo) {
+        if (!plain(s.url)) return
+        store(ctx, t, s.url, directOnly = true)
+    }
+
+    private fun plain(u: String) = u.startsWith("http") && !u.contains(".m3u8")
+
     /** Сохранить песню в память по странице/ссылке, откуда она звучала. Фоном, по одной. */
-    fun store(ctx: Context, t: Track, url: String) {
+    fun store(ctx: Context, t: Track, url: String, directOnly: Boolean = false) {
         if (Settings.cacheLimitMb(ctx) <= 0) return
         val key = Library.key(t)
         synchronized(this) { if (index.containsKey(key) || !pending.add(key)) return }
-        worker.execute { try { download(ctx, t, url, keep = false) } finally { synchronized(this) { pending -= key } } }
+        worker.execute {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            try { download(ctx, t, url, keep = false, direct = directOnly) } finally { synchronized(this) { pending -= key } }
+        }
     }
 
     /**
@@ -90,7 +106,9 @@ object MediaCache {
     fun storeNow(ctx: Context, t: Track, s: StreamInfo, keep: Boolean = true): Boolean {
         val key = Library.key(t)
         synchronized(this) { if (index.containsKey(key)) return true; if (!pending.add(key)) return false }
-        return try { download(ctx, t, if (s.pageUrl == s.url) s.url else s.pageUrl, keep, direct = s.pageUrl == s.url && !s.url.contains(".m3u8")) }
+        // Только прямой загрузкой по ссылке на звук (без Python); поток по кусочкам (HLS) — пропускаем.
+        if (!plain(s.url)) { synchronized(this) { pending -= key }; return false }
+        return try { download(ctx, t, s.url, keep, direct = true) }
         finally { synchronized(this) { pending -= key } }
     }
 
@@ -103,18 +121,31 @@ object MediaCache {
         val pin = Streams.chosen(t)
         val name = key.hashCode().toUInt().toString(16)
         val ok = if (direct) runCatching {
-            // Прямая ссылка на файл (Zaycev, Telegram, Archive) — качаем сами, без Python.
-            val c = Net.open(java.net.URL(url))
-            c.connectTimeout = 10_000; c.readTimeout = 20_000
-            c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
-            try {
-                if (c.responseCode !in 200..299) throw java.io.IOException("HTTP ${c.responseCode}")
-                val type = c.contentType.orEmpty()
-                val ext = when { type.contains("flac") -> "flac"; type.contains("mp4") || type.contains("m4a") -> "m4a"; type.contains("ogg") || type.contains("opus") -> "ogg"; type.contains("webm") -> "webm"; else -> "mp3" }
-                val tmp = File(dir, "$name.$ext.tmp")
-                c.inputStream.use { ins -> tmp.outputStream().use { out -> ins.copyTo(out, 64 * 1024) } }
-                tmp.renameTo(File(dir, "$name.$ext"))
-            } finally { c.disconnect() }
+            // Прямая ссылка на звук — качаем сами, без Python, кусками по 1 МБ (YouTube режет скорость цельным запросам).
+            val tmp = File(dir, "$name.part.tmp")
+            var pos = 0L; var total = -1L; var ext = "mp3"
+            tmp.outputStream().use { out ->
+                while (total < 0 || pos < total) {
+                    val c = Net.open(java.net.URL(url))
+                    c.connectTimeout = 10_000; c.readTimeout = 20_000
+                    c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
+                    c.setRequestProperty("Range", "bytes=$pos-${pos + CHUNK - 1}")
+                    try {
+                        val code = c.responseCode
+                        if (code !in 200..299) throw java.io.IOException("HTTP $code")
+                        if (pos == 0L) {
+                            val type = c.contentType.orEmpty()
+                            ext = when { type.contains("flac") -> "flac"; type.contains("mp4") || type.contains("m4a") || type.contains("aac") -> "m4a"; type.contains("ogg") || type.contains("opus") -> "ogg"; type.contains("webm") -> "webm"; else -> "mp3" }
+                        }
+                        total = if (code == 206) c.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull() ?: -1L else c.contentLengthLong
+                        val n = c.inputStream.use { it.copyTo(out, 64 * 1024) }
+                        if (n <= 0) break
+                        pos += n
+                        if (code == 200 || total < 0) break // сервер отдал всё сразу (или размер не сообщил)
+                    } finally { c.disconnect() }
+                }
+            }
+            tmp.renameTo(File(dir, "$name.$ext"))
         }.getOrDefault(false) else run {
             App.awaitReadyOrNull() ?: return false
             val r = YoutubeDLRequest(url).apply {

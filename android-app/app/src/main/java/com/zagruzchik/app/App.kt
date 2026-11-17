@@ -15,6 +15,7 @@ class App : Application() {
         val t0 = android.os.SystemClock.uptimeMillis()
         // Журнал: прошлые запуски без сбоев убираем (в фоне — файл бывает до 400 КБ).
         Thread({
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
             AppLog.startSession(runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull())
             Cookies.repair(this)
         }, "journal").start()
@@ -32,6 +33,7 @@ class App : Application() {
         HeadCache.init(this) // начала песен для мгновенного старта
         // Всё, что не нужно в первую секунду, — не в главном потоке: окно открывается быстрее.
         Thread({
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) // окно — первым
             SmokeSprites.all // текстура дыма — заранее, чтобы заставка и плеер показывали дым с первого кадра
             Tags.init(this)
             News.checkOnLaunch() // новинки любимых исполнителей — проверяем при каждом запуске
@@ -45,6 +47,7 @@ class App : Application() {
         Thread { Thread.sleep(1500); AppLog.add("ЗАПУСК ПРИЛОЖЕНИЯ: подготовка ${startMs} мс") }.start()
         // Первый запуск распаковывает Python и ffmpeg — делаем это в фоне.
         thread(name = "ytdl-init") {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) // окно и звук — первыми
             try {
                 YoutubeDL.getInstance().init(this)
                 FFmpeg.getInstance().init(this)

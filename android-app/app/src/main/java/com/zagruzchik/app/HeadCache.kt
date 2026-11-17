@@ -162,7 +162,7 @@ object HeadCache {
             val s = Streams.streamFrom(t, e.where, e.total) ?: throw IOException("Источник больше не отдаёт эту песню")
             val total = totalOf(s.url, e.headLen)
             if (total != e.total) throw IOException("Запись у источника изменилась")
-            runCatching { MediaCache.store(App.instance, t, s.pageUrl) } // целиком — в память: в следующий раз без сети
+            runCatching { MediaCache.store(App.instance, t, s) } // целиком — в память: в следующий раз без сети
             s.url
         }
         tails[e.id] = System.currentTimeMillis() to f
