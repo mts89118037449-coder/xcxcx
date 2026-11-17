@@ -138,13 +138,18 @@ object HomeViews {
      */
     fun playAura(a: Activity, snack: (String) -> Unit) {
         val ready = AuraDay.takeNext(a)
-        if (ready == null) snack("Собираю «Ауру дня»…")
+        // Набор не готов — заставка с дымом и шагами сборки на весь экран (вместо всплывающей снизу строки).
+        val overlay = if (ready == null) AuraOverlay.show(a).also { it.say("Смотрю, что вы любите…") } else null
         thread {
-            val mixed = ready ?: AuraDay.build(a)
+            val mixed = ready ?: AuraDay.build(a) { msg -> a.runOnUiThread { overlay?.say(msg) } }
             if (mixed.isNotEmpty()) AuraDay.played(a, mixed)
             a.runOnUiThread {
-                if (mixed.isEmpty()) snack("Нет связи — попробуйте ещё раз")
-                else Playback.playQueue(a, mixed.map { Playback.QItem(it, Library.localFor(it), it.url) }, 0)
+                if (mixed.isEmpty()) { overlay?.say("Нет связи — попробуйте ещё раз"); overlay?.dismiss(1500); if (overlay == null) snack("Нет связи — попробуйте ещё раз") }
+                else {
+                    overlay?.say("Включаю «${mixed.first().title}»")
+                    overlay?.dismiss(500)
+                    Playback.playQueue(a, mixed.map { Playback.QItem(it, Library.localFor(it), it.url) }, 0)
+                }
                 AuraDay.prepare(a, delayMs = 15_000) // следующая — заранее, когда нажатая уже играет
             }
         }
@@ -209,14 +214,19 @@ object AuraDay {
     }
 
     /** Собрать новый набор (сеть). Звать не из главного потока. */
-    fun build(ctx: android.content.Context): List<Track> {
+    fun build(ctx: android.content.Context, progress: (String) -> Unit = {}): List<Track> {
         val avoid = recent(read(ctx))
         val rnd = java.util.Random()
         // Каждый раз — другие любимые исполнители (из двенадцати самых любимых).
         val artists = Taste.favoriteArtists(12).shuffled(rnd).take(4)
+        progress(if (artists.isEmpty()) "Беру лучшее из чарта…" else "Сегодня в основе:\n${artists.joinToString(", ")}")
         val pool = if (artists.isEmpty()) runCatching { Catalog.chartRu() }.getOrDefault(emptyList()).shuffled(rnd)
         else {
-            val lists = artists.map { name -> runCatching { Catalog.radio(Track(name, name), emptyList()) }.getOrDefault(emptyList()).shuffled(rnd) }
+            var got = 0
+            val lists = artists.map { name ->
+                runCatching { Catalog.radio(Track(name, name), emptyList()) }.getOrDefault(emptyList()).shuffled(rnd)
+                    .also { got += it.size; progress("Радио «$name» — ${it.size} песен\nвсего найдено $got") }
+            }
             val out = mutableListOf<Track>()
             val seen = HashSet<String>()
             for (i in 0 until (lists.maxOfOrNull { it.size } ?: 0)) for (l in lists) l.getOrNull(i)?.let { if (seen.add(Library.key(it))) out += it }
@@ -225,12 +235,14 @@ object AuraDay {
         // Повторы из прошлых двух наборов — не больше четверти.
         val (old, fresh) = pool.partition { Library.key(it) in avoid }
         val base = (fresh.take(24) + old.shuffled(rnd).take(maxOf(0, minOf(8, 30 - fresh.size.coerceAtMost(24))))).take(30)
+        progress(Tags.topCached.takeIf { it.isNotEmpty() }?.let { "Ищу новое по вашим тегам:\n${it.joinToString(" · ")}" } ?: "Ищу новое, похожее на любимое…")
         val recs = runCatching { Recs.today(ctx, 60) }.getOrDefault(emptyList()).filter { Library.key(it) !in avoid }.shuffled(rnd).take(12)
         val keys = base.map { Library.key(it) }.toHashSet()
         val mixed = ArrayList<Track>()
         val ri = recs.filter { Library.key(it) !in keys }.iterator()
         Taste.smart(base) { it }.forEachIndexed { i, t -> mixed += t; if (i % 2 == 1 && ri.hasNext()) mixed += ri.next() }
         ri.forEachRemaining { mixed += it }
+        if (mixed.isNotEmpty()) progress("Смешиваю: ${mixed.size} песен,\nиз них новых для вас — ${mixed.size - base.size}")
         if (mixed.isNotEmpty()) AppLog.add("АУРА ДНЯ: собрана — ${mixed.size} песен (исполнители: ${artists.joinToString(", ")}), " +
             "новых по тегам ${mixed.size - base.size}, повторов из прошлых ${mixed.count { Library.key(it) in avoid }}")
         return mixed
