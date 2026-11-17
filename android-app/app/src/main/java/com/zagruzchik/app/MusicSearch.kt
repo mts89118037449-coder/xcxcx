@@ -423,6 +423,8 @@ object Streams {
             val raw = got.getOrDefault(emptyList())
             val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
             log += "Zaycev [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" + why(got.exceptionOrNull()) +
+                // Не нашёл — Zaycev отдаёт свои популярные песни; их в журнал не пишем, чтобы он оставался коротким.
+                if (ok.isEmpty() && raw.all { Match.reason(t, it.title, it.artist, it.durationSec) == "другое название" }) (if (raw.isEmpty()) "" else " · ничего похожего") else
                 raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗ " + Match.reason(t, c.title, c.artist, c.durationSec)} · ${c.title.take(50)} | ${c.artist.take(26)} | ${c.durationSec} с | ${c.bitrate} kbps" }
             if (ok.isNotEmpty()) foundOn += "Zaycev"
             // Из подходящих — лучший по качеству среди первых трёх.
@@ -475,7 +477,9 @@ object Streams {
         }
         // Каждая площадка ищется двумя путями сразу — средствами телефона и через yt-dlp. Это отдельные участники гонки:
         // раньше второй путь ждал, пока сдастся первый, и медленный отказ одного задерживал всё.
-        fun lines(raw: List<Downloader.Candidate>, ok: List<Downloader.Candidate>) = raw.take(5).joinToString("") { c ->
+        fun lines(raw: List<Downloader.Candidate>, ok: List<Downloader.Candidate>) =
+            if (ok.isEmpty() && raw.isNotEmpty() && raw.all { Match.reason(t, it.title, it.author, it.duration) == "другое название" }) " · ничего похожего" else
+            raw.take(5).joinToString("") { c ->
             "\n  ${if (c in ok) "✓" else "✗ " + Match.reason(t, c.title, c.author, c.duration)} · ${c.title.take(50)} | ${c.author.take(26)} | ${c.duration} с"
         }
         fun sounds(name: String, candidates: List<Downloader.Candidate>): StreamInfo? =

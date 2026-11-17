@@ -126,6 +126,29 @@ object Match {
 
     fun fold(s: String) = String(CharArray(s.length) { i -> LOOKALIKE[s[i]] ?: s[i] })
 
+    // Одно имя, записанное кириллицей и латиницей (Скриптонит и Skriptonit, Оксимирон и Oxxxymiron): сводим к звучанию.
+    private val TRANSLIT = mapOf('а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e", 'ж' to "zh", 'з' to "z",
+        'и' to "i", 'й' to "i", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t",
+        'у' to "u", 'ф' to "f", 'х' to "h", 'ц' to "c", 'ч' to "ch", 'ш' to "sh", 'щ' to "sh", 'ъ' to "", 'ы' to "i", 'ь' to "", 'э' to "e",
+        'ю' to "u", 'я' to "a", 'і' to "i")
+    fun sound(s: String): String {
+        val b = StringBuilder(s.length + 4)
+        for (ch in s) b.append(TRANSLIT[ch] ?: ch.toString())
+        return b.toString().replace(Regex("(.)\\1+"), "$1").replace("ph", "f").replace("x", "ks")
+            .replace('c', 'k').replace('q', 'k').replace('w', 'v').replace('y', 'i').replace('j', 'i').replace('z', 's')
+    }
+
+    /** Исполнитель совпал: по написанию (с учётом похожих букв) или по звучанию (кириллица ↔ латиница). */
+    private fun artistHit(src: Track, artist: String, title: String): Boolean {
+        val a = fold(norm(artist)); val nt = fold(norm(title))
+        val sa = sound(norm(artist)); val st = sound(norm(title))
+        return artists(src.artist).any { raw ->
+            val it = fold(raw); val sn = sound(raw)
+            it.isNotEmpty() && (a.contains(it) || it.contains(a) && a.isNotEmpty() || nt.contains(it)) ||
+                sn.length >= 3 && (sa.contains(sn) || sn.contains(sa) && sa.length >= 3 || st.contains(sn))
+        }
+    }
+
     /** Оценка похожести кандидата на исходный трек; null — точно не он. */
     fun score(src: Track, title: String, artist: String, durationSec: Int = 0): Int? {
         if (durationSec in 1..59 && (src.durationSec == 0 || src.durationSec >= 75)) return null // 30-секундные превью
@@ -137,10 +160,8 @@ object Match {
         var s = if (nt == fold(norm(src.title))) 3 else if (sb == cb) 2 else 0
 
         if (src.artist.isNotBlank()) {
-            val a = fold(norm(artist))
             // Перезаливы часто пишут исполнителя только в названии: «Не вспоминать МАЯК Х».
-            val hit = artists(src.artist).map(::fold).any { it.isNotEmpty() && (a.contains(it) || it.contains(a) && a.isNotEmpty() || nt.contains(it)) }
-            if (!hit) return null
+            if (!artistHit(src, artist, title)) return null
             s += 2
         }
         val srcLow = norm(src.title)
@@ -173,8 +194,7 @@ object Match {
         if (durationSec in 1..59 && (src.durationSec == 0 || src.durationSec >= 75)) return "короче минуты"
         if (sb.isEmpty() || cb.isEmpty() || (sb != cb && !nt.contains(sb) && !sb.contains(cb))) return "другое название"
         if (src.artist.isNotBlank()) {
-            val a = fold(norm(artist))
-            if (!artists(src.artist).map(::fold).any { it.isNotEmpty() && (a.contains(it) || it.contains(a) && a.isNotEmpty() || nt.contains(it)) }) return "другой исполнитель"
+            if (!artistHit(src, artist, title)) return "другой исполнитель"
         }
         if (src.durationSec > 0 && durationSec > 0 && kotlin.math.abs(src.durationSec - durationSec) > 45) return "длительность $durationSec с вместо ${src.durationSec} с"
         return "другая версия (ремикс, live, кавер…)"
