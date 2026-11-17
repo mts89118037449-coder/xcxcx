@@ -39,7 +39,10 @@ class SmokeView(ctx: Context) : View(ctx) {
      */
     private class Billow(val at: Long, val dir: Float, val power: Float, val bend: Float, val band: Int, val width: Float, val seed: Int) {
         /** Сколько живёт: короткая нота (полоса быстро стихла) — облако тает быстро. */
-        var life = when (band) { 0 -> 2600f; 1 -> 2200f; else -> 1600f }
+        val life = when (band) { 0 -> 2600f; 1 -> 2200f; else -> 1600f }
+        /** Дополнительное угасание 1 → 0: короткая нота или лишнее облако тают плавно, а не исчезают и не «перескакивают». */
+        var fade = 1f
+        var fading = false
     }
     private val billows = ArrayDeque<Billow>()
     private var lastNote = Long.MIN_VALUE
@@ -51,6 +54,7 @@ class SmokeView(ctx: Context) : View(ctx) {
     private var last = 0L
     private var level = 0f          // общая яркость: плавно растёт при игре и гаснет на паузе
     private var shown = 0f          // текущая сила пульса на экране
+    private var speed = 1f          // скорость течения дыма — меняется плавно (раньше рывком на каждом ударе)
     var playing = false
         set(v) { if (field != v) { field = v; last = SystemClock.uptimeMillis(); invalidate() } }
 
@@ -130,7 +134,8 @@ class SmokeView(ctx: Context) : View(ctx) {
         val dt = if (last == 0L) 0f else minOf(64L, now - last) / 1000f
         last = now
         // Дым течёт в такт: между ударами еле плывёт, на ударе — рывком расходится от обложки.
-        if (playing) clock += dt * (0.5f + 2.8f * shown)
+        speed += ((0.6f + 1.6f * shown) - speed) * minOf(1f, dt * 4f)
+        if (playing) clock += dt * speed
         val target = if (playing) 1f else 0.4f
         level += (target - level) * minOf(1f, dt * 2.2f)
         val t = clock
@@ -139,7 +144,7 @@ class SmokeView(ctx: Context) : View(ctx) {
         val heard = if (playing) Exciter.beatNow() else null
         val beat = heard ?: (0.5f + 0.5f * sin(t * 4.8f)).let { it * it }
         // Сглаживаем вспышку, чтобы яркость не дёргалась: быстрый подъём, плавный спад.
-        shown += (beat - shown) * (if (beat > shown) 0.75f else minOf(1f, dt * 5f))
+        shown += (beat - shown) * (if (beat > shown) minOf(1f, dt * 14f) else minOf(1f, dt * 4f)) // подъём ~70 мс, без скачка
         val pulse = 0.7f + 0.3f * shown
         // Сколько полос звучит сейчас (бас, середина, верх): от этого — ширина и густота дыма.
         val bands = if (playing) Exciter.bandsNow() else null
@@ -149,8 +154,10 @@ class SmokeView(ctx: Context) : View(ctx) {
         // Новые ноты — новые клубы.
         if (playing && bands != null) {
             val fresh = Exciter.notesAfter(lastNote)
+            val newest = fresh.lastOrNull()?.first ?: 0L
             for ((at, band, power) in fresh) {
                 lastNote = maxOf(lastNote, at)
+                if (newest - at > 300_000) continue // старые ноты (после паузы, первого кадра) — не выпускаем пачкой разом
                 val n = if (rich >= 2 && band == 0) 2 else 1          // богатый звук — на удар баса сразу два облака
                 repeat(n) {
                     billowNo++
@@ -159,7 +166,8 @@ class SmokeView(ctx: Context) : View(ctx) {
                         (rnd(billowNo, 2, 12) - 0.5f) * 0.8f, band, width, billowNo)
                 }
             }
-            while (billows.size > 28) billows.removeFirst()
+            // Слишком много облаков — самые старые не исчезают, а плавно тают.
+            billows.asSequence().filter { !it.fading }.toList().let { alive -> alive.take(maxOf(0, alive.size - 24)).forEach { it.fading = true } }
         }
 
         // Ореол вплотную к обложке — из него «выходит» дым.
@@ -203,10 +211,11 @@ class SmokeView(ctx: Context) : View(ctx) {
         while (it.hasNext()) {
             val j = it.next()
             val age = now - j.at
-            // Нота коротко прозвучала и стихла — облако тает быстро; тянется — живёт дольше.
-            if (age in 150..600 && bandShown[j.band] < 0.22f) j.life = minOf(j.life, 1000f)
+            // Нота коротко прозвучала и стихла — облако плавно тает быстрее; тянется — живёт весь срок.
+            if (age in 150..600 && bandShown[j.band] < 0.22f) j.fading = true
+            if (j.fading) j.fade = maxOf(0f, j.fade - dt / 0.7f)
             val p = age / j.life
-            if (p >= 1f) { it.remove(); continue }
+            if (p >= 1f || j.fade <= 0f) { it.remove(); continue }
             val out = 1f - (1f - p) * (1f - p)
             val reach = (far - radius) * j.power * (if (j.band == 2) 0.9f else 0.75f)
             val scale = when (j.band) { 0 -> 1.25f; 1 -> 0.95f; else -> 0.7f } * (0.85f + 0.3f * fullness)
@@ -216,7 +225,7 @@ class SmokeView(ctx: Context) : View(ctx) {
                 val a = j.dir + spread + j.bend * out + 0.15f * sin(p * 5f + j.seed + k)
                 val d = radius * 0.85f + reach * out * (0.8f + 0.25f * rnd(j.seed, k, 13))
                 val size = radius * scale * (0.45f + 1.35f * out) * (0.8f + 0.4f * rnd(j.seed, k, 14))
-                val alpha = minOf(0.75f, minOf(1f, p * 6f) * (1f - p) * (1f - p * 0.5f) * 0.95f * level)
+                val alpha = minOf(0.75f, minOf(1f, p * 6f) * (1f - p) * (1f - p * 0.5f) * 0.95f * level) * j.fade
                 if (alpha <= 0.01f) continue
                 val idx = ((a / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES
                 layer(canvas, idx, alpha, cx + cos(a) * d, cy + sin(a) * d - radius * 0.3f * out,
