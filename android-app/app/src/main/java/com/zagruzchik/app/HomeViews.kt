@@ -133,18 +133,19 @@ object HomeViews {
     }
 
     /**
-     * «Аура дня»: радио любимых исполнителей вперемешку и новые песни по вашим тегам (каждая третья).
-     * Собирается один раз в день, заранее (при запуске), и хранится в файле: нажали — играет сразу и одинаково весь день.
-     * Если любимых пока нет — чарт России в «умном» порядке.
+     * «Аура дня»: каждое нажатие — новая подборка (радио любимых исполнителей + новые песни по вашим тегам), а не перемешанная
+     * прошлая. Следующая готовится заранее, сразу после нажатия, — поэтому играет мгновенно.
      */
     fun playAura(a: Activity, snack: (String) -> Unit) {
-        val ready = AuraDay.cachedOrNull(a)
+        val ready = AuraDay.takeNext(a)
         if (ready == null) snack("Собираю «Ауру дня»…")
         thread {
             val mixed = ready ?: AuraDay.build(a)
+            if (mixed.isNotEmpty()) AuraDay.played(a, mixed)
             a.runOnUiThread {
                 if (mixed.isEmpty()) snack("Нет связи — попробуйте ещё раз")
                 else Playback.playQueue(a, mixed.map { Playback.QItem(it, Library.localFor(it), it.url) }, 0)
+                AuraDay.prepare(a, delayMs = 15_000) // следующая — заранее, когда нажатая уже играет
             }
         }
     }
@@ -166,62 +167,91 @@ object HomeViews {
 }
 
 
-/** «Аура дня» на сегодня: собирается раз в день и запоминается. */
+/**
+ * «Аура дня»: при каждом нажатии — новый набор. Готовый следующий набор лежит в файле (нажатие играет сразу);
+ * песни двух прошлых наборов избегаются (повторов не больше четверти), исполнители и рекомендации каждый раз другие.
+ */
 object AuraDay {
-    private fun file(ctx: android.content.Context) = java.io.File(ctx.filesDir, "aura_day.json")
-    private fun day() = System.currentTimeMillis() / 86_400_000L
-    @Volatile private var memo: Pair<Long, List<Track>>? = null
+    private fun file(ctx: android.content.Context) = java.io.File(ctx.filesDir, "aura_next.json")
+    @Volatile private var building = false
 
-    fun cachedOrNull(ctx: android.content.Context): List<Track>? {
-        memo?.takeIf { it.first == day() }?.let { return it.second }
-        return runCatching {
-            val o = org.json.JSONObject(file(ctx).readText())
-            if (o.optLong("day") != day()) return null
-            val arr = o.getJSONArray("t")
-            (0 until arr.length()).map { i -> arr.getJSONObject(i).let { j ->
-                Track(j.optString("t"), j.optString("a"), j.optInt("d"), cover = j.optString("c").ifEmpty { null },
-                    url = j.optString("u").ifEmpty { null }, preview = j.optString("p").ifEmpty { null }, explicit = j.optBoolean("e"))
-            } }.also { memo = day() to it }
-        }.getOrNull()?.takeIf { it.isNotEmpty() }
+    private fun toJson(list: List<Track>) = org.json.JSONArray(list.map { t -> org.json.JSONObject().put("t", t.title).put("a", t.artist)
+        .put("d", t.durationSec).put("c", t.cover ?: "").put("u", t.url ?: "").put("p", t.preview ?: "").put("e", t.explicit) })
+    private fun fromJson(arr: org.json.JSONArray?) = (0 until (arr?.length() ?: 0)).map { i -> arr!!.getJSONObject(i).let { j ->
+        Track(j.optString("t"), j.optString("a"), j.optInt("d"), cover = j.optString("c").ifEmpty { null },
+            url = j.optString("u").ifEmpty { null }, preview = j.optString("p").ifEmpty { null }, explicit = j.optBoolean("e"))
+    } }
+
+    @Synchronized private fun read(ctx: android.content.Context): org.json.JSONObject =
+        runCatching { org.json.JSONObject(file(ctx).readText()) }.getOrDefault(org.json.JSONObject())
+    @Synchronized private fun write(ctx: android.content.Context, o: org.json.JSONObject) { runCatching { file(ctx).writeText(o.toString()) } }
+
+    /** Готовый следующий набор (и он сразу считается использованным). null — ещё не готов. */
+    fun takeNext(ctx: android.content.Context): List<Track>? {
+        val o = read(ctx)
+        val next = fromJson(o.optJSONArray("next")).takeIf { it.isNotEmpty() } ?: return null
+        o.remove("next"); write(ctx, o)
+        return next
     }
 
-    /** Собрать (сеть). Звать не из главного потока. */
+    /** Набор начал играть: запоминаем его, чтобы следующий был другим. */
+    fun played(ctx: android.content.Context, list: List<Track>) {
+        val o = read(ctx)
+        o.put("prev2", o.optJSONArray("prev1") ?: org.json.JSONArray())
+        o.put("prev1", org.json.JSONArray(list.map { Library.key(it) }))
+        write(ctx, o)
+    }
+
+    private fun recent(o: org.json.JSONObject): Set<String> {
+        val out = HashSet<String>()
+        for (k in listOf("prev1", "prev2")) o.optJSONArray(k)?.let { a -> for (i in 0 until a.length()) out += a.optString(i) }
+        return out
+    }
+
+    /** Собрать новый набор (сеть). Звать не из главного потока. */
     fun build(ctx: android.content.Context): List<Track> {
-        val rnd = java.util.Random(day()) // порядок на весь день один и тот же
-        val artists = Taste.favoriteArtists(4)
-        val base = if (artists.isEmpty()) runCatching { Catalog.chartRu() }.getOrDefault(emptyList()).shuffled(rnd)
+        val avoid = recent(read(ctx))
+        val rnd = java.util.Random()
+        // Каждый раз — другие любимые исполнители (из двенадцати самых любимых).
+        val artists = Taste.favoriteArtists(12).shuffled(rnd).take(4)
+        val pool = if (artists.isEmpty()) runCatching { Catalog.chartRu() }.getOrDefault(emptyList()).shuffled(rnd)
         else {
-            val lists = artists.map { name -> runCatching { Catalog.radio(Track(name, name), emptyList()) }.getOrDefault(emptyList()) }
+            val lists = artists.map { name -> runCatching { Catalog.radio(Track(name, name), emptyList()) }.getOrDefault(emptyList()).shuffled(rnd) }
             val out = mutableListOf<Track>()
             val seen = HashSet<String>()
             for (i in 0 until (lists.maxOfOrNull { it.size } ?: 0)) for (l in lists) l.getOrNull(i)?.let { if (seen.add(Library.key(it))) out += it }
-            Taste.smartStable(out.take(30)) { it }
+            out
         }
-        val fresh = runCatching { Recs.today(ctx, 15) }.getOrDefault(emptyList())
+        // Повторы из прошлых двух наборов — не больше четверти.
+        val (old, fresh) = pool.partition { Library.key(it) in avoid }
+        val base = (fresh.take(24) + old.shuffled(rnd).take(maxOf(0, minOf(8, 30 - fresh.size.coerceAtMost(24))))).take(30)
+        val recs = runCatching { Recs.today(ctx, 60) }.getOrDefault(emptyList()).filter { Library.key(it) !in avoid }.shuffled(rnd).take(12)
         val keys = base.map { Library.key(it) }.toHashSet()
         val mixed = ArrayList<Track>()
-        val fi = fresh.filter { Library.key(it) !in keys }.iterator()
-        base.forEachIndexed { i, t -> mixed += t; if (i % 2 == 1 && fi.hasNext()) mixed += fi.next() }
-        fi.forEachRemaining { mixed += it }
-        if (mixed.isNotEmpty()) {
-            memo = day() to mixed
-            runCatching {
-                val arr = org.json.JSONArray(mixed.map { t -> org.json.JSONObject().put("t", t.title).put("a", t.artist).put("d", t.durationSec)
-                    .put("c", t.cover ?: "").put("u", t.url ?: "").put("p", t.preview ?: "").put("e", t.explicit) })
-                file(ctx).writeText(org.json.JSONObject().put("day", day()).put("t", arr).toString())
-            }
-            AppLog.add("АУРА ДНЯ: собрана — ${mixed.size} песен, из них новых по тегам ${mixed.size - base.size}")
-        }
+        val ri = recs.filter { Library.key(it) !in keys }.iterator()
+        Taste.smart(base) { it }.forEachIndexed { i, t -> mixed += t; if (i % 2 == 1 && ri.hasNext()) mixed += ri.next() }
+        ri.forEachRemaining { mixed += it }
+        if (mixed.isNotEmpty()) AppLog.add("АУРА ДНЯ: собрана — ${mixed.size} песен (исполнители: ${artists.joinToString(", ")}), " +
+            "новых по тегам ${mixed.size - base.size}, повторов из прошлых ${mixed.count { Library.key(it) in avoid }}")
         return mixed
     }
 
-    /** При запуске: собрать заранее (если сегодня ещё не собрана) и подготовить первые песни — нажатие играет сразу. */
-    fun prepare(ctx: android.content.Context) {
-        thread(name = "aura-day") {
-            Thread.sleep(8_000)
-            Streams.waitForeground()
-            val list = cachedOrNull(ctx) ?: runCatching { build(ctx) }.getOrDefault(emptyList())
-            Streams.prefetchAhead(list.take(2))
+    /** Подготовить следующий набор заранее (если его ещё нет) и первые его песни — следующее нажатие играет сразу. */
+    fun prepare(ctx: android.content.Context, delayMs: Long = 8_000) {
+        if (building) return
+        building = true
+        thread(name = "aura-next") {
+            try {
+                Thread.sleep(delayMs)
+                Streams.waitForeground()
+                val o = read(ctx)
+                var next = fromJson(o.optJSONArray("next"))
+                if (next.isEmpty()) {
+                    next = runCatching { build(ctx) }.getOrDefault(emptyList())
+                    if (next.isNotEmpty()) { val cur = read(ctx); cur.put("next", toJson(next)); write(ctx, cur) }
+                }
+                Streams.prefetchAhead(next.take(2))
+            } finally { building = false }
         }
     }
 }
