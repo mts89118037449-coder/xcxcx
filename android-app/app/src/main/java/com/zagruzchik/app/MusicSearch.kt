@@ -79,7 +79,7 @@ object Streams {
                 // Сначала быстрые источники без Python (Zaycev, YouTube Music) — секунда-две; не нашлось — полный поиск.
                 // Фоновая подготовка — только быстрые источники (Zaycev, YouTube Music) и только пока ничего не ищется по нажатию:
                 // иначе она отбирает сеть у песни, которую человек ждёт.
-                waitForeground()
+                waitForeground(quiet = false) // следующие песни очереди нужны скоро — ждём только идущий поиск
                 Ytdlp.inBackground { find(t, light = true) }
                     .also { done[k] = System.currentTimeMillis() to it; HeadCache.storeAsync(t, it) }
             } finally { pending.remove(k) }
@@ -102,8 +102,8 @@ object Streams {
         if (cached(k) != null) return
         pending[k]?.let { f -> if (!f.cancel(false)) return; pending.remove(k, f) }
         pending[k] = searchPool.submit<StreamInfo> {
-            foreground.incrementAndGet()
-            try { find(t).also { done[k] = System.currentTimeMillis() to it; HeadCache.storeAsync(t, it) } } finally { pending.remove(k); foreground.decrementAndGet() }
+            fgStart()
+            try { find(t).also { done[k] = System.currentTimeMillis() to it; HeadCache.storeAsync(t, it) } } finally { pending.remove(k); fgEnd() }
         }
     }
 
@@ -132,15 +132,23 @@ object Streams {
             // Подготовка была лёгкой (без SoundCloud и YouTube): её неудача — не приговор, ищем полностью.
             else try { return f.get() } catch (_: java.util.concurrent.ExecutionException) {} catch (_: java.util.concurrent.CancellationException) {}
         }
-        foreground.incrementAndGet()
+        fgStart()
         return try { find(t).also { done[k] = System.currentTimeMillis() to it } }
         catch (e: UserError) { failed[k] = System.currentTimeMillis() to e; throw e }
-        finally { foreground.decrementAndGet() }
+        finally { fgEnd() }
     }
 
     /** Сколько поисков идёт по нажатию: пока они есть, фоновая подготовка ждёт. */
     private val foreground = java.util.concurrent.atomic.AtomicInteger()
-    private fun waitForeground() { var n = 0; while (foreground.get() > 0 && n++ < 300) Thread.sleep(200) }
+    /**
+     * Фоновая работа (подготовка, «Медиатека на телефоне») ждёт, пока идёт нажатое, и ещё 20 с после: журнал 17.11 — фон
+     * забивал yt-dlp («площадка не ответила за 8 с» у всех), и нажатая песня и окно источников ничего не получали.
+     */
+    @Volatile private var quietUntil = 0L
+    fun busy() { quietUntil = System.currentTimeMillis() + 20_000 }
+    fun waitForeground(quiet: Boolean = true) { var n = 0; while ((foreground.get() > 0 || quiet && System.currentTimeMillis() < quietUntil) && n++ < 900) Thread.sleep(200) }
+    private fun fgStart() { foreground.incrementAndGet(); busy() }
+    private fun fgEnd() { foreground.decrementAndGet(); busy() }
 
     // Площадка не отвечает с этого телефона (YouTube и SoundCloud так бывает из России без VPN) — после двух отказов подряд
     // не ждём её 3 минуты: каждая попытка стоила 6–15 секунд ожидания.
@@ -395,7 +403,7 @@ object Streams {
                     AppLog.add("ИСТОЧНИКИ «${t.label}»${if (urgent) " (окно открыто)" else ""}: найдено ${live.list.size}" +
                         live.list.joinToString("") { "\n  ✓ ${it.label} · ${it.title.take(50)}" } + "\n" + log.sorted().joinToString("\n"))
                 }
-                if (urgent) { foreground.incrementAndGet(); try { run() } finally { foreground.decrementAndGet() } }
+                if (urgent) { fgStart(); try { run() } finally { fgEnd() } }
                 else { waitForeground(); Ytdlp.inBackground { run() } }
             } finally {
                 if (live.list.isEmpty()) lives.remove(k, live) // пусто — в следующий раз опросить заново

@@ -59,7 +59,9 @@ object LibrarySync {
                             if (!MediaCache.hasRoom(app)) { note = "Память заполнена — увеличьте «Память прослушанного»"; changed(); break }
                             note = ""
                             val t = list[i]
+                            Streams.waitForeground() // человек что-то включает или выбирает источник — фон молчит
                             val s = Streams.forSync(t)
+                            if (s != null) Streams.waitForeground()
                             val ok = s != null && runCatching { MediaCache.storeNow(app, t, s, keep = true) }.getOrDefault(false)
                             if (ok) { onPhone++; HeadCache.drop(t) } else missing = miss.incrementAndGet()
                             if ((i + 1) % 10 == 0) AppLog.add("МЕДИАТЕКА НА ТЕЛЕФОНЕ: на телефоне $onPhone из $total, не нашлось $missing")

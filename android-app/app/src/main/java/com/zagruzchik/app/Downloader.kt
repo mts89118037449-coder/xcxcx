@@ -360,13 +360,15 @@ object Downloader {
                 App.awaitReadyOrNull() ?: return@withBackground null
                 viaYtdlp(pageUrl, source, title, problems)
             } }
-            val deadline = System.currentTimeMillis() + 40_000
+            // Не дольше 15 с: поиск ждёт площадки не больше 25 с, и зависшая ссылка раньше «съедала» всё — без строки в журнале.
+            val deadline = System.currentTimeMillis() + 15_000
             while (System.currentTimeMillis() < deadline) {
                 if (fast.isDone) runCatching { fast.get() }.getOrNull()?.let { return it }
                 if (slow != null && slow.isDone) runCatching { slow.get() }.getOrNull()?.let { return it }
                 if (fast.isDone && (slow == null || slow.isDone)) return null
                 Thread.sleep(25)
             }
+            problems?.add("$source: ссылка на звук не пришла за 15 с")
             return null
         }
         return viaYtdlp(pageUrl, source, title, problems)

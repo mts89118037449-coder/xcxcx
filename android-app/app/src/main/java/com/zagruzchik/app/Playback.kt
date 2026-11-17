@@ -183,6 +183,7 @@ object Playback {
         if (!auto) skips = 0
         tapAt = System.currentTimeMillis(); startInfo = null
         AppLog.add("НАЖАТИЕ «${items.getOrNull(start)?.track?.label}» (очередь ${items.size})")
+        Streams.busy() // фон («Медиатека на телефоне», подготовка) уступает сеть нажатому
         queue = items
         startIndex = start.coerceIn(0, items.lastIndex)
         nextToAdd = start + 1
