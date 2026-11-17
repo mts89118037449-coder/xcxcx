@@ -25,6 +25,38 @@ object AppLog {
         }
     }
 
+    private const val START = "=== ЗАПУСК "
+    private val slowStart = Regex("""· (\d+(?:\.\d+)?) с$""")
+
+    /**
+     * Новый запуск приложения: прошлые запуски без сбоев из журнала убираются, со сбоями — остаются (не больше пяти последних).
+     * Так журнал не копит мусор, а то, что нужно для разбора, не теряется.
+     */
+    @Synchronized fun startSession(version: String?) {
+        val f = file ?: return
+        runCatching {
+            if (f.exists()) {
+                // Журнал делится на запуски по строке-метке; то, что было до первой метки (старые сборки), — тоже один «запуск».
+                val parts = mutableListOf(StringBuilder())
+                f.forEachLine { l ->
+                    if (START in l && parts.last().isNotEmpty()) parts += StringBuilder()
+                    parts.last().append(l).append('\n')
+                }
+                val keep = parts.map { it.toString() }.filter { it.isNotBlank() && hasTrouble(it) }.takeLast(5)
+                f.writeText(keep.joinToString(""))
+            }
+            f.appendText(fmt.format(Date()) + "  " + START + "SoundAura $version ===\n")
+        }
+    }
+
+    /** Был ли в этом запуске сбой: ошибка, песня не нашлась или не пошла, пауза не по кнопке, долгий старт (больше 5 с). */
+    private fun hasTrouble(part: String): Boolean = part.lineSequence().any { l ->
+        "ОШИБКА" in l || "НЕ НАШЛАСЬ" in l || "ОЧЕРЕДЬ ПРОИГРЫВАТЕЛЯ КОНЧИЛАСЬ" in l || "ВЫБРАННЫЙ ИСТОЧНИК не ответил" in l ||
+            "РАДИО: продолжение не нашлось" in l ||
+            ("ПАУЗА" in l && "причина:" in l && "кнопка" !in l && "отключились наушники" !in l) ||
+            ("ЗВУК ПОШЁЛ" in l && (slowStart.find(l.trimEnd())?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0) > 5)
+    }
+
     fun error(where: String, e: Throwable?) {
         var x = e; val parts = mutableListOf<String>()
         while (x != null && parts.size < 4) { parts += "${x.javaClass.simpleName}: ${x.message.orEmpty().take(200)}"; x = x.cause }

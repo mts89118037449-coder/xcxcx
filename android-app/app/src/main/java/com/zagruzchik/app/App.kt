@@ -12,6 +12,8 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // Журнал: прошлые запуски без сбоев убираем (в фоне — файл бывает до 400 КБ).
+        Thread({ AppLog.startSession(runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()) }, "journal").start()
         // Material You: на Android 12+ цвета приложения подстраиваются под обои.
         // Свои фирменные цвета SoundAura (фиолетово-розовая аура), а не цвета обоев.
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(Settings.theme(this).mode)
