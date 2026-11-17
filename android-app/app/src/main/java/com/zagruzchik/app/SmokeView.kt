@@ -28,10 +28,16 @@ class SmokeView(ctx: Context) : View(ctx) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SCREEN }
 
     /** Струя: на каждый удар из обложки вырывается быстрый поток дыма в одну сторону. */
-    private class Jet(val at: Long, val dir: Float, val power: Float, val bend: Float)
-    private val jets = ArrayDeque<Jet>()
-    private var jetAt = 0L
-    private var jetNo = 0
+    /**
+     * Клуб от ноты: широкое облако, которое выкатывается из обложки и тает. Бас — самые большие и медленные,
+     * середина — средние, верх — поменьше и быстрее. Чем больше полос звучит разом, тем клубы шире и их больше —
+     * они накладываются друг на друга.
+     */
+    private class Billow(val at: Long, val dir: Float, val power: Float, val bend: Float, val band: Int, val width: Float, val seed: Int)
+    private val billows = ArrayDeque<Billow>()
+    private var lastNote = Long.MIN_VALUE
+    private var billowNo = 0
+    private val bandShown = FloatArray(3)
 
     private var cx = 0f; private var cy = 0f; private var radius = 0f
     private var clock = 0f          // «время дыма»: идёт только пока играет музыка
@@ -123,15 +129,25 @@ class SmokeView(ctx: Context) : View(ctx) {
         // Сглаживаем вспышку, чтобы яркость не дёргалась: быстрый подъём, плавный спад.
         shown += (beat - shown) * (if (beat > shown) 0.75f else minOf(1f, dt * 5f))
         val pulse = 0.7f + 0.3f * shown
-        // Новый удар — новые струи (сильный удар — больше струй).
-        val beatId = if (playing && heard != null) Exciter.lastBeat() else jetAt
-        if (heard != null && beatId != jetAt && Exciter.lastBeatAgeMs() < 250) {
-            jetAt = beatId
-            repeat(if (heard > 0.8f) 4 else 3) {
-                jetNo++
-                jets += Jet(now, rnd(jetNo, 1, 11) * 2 * PI.toFloat(), 0.6f + 0.4f * heard, (rnd(jetNo, 2, 12) - 0.5f) * 0.9f)
+        // Сколько полос звучит сейчас (бас, середина, верх): от этого — ширина и густота дыма.
+        val bands = if (playing) Exciter.bandsNow() else null
+        for (i in 0..2) { val v = bands?.get(i) ?: 0f; bandShown[i] += (v - bandShown[i]) * minOf(1f, dt * (if (v > bandShown[i]) 12f else 3f)) }
+        val rich = bandShown.count { it > 0.3f }                      // 0..3
+        val fullness = (bandShown[0] + bandShown[1] + bandShown[2]) / 3f
+        // Новые ноты — новые клубы.
+        if (playing && bands != null) {
+            val fresh = Exciter.notesAfter(lastNote)
+            for ((at, band, power) in fresh) {
+                lastNote = maxOf(lastNote, at)
+                val n = if (rich >= 2 && band == 0) 2 else 1          // богатый звук — на удар баса сразу два облака
+                repeat(n) {
+                    billowNo++
+                    val width = (when (band) { 0 -> 0.9f; 1 -> 0.65f; else -> 0.45f }) * (0.7f + 0.3f * rich)
+                    billows += Billow(now, rnd(billowNo, 1, 11) * 2 * PI.toFloat(), 0.55f + 0.45f * power,
+                        (rnd(billowNo, 2, 12) - 0.5f) * 0.8f, band, width, billowNo)
+                }
             }
-            while (jets.size > 16) jets.removeFirst()
+            while (billows.size > 28) billows.removeFirst()
         }
 
         // Ореол вплотную к обложке — из него «выходит» дым.
@@ -139,7 +155,7 @@ class SmokeView(ctx: Context) : View(ctx) {
             paint.shader = h
             paint.alpha = (255 * 0.9f * level * pulse).toInt().coerceIn(0, 255)
             canvas.save(); canvas.translate(cx, cy)
-            val hs = radius * (1.6f + 0.4f * shown)
+            val hs = radius * (1.6f + 0.4f * shown + 0.25f * bandShown[0])
             canvas.scale(hs, hs); canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
         }
 
@@ -160,9 +176,9 @@ class SmokeView(ctx: Context) : View(ctx) {
             val x = cx + cos(a) * dist
             val y = cy + sin(a) * dist - rise * radius * 1.6f * out
             // Растёт и тает.
-            val size = radius * (0.55f + 1.25f * out) * (0.85f + 0.3f * rnd(i, life, 7))
+            val size = radius * (0.55f + 1.25f * out) * (0.85f + 0.3f * rnd(i, life, 7)) * (0.9f + 0.4f * fullness)
             val fade = minOf(1f, age * 7f) * (1f - age) * (1f - age * 0.35f)
-            val alpha = minOf(1f, fade * 1.25f * level * pulse)
+            val alpha = minOf(1f, fade * 1.25f * level * pulse * (0.85f + 0.3f * fullness))
             if (alpha <= 0.01f) continue
             val shader = shaders[((dir / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES]
             paint.shader = shader
@@ -178,38 +194,39 @@ class SmokeView(ctx: Context) : View(ctx) {
                 canvas.restore()
             }
         }
-        // Струи ударов: цепочка клубов, быстро вылетающая из края обложки и тающая на лету.
-        val it = jets.iterator()
+        // Клубы от нот: несколько мягких облаков веером, растут и расплываются, накладываясь друг на друга.
+        val it = billows.iterator()
         while (it.hasNext()) {
             val j = it.next()
-            val p = (now - j.at) / JET_MS
+            val life = when (j.band) { 0 -> 2600f; 1 -> 2000f; else -> 1500f }
+            val p = (now - j.at) / life
             if (p >= 1f) { it.remove(); continue }
-            paint.shader = shaders[((j.dir / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES]
-            val reach = (far * 0.85f - radius) * j.power
-            for (k in 0 until 6) {
-                val q = p - k * 0.07f                       // хвост струи отстаёт от головы
-                if (q <= 0f) continue
-                val out = 1f - (1f - q) * (1f - q) * (1f - q)
-                val a = j.dir + j.bend * out
-                val d = radius * 0.9f + reach * out
-                val size = radius * (0.22f + 0.5f * out) * (1f - k * 0.08f)
-                val alpha = minOf(1f, q * 9f) * (1f - q) * (1f - q) * 1.15f * level * (1f - k * 0.1f)
+            val out = 1f - (1f - p) * (1f - p)
+            val reach = (far - radius) * j.power * (if (j.band == 2) 0.9f else 0.75f)
+            val scale = when (j.band) { 0 -> 1.25f; 1 -> 0.95f; else -> 0.7f } * (0.85f + 0.3f * fullness)
+            val parts = 3 + j.band.let { if (it == 0) 2 else 1 }
+            for (k in 0 until parts) {
+                val spread = (k / (parts - 1f) - 0.5f) * j.width * (0.6f + 0.6f * out)   // веер расходится по мере полёта
+                val a = j.dir + spread + j.bend * out + 0.15f * sin(p * 5f + j.seed + k)
+                val d = radius * 0.85f + reach * out * (0.8f + 0.25f * rnd(j.seed, k, 13))
+                val size = radius * scale * (0.45f + 1.35f * out) * (0.8f + 0.4f * rnd(j.seed, k, 14))
+                val alpha = minOf(1f, p * 6f) * (1f - p) * (1f - p * 0.5f) * 0.85f * level
                 if (alpha <= 0.01f) continue
+                paint.shader = shaders[((a / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES]
                 paint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
                 canvas.save()
-                canvas.translate(cx + cos(a) * d, cy + sin(a) * d - radius * 0.35f * out)
-                canvas.rotate(Math.toDegrees(a.toDouble()).toFloat())
-                canvas.scale(size * 1.7f, size * 0.8f)      // вытянут вдоль полёта
+                canvas.translate(cx + cos(a) * d, cy + sin(a) * d - radius * 0.3f * out)
+                canvas.rotate(Math.toDegrees(a.toDouble()).toFloat() + 30f * sin(p * 3f + k))
+                canvas.scale(size * 1.15f, size)                 // почти круглое облако, а не струйка
                 canvas.drawCircle(0f, 0f, 1f, paint)
                 canvas.restore()
             }
         }
-        if (playing || jets.isNotEmpty() || kotlin.math.abs(level - target) > 0.01f) postInvalidateOnAnimation()
+        if (playing || billows.isNotEmpty() || kotlin.math.abs(level - target) > 0.01f) postInvalidateOnAnimation()
     }
 
     companion object {
         private const val COUNT = 30
-        private const val JET_MS = 1500f
         private const val EDGES = 12
         private const val GRID = 24
         private const val NEUTRAL = 34   // ниже этой «цветности» точка считается серой

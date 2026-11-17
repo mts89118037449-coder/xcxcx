@@ -54,6 +54,37 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
             return v
         }
 
+        // Три полосы — бас (до ~150 Гц), середина (голос, гитары, клавиши — до ~2 кГц) и верх (тарелки, хэты, шипящие).
+        // Уровень каждой (0..1, относительно её собственного среднего) и «ноты» — всплески в каждой полосе, по шкале записи.
+        private val levels = ConcurrentLinkedDeque<Pair<Long, FloatArray>>()
+        private val notes = ConcurrentLinkedDeque<Triple<Long, Int, Float>>()   // (время в записи, полоса 0..2, сила)
+
+        /** Уровни полос сейчас: [бас, середина, верх], 0..1. null — ритма нет. */
+        fun bandsNow(): FloatArray? {
+            val pos = nowUs() ?: return null
+            var cur: FloatArray? = null
+            val it = levels.iterator()
+            while (it.hasNext()) {
+                val (t, v) = it.next()
+                if (pos - t > 1_000_000) { it.remove(); continue }
+                if (t <= pos) cur = v
+            }
+            return cur ?: FloatArray(3)
+        }
+
+        /** Ноты, прозвучавшие после [after] (мкс по шкале записи), по порядку. Пусто — новых нет. */
+        fun notesAfter(after: Long): List<Triple<Long, Int, Float>> {
+            val pos = nowUs() ?: return emptyList()
+            val out = ArrayList<Triple<Long, Int, Float>>()
+            val it = notes.iterator()
+            while (it.hasNext()) {
+                val n = it.next()
+                if (pos - n.first > 2_000_000) { it.remove(); continue }
+                if (n.first in (after + 1)..pos) out += n
+            }
+            return out
+        }
+
         /** Метка последнего уже прозвучавшего удара (меняется — значит, был новый удар). */
         fun lastBeat(): Long { beatNow(); return lastPlayed }
         /** Сколько мс назад прозвучал последний удар. */
@@ -73,6 +104,11 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
     private var inWindow = 0
     private var average = 0f
     private var lastBeatUs = Long.MIN_VALUE / 2
+    private var midAlpha = 0.25f
+    private var midLp = 0f
+    private val bandE = FloatArray(3)
+    private val bandAvg = FloatArray(3)
+    private val lastNoteUs = LongArray(3) { Long.MIN_VALUE / 2 }
 
     override fun configure(inputFormat: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
         enabled = MimeTypes.AUDIO_RAW == inputFormat.sampleMimeType && inputFormat.pcmEncoding == C.ENCODING_PCM_16BIT &&
@@ -82,6 +118,7 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
             rate = inputFormat.sampleRate
             bassAlpha = (1.0 - exp(-2.0 * PI * 150.0 / rate)).toFloat()
             window = (rate * 0.023f).toInt().coerceAtLeast(256)
+            midAlpha = (1.0 - exp(-2.0 * PI * 2000.0 / rate)).toFloat()
         }
         super.configure(inputFormat, specifiedBufferSize, outputChannels)
     }
@@ -103,6 +140,9 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
             b.position(b.position() + step)
             bassLp += bassAlpha * (s - bassLp)
             energy += bassLp * bassLp
+            midLp += midAlpha * (s - midLp)
+            val mid = midLp - bassLp; val high = s - midLp
+            bandE[1] += mid * mid; bandE[2] += high * high
             frame++
             if (++inWindow >= window) {
                 val e = energy / window
@@ -111,9 +151,31 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
                     lastBeatUs = atUs
                     val strength = ((e / (average + 0.0004f) - 1f) / 2.5f).coerceIn(0.35f, 1f)
                     beats.addLast(atUs to strength)
+                    notes.addLast(Triple(atUs, 0, strength))
                     while (beats.size > 64) beats.pollFirst()
                 }
                 average += (e - average) * 0.045f
+                // Полосы: уровень относительно своего среднего и всплески-«ноты» в середине и верху.
+                bandE[0] = e * window
+                val lv = FloatArray(3)
+                for (b in 0..2) {
+                    val eb = bandE[b] / window
+                    val floor = if (b == 2) 0.00002f else 0.0001f
+                    val ratio = eb / (bandAvg[b] + floor)
+                    lv[b] = ((ratio - 0.6f) / 1.6f).coerceIn(0f, 1f)
+                    // Бочка «просачивается» в середину — ноту середины в момент удара баса не считаем (проверено на синтетике:
+                    // без этого 24 срабатывания на 8 аккордов, с ним — 9).
+                    if (b > 0 && ratio > 1.5f && eb > floor * 2 && atUs - lastNoteUs[b] > 160_000 &&
+                        !(b == 1 && kotlin.math.abs(atUs - lastBeatUs) < 70_000)) {
+                        lastNoteUs[b] = atUs
+                        notes.addLast(Triple(atUs, b, ((ratio - 1f) / 2.5f).coerceIn(0.3f, 1f)))
+                    }
+                    bandAvg[b] += (eb - bandAvg[b]) * 0.03f
+                    bandE[b] = 0f
+                }
+                levels.addLast(atUs to lv)
+                while (levels.size > 120) levels.pollFirst()
+                while (notes.size > 64) notes.pollFirst()
                 energy = 0f; inWindow = 0
             }
         }
@@ -128,7 +190,7 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
 
     override fun flush() {
         // Перемотка или новая запись: прежние удары больше не прозвучат, шкала времени начинается заново.
-        beats.clear(); lastPts = Long.MIN_VALUE; lastBeatUs = Long.MIN_VALUE / 2
+        beats.clear(); levels.clear(); notes.clear(); midLp = 0f; bandE.fill(0f); bandAvg.fill(0f); lastNoteUs.fill(Long.MIN_VALUE / 2); lastPts = Long.MIN_VALUE; lastBeatUs = Long.MIN_VALUE / 2
         bassLp = 0f; energy = 0f; inWindow = 0; average = 0f
         lastPlayed = 0L; posAt = 0L
         super.flush()

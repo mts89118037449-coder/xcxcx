@@ -23,6 +23,8 @@ class Exciter : BaseAudioProcessor() {
         fun beatNow(): Float? = BeatSink.beatNow()
         fun lastBeat(): Long = BeatSink.lastBeat()
         fun lastBeatAgeMs(): Long = BeatSink.lastBeatAgeMs()
+        fun bandsNow(): FloatArray? = BeatSink.bandsNow()
+        fun notesAfter(after: Long) = BeatSink.notesAfter(after)
     }
 
     private var channels = 2
