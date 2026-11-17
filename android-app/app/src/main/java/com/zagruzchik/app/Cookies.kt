@@ -62,6 +62,30 @@ object Cookies {
         return merge(ctx, lines)
     }
 
+    /**
+     * Своя копия куки для отдельного запуска yt-dlp: он перезаписывает файл куки в конце работы, и параллельные запуски
+     * портили общий файл (журнал 17.11: «cookies.txt does not look like a Netscape format cookies file»). null — входов нет.
+     */
+    fun snapshot(ctx: Context): File? {
+        val f = file(ctx).takeIf { it.exists() } ?: return null
+        val dir = File(ctx.cacheDir, "cookies").apply { mkdirs() }
+        dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 3_600_000L }?.forEach { it.delete() }
+        return runCatching { File.createTempFile("ck-", ".txt", dir).also { f.copyTo(it, overwrite = true) } }.getOrNull()
+    }
+
+    /** При запуске: испорченный файл куки чиним (возвращаем заголовок), пустой — убираем; брошенные копии — тоже. */
+    fun repair(ctx: Context) {
+        ctx.filesDir.listFiles()?.filter { it.name.startsWith("ck-") && it.name.endsWith(".txt") }?.forEach { it.delete() }
+        val f = file(ctx).takeIf { it.exists() } ?: return
+        runCatching {
+            val lines = f.readLines()
+            if (lines.firstOrNull { it.isNotBlank() }?.startsWith(HEADER) == true) return
+            val cookies = lines.filter(::isCookieLine).filter { key(it) != null }
+            if (cookies.isEmpty()) f.delete() else f.writeText((listOf(HEADER) + cookies).joinToString("\n", postfix = "\n"))
+            AppLog.add("КУКИ: файл был испорчен — ${if (cookies.isEmpty()) "убран" else "восстановлен (${cookies.size} записей)"}")
+        }
+    }
+
     fun loggedInSites(ctx: Context): List<String> {
         val f = file(ctx)
         if (!f.exists()) return emptyList()

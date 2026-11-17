@@ -1,6 +1,6 @@
 # Постоянный процесс yt-dlp: Python и yt-dlp загружаются один раз, дальше запросы
 # идут строками JSON через stdin/stdout. Аргументы: путь к yt-dlp (zip), путь к quickjs, папка кэша.
-import sys, json, threading, re
+import sys, json, threading, re, os, tempfile
 from concurrent.futures import ThreadPoolExecutor
 if len(sys.argv) > 1: sys.path.insert(0, sys.argv[1])
 import yt_dlp
@@ -29,13 +29,32 @@ if len(sys.argv) > 3 and sys.argv[3]: BASE["cachedir"] = sys.argv[3]
 
 cancelled = set()  # метки отменённых поисков: ещё не начатые запросы с ними пропускаем
 
+# Куки: yt-dlp в конце каждого запроса перезаписывает файл куки. Запросы идут параллельно — один читал файл, пока другой
+# его стёр и пишет заново, и падал с «does not look like a Netscape format cookies file» (журнал 17.11: так «не играли»
+# SoundCloud, Rutube и Яндекс). Каждому запросу — своя копия; общий файл yt-dlp больше не трогает.
+def cookie_copy(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f: text = f.read()
+        lines = [l for l in text.splitlines() if l.strip()]
+        if not lines or not re.match(r"#( Netscape)? HTTP Cookie File", lines[0]): return None
+        fd, tmp = tempfile.mkstemp(prefix="ck-", suffix=".txt", dir=os.path.dirname(path))
+        with os.fdopen(fd, "w", encoding="utf-8") as f: f.write(text)
+        return tmp
+    except Exception:
+        return None
+
 def handle(req):
     rid = req.get("id")
     if req.get("tag") and req["tag"] in cancelled:
         out({"id": rid, "ok": False, "error": "cancelled"})
         return
+    tmp = None
     try:
         opts = dict(BASE); opts.update(req.get("opts") or {})
+        if opts.get("cookiefile"):
+            tmp = cookie_copy(opts["cookiefile"])
+            if tmp: opts["cookiefile"] = tmp
+            else: opts.pop("cookiefile", None)  # файл испорчен — работаем без него, а не падаем
         info = None
         url = req["url"]
         # Звук с YouTube: сначала лёгкий клиент без JavaScript (секунды вместо десятков секунд на телефоне);
@@ -70,6 +89,10 @@ def handle(req):
         out({"id": rid, "ok": True, "data": res})
     except BaseException as e:
         out({"id": rid, "ok": False, "error": str(e)[:600]})
+    finally:
+        if tmp:
+            try: os.remove(tmp)
+            except Exception: pass
 
 out({"ready": True, "version": yt_dlp.version.__version__})
 # Нажатое человеком — в своём пуле, подготовка заранее («bg») — в отдельном, чтобы не стоять в очереди за ней.

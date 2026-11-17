@@ -440,7 +440,7 @@ object Downloader {
         addOption("-N", "4") // фрагменты потока качаются в 4 потока — заметно быстрее для HLS/DASH
         addOption("--embed-metadata")
         addOption("-P", dir.absolutePath)
-        Cookies.file(ctx).takeIf { it.exists() }?.let { addOption("--cookies", it.absolutePath) }
+        Cookies.snapshot(ctx)?.let { addOption("--cookies", it.absolutePath) } // своя копия: общий файл yt-dlp не портит
         when (format) {
             Format.BEST -> {
                 addOption("-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b")
@@ -531,6 +531,7 @@ object Downloader {
                 "Недоступно: удалено или скрыто автором."
             "age" in e && ("confirm" in e || "restricted" in e) || "inappropriate" in e ->
                 "Есть возрастное ограничение. Войдите в аккаунт: Настройки → Аккаунты."
+            "netscape format" in e -> "Сбой файла входов (cookies) — приложение его починит, повторите."
             "sign in" in e || "login" in e || "log in" in e || "cookies" in e || "not a bot" in e ->
                 "Сайт требует вход. Войдите в аккаунт: Настройки → Аккаунты — и повторите."
             "private" in e -> "Это приватная публикация. Нужен вход в аккаунт, у которого есть к ней доступ."
