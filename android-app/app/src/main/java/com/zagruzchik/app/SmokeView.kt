@@ -144,8 +144,9 @@ class SmokeView(ctx: Context) : View(ctx) {
         val heard = if (playing) Exciter.beatNow() else null
         val beat = heard ?: (0.5f + 0.5f * sin(t * 4.8f)).let { it * it }
         // Сглаживаем вспышку, чтобы яркость не дёргалась: быстрый подъём, плавный спад.
-        shown += (beat - shown) * (if (beat > shown) minOf(1f, dt * 14f) else minOf(1f, dt * 4f)) // подъём ~70 мс, без скачка
-        val pulse = 0.7f + 0.3f * shown
+        // Удар баса — чёткий толчок: подъём ~35 мс, спад ~150 мс (не дёргано, но и не размазано).
+        shown += (beat - shown) * (if (beat > shown) minOf(1f, dt * 28f) else minOf(1f, dt * 7f))
+        val pulse = 0.55f + 0.65f * shown
         // Сколько полос звучит сейчас (бас, середина, верх): от этого — ширина и густота дыма.
         val bands = if (playing) Exciter.bandsNow() else null
         for (i in 0..2) { val v = bands?.get(i) ?: 0f; bandShown[i] += (v - bandShown[i]) * minOf(1f, dt * (if (v > bandShown[i]) 12f else 3f)) }
@@ -173,9 +174,9 @@ class SmokeView(ctx: Context) : View(ctx) {
         // Ореол вплотную к обложке — из него «выходит» дым.
         halo?.let { h ->
             paint.shader = h
-            paint.alpha = (255 * 0.55f * level * pulse).toInt().coerceIn(0, 255)
+            paint.alpha = (255 * (0.3f + 0.65f * shown) * level).toInt().coerceIn(0, 255)
             canvas.save(); canvas.translate(cx, cy)
-            val hs = radius * (1.6f + 0.4f * shown + 0.25f * bandShown[0])
+            val hs = radius * (1.55f + 0.7f * shown + 0.2f * bandShown[0])
             canvas.scale(hs, hs); canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
         }
 
@@ -198,13 +199,15 @@ class SmokeView(ctx: Context) : View(ctx) {
             // Растёт и тает.
             val size = radius * (0.55f + 1.25f * out) * (0.85f + 0.3f * rnd(i, life, 7)) * (0.9f + 0.4f * fullness)
             val fade = minOf(1f, age * 7f) * (1f - age) * (1f - age * 0.35f)
-            val alpha = minOf(0.75f, fade * 1.1f * level * pulse * (0.85f + 0.3f * fullness))
+            val alpha = minOf(0.9f, fade * 1.1f * level * pulse * (0.85f + 0.3f * fullness))
             if (alpha <= 0.01f) continue
             val idx = ((dir / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES
             // Клуб — два смещённых вытянутых пятна: неровная форма, как у дыма, а не ровный круг.
             val turn = Math.toDegrees(a.toDouble()).toFloat() + 90f + 40f * sin(age * 3f + i)
             // Клуб — рваное облако, медленно закручивается, пока летит.
-            layer(canvas, idx, alpha, x, y, turn + age * 70f, size * 1.25f, size * 1.05f, i * 7 + life)
+            // На ударе баса весь дым толкается наружу и светлеет.
+            val kick = 1f + 0.15f * shown
+            layer(canvas, idx, alpha, x, y, turn + age * 70f, size * 1.25f * kick, size * 1.05f * kick, i * 7 + life, 0.35f * shown)
         }
         // Клубы от нот: несколько мягких облаков веером, растут и расплываются, накладываясь друг на друга.
         val it = billows.iterator()
@@ -225,11 +228,12 @@ class SmokeView(ctx: Context) : View(ctx) {
                 val a = j.dir + spread + j.bend * out + 0.15f * sin(p * 5f + j.seed + k)
                 val d = radius * 0.85f + reach * out * (0.8f + 0.25f * rnd(j.seed, k, 13))
                 val size = radius * scale * (0.45f + 1.35f * out) * (0.8f + 0.4f * rnd(j.seed, k, 14))
-                val alpha = minOf(0.75f, minOf(1f, p * 6f) * (1f - p) * (1f - p * 0.5f) * 0.95f * level) * j.fade
+                val alpha = minOf(if (j.band == 0) 0.9f else 0.75f, minOf(1f, p * 6f) * (1f - p) * (1f - p * 0.5f) * (if (j.band == 0) 1.15f else 0.95f) * level) * j.fade
                 if (alpha <= 0.01f) continue
                 val idx = ((a / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES
                 layer(canvas, idx, alpha, cx + cos(a) * d, cy + sin(a) * d - radius * 0.3f * out,
-                    Math.toDegrees(a.toDouble()).toFloat() + 60f * p + k * 90f, size * 1.3f, size * 1.1f, j.seed * 3 + k)
+                    Math.toDegrees(a.toDouble()).toFloat() + 60f * p + k * 90f, size * 1.3f, size * 1.1f, j.seed * 3 + k,
+                    if (j.band == 0) 0.3f * (1f - p) + 0.25f * shown else 0f)   // облака баса — ярче, особенно в начале
             }
         }
         if (playing || billows.isNotEmpty() || kotlin.math.abs(level - target) > 0.01f) postInvalidateOnAnimation()
@@ -241,14 +245,14 @@ class SmokeView(ctx: Context) : View(ctx) {
      * Один клуб дыма: рваная текстура в цвет края обложки. Сначала лёгкая тень чуть ниже — она отделяет новый слой от
      * того, что под ним, — затем сам дым. Обычное наложение: новые клубы ложатся поверх старых, а не сливаются в белое.
      */
-    private fun layer(canvas: Canvas, idx: Int, alpha: Float, x: Float, y: Float, rot: Float, sx: Float, sy: Float, seed: Int = idx) {
+    private fun layer(canvas: Canvas, idx: Int, alpha: Float, x: Float, y: Float, rot: Float, sx: Float, sy: Float, seed: Int = idx, glow: Float = 0f) {
         val sprite = SmokeSprites.all[(seed and 0x7fffffff) % 4]
         val k = SmokeSprites.HALF
         spritePaint.color = Color.BLACK
         spritePaint.alpha = (alpha * 0.33f * 255).toInt().coerceIn(0, 255)
         canvas.save(); canvas.translate(x + sx * 0.06f, y + sy * 0.12f); canvas.rotate(rot); canvas.scale(sx / k * 1.05f, sy / k * 1.05f)
         canvas.drawBitmap(sprite, -k, -k, spritePaint); canvas.restore()
-        spritePaint.color = edge[idx]
+        spritePaint.color = if (glow > 0f) ColorUtils.blendARGB(edge[idx], Color.WHITE, glow.coerceAtMost(0.5f)) else edge[idx]
         spritePaint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
         canvas.save(); canvas.translate(x, y); canvas.rotate(rot); canvas.scale(sx / k, sy / k)
         canvas.drawBitmap(sprite, -k, -k, spritePaint); canvas.restore()
