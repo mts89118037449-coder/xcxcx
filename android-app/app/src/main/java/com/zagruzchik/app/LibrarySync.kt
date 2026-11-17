@@ -53,6 +53,7 @@ object LibrarySync {
                 missing = 0
                 val next = AtomicInteger(0)
                 val miss = AtomicInteger(0)
+                val streamed = AtomicInteger(0)
                 (1..THREADS).map {
                     pool.submit {
                         while (true) {
@@ -66,8 +67,10 @@ object LibrarySync {
                             val s = Streams.forSync(t)
                             if (s != null) Streams.waitForeground()
                             val ok = s != null && runCatching { MediaCache.storeNow(app, t, s, keep = true) }.getOrDefault(false)
-                            if (ok) { onPhone++; HeadCache.drop(t) } else missing = miss.incrementAndGet()
-                            if ((i + 1) % 10 == 0) AppLog.add("МЕДИАТЕКА НА ТЕЛЕФОНЕ: на телефоне $onPhone из $total, не нашлось $missing")
+                            // Нашлась, но потоком по кусочкам (SoundCloud, HLS) — играет из сети, на телефон её не кладём; это не «не нашлась».
+                            val streamOnly = s != null && s.url.contains(".m3u8")
+                            if (ok) { onPhone++; HeadCache.drop(t) } else if (streamOnly) streamed.incrementAndGet() else missing = miss.incrementAndGet()
+                            if ((i + 1) % 10 == 0) AppLog.add("МЕДИАТЕКА НА ТЕЛЕФОНЕ: на телефоне $onPhone из $total, не нашлось $missing, только из сети (SoundCloud) ${streamed.get()}")
                             changed()
                             Thread.sleep(300)
                         }

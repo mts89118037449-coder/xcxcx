@@ -146,7 +146,9 @@ object HomeViews {
                 if (mixed.isEmpty()) { overlay.say("Нет связи — попробуйте ещё раз"); overlay.dismiss(1500) }
                 else {
                     overlay.dismiss(200)
-                    Playback.playQueue(a, mixed.map { Playback.QItem(it, Library.localFor(it), it.url) }, 0)
+                    // Окно могли закрыть, пока шла сборка, — тогда включаем без него (плеер откроется отдельно).
+                    val ctx: android.content.Context = if (a.isFinishing || a.isDestroyed) a.applicationContext else a
+                    Playback.playQueue(ctx, mixed.map { Playback.QItem(it, Library.localFor(it), it.url) }, 0)
                 }
             }
         }
@@ -239,8 +241,12 @@ object AuraDay {
         val (old, fresh) = pool.filter { Library.key(it) !in avoid }.partition { Library.key(it) in before }
         val base = (fresh.take(24) + old.shuffled(rnd).take(maxOf(0, minOf(8, 30 - fresh.size.coerceAtMost(24))))).take(30)
         progress(Tags.topCached.takeIf { it.isNotEmpty() }?.let { "Ищу новое по вашим тегам:\n${it.joinToString(" · ")}" } ?: "Ищу новое, похожее на любимое…")
-        val recs = runCatching { Recs.today(ctx, 60) }.getOrDefault(emptyList()).filter { Library.key(it) !in avoid }
-            .sortedBy { if (Library.key(it) in before) 1 else 0 }.let { l -> l.take(30).shuffled(rnd) }.take(12)
+        // Новое по тегам — сначала то, чего не было в прошлых наборах; из прошлых — только если нового не хватает
+        // (журнал 17.11: «из прошлых наборов 13» из 40 — больше обещанной четверти).
+        val allRecs = runCatching { Recs.today(ctx, 60) }.getOrDefault(emptyList()).filter { Library.key(it) !in avoid }
+        val newRecs = allRecs.filter { Library.key(it) !in before }.shuffled(rnd)
+        val oldBudget = maxOf(0, 10 - base.count { Library.key(it) in before })
+        val recs = (newRecs + allRecs.filter { Library.key(it) in before }.shuffled(rnd).take(oldBudget)).take(12)
         val keys = base.map { Library.key(it) }.toHashSet()
         val mixed = ArrayList<Track>()
         val ri = recs.filter { Library.key(it) !in keys }.iterator()

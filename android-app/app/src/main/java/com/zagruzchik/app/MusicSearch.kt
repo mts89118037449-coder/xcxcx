@@ -393,9 +393,12 @@ object Streams {
         lives[k] = live
         // То, откуда песня играет сейчас, известно сразу.
         whereOf(t)?.let { w -> live.add(Option(nameOf(w), t.title, w)) }
-        optionPool.execute {
+        // Окно, открытое человеком, — в своём потоке и сразу: раньше оно стояло в очереди за фоновыми опросами (они ждут,
+        // пока человек что-то включает, — до 3 минут) и за запуском yt-dlp, хотя большинство площадок без него.
+        val exec: (Runnable) -> Unit = if (urgent) { r -> Thread(r, "sources-now").start() } else optionPool::execute
+        exec(Runnable {
             try {
-                App.awaitReadyOrNull()
+                if (!urgent) App.awaitReadyOrNull()
                 val log = java.util.concurrent.ConcurrentLinkedQueue<String>()
                 val run = {
                     runCatching { search(t, log, java.util.concurrent.ConcurrentHashMap(), collect = live::add) }
@@ -409,7 +412,7 @@ object Streams {
                 if (live.list.isEmpty()) lives.remove(k, live) // пусто — в следующий раз опросить заново
                 live.finish()
             }
-        }
+        })
         return live
     }
 
