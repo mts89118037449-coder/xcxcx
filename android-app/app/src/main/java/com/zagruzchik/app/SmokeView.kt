@@ -25,7 +25,11 @@ class SmokeView(ctx: Context) : View(ctx) {
     private var shaders = arrayOfNulls<Shader>(EDGES)
     private var halo: Shader? = null
     // «Экран»: клубы, наложенные друг на друга, складываются в свет — дым яркий, но не выгорает в белое.
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SCREEN }
+    // Обычное наложение, не «экран»: при сложении яркостей облака сливались в белую кашу. Теперь каждое облако — слой
+    // поверх предыдущих: плотное тело, светлый ободок и тонкий тёмный контур, под ним — тень. Слои видно отдельно.
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val shadow: Shader = RadialGradient(0f, 0f, 1f, intArrayOf(0x66000000, 0x33000000, Color.TRANSPARENT),
+        floatArrayOf(0.5f, 0.82f, 1f), Shader.TileMode.CLAMP)
 
     /** Струя: на каждый удар из обложки вырывается быстрый поток дыма в одну сторону. */
     /**
@@ -63,8 +67,13 @@ class SmokeView(ctx: Context) : View(ctx) {
             // Обложки нет — дым серебристый, спокойный (раньше был ярких цветов приложения).
             val c = if (small == null) (if (i % 2 == 0) 0xFFC9CAD6.toInt() else 0xFFA9ABBA.toInt()) else rayColor(small, a)
             edge[i] = c; sr += Color.red(c); sg += Color.green(c); sb += Color.blue(c)
-            shaders[i] = RadialGradient(0f, 0f, 1f, intArrayOf(ColorUtils.setAlphaComponent(c, 0xFF), ColorUtils.setAlphaComponent(c, 0xA8), Color.TRANSPARENT),
-                floatArrayOf(0f, 0.46f, 1f), Shader.TileMode.CLAMP)
+            val rim = ColorUtils.blendARGB(c, Color.WHITE, 0.35f)      // светлый ободок
+            val line = ColorUtils.blendARGB(c, Color.BLACK, 0.45f)     // тонкий контур за ним
+            shaders[i] = RadialGradient(0f, 0f, 1f,
+                // Подобрано по отрисовке на сервере (scratchpad/layers_preview.py): мягкое полупрозрачное тело, ободок и контур.
+                intArrayOf(ColorUtils.setAlphaComponent(ColorUtils.blendARGB(c, Color.BLACK, 0.12f), 0x70), ColorUtils.setAlphaComponent(c, 0xA0),
+                    ColorUtils.setAlphaComponent(rim, 0xC8), ColorUtils.setAlphaComponent(line, 0x60), Color.TRANSPARENT),
+                floatArrayOf(0f, 0.55f, 0.78f, 0.87f, 1f), Shader.TileMode.CLAMP)
         }
         val mean = Color.rgb(sr / EDGES, sg / EDGES, sb / EDGES)
         halo = RadialGradient(0f, 0f, 1f, intArrayOf(ColorUtils.setAlphaComponent(mean, 0xD0), ColorUtils.setAlphaComponent(mean, 0x60), Color.TRANSPARENT),
@@ -153,7 +162,7 @@ class SmokeView(ctx: Context) : View(ctx) {
         // Ореол вплотную к обложке — из него «выходит» дым.
         halo?.let { h ->
             paint.shader = h
-            paint.alpha = (255 * 0.9f * level * pulse).toInt().coerceIn(0, 255)
+            paint.alpha = (255 * 0.55f * level * pulse).toInt().coerceIn(0, 255)
             canvas.save(); canvas.translate(cx, cy)
             val hs = radius * (1.6f + 0.4f * shown + 0.25f * bandShown[0])
             canvas.scale(hs, hs); canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
@@ -178,21 +187,14 @@ class SmokeView(ctx: Context) : View(ctx) {
             // Растёт и тает.
             val size = radius * (0.55f + 1.25f * out) * (0.85f + 0.3f * rnd(i, life, 7)) * (0.9f + 0.4f * fullness)
             val fade = minOf(1f, age * 7f) * (1f - age) * (1f - age * 0.35f)
-            val alpha = minOf(1f, fade * 1.25f * level * pulse * (0.85f + 0.3f * fullness))
+            val alpha = minOf(0.75f, fade * 1.1f * level * pulse * (0.85f + 0.3f * fullness))
             if (alpha <= 0.01f) continue
-            val shader = shaders[((dir / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES]
-            paint.shader = shader
-            paint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
+            val idx = ((dir / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES
             // Клуб — два смещённых вытянутых пятна: неровная форма, как у дыма, а не ровный круг.
             val turn = Math.toDegrees(a.toDouble()).toFloat() + 90f + 40f * sin(age * 3f + i)
-            for (k in 0..1) {
-                canvas.save()
-                canvas.translate(x + (if (k == 0) -1 else 1) * size * 0.28f * cos(a + 1.3f), y + (if (k == 0) -1 else 1) * size * 0.28f * sin(a + 1.3f))
-                canvas.rotate(turn + k * 55f)
-                canvas.scale(size * (1.15f - 0.2f * k), size * (0.7f + 0.15f * k))
-                canvas.drawCircle(0f, 0f, 1f, paint)
-                canvas.restore()
-            }
+            for (k in 0..1)
+                layer(canvas, idx, alpha, x + (if (k == 0) -1 else 1) * size * 0.28f * cos(a + 1.3f), y + (if (k == 0) -1 else 1) * size * 0.28f * sin(a + 1.3f),
+                    turn + k * 55f, size * (1.15f - 0.2f * k), size * (0.7f + 0.15f * k))
         }
         // Клубы от нот: несколько мягких облаков веером, растут и расплываются, накладываясь друг на друга.
         val it = billows.iterator()
@@ -210,19 +212,26 @@ class SmokeView(ctx: Context) : View(ctx) {
                 val a = j.dir + spread + j.bend * out + 0.15f * sin(p * 5f + j.seed + k)
                 val d = radius * 0.85f + reach * out * (0.8f + 0.25f * rnd(j.seed, k, 13))
                 val size = radius * scale * (0.45f + 1.35f * out) * (0.8f + 0.4f * rnd(j.seed, k, 14))
-                val alpha = minOf(1f, p * 6f) * (1f - p) * (1f - p * 0.5f) * 0.85f * level
+                val alpha = minOf(0.75f, minOf(1f, p * 6f) * (1f - p) * (1f - p * 0.5f) * 0.95f * level)
                 if (alpha <= 0.01f) continue
-                paint.shader = shaders[((a / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES]
-                paint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
-                canvas.save()
-                canvas.translate(cx + cos(a) * d, cy + sin(a) * d - radius * 0.3f * out)
-                canvas.rotate(Math.toDegrees(a.toDouble()).toFloat() + 30f * sin(p * 3f + k))
-                canvas.scale(size * 1.15f, size)                 // почти круглое облако, а не струйка
-                canvas.drawCircle(0f, 0f, 1f, paint)
-                canvas.restore()
+                val idx = ((a / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES
+                layer(canvas, idx, alpha, cx + cos(a) * d, cy + sin(a) * d - radius * 0.3f * out,
+                    Math.toDegrees(a.toDouble()).toFloat() + 30f * sin(p * 3f + k), size * 1.15f, size)
             }
         }
         if (playing || billows.isNotEmpty() || kotlin.math.abs(level - target) > 0.01f) postInvalidateOnAnimation()
+    }
+
+    /** Один слой дыма: сначала тень чуть ниже (отделяет от того, что под ним), затем само облако с ободком и контуром. */
+    private fun layer(canvas: Canvas, idx: Int, alpha: Float, x: Float, y: Float, rot: Float, sx: Float, sy: Float) {
+        paint.shader = shadow
+        paint.alpha = (alpha * 0.7f * 255).toInt().coerceIn(0, 255)
+        canvas.save(); canvas.translate(x + sx * 0.06f, y + sy * 0.14f); canvas.rotate(rot); canvas.scale(sx * 1.05f, sy * 1.05f)
+        canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
+        paint.shader = shaders[idx]
+        paint.alpha = (alpha * 255).toInt().coerceIn(0, 255)
+        canvas.save(); canvas.translate(x, y); canvas.rotate(rot); canvas.scale(sx, sy)
+        canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
     }
 
     companion object {
