@@ -189,7 +189,10 @@ object Playback {
         filling = false
         val first = items[start.coerceIn(0, items.lastIndex)]
         LinkCache.prefetch(first.track, first.sourceUrl)
-        prefetchAhead(nextToAdd)
+        // Соседние песни готовим, когда нажатая уже зазвучала (или через 8 с): раньше их поиск шёл одновременно с ней
+        // и отнимал сеть — журнал 17.11: нажатая песня ждала 12,7 с, пока рядом искались две следующие.
+        aheadGen = gen
+        main.postDelayed({ if (aheadGen == gen) { aheadGen = -1; prefetchAhead(nextToAdd) } }, 8000)
         if (openScreen) ctx.startActivity(Intent(ctx, NowPlayingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
 
         first.local?.let { f ->
@@ -513,6 +516,7 @@ object Playback {
                     AppLog.add("ЗВУК ПОШЁЛ «${c.mediaMetadata.title}» из ${c.mediaMetadata.extras?.getString(X_SOURCE)}: $startInfo")
                     tapAt = 0
                 }
+                if (isPlaying && aheadGen == queueGen) { aheadGen = -1; prefetchAhead(nextToAdd) }
             }
 
             // Остановки посреди песни: кто поставил на паузу и почему.
@@ -611,6 +615,8 @@ object Playback {
 
     /** Следующие 8 песен очереди готовим заранее — переходы без ожидания. */
     private const val AHEAD = 2 // больше — и подготовка душит сеть и ту песню, которую нажали
+
+    private var aheadGen = -1 // для какой очереди соседние песни ещё ждут, пока зазвучит нажатая
 
     private fun prefetchAhead(from: Int) {
         val next = queue.drop(from).take(AHEAD).filter { it.local == null && it.directUrl == null && !MediaCache.has(it.track) }

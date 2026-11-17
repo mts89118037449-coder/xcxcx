@@ -476,8 +476,9 @@ object Streams {
             if (ok.isNotEmpty()) foundOn += "YouTube Music"
             ok.take(3).firstNotNullOfOrNull { c ->
                 val t1 = System.currentTimeMillis()
-                Ytdlp.withBackground(bg) { Downloader.streamOf(c.url, "YouTube Music", c.title, problems) }
-                    .also { log += "YouTube Music звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет"} за ${(System.currentTimeMillis() - t1) / 100 / 10.0} с" }
+                val errs = java.util.concurrent.ConcurrentLinkedQueue<String>()
+                Ytdlp.withBackground(bg) { Downloader.streamOf(c.url, "YouTube Music", c.title, errs) }
+                    .also { problems += errs; log += "YouTube Music звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет — " + errs.joinToString("; ").ifBlank { "без объяснения" }.take(200)} за ${(System.currentTimeMillis() - t1) / 100 / 10.0} с" }
             }
         }
         // Каждая площадка ищется двумя путями сразу — средствами телефона и через yt-dlp. Это отдельные участники гонки:
