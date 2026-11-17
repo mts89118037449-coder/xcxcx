@@ -90,6 +90,9 @@ object Taste {
     fun <T> smartStable(items: List<T>, track: (T) -> Track): List<T> =
         items.withIndex().sortedWith(compareByDescending<IndexedValue<T>> { score(track(it.value)) }.thenBy { it.index }).map { it.value }
 
+    /** Песню слушали (дослушали или пропустили) после момента [since] — для «Ауры дня»: такое в новый набор не берём. */
+    @Synchronized fun heardSince(key: String, since: Long): Boolean = tracks[key]?.let { it.last >= since } ?: false
+
     /** Часто пропускаемые песни радио не предлагает. */
     @Synchronized fun disliked(t: Track): Boolean = tracks[Library.key(t)]?.let { it.skips >= 2 && it.skips > it.plays } ?: false
 

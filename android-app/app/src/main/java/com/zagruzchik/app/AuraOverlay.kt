@@ -43,7 +43,7 @@ class AuraOverlay private constructor(private val a: Activity) {
     init {
         // Цвета дыма — фирменные цвета ауры: «обложка» из кругового градиента, с краёв которой дым и берёт цвета.
         smoke.setCover(auraBitmap())
-        smoke.playing = true
+        smoke.warmStart()
         root.addView(smoke, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         root.addView(LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
@@ -56,7 +56,10 @@ class AuraOverlay private constructor(private val a: Activity) {
             smoke.place(w / 2f, h / 2f, minOf(w, h) * 0.2f) // дым клубится из середины экрана
         }
         (a.findViewById<ViewGroup>(android.R.id.content)).addView(root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        root.animate().alpha(1f).setDuration(260).start()
+        root.animate().alpha(1f).setDuration(140).start()
+        step.text = "Собираю твою ауру…"
+        // Нажатие по заставке — спрятать её; сборка продолжается, музыка включится, когда будет готово.
+        root.setOnClickListener { dismiss(0, now = true) }
         title.scaleX = 0.9f; title.scaleY = 0.9f
         title.animate().scaleX(1f).scaleY(1f).setDuration(900).setInterpolator(DecelerateInterpolator()).start()
     }
@@ -82,10 +85,10 @@ class AuraOverlay private constructor(private val a: Activity) {
         }.start()
     }
 
-    /** Убрать — не раньше чем через 1,4 с после появления, чтобы заставка не мелькала. */
-    fun dismiss(extraMs: Long = 0) {
+    /** Убрать — не раньше чем через 1,2 с после появления, чтобы заставка не мелькала ([now] — сразу, по нажатию). */
+    fun dismiss(extraMs: Long = 0, now: Boolean = false) {
         if (gone) return
-        val wait = maxOf(0L, 1400 - (SystemClock.uptimeMillis() - shownAt)) + extraMs
+        val wait = if (now) 0L else maxOf(0L, 1200 - (SystemClock.uptimeMillis() - shownAt)) + extraMs
         root.postDelayed({
             if (gone) return@postDelayed
             gone = true

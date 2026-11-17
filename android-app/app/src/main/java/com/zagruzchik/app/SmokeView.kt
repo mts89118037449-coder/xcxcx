@@ -60,6 +60,9 @@ class SmokeView(ctx: Context) : View(ctx) {
 
     init { setCover(null); isClickable = false; Thread({ SmokeSprites.all }, "smoke").start() } // текстуру дыма готовим заранее, не в кадре
 
+    /** Дым сразу в полную силу и уже клубится (для заставки): без разгона с нуля. */
+    fun warmStart() { level = 1f; clock = 6f; playing = true; invalidate() }
+
     /** Где обложка (центр и половина стороны) — в координатах этого слоя. */
     fun place(x: Float, y: Float, r: Float) {
         if (x != cx || y != cy || r != radius) { cx = x; cy = y; radius = r; invalidate() }
