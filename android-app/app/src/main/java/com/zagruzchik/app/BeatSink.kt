@@ -85,6 +85,25 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
             return out
         }
 
+        // Для тегов песни: интервалы между ударами и доля баса за всё время, что песня звучала.
+        private val intervals = java.util.Collections.synchronizedList(ArrayList<Long>())
+        @Volatile private var bassSum = 0.0
+        @Volatile private var allSum = 0.0
+
+        /** Темп (ударов в минуту) и доля баса с прошлого вызова; счёт начинается заново. null — мерить было нечего. */
+        fun takeStats(): Pair<Int, Float>? {
+            val iv = synchronized(intervals) { intervals.toList().also { intervals.clear() } }
+            val share = if (allSum > 0) (bassSum / allSum).toFloat() else 0f
+            bassSum = 0.0; allSum = 0.0
+            if (iv.size < 16 && share <= 0f) return null
+            var bpm = 0
+            if (iv.size >= 16) {
+                val med = iv.sorted()[iv.size / 2] / 1_000_000.0
+                if (med > 0) { var b = 60.0 / med; while (b < 70) b *= 2; while (b > 180) b /= 2; bpm = b.toInt() }
+            }
+            return bpm to share
+        }
+
         /** Метка последнего уже прозвучавшего удара (меняется — значит, был новый удар). */
         fun lastBeat(): Long { beatNow(); return lastPlayed }
         /** Сколько мс назад прозвучал последний удар. */
@@ -148,6 +167,7 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
                 val e = energy / window
                 val atUs = ptsUs + (frame - window / 2) * 1_000_000L / rate   // середина окна — там и был удар
                 if (e > average * 1.55f + 0.0004f && atUs - lastBeatUs > 230_000) {
+                    if (atUs - lastBeatUs in 250_000..1_500_000) intervals += atUs - lastBeatUs
                     lastBeatUs = atUs
                     val strength = ((e / (average + 0.0004f) - 1f) / 2.5f).coerceIn(0.35f, 1f)
                     beats.addLast(atUs to strength)
@@ -157,6 +177,7 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
                 average += (e - average) * 0.045f
                 // Полосы: уровень относительно своего среднего и всплески-«ноты» в середине и верху.
                 bandE[0] = e * window
+                bassSum += e; allSum += e + bandE[1] / window + bandE[2] / window
                 val lv = FloatArray(3)
                 for (b in 0..2) {
                     val eb = bandE[b] / window

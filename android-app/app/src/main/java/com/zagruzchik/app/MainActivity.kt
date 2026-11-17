@@ -433,7 +433,9 @@ class MainActivity : AppCompatActivity() {
         home.removeAllViews()
         val fav = Taste.favoriteArtists(3)
         home.addView(HomeViews.hero(this,
-            if (fav.isEmpty()) "Лучшее из чарта — в порядке под ваш вкус" else fav.joinToString(", ") + " и похожее — без повторов",
+            if (fav.isEmpty()) "Лучшее из чарта — в порядке под ваш вкус"
+            else fav.joinToString(", ") + " и новое по вашим тегам" + Tags.topCached.takeIf { it.isNotEmpty() }?.joinToString(" · ", prefix = "\n")
+                .orEmpty(),
         ) { HomeViews.playAura(this, ::snack) })
 
         val releases = News.releases

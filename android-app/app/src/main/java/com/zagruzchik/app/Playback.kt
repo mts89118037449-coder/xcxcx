@@ -563,6 +563,7 @@ object Playback {
     private var currentSince = 0L
 
     /** Предпочтения: дослушано (больше 30 с) — нравится, переключено раньше — нет. */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun learn(skipped: Boolean) {
         val t = current?.takeIf { it.title.isNotBlank() && !it.artist.equals("Скачано") } ?: return
         val listened = System.currentTimeMillis() - currentSince
@@ -570,6 +571,9 @@ object Playback {
             skipped && listened < 30_000 -> Taste.skipped(t)
             listened >= 30_000 -> Taste.played(t)
         }
+        // Темп и доля баса, измеренные в звуке, — в теги песни (только если дослушали хотя бы 30 с).
+        val stats = BeatSink.takeStats()
+        if (listened >= 30_000 && stats != null) { Tags.heard(t, stats.first, stats.second); Thread { Tags.save() }.start() }
         current = null
     }
 

@@ -12,6 +12,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        val t0 = android.os.SystemClock.uptimeMillis()
         // Журнал: прошлые запуски без сбоев убираем (в фоне — файл бывает до 400 КБ).
         Thread({
             AppLog.startSession(runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull())
@@ -26,12 +27,18 @@ class App : Application() {
         Library.init(this)
         History.init(this)
         Taste.init(this)
+        Tags.init(this)
         News.init(this)
         News.checkOnLaunch() // новинки любимых исполнителей — проверяем при каждом запуске
         MediaCache.init(this)
         HeadCache.init(this) // начала песен для мгновенного старта
         runCatching { Telegram.start(this) } // если аккаунт Telegram уже подключён — поднимаем его сразу
         Shortcuts.publish(this)
+        Tags.enrichFavorites() // жанры любимых — фоном, раз за запуск, только недостающие
+        AuraDay.prepare(this)  // «Аура дня» — заранее, чтобы нажатие играло сразу
+        UiWatchdog.start()     // зависания интерфейса — в журнал, с местом в коде
+        val startMs = android.os.SystemClock.uptimeMillis() - t0
+        Thread { Thread.sleep(1500); AppLog.add("ЗАПУСК ПРИЛОЖЕНИЯ: подготовка ${startMs} мс") }.start()
         // Первый запуск распаковывает Python и ffmpeg — делаем это в фоне.
         thread(name = "ytdl-init") {
             try {
