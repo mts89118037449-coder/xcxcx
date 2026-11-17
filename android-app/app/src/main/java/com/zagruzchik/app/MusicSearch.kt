@@ -357,7 +357,7 @@ object Streams {
      * Живой список источников песни: пополняется по мере ответа площадок. Первым в нём сразу стоит источник,
      * откуда песня играет сейчас. [done] — опрос закончен.
      */
-    class Live {
+    class Live(val urgent: Boolean = false) {
         val list = java.util.concurrent.CopyOnWriteArrayList<Option>()
         @Volatile var done = false
         val since = System.currentTimeMillis()
@@ -377,8 +377,11 @@ object Streams {
         val k = key(t)
         // Готовый список берём, только если в нём что-то есть: пустой мог получиться, когда фоновый опрос уступил сеть
         // самой песне (журнал 17.11: песня находилась, а окно писало «нигде не нашлась»).
-        lives[k]?.takeIf { !fresh && System.currentTimeMillis() - it.since < 30 * 60_000L && (!it.done || it.list.isNotEmpty()) }?.let { return it }
-        val live = Live()
+        // Окно открыто человеком — это главный приоритет: фоновый опрос (низкий приоритет, YouTube мог быть пропущен после
+        // сбоев) не подхватываем, а ищем заново сразу и вне очереди. Готовый непустой список — показываем сразу.
+        lives[k]?.takeIf { !fresh && System.currentTimeMillis() - it.since < 30 * 60_000L &&
+            (if (it.done) it.list.isNotEmpty() else (it.urgent || !urgent)) }?.let { return it }
+        val live = Live(urgent)
         lives[k] = live
         // То, откуда песня играет сейчас, известно сразу.
         whereOf(t)?.let { w -> live.add(Option(nameOf(w), t.title, w)) }

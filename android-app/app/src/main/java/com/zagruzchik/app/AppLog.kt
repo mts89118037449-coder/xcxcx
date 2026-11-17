@@ -69,7 +69,15 @@ object AppLog {
         val out = File(dir, "soundaura-journal.txt")
         val head = "SoundAura ${runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull()} · " +
             "Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL} · VPN: ${Net.vpnActive()} · VPN на телефоне есть, но приложение мимо него: ${Net.vpnBypassed()} · YouTube напрямую: ${Net.youtubeDirect} · yt-dlp ${YtdlpDaemon.version}\n\n"
-        out.writeText(head + src.readText())
+        // Новое — первым: журнал обычно вставляют в чат текстом, и конец обрезается (17.11 так пропал весь запуск 9.19).
+        // Записи (одна запись — строка со временем и строки под ней) идут от новых к старым.
+        val entries = mutableListOf(StringBuilder())
+        val stamp = Regex("^\\d\\d\\.\\d\\d \\d\\d:\\d\\d")
+        src.forEachLine { l ->
+            if (stamp.containsMatchIn(l) && entries.last().isNotEmpty()) entries += StringBuilder()
+            entries.last().append(l).append('\n')
+        }
+        out.writeText(head + "(новые записи — сверху)\n\n" + entries.asReversed().joinToString("") { it.toString() })
         val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", out)
         ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Отправить журнал").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
