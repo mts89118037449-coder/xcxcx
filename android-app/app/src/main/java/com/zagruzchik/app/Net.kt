@@ -45,7 +45,14 @@ object Net {
             .filter { (_, c) -> c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && !c.hasTransport(NetworkCapabilities.TRANSPORT_VPN) }
             .sortedByDescending { (_, c) -> c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
             .firstOrNull()?.first
-    }.getOrNull()
+    }.getOrNull()?.takeIf { canBypass(it) }
+
+    // VPN может запрещать приложениям ходить мимо него (журнал 16.11: «Binding socket to network 100 failed: EPERM»).
+    // Проверяем один раз на сеть: запрещено — обходной путь не предлагаем вовсе.
+    private val bypassChecked = java.util.concurrent.ConcurrentHashMap<Network, Boolean>()
+    private fun canBypass(n: Network): Boolean = bypassChecked.getOrPut(n) {
+        runCatching { java.net.Socket().use { s -> n.bindSocket(s) } }.isSuccess
+    }
 
     fun isYoutube(host: String?): Boolean = host != null && (host.endsWith("youtube.com") || host.endsWith("googlevideo.com") ||
         host.endsWith("youtubei.googleapis.com") || host.endsWith("ytimg.com") || host.endsWith("youtu.be"))

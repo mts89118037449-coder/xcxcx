@@ -130,12 +130,19 @@ object Match {
     private val TRANSLIT = mapOf('а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e", 'ж' to "zh", 'з' to "z",
         'и' to "i", 'й' to "i", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t",
         'у' to "u", 'ф' to "f", 'х' to "h", 'ц' to "c", 'ч' to "ch", 'ш' to "sh", 'щ' to "sh", 'ъ' to "", 'ы' to "i", 'ь' to "", 'э' to "e",
-        'ю' to "u", 'я' to "a", 'і' to "i")
+        'ю' to "yu", 'я' to "ya", 'і' to "i")
     fun sound(s: String): String {
         val b = StringBuilder(s.length + 4)
         for (ch in s) b.append(TRANSLIT[ch] ?: ch.toString())
         return b.toString().replace(Regex("(.)\\1+"), "$1").replace("ph", "f").replace("x", "ks")
             .replace('c', 'k').replace('q', 'k').replace('w', 'v').replace('y', 'i').replace('j', 'i').replace('z', 's')
+            .replace(Regex("(.)\\1+"), "$1")
+    }
+
+    /** Название то же, но записано другим алфавитом («Метеоритный дождь» и «Meteoritnyj dozhd»). */
+    private fun sameSound(srcTitle: String, title: String): Boolean {
+        val ss = sound(base(srcTitle)); val cs = sound(base(title))
+        return ss.length >= 3 && (ss == cs || sound(norm(title)).contains(ss))
     }
 
     /** Исполнитель совпал: по написанию (с учётом похожих букв) или по звучанию (кириллица ↔ латиница). */
@@ -156,8 +163,8 @@ object Match {
         val cb = fold(base(title))
         val nt = fold(norm(title))
         if (sb.isEmpty() || cb.isEmpty()) return null
-        if (sb != cb && !nt.contains(sb) && !sb.contains(cb)) return null
-        var s = if (nt == fold(norm(src.title))) 3 else if (sb == cb) 2 else 0
+        if (sb != cb && !nt.contains(sb) && !sb.contains(cb) && !sameSound(src.title, title)) return null
+        var s = if (nt == fold(norm(src.title))) 3 else if (sb == cb || sound(base(src.title)) == sound(base(title))) 2 else 0
 
         if (src.artist.isNotBlank()) {
             // Перезаливы часто пишут исполнителя только в названии: «Не вспоминать МАЯК Х».
@@ -192,7 +199,7 @@ object Match {
         if (sc != null && sc >= 0) return null
         val sb = fold(base(src.title)); val cb = fold(base(title)); val nt = fold(norm(title))
         if (durationSec in 1..59 && (src.durationSec == 0 || src.durationSec >= 75)) return "короче минуты"
-        if (sb.isEmpty() || cb.isEmpty() || (sb != cb && !nt.contains(sb) && !sb.contains(cb))) return "другое название"
+        if (sb.isEmpty() || cb.isEmpty() || (sb != cb && !nt.contains(sb) && !sb.contains(cb) && !sameSound(src.title, title))) return "другое название"
         if (src.artist.isNotBlank()) {
             if (!artistHit(src, artist, title)) return "другой исполнитель"
         }

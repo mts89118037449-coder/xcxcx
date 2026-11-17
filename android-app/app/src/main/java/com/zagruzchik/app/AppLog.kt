@@ -36,7 +36,7 @@ object AppLog {
         val dir = File(ctx.cacheDir, "share").apply { mkdirs() }
         val out = File(dir, "soundaura-journal.txt")
         val head = "SoundAura ${runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull()} · " +
-            "Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL} · VPN: ${Net.vpnActive()} · VPN на телефоне есть, но приложение мимо него: ${Net.vpnBypassed()} · YouTube напрямую: ${Net.youtubeDirect}\n\n"
+            "Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL} · VPN: ${Net.vpnActive()} · VPN на телефоне есть, но приложение мимо него: ${Net.vpnBypassed()} · YouTube напрямую: ${Net.youtubeDirect} · yt-dlp ${YtdlpDaemon.version}\n\n"
         out.writeText(head + src.readText())
         val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", out)
         ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)

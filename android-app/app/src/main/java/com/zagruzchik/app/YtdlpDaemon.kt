@@ -19,6 +19,11 @@ import java.util.concurrent.atomic.AtomicLong
  * запуститься — вызывающий код возвращается к обычному запуску yt-dlp.
  */
 object YtdlpDaemon {
+    /** Версия yt-dlp внутри приложения — для журнала. */
+    @Volatile var version = "?"
+    @Volatile private var lastRaw = ""
+    @Volatile private var lastRawAt = 0L
+
     private const val TAG = "YtdlpDaemon"
 
     private class Proc(val p: Process, val stdin: BufferedWriter) {
@@ -85,6 +90,7 @@ object YtdlpDaemon {
         val ready = CompletableFuture<String?>()
         Thread({ ready.complete(runCatching { reader.readLine() }.getOrNull()) }, "ytd-ready").start()
         val first = runCatching { ready.get(30, TimeUnit.SECONDS) }.getOrNull()
+        runCatching { JSONObject(first ?: "").optString("version").takeIf { it.isNotBlank() }?.let { version = it } }
         if (first == null || !first.contains("\"ready\"")) {
             p.destroy()
             throw IllegalStateException("daemon not ready: $first")
@@ -137,7 +143,15 @@ object YtdlpDaemon {
             throw Unavailable()
         }
         timeouts.set(0)
-        if (!r.optBoolean("ok")) throw UserError(if (r.optString("error") == "cancelled") "Отменено" else Downloader.explain(r.optString("error")))
+        if (!r.optBoolean("ok")) {
+            val raw = r.optString("error")
+            if (raw == "cancelled") throw UserError("Отменено")
+            // В журнал — исходный текст ошибки yt-dlp (по переводу «требует вход» не понять, что на самом деле ответил сайт).
+            val line = raw.lineSequence().lastOrNull { it.isNotBlank() }.orEmpty().take(240)
+            val now = System.currentTimeMillis()
+            if (line.isNotEmpty() && (line != lastRaw || now - lastRawAt > 60_000)) { lastRaw = line; lastRawAt = now; AppLog.add("yt-dlp $version: $line") }
+            throw UserError(Downloader.explain(raw))
+        }
         return r.opt("data") ?: JSONObject.NULL
     }
 
