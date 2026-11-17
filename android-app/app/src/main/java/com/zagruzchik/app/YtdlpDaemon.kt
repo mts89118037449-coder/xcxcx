@@ -21,6 +21,8 @@ import java.util.concurrent.atomic.AtomicLong
 object YtdlpDaemon {
     /** Версия yt-dlp внутри приложения — для журнала. */
     @Volatile var version = "?"
+    /** Исходный текст последней ошибки yt-dlp в этом потоке — его пишем в журнал рядом с переводом. */
+    val lastError = ThreadLocal<String?>()
 
     private const val TAG = "YtdlpDaemon"
 
@@ -144,6 +146,7 @@ object YtdlpDaemon {
         if (!r.optBoolean("ok")) {
             val raw = r.optString("error")
             if (raw == "cancelled") throw UserError("Отменено")
+            lastError.set(raw.lineSequence().map { it.trim() }.lastOrNull { it.isNotEmpty() }.orEmpty().take(240))
             throw UserError(Downloader.explain(raw))
         }
         return r.opt("data") ?: JSONObject.NULL

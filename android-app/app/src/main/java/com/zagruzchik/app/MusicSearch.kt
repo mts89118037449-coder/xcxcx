@@ -144,6 +144,8 @@ object Streams {
 
     // Площадка не отвечает с этого телефона (YouTube и SoundCloud так бывает из России без VPN) — после двух отказов подряд
     // не ждём её 3 минуты: каждая попытка стоила 6–15 секунд ожидания.
+    // Предохранители пропускают площадку только для работы в фоне. Нажатую песню ищем везде: журнал 17.11 — «Кальций»
+    // «не нашлась», потому что YouTube был пропущен после пары сбоев сети, хотя мог бы ответить.
     private class Breaker { val fails = java.util.concurrent.atomic.AtomicInteger(); @Volatile var until = 0L
         val open get() = System.currentTimeMillis() < until
         fun ok() { fails.set(0) }
@@ -383,7 +385,13 @@ object Streams {
         optionPool.execute {
             try {
                 App.awaitReadyOrNull()
-                val run = { runCatching { search(t, java.util.concurrent.ConcurrentLinkedQueue(), java.util.concurrent.ConcurrentHashMap(), collect = live::add) }; Unit }
+                val log = java.util.concurrent.ConcurrentLinkedQueue<String>()
+                val run = {
+                    runCatching { search(t, log, java.util.concurrent.ConcurrentHashMap(), collect = live::add) }
+                    // В журнал — как и обычный поиск: раньше окно источников искало «молча», и по журналу было не понять, почему пусто.
+                    AppLog.add("ИСТОЧНИКИ «${t.label}»${if (urgent) " (окно открыто)" else ""}: найдено ${live.list.size}" +
+                        live.list.joinToString("") { "\n  ✓ ${it.label} · ${it.title.take(50)}" } + "\n" + log.sorted().joinToString("\n"))
+                }
                 if (urgent) { foreground.incrementAndGet(); try { run() } finally { foreground.decrementAndGet() } }
                 else { waitForeground(); Ytdlp.inBackground { run() } }
             } finally {
@@ -464,7 +472,7 @@ object Streams {
         // YouTube Music, вкладка «Песни»: с исполнителем и длительностью — находит и официальные авто-треки («Исполнитель – Topic»),
         // которых нет в обычном поиске YouTube. Ищем на самом телефоне, без Python; не вышло — через открытые зеркала.
         val ytm = searchPool.submit<StreamInfo?> {
-            if (ytBreaker.open) { log += "YouTube Music: пропущен — YouTube не отвечает с этого телефона (проверю снова через пару минут)"; return@submit null }
+            if (bg && ytBreaker.open) { log += "YouTube Music: пропущен — YouTube не отвечает с этого телефона (проверю снова через пару минут)"; return@submit null }
             val t0 = System.currentTimeMillis()
             var via = ""
             val raw = runCatching { NewPipeSource.searchSongs(t.query) { via = it } }.getOrDefault(emptyList())
@@ -497,7 +505,7 @@ object Streams {
                     val errs = java.util.concurrent.ConcurrentLinkedQueue<String>()
                     Downloader.streamOf(c.url, name.substringBefore(" ("), c.title, errs).also {
                         problems += errs
-                        log += "$name звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет — " + (errs.joinToString("; ").ifBlank { "без объяснения" }).take(160)} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
+                        log += "$name звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет — " + (errs.joinToString("; ").ifBlank { "без объяснения" }).take(400)} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
                     }
                 } } }.firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
             }
@@ -506,7 +514,7 @@ object Streams {
             waiting += name
             searchPool.submit<StreamInfo?> { try {
                 val breaker = if (site == "SoundCloud") scPhoneBreaker else ytBreaker
-                if (breaker.open) { log += "$name: пропущен — не отвечает с этого телефона"; return@submit null }
+                if (bg && breaker.open) { log += "$name: пропущен — не отвечает с этого телефона"; return@submit null }
                 val got = runCatching { NewPipeSource.search(site == "SoundCloud", query.substringAfter(':')) }
                 if (got.isFailure) breaker.fail() else breaker.ok()
                 val raw = got.getOrNull().orEmpty().take(10).map {
@@ -522,7 +530,7 @@ object Streams {
             val name = if (query.startsWith("scsearch10")) "$site по названию" else "$site (yt-dlp)"
             waiting += name
             searchPool.submit<StreamInfo?> { try { Ytdlp.withBackground(bg) {
-                if (site == "YouTube" && ytBreaker.open) { log += "$name: пропущен — YouTube не отвечает с этого телефона"; return@withBackground null }
+                if (bg && site == "YouTube" && ytBreaker.open) { log += "$name: пропущен — YouTube не отвечает с этого телефона"; return@withBackground null }
                 App.awaitReady()
                 val got = runCatching { Downloader.searchOrThrow(query, site) }
                 if (site == "YouTube") { if (got.isFailure) ytBreaker.fail() else ytBreaker.ok() }

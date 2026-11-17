@@ -43,7 +43,9 @@ object LibrarySync {
         pool.execute {
             try {
                 count()
-                val list = Library.favorites.filter { Library.localFor(it) == null && !MediaCache.has(it) }
+                // Мусор от переноса (надписи с экрана, «Поиск в плейлисте — Поиск в плейлисте») не ищем: журнал 17.11.
+                val list = Library.favorites.filter { Library.localFor(it) == null && !MediaCache.has(it) &&
+                    !it.title.equals(it.artist, ignoreCase = true) && it.title.isNotBlank() }
                 AppLog.add("МЕДИАТЕКА НА ТЕЛЕФОНЕ: старт, осталось скачать ${list.size} из $total")
                 missing = 0
                 val next = AtomicInteger(0)

@@ -382,7 +382,8 @@ object Downloader {
                 d.optString("thumbnail").takeIf { it.startsWith("http") }, title)
         } catch (_: YtdlpDaemon.Unavailable) {
         } catch (e: UserError) {
-            problems?.add("$source: ${e.message}")
+            val raw = YtdlpDaemon.lastError.get()?.also { YtdlpDaemon.lastError.set(null) }
+            problems?.add("$source: ${e.message}" + if (raw.isNullOrBlank()) "" else " ‹yt-dlp ${YtdlpDaemon.version}: $raw›")
             return null
         }
         val r = YoutubeDLRequest(pageUrl).apply {
