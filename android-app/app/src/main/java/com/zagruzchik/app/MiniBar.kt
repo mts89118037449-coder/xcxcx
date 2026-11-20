@@ -30,7 +30,7 @@ import java.util.WeakHashMap
  */
 object MiniBar {
     private val skip = setOf<Class<*>>(
-        MainActivity::class.java, NowPlayingActivity::class.java, PlayerActivity::class.java,
+        MainActivity::class.java, PlayerActivity::class.java,
         ShareActivity::class.java, LoginActivity::class.java,
     )
     private val bars = WeakHashMap<Activity, Bar>()
@@ -39,7 +39,7 @@ object MiniBar {
         app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityStarted(a: Activity) {
                 if (a.javaClass in skip) return
-                runCatching { bars.getOrPut(a) { Bar(a) }.start() }
+                runCatching { bars.getOrPut(a) { Bar(a, navOnly = a is NowPlayingActivity) }.start() }
             }
             override fun onActivityStopped(a: Activity) { bars[a]?.stop() }
             override fun onActivityDestroyed(a: Activity) { bars.remove(a) }
@@ -50,7 +50,11 @@ object MiniBar {
         })
     }
 
-    private class Bar(private val a: Activity) {
+    /**
+     * [navOnly] — только меню разделов, без полоски «сейчас играет» (в самом плеере она не нужна). Владелец 20.11: «слушая песню,
+     * не могу попасть в остальные пункты» — теперь меню есть и в плеере; нажатие закрывает плеер и открывает раздел.
+     */
+    private class Bar(private val a: Activity, private val navOnly: Boolean = false) {
         private val content: FrameLayout = a.findViewById(android.R.id.content)
         private val onSurface = MaterialColors.getColor(content, com.google.android.material.R.attr.colorOnSurface)
         private val muted = MaterialColors.getColor(content, com.google.android.material.R.attr.colorOnSurfaceVariant)
@@ -165,7 +169,7 @@ object MiniBar {
 
         private fun update() {
             val c = controller
-            val has = c != null && c.mediaItemCount > 0 && c.playbackState != Player.STATE_IDLE
+            val has = !navOnly && c != null && c.mediaItemCount > 0 && c.playbackState != Player.STATE_IDLE
             if (view.isVisible != has) { view.isVisible = has; view.bringToFront(); nav.bringToFront() }
             place()
             if (!has || c == null) return
