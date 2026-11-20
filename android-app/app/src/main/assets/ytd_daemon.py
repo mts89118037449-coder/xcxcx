@@ -88,7 +88,13 @@ def handle(req):
                    "abr": max([f.get("abr") or 0 for f in fmts] or [0]), "ext": fmts[0].get("ext"), "acodec": fmts[0].get("acodec")}
         out({"id": rid, "ok": True, "data": res})
     except BaseException as e:
-        out({"id": rid, "ok": False, "error": str(e)[:600]})
+        msg = str(e)[:600]
+        # Не ошибка сайта, а сбой в коде (например «'NoneType' object is not subscriptable», журнал 20.11) — с местом, где случился.
+        if not isinstance(e, yt_dlp.utils.DownloadError):
+            import traceback
+            tb = traceback.extract_tb(e.__traceback__)
+            if tb: msg += " @ " + " ← ".join(f"{f.filename.rsplit('/', 1)[-1]}:{f.lineno} {f.name}" for f in tb[-3:][::-1])
+        out({"id": rid, "ok": False, "error": msg})
     finally:
         if tmp:
             try: os.remove(tmp)

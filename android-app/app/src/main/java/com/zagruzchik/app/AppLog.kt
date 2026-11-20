@@ -1,8 +1,6 @@
 package com.zagruzchik.app
 
 import android.content.Context
-import android.content.Intent
-import androidx.core.content.FileProvider
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -10,7 +8,7 @@ import java.util.Locale
 
 /**
  * Журнал работы: что искали, что ответила каждая площадка, почему не взялся звук, какие ошибки дал проигрыватель.
- * Хранится в приложении (последние ~400 КБ); «Отправить журнал» — файлом в любой мессенджер.
+ * Хранится в приложении (последние ~400 КБ); «Скопировать журнал» — текстом в буфер обмена (новое сверху).
  */
 object AppLog {
     private const val MAX = 400 * 1024L
@@ -63,23 +61,26 @@ object AppLog {
         add("ОШИБКА $where — " + parts.joinToString(" ← "))
     }
 
-    fun share(ctx: Context) {
-        val src = file?.takeIf { it.exists() } ?: return
-        val dir = File(ctx.cacheDir, "share").apply { mkdirs() }
-        val out = File(dir, "soundaura-journal.txt")
+    /**
+     * Журнал — в буфер обмена (новое сверху), чтобы вставить в чат одним нажатием. Не больше ~60 тысяч знаков: длинный
+     * текст чат всё равно обрежет, а так обрезается старое, а не свежее.
+     */
+    fun copy(ctx: Context) {
+        val src = file?.takeIf { it.exists() }
         val head = "SoundAura ${runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull()} · " +
-            "Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL} · VPN: ${Net.vpnActive()} · VPN на телефоне есть, но приложение мимо него: ${Net.vpnBypassed()} · YouTube напрямую: ${Net.youtubeDirect} · yt-dlp ${YtdlpDaemon.version}\n\n"
-        // Новое — первым: журнал обычно вставляют в чат текстом, и конец обрезается (17.11 так пропал весь запуск 9.19).
-        // Записи (одна запись — строка со временем и строки под ней) идут от новых к старым.
+            "Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL} · VPN: ${Net.vpnActive()} · VPN на телефоне есть, но приложение мимо него: ${Net.vpnBypassed()} · YouTube напрямую: ${Net.youtubeDirect} · yt-dlp ${YtdlpDaemon.version}\n\n(новые записи — сверху)\n\n"
         val entries = mutableListOf(StringBuilder())
         val stamp = Regex("^\\d\\d\\.\\d\\d \\d\\d:\\d\\d")
-        src.forEachLine { l ->
+        src?.forEachLine { l ->
             if (stamp.containsMatchIn(l) && entries.last().isNotEmpty()) entries += StringBuilder()
             entries.last().append(l).append('\n')
         }
-        out.writeText(head + "(новые записи — сверху)\n\n" + entries.asReversed().joinToString("") { it.toString() })
-        val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", out)
-        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Отправить журнал").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val out = StringBuilder(head)
+        for (e in entries.asReversed()) { if (out.length + e.length > LIMIT) break; out.append(e) }
+        val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+        cm?.setPrimaryClip(android.content.ClipData.newPlainText("Журнал SoundAura", out.toString()))
+        android.widget.Toast.makeText(ctx, "Журнал скопирован — вставьте его в чат", android.widget.Toast.LENGTH_SHORT).show()
     }
+    private const val LIMIT = 60_000
+
 }
