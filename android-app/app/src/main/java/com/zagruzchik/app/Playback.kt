@@ -482,7 +482,8 @@ object Playback {
                     ?.mediaMetadata?.let { m -> m.title?.toString()?.let { Track(it, m.artist?.toString().orEmpty()) } }
                 currentSince = System.currentTimeMillis()
                 // Источники этой песни собираем заранее (через пару секунд, если её не переключили) — список откроется мгновенно.
-                current?.let { playingNow -> main.postDelayed({ if (current == playingNow) Streams.live(playingNow) }, 1200) }
+                // Через 8 с, а не 1,2: при быстром листании не запускаем на каждую мелькнувшую песню полный опрос площадок.
+                current?.let { playingNow -> main.postDelayed({ if (current == playingNow) Streams.live(playingNow) }, 8000) }
                 mediaItem?.let { remember(it) }
                 fill(app, queueGen)
             }

@@ -83,7 +83,7 @@ object Streams {
                 waitForeground(quiet = false) // следующие песни очереди нужны скоро — ждём только идущий поиск
                 // [full] — следующие песни очереди: ищем везде, включая SoundCloud (через телефон это дёшево). Раньше только быстрые
                 // источники — песня, которая есть лишь на SoundCloud, не готовилась, и свайп «дальше» показывал загрузку.
-                Ytdlp.inBackground { find(t, light = !full) }
+                bgOne { Ytdlp.inBackground { find(t, light = !full) } }
                     .also { done[k] = System.currentTimeMillis() to it; HeadCache.storeAsync(t, it) }
             } finally { pending.remove(k) }
         }
@@ -150,6 +150,14 @@ object Streams {
     @Volatile private var quietUntil = 0L
     fun busy() { quietUntil = System.currentTimeMillis() + 20_000 }
     fun waitForeground(quiet: Boolean = true) { var n = 0; while ((foreground.get() > 0 || quiet && System.currentTimeMillis() < quietUntil) && n++ < 900) Thread.sleep(200) }
+    /**
+     * Фоновые поиски — строго по одному. Каждый поиск — это десяток соединений сразу (все площадки); после нескольких
+     * переключений подряд в фоне шли 3–4 таких поиска одновременно, и через VPN связь падала у всех площадок разом
+     * (журнал 20.11, 22:30:44: «failed to connect» у Zaycev, SoundCloud и YouTube одновременно). Нажатое ждать не должно — оно мимо очереди.
+     */
+    private val bgGate = java.util.concurrent.Semaphore(1, true)
+    private fun <T> bgOne(block: () -> T): T { bgGate.acquire(); try { return block() } finally { bgGate.release() } }
+
     private fun fgStart() { foreground.incrementAndGet(); busy() }
     private fun fgEnd() { foreground.decrementAndGet(); busy() }
 
@@ -188,7 +196,7 @@ object Streams {
         val k = key(t)
         cached(k)?.let { return it }
         waitForeground()
-        return runCatching { Ytdlp.inBackground { find(t) }.also { done[k] = System.currentTimeMillis() to it } }.getOrNull()
+        return runCatching { bgOne { Ytdlp.inBackground { find(t) } }.also { done[k] = System.currentTimeMillis() to it } }.getOrNull()
     }
 
     /** Найденная ссылка не заиграла — забываем её и запомненный источник: следующий раз ищем с нуля. */
@@ -410,7 +418,7 @@ object Streams {
                         live.list.joinToString("") { "\n  ✓ ${it.label} · ${it.title.take(50)}" } + "\n" + log.sorted().joinToString("\n"))
                 }
                 if (urgent) { fgStart(); try { run() } finally { fgEnd() } }
-                else { waitForeground(); Ytdlp.inBackground { run() } }
+                else { waitForeground(); bgOne { Ytdlp.inBackground { run() } } }
             } finally {
                 if (live.list.isEmpty()) lives.remove(k, live) // пусто — в следующий раз опросить заново
                 live.finish()
