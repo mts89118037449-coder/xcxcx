@@ -54,6 +54,17 @@ object Taste {
     }
     @Volatile private var memoAt = 0L
 
+    /**
+     * Для экрана: готовый ответ без ожидания (журнал 20.11: первый подсчёт по 1400 любимым в главном потоке — 2,1 с при запуске).
+     * Нет готового — пустой список, а подсчёт уходит в фон; [onReady] позовут, когда будет.
+     */
+    fun favoriteArtistsFast(n: Int, onReady: (() -> Unit)? = null): List<String> {
+        favMemo?.let { (_, nn, r) -> if (nn >= n) return r.take(n) }
+        if (!warming) { warming = true; Thread({ try { favoriteArtists(12) } finally { warming = false }; onReady?.let { android.os.Handler(android.os.Looper.getMainLooper()).post(it) } }, "taste").start() }
+        return emptyList()
+    }
+    @Volatile private var warming = false
+
     /** Дослушали (или почти) — плюс песне и исполнителю. */
     @Synchronized fun played(t: Track) {
         val s = tracks.getOrPut(Library.key(t)) { Stat() }

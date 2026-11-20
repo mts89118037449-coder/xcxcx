@@ -223,6 +223,11 @@ SDK в контейнере нет — ставить в scratchpad: cmdline-too
   `Streams.prefetch` не ищет title == artist. «V.A.N» по нажатию 8 с: SoundCloud нашёл, но ссылка не пришла за 6 с — поиск ждал его по
   старшинству (без цензуры), потом взял YouTube Music. Старшинство не меняли (требование владельца).
 
+- **Журнал 20.11 22:29–22:31 (9.39):** с 22:30:44 «failed to connect» у Zaycev, api-v2.soundcloud.com и YouTube одновременно — пропала
+  сеть/VPN; «ЗАВИСАНИЙ ИНТЕРФЕЙСА» после 22:29:22 нет. Шла LibrarySync (671 песня). 2,1 с `Taste.favoriteArtists ← renderHome` на старте.
+  Яндекс: «NoneType @ yandexmusic.py:110» (ошибка yt-dlp). 9.40: `Taste.favoriteArtistsFast` (фон + перерисовка), `MediaCache` для keep —
+  `waitForeground` + 0,7 с между кусками, Яндекс убран из запасных при поиске звука.
+
 ## Открытые вопросы
 - Почему на телефоне не играют даже найденные записи (SoundCloud: ссылка есть, звук не идёт). Смотреть строки «байты» в проверке.
 - Работает ли NewPipeExtractor на телефоне вообще (поиск YouTube Music там ни разу не ответил).

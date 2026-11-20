@@ -563,7 +563,8 @@ object Streams {
         // раньше до них доходило только после 40 секунд ожидания основных.
         val spare = if (light) null else searchPool.submit<StreamInfo?> {
             val t0 = System.currentTimeMillis()
-            val found = runCatching { WebSearch.extraCandidates(t) }.getOrDefault(emptyList()).take(4)
+            // Яндекс без входа звук не отдаёт никогда (yt-dlp падает внутри: «NoneType … yandexmusic.py:110», журнал 20.11) — не тратим на него время.
+            val found = runCatching { WebSearch.extraCandidates(t) }.getOrDefault(emptyList()).filter { !it.source.startsWith("Яндекс") }.take(4)
             log += "Запасные площадки: подошло ${found.size}" + found.joinToString("") { "\n  ${it.source} · ${it.title.take(50)} | ${it.artist.take(26)} | ${it.duration} с" } +
                 "\n  поиск за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
             found.map { w -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {

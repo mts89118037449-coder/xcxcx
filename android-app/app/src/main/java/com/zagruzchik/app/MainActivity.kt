@@ -431,7 +431,7 @@ class MainActivity : AppCompatActivity() {
         if (isDestroyed) return
         homeData = listOf(c, w, al, ar)
         home.removeAllViews()
-        val fav = Taste.favoriteArtists(3)
+        val fav = Taste.favoriteArtistsFast(3) { if (!isDestroyed && homeData.size == 4) renderHomeAgain() }
         home.addView(HomeViews.hero(this,
             if (fav.isEmpty()) "Лучшее из чарта — в порядке под ваш вкус"
             else fav.joinToString(", ") + " и новое по вашим тегам" + Tags.topCached.takeIf { it.isNotEmpty() }?.joinToString(" · ", prefix = "\n")
@@ -464,7 +464,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Ваши исполнители — по любимому и прослушанному; фото подгружаются фоном.
-        val mine = Taste.favoriteArtists(10)
+        val mine = Taste.favoriteArtistsFast(10)
         if (mine.isNotEmpty()) shelf(home, "Ваши исполнители") { inner ->
             mine.forEach { name ->
                 val card = Rows.card(this, inner, name, null, null, true) { Rows.openArtist(this, name) }

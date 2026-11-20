@@ -141,6 +141,9 @@ object MediaCache {
                         val n = c.inputStream.use { it.copyTo(out, 64 * 1024) }
                         if (n <= 0) break
                         pos += n
+                        // Фоновая загрузка («Медиатека на телефоне») уступает человеку между кусками: нажали песню или открыли
+                        // источники — ждёт; и не забирает весь канал (через медленный VPN это душило всё остальное, журнал 20.11).
+                        if (keep) { Streams.waitForeground(); Thread.sleep(700) }
                         if (code == 200 || total < 0) break // сервер отдал всё сразу (или размер не сообщил)
                     } finally { c.disconnect() }
                 }
