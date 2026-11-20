@@ -71,6 +71,7 @@ object Streams {
 
     /** Начать готовить поток заранее. */
     fun prefetch(t: Track, full: Boolean = false): java.util.concurrent.Future<StreamInfo>? {
+        if (t.title.isBlank() || t.title.equals(t.artist, true)) return null // мусор от переноса («Поиск в плейлисте — Поиск в плейлисте»)
         val k = key(t)
         if (cached(k) != null) return null
         pending[k]?.takeIf { !it.isCancelled }?.let { return it }

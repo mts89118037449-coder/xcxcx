@@ -218,6 +218,11 @@ SDK в контейнере нет — ставить в scratchpad: cmdline-too
 
 - 9.38: «слушая песню, не могу попасть в остальные пункты» → `MiniBar` вешает меню и на `NowPlayingActivity` (`navOnly`, без полоски).
 
+- **Журнал 20.11 22:15–22:17 (9.35):** «ЗАВИСАНИЕ 7,3 с: Music.hintTrack ← Job.track ← Library.downloading ← Rows.statusOf» и 1,4 с
+  `Library.hasArtist ← CollectionActivity.loadArtist` → 9.39: `Library.downloading` — набор ключей раз в 1,5 с; `hasArtist` — кэш нормализации.
+  `Streams.prefetch` не ищет title == artist. «V.A.N» по нажатию 8 с: SoundCloud нашёл, но ссылка не пришла за 6 с — поиск ждал его по
+  старшинству (без цензуры), потом взял YouTube Music. Старшинство не меняли (требование владельца).
+
 ## Открытые вопросы
 - Почему на телефоне не играют даже найденные записи (SoundCloud: ссылка есть, звук не идёт). Смотреть строки «байты» в проверке.
 - Работает ли NewPipeExtractor на телефоне вообще (поиск YouTube Music там ни разу не ответил).

@@ -189,10 +189,14 @@ object Library {
     }
 
     /** Есть ли среди исполнителей песни [artist]. */
+    // Нормализация имени дорогая; на 1400 любимых в главном потоке это 1,4 с (журнал 20.11, страница исполнителя). Запоминаем.
+    private val folded = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private fun fold(a: String) = folded.getOrPut(a) { Match.fold(Match.norm(a)) }
+    private val artistSplit = Regex("""\s*(,|&|;| x | feat\.? | ft\.? | и )\s*""", RegexOption.IGNORE_CASE)
+    private val splitCache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
     fun hasArtist(t: Track, artist: String): Boolean {
-        val who = Match.fold(Match.norm(artist))
-        return t.artist.split(Regex("""\s*(,|&|;| x | feat\.? | ft\.? | и )\s*""", RegexOption.IGNORE_CASE))
-            .any { Match.fold(Match.norm(it.trim())) == who }
+        val who = fold(artist)
+        return splitCache.getOrPut(t.artist) { t.artist.split(artistSplit).map { fold(it.trim()) } }.any { it == who }
     }
 
     val favorites: List<Track> get() = synchronized(saved) { saved.toList() }
@@ -242,7 +246,19 @@ object Library {
     }
 
     /** Песня уже качается (поставили ♥ или нажали «Скачать»). */
-    fun downloading(t: Track): Boolean = Jobs.all.filter { it.active && it.kind == Kind.MUSIC }.let { a -> a.isNotEmpty() && a.any { key(it.track()) == key(t) } }
+    // Раньше на каждую строку списка перебирались все загрузки и каждая заново разбирала название — журнал 20.11:
+    // «ЗАВИСАНИЕ ИНТЕРФЕЙСА 7,3 с: Job.track ← Library.downloading ← Rows.statusOf». Теперь набор считается раз в 1,5 с.
+    @Volatile private var dlKeys: Set<String>? = null
+    @Volatile private var dlAt = 0L
+    fun downloading(t: Track): Boolean {
+        val now = android.os.SystemClock.uptimeMillis()
+        var set = dlKeys
+        if (set == null || now - dlAt > 1500) {
+            set = Jobs.all.filter { it.active && it.kind == Kind.MUSIC }.map { key(it.track()) }.toHashSet()
+            dlKeys = set; dlAt = now
+        }
+        return set.isNotEmpty() && key(t) in set
+    }
 
     fun listen(l: () -> Unit) { listeners += l }
     fun unlisten(l: () -> Unit) { listeners -= l }
