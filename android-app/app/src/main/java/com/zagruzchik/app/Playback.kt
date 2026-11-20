@@ -168,8 +168,10 @@ object Playback {
      * Всё, что было сохранено от прежнего источника (файл в памяти, начало), убирается.
      */
     fun replay(ctx: Context, t: Track) {
-        MediaCache.forget(t); HeadCache.drop(t)
+        // Сменили источник, чтобы сравнить (например, есть ли цензура), — новая запись играет с того же места, на 5 с раньше.
         val k = Library.key(t)
+        hooked?.takeIf { nowPlayingKey == k }?.let { c -> resumeAt = maxOf(0L, position(c) - 5_000); resumeKey = k; resumeSet = System.currentTimeMillis() }
+        MediaCache.forget(t); HeadCache.drop(t)
         val i = queue.indexOfFirst { Library.key(it.track) == k }
         if (i >= 0) playQueue(ctx, queue, i, openScreen = false) else playTrack(ctx, t, openScreen = false)
     }
@@ -539,6 +541,12 @@ object Playback {
 
             private var bufferingAt = 0L
             override fun onPlaybackStateChanged(state: Int) {
+                // После смены источника — на то же место (см. replay), как только новая запись готова играть.
+                if (state == androidx.media3.common.Player.STATE_READY && resumeKey != null && resumeKey == nowPlayingKey &&
+                    c.mediaMetadata.extras?.getBoolean(X_PREVIEW) != true) {
+                    val to = resumeAt; resumeKey = null
+                    if (to > 0 && System.currentTimeMillis() - resumeSet < 60_000) { c.seekTo(to); AppLog.add("ИСТОЧНИК СМЕНЁН: продолжаю с ${to / 1000} с") }
+                }
                 // Подгрузка посреди песни (сеть не успевает) — с какой секунды и сколько длилась.
                 if (state == androidx.media3.common.Player.STATE_BUFFERING) {
                     bufferingAt = System.currentTimeMillis()
@@ -621,7 +629,11 @@ object Playback {
     /** Следующие 8 песен очереди готовим заранее — переходы без ожидания. */
     private const val AHEAD = 2 // больше — и подготовка душит сеть и ту песню, которую нажали
 
-    private var aheadGen = -1 // для какой очереди соседние песни ещё ждут, пока зазвучит нажатая
+    private var aheadGen = -1
+    // Куда перемотать новую запись после смены источника (replay).
+    @Volatile private var resumeKey: String? = null
+    @Volatile private var resumeAt = 0L
+    @Volatile private var resumeSet = 0L // для какой очереди соседние песни ещё ждут, пока зазвучит нажатая
 
     private fun prefetchAhead(from: Int) {
         val next = queue.drop(from).take(AHEAD).filter { it.local == null && it.directUrl == null && !MediaCache.has(it.track) }

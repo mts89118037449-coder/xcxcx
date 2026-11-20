@@ -70,7 +70,7 @@ object Streams {
     private fun key(t: Track) = Match.base(t.title) + "|" + Match.norm(t.artist)
 
     /** Начать готовить поток заранее. */
-    fun prefetch(t: Track): java.util.concurrent.Future<StreamInfo>? {
+    fun prefetch(t: Track, full: Boolean = false): java.util.concurrent.Future<StreamInfo>? {
         val k = key(t)
         if (cached(k) != null) return null
         pending[k]?.takeIf { !it.isCancelled }?.let { return it }
@@ -80,7 +80,9 @@ object Streams {
                 // Фоновая подготовка — только быстрые источники (Zaycev, YouTube Music) и только пока ничего не ищется по нажатию:
                 // иначе она отбирает сеть у песни, которую человек ждёт.
                 waitForeground(quiet = false) // следующие песни очереди нужны скоро — ждём только идущий поиск
-                Ytdlp.inBackground { find(t, light = true) }
+                // [full] — следующие песни очереди: ищем везде, включая SoundCloud (через телефон это дёшево). Раньше только быстрые
+                // источники — песня, которая есть лишь на SoundCloud, не готовилась, и свайп «дальше» показывал загрузку.
+                Ytdlp.inBackground { find(t, light = !full) }
                     .also { done[k] = System.currentTimeMillis() to it; HeadCache.storeAsync(t, it) }
             } finally { pending.remove(k) }
         }
@@ -93,7 +95,7 @@ object Streams {
      * чтобы слушать подряд без ожидания. Экранная подготовка их не отменяет.
      */
     fun prefetchAhead(tracks: List<Track>) {
-        tracks.asReversed().forEach { prefetch(it) } // очередь подготовки «последним пришёл — первым», поэтому с конца
+        tracks.asReversed().forEach { prefetch(it, full = true) } // очередь подготовки «последним пришёл — первым», поэтому с конца
     }
 
     /** Палец коснулся песни — начинаем искать сразу, без очереди: к отпусканию часть работы уже сделана. */
