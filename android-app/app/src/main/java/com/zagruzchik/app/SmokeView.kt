@@ -48,6 +48,7 @@ class SmokeView(ctx: Context) : View(ctx) {
     private var lastNote = Long.MIN_VALUE
     private var billowNo = 0
     private val bandShown = FloatArray(3)
+    private val lastSpawn = LongArray(3)
 
     private var cx = 0f; private var cy = 0f; private var radius = 0f
     private var clock = 0f          // «время дыма»: идёт только пока играет музыка
@@ -154,7 +155,7 @@ class SmokeView(ctx: Context) : View(ctx) {
         val bands = if (playing) Exciter.bandsNow() else null
         for (i in 0..2) { val v = bands?.get(i) ?: 0f; bandShown[i] += (v - bandShown[i]) * minOf(1f, dt * (if (v > bandShown[i]) 12f else 3f)) }
         val rich = bandShown.count { it > 0.3f }                      // 0..3
-        val fullness = (bandShown[0] + bandShown[1] + bandShown[2]) / 3f
+        val fullness = (2f * bandShown[0] + bandShown[1] + bandShown[2]) / 4f // бас весит вдвое
         // Новые ноты — новые клубы.
         if (playing && bands != null) {
             val fresh = Exciter.notesAfter(lastNote)
@@ -162,7 +163,11 @@ class SmokeView(ctx: Context) : View(ctx) {
             for ((at, band, power) in fresh) {
                 lastNote = maxOf(lastNote, at)
                 if (newest - at > 300_000) continue // старые ноты (после паузы, первого кадра) — не выпускаем пачкой разом
-                val n = if (rich >= 2 && band == 0) 2 else 1          // богатый звук — на удар баса сразу два облака
+                // Бас — главный: на сильный удар два облака (и ещё одно, если звук «полный»). Середина и верх — не чаще ~3 в секунду
+                // на полосу, иначе гитара застилает весь дым.
+                if (band > 0 && now - lastSpawn[band] < 330) continue
+                lastSpawn[band] = now
+                val n = if (band == 0) (if (power > 0.6f) 2 else 1) + (if (rich >= 2) 1 else 0) else 1
                 repeat(n) {
                     billowNo++
                     val width = (when (band) { 0 -> 0.9f; 1 -> 0.65f; else -> 0.45f }) * (0.7f + 0.3f * rich)
@@ -224,14 +229,14 @@ class SmokeView(ctx: Context) : View(ctx) {
             if (p >= 1f || j.fade <= 0f) { it.remove(); continue }
             val out = 1f - (1f - p) * (1f - p)
             val reach = (far - radius) * j.power * (if (j.band == 2) 0.9f else 0.75f)
-            val scale = when (j.band) { 0 -> 1.25f; 1 -> 0.95f; else -> 0.7f } * (0.85f + 0.3f * fullness)
+            val scale = when (j.band) { 0 -> 1.5f; 1 -> 0.85f; else -> 0.6f } * (0.85f + 0.3f * fullness) * (if (j.band == 0) 1f else 0.6f + 0.4f * j.power)
             val parts = if (j.band == 0) 4 else 3
             for (k in 0 until parts) {
                 val spread = (k / (parts - 1f) - 0.5f) * j.width * (0.6f + 0.6f * out)   // веер расходится по мере полёта
                 val a = j.dir + spread + j.bend * out + 0.15f * sin(p * 5f + j.seed + k)
                 val d = radius * 0.85f + reach * out * (0.8f + 0.25f * rnd(j.seed, k, 13))
                 val size = radius * scale * (0.45f + 1.35f * out) * (0.8f + 0.4f * rnd(j.seed, k, 14))
-                val alpha = minOf(if (j.band == 0) 0.9f else 0.75f, minOf(1f, p * 6f) * (1f - p) * (1f - p * 0.5f) * (if (j.band == 0) 1.15f else 0.95f) * level) * j.fade
+                val alpha = minOf(if (j.band == 0) 0.95f else 0.55f, minOf(1f, p * 6f) * (1f - p) * (1f - p * 0.5f) * (if (j.band == 0) 1.2f else 0.75f * j.power) * level) * j.fade
                 if (alpha <= 0.01f) continue
                 val idx = ((a / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES
                 layer(canvas, idx, alpha, cx + cos(a) * d, cy + sin(a) * d - radius * 0.3f * out,

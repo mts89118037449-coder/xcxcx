@@ -166,7 +166,7 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
             if (++inWindow >= window) {
                 val e = energy / window
                 val atUs = ptsUs + (frame - window / 2) * 1_000_000L / rate   // середина окна — там и был удар
-                if (e > average * 1.55f + 0.0004f && atUs - lastBeatUs > 230_000) {
+                if (e > average * 1.55f + 0.0004f && atUs - lastBeatUs > 230_000 && e > 0.5f * bandE[1] / window /* бас правда громче середины: иначе это гитара просачивается в низ (проверено на синтетике: 31 ложный «удар» → 0) */) {
                     if (atUs - lastBeatUs in 250_000..1_500_000) intervals += atUs - lastBeatUs
                     lastBeatUs = atUs
                     val strength = ((e / (average + 0.0004f) - 1f) / 2.5f).coerceIn(0.35f, 1f)
@@ -179,17 +179,22 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
                 bandE[0] = e * window
                 bassSum += e; allSum += e + bandE[1] / window + bandE[2] / window
                 val lv = FloatArray(3)
+                // Вес полосы — её доля в общем звуке: раньше каждая полоса мерилась сама с собой, и тихая гитара давала столько же
+                // «нот», сколько громкая, а тяжёлый бас среди них терялся (владелец 20.11: «гитара перебивает всё, бассы не чувствуются»).
+                val total = bandAvg[0] + bandAvg[1] + bandAvg[2] + 1e-9f
                 for (b in 0..2) {
                     val eb = bandE[b] / window
                     val floor = if (b == 2) 0.00002f else 0.0001f
                     val ratio = eb / (bandAvg[b] + floor)
-                    lv[b] = ((ratio - 0.6f) / 1.6f).coerceIn(0f, 1f)
+                    val presence = if (b == 0) 1f else (bandAvg[b] / total * 2.5f).coerceIn(0.15f, 1f)
+                    lv[b] = ((ratio - 0.6f) / 1.6f).coerceIn(0f, 1f) * presence
                     // Бочка «просачивается» в середину — ноту середины в момент удара баса не считаем (проверено на синтетике:
                     // без этого 24 срабатывания на 8 аккордов, с ним — 9).
                     if (b > 0 && ratio > 1.5f && eb > floor * 2 && atUs - lastNoteUs[b] > 160_000 &&
                         !(b == 1 && kotlin.math.abs(atUs - lastBeatUs) < 70_000)) {
                         lastNoteUs[b] = atUs
-                        notes.addLast(Triple(atUs, b, ((ratio - 1f) / 2.5f).coerceIn(0.3f, 1f)))
+                        val strength = ((ratio - 1f) / 2.5f).coerceIn(0.3f, 1f) * presence
+                        if (strength >= 0.25f) notes.addLast(Triple(atUs, b, strength)) // слабая нота тихой полосы — без дыма
                     }
                     bandAvg[b] += (eb - bandAvg[b]) * 0.03f
                     bandE[b] = 0f
