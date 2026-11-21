@@ -34,14 +34,9 @@ android {
         }
     }
 
-    // Отдельные APK под процессоры: arm64 — почти все телефоны с 2017 года, armeabi-v7a — старые.
+    // Один универсальный APK для поддерживаемых процессоров.
     splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a")
-            isUniversalApk = false
-        }
+        abi { isEnable = false }
     }
 
     // Python и ffmpeg внутри библиотеки должны распаковываться на устройство.
