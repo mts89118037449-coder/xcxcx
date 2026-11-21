@@ -4,7 +4,7 @@
     <!-- TV не имеет сенсорного экрана и не нуждается в чтении содержимого чужих приложений. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
-    <application>
+    <application android:banner="@mipmap/ic_launcher">
         <service android:name="com.zagruzchik.app.ScreenImportService" tools:node="remove" />
         <activity android:name="com.zagruzchik.app.MainActivity">
             <intent-filter>
