@@ -34,12 +34,12 @@ class App : Application() {
         // Всё, что не нужно в первую секунду, — не в главном потоке: окно открывается быстрее.
         Thread({
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) // окно — первым
-            SmokeSprites.all // текстура дыма — заранее, чтобы заставка и плеер показывали дым с первого кадра
+            if (!packageName.endsWith(".tv")) SmokeSprites.all // на телевизоре тяжёлый эффект не прогреваем
             Tags.init(this)
             News.checkOnLaunch() // новинки любимых исполнителей — проверяем при каждом запуске
-            runCatching { Telegram.start(this) } // если аккаунт Telegram уже подключён — поднимаем его (нативная библиотека)
+            if (!packageName.endsWith(".tv")) runCatching { Telegram.start(this) } // TV не запускает тяжёлый клиент Telegram при старте
             Shortcuts.publish(this)
-            Tags.enrichFavorites() // жанры любимых — фоном, раз за запуск, только недостающие
+            if (!packageName.endsWith(".tv")) Tags.enrichFavorites() // на TV освобождаем CPU при запуске
             AuraDay.prepare(this)  // «Аура дня» — заранее, чтобы нажатие играло сразу
         }, "startup").apply { priority = Thread.NORM_PRIORITY - 1 }.start()
         UiWatchdog.start()     // зависания интерфейса — в журнал, с местом в коде
@@ -59,7 +59,7 @@ class App : Application() {
             ready.countDown()
             if (initError == null) {
                 YtdlpDaemon.warmUp() // постоянный yt-dlp — первый поиск уже без ожидания старта Python
-                Warm.start(this) // в фоне узнаём источники любимых песен — потом включаются сразу
+                if (!packageName.endsWith(".tv")) Warm.start(this) // на TV не расходуем сеть на массовый прогрев
                 LibrarySync.start(this) // «Медиатека на телефоне», если включена
                 updateIfNeeded()
             }
