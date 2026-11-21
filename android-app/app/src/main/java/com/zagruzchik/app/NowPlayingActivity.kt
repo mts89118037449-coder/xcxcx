@@ -132,8 +132,8 @@ class NowPlayingActivity : AppCompatActivity() {
         play.setOnClickListener { controller?.let { if (it.isPlaying) it.pause() else { if (it.playbackState == Player.STATE_ENDED) it.seekTo(0); it.play() } } }
         findViewById<View>(R.id.npPrev).setOnClickListener { controller?.seekToPrevious() }
         findViewById<View>(R.id.npNext).setOnClickListener { Playback.next(this) }
-        // Свайп по обложке: вправо — следующая песня из текущего списка, влево — предыдущая.
-        Swipe.attach(findViewById(R.id.npCoverFrame), onRight = { Playback.next(this) }, onLeft = { Playback.previous(this) })
+        // Свайп по обложке: влево — следующая песня, вправо — предыдущая.
+        Swipe.attach(findViewById(R.id.npCoverFrame), onRight = { Playback.previous(this) }, onLeft = { Playback.next(this) })
         // Нажатие на диск переворачивает его: с обратной стороны — «компакт-диск на свету».
         findViewById<View>(R.id.npCoverFrame).setOnClickListener { flipDisc() }
         shuffle.setOnClickListener { controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
