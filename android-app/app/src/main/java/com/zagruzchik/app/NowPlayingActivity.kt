@@ -288,7 +288,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private fun render() {
         val c = controller
         // Видео — на отдельный экран.
-        if (c != null && !showingPending() && c.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) {
+        if (c != null && !showingPending() && c.currentMediaItem?.mediaMetadata?.extras?.let { it.getBoolean(Playback.X_VIDEO) || it.getString(Playback.X_LOCAL_MIME)?.startsWith("video/") == true } == true) {
             startActivity(Intent(this, PlayerActivity::class.java))
             finish()
             return
