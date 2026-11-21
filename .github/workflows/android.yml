@@ -29,20 +29,31 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleRelease --no-daemon
 
-      - name: Rename APKs
+      - name: Validate universal APK before publishing
+        shell: bash
         run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          unzip -tq "$APK" | tail -n 2
+          SDK_BUILD_TOOLS="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | head -n 4
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk out/SoundAura.apk
+          cp "$APK" out/SoundAura.apk
+          sha256sum out/SoundAura.apk | tee out/SoundAura.apk.sha256
+          ls -lh out/SoundAura.apk
 
-      # Публикуем APK напрямую, без upload-artifact (он блокировал готовую сборку).
-      # Не перезаписываем общий релиз apk-latest, которым пользуются другие ветки.
       - name: Publish branch release
         if: github.ref == 'refs/heads/fix/soundaura-audio-recovery'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           gh release delete soundaura-audio-recovery --yes --cleanup-tag || true
-          gh release create soundaura-audio-recovery out/*.apk \
-            --title "SoundAura — audio recovery" \
-            --notes "APK из ветки fix/soundaura-audio-recovery, коммит ${GITHUB_SHA::7}" \
+          gh release create soundaura-audio-recovery out/SoundAura.apk out/SoundAura.apk.sha256 \
+            --title "SoundAura — verified universal APK" \
+            --notes "Universal release APK. ZIP integrity, Android signature and package metadata verified in CI. SHA-256 included as asset. Commit ${GITHUB_SHA::7}" \
             --target "$GITHUB_SHA" --prerelease
+          gh release view soundaura-audio-recovery --json assets --jq '.assets[] | [.name, .size] | @tsv'
+
