@@ -40,13 +40,15 @@ jobs:
           name: SoundAura-apk
           path: android-app/out/*.apk
 
-      # Свежая сборка всегда лежит в релизе «SoundAura (последняя версия)».
-      - name: Publish release
+      # Для ветки исправлений APK доступен как артефакт Actions.
+      # Не перезаписываем общий релиз apk-latest, которым пользуются другие ветки.
+      - name: Publish branch release
+        if: github.ref == 'refs/heads/fix/soundaura-audio-recovery'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete apk-latest --yes --cleanup-tag || true
-          gh release create apk-latest out/*.apk \
-            --title "SoundAura (последняя версия)" \
-            --notes "Сборка из ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Для большинства телефонов — SoundAura-arm64.apk." \
-            --target "$GITHUB_SHA"
+          gh release delete soundaura-audio-recovery --yes --cleanup-tag || true
+          gh release create soundaura-audio-recovery out/*.apk \
+            --title "SoundAura — audio recovery" \
+            --notes "APK из ветки fix/soundaura-audio-recovery, коммит ${GITHUB_SHA::7}" \
+            --target "$GITHUB_SHA" --prerelease
