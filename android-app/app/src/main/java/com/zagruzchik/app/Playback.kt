@@ -155,6 +155,8 @@ object Playback {
 
     private var startIndex = 0
     private var skips = 0 // сколько песен подряд пропустили сами (не нашлись) — чтобы не листать очередь бесконечно
+    /** One automatic recovery per track in a short window; prevents endless retry loops. */
+    private val recoveryAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /** «Ещё раз»: искать ту же песню заново, не теряя очередь. */
     fun retry(ctx: Context) {
@@ -510,7 +512,28 @@ object Playback {
                 AppLog.error("проигрыватель: «${m?.title}» из ${m?.extras?.getString(X_SOURCE)} (${error.errorCodeName})", error)
                 val t = Track(m?.title?.toString().orEmpty(), m?.artist?.toString().orEmpty(), cover = m?.artworkUri?.toString())
                 Streams.forget(t) // ссылка не играет — в следующий раз ищем заново, а не берём её же
-                Pending.set(t, loading = false, error = "Звук не пошёл: ${error.errorCodeName}. ${error.cause?.message.orEmpty().take(120)}\nНажмите «Ещё раз» — найду заново.")
+                val key = Library.key(t)
+                val now = System.currentTimeMillis()
+                val previous = recoveryAt.put(key, now)
+                val canRecover = t.title.isNotBlank() && (previous == null || now - previous > 60_000L)
+                if (canRecover) {
+                    // A failed network stream is not proof the song is unavailable.
+                    // Drop cached fragments and search again without losing the current queue.
+                    AppLog.add("АВТОВОССТАНОВЛЕНИЕ «${t.label}»: другой поток после ${error.errorCodeName}")
+                    MediaCache.forget(t)
+                    HeadCache.drop(t)
+                    Pending.set(t, loading = true, error = null)
+                    val failedGen = queueGen
+                    main.postDelayed({
+                        if (failedGen == queueGen) {
+                            val i = queue.indexOfFirst { Library.key(it.track) == key }
+                            if (i >= 0) playQueue(app, queue, i, openScreen = false)
+                            else playTrack(app, t, openScreen = false)
+                        }
+                    }, 350)
+                } else {
+                    Pending.set(t, loading = false, error = "Звук не пошёл: ${error.errorCodeName}. ${error.cause?.message.orEmpty().take(120)}\nПопробовал другой поток. Нажмите «Ещё раз» для нового поиска.")
+                }
             }
 
             // Фрагмент закончился, а полная версия ещё не готова — не тишина, а «подхватываю».
