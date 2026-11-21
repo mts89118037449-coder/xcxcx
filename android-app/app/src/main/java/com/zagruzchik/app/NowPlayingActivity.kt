@@ -59,7 +59,7 @@ class NowPlayingActivity : AppCompatActivity() {
             // Пока играет фрагмент — обновляем «найдена · продолжит через N с».
             if (extras()?.getBoolean(Playback.X_PREVIEW) == true) render()
             // Пока песня ищется — показываем, что уже ответили площадки.
-            seekView.postDelayed(this, 250)
+            seekView.postDelayed(this, 500) // вдвое меньше обновлений UI
         }
     }
 
@@ -105,7 +105,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val box = findViewById<View>(R.id.npCoverBox)
         val frame = findViewById<View>(R.id.npCoverFrame)
         // Дым вокруг обложки: отдельный слой сразу над фоном, под обложкой и кнопками.
-        if (Settings.coverSmoke(this)) {
+        if (Settings.coverSmoke(this) && !packageName.endsWith(".tv")) {
             val aura = findViewById<View>(R.id.npAura)
             val layer = aura.parent as ViewGroup
             // Своё свечение приложения (с фиолетовым оттенком) под дымом не нужно: оно подмешивало к цветам обложки чужой цвет.
