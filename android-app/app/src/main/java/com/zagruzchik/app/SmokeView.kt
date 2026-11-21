@@ -22,14 +22,12 @@ import kotlin.math.sin
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class SmokeView(ctx: Context) : View(ctx) {
     private var edge = IntArray(EDGES)                    // цвета по краю обложки, по кругу
-    private var shaders = arrayOfNulls<Shader>(EDGES)
     private var halo: Shader? = null
     // «Экран»: клубы, наложенные друг на друга, складываются в свет — дым яркий, но не выгорает в белое.
     // Обычное наложение, не «экран»: при сложении яркостей облака сливались в белую кашу. Теперь каждое облако — слой
     // поверх предыдущих: плотное тело, светлый ободок и тонкий тёмный контур, под ним — тень. Слои видно отдельно.
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val shadow: Shader = RadialGradient(0f, 0f, 1f, intArrayOf(0x66000000, 0x33000000, Color.TRANSPARENT),
-        floatArrayOf(0.5f, 0.82f, 1f), Shader.TileMode.CLAMP)
+
 
     /** Струя: на каждый удар из обложки вырывается быстрый поток дыма в одну сторону. */
     /**
@@ -61,7 +59,8 @@ class SmokeView(ctx: Context) : View(ctx) {
     var playing = false
         set(v) { if (field != v) { field = v; last = SystemClock.uptimeMillis(); invalidate() } }
 
-    init { setCover(null); isClickable = false; Thread({ SmokeSprites.all }, "smoke").start() } // текстуру дыма готовим заранее, не в кадре
+    init { setCover(null); isClickable = false }
+
 
     /** Дым сразу в полную силу и уже клубится (для заставки): без разгона с нуля. */
     fun warmStart() { splash = true; level = 1f; clock = 6f; playing = true; invalidate() }
@@ -80,13 +79,7 @@ class SmokeView(ctx: Context) : View(ctx) {
             // Обложки нет — дым серебристый, спокойный (раньше был ярких цветов приложения).
             val c = if (small == null) (if (i % 2 == 0) 0xFFC9CAD6.toInt() else 0xFFA9ABBA.toInt()) else rayColor(small, a)
             edge[i] = c; sr += Color.red(c); sg += Color.green(c); sb += Color.blue(c)
-            val rim = ColorUtils.blendARGB(c, Color.WHITE, 0.35f)      // светлый ободок
-            val line = ColorUtils.blendARGB(c, Color.BLACK, 0.45f)     // тонкий контур за ним
-            shaders[i] = RadialGradient(0f, 0f, 1f,
-                // Подобрано по отрисовке на сервере (scratchpad/layers_preview.py): мягкое полупрозрачное тело, ободок и контур.
-                intArrayOf(ColorUtils.setAlphaComponent(ColorUtils.blendARGB(c, Color.BLACK, 0.12f), 0x70), ColorUtils.setAlphaComponent(c, 0xA0),
-                    ColorUtils.setAlphaComponent(rim, 0xC8), ColorUtils.setAlphaComponent(line, 0x60), Color.TRANSPARENT),
-                floatArrayOf(0f, 0.55f, 0.78f, 0.87f, 1f), Shader.TileMode.CLAMP)
+
         }
         val mean = Color.rgb(sr / EDGES, sg / EDGES, sb / EDGES)
         halo = RadialGradient(0f, 0f, 1f, intArrayOf(ColorUtils.setAlphaComponent(mean, 0xD0), ColorUtils.setAlphaComponent(mean, 0x60), Color.TRANSPARENT),
