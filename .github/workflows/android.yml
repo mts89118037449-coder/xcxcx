@@ -2,10 +2,16 @@ name: Android APK
 
 on:
   push:
+    branches:
+      - fix/soundaura-audio-recovery
     paths:
       - "android-app/**"
       - ".github/workflows/android.yml"
   workflow_dispatch:
+
+concurrency:
+  group: soundaura-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -51,10 +57,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release delete soundaura-audio-recovery --yes --cleanup-tag || true
-          gh release create soundaura-audio-recovery out/SoundAura.apk out/SoundAura.apk.sha256 \
+          TAG="soundaura-${GITHUB_SHA}"
+          gh release create "$TAG" out/SoundAura.apk out/SoundAura.apk.sha256 \
             --title "SoundAura — verified universal APK" \
             --notes "Universal release APK. ZIP integrity, Android signature and package metadata verified in CI. SHA-256 included as asset. Commit ${GITHUB_SHA::7}" \
             --target "$GITHUB_SHA" --prerelease
-          gh release view soundaura-audio-recovery --json assets --jq '.assets[] | [.name, .size] | @tsv'
+          gh release view "$TAG" --json assets --jq '.assets[] | [.name, .size] | @tsv'
 
