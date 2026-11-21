@@ -7,6 +7,10 @@ on:
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
+concurrency:
+  group: soundaura-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -27,15 +31,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Build APK
-        run: ./gradlew assemblePhoneRelease assembleTvRelease --no-daemon --build-cache --parallel
+        run: ./gradlew assemblePhoneRelease assembleTvRelease --no-daemon --build-cache --stacktrace
 
-      - name: Prepare phone and TV APKs
+      - name: Prepare exactly two APKs
         run: |
+          set -euo pipefail
           mkdir -p out
-          find app/build/outputs/apk -name '*.apk' -print
-          cp app/build/outputs/apk/phone/release/app-phone-arm64-v8a-release.apk out/SoundAura-Phone-arm64.apk
-          cp app/build/outputs/apk/phone/release/app-phone-armeabi-v7a-release.apk out/SoundAura-Phone-arm32.apk
-          cp app/build/outputs/apk/tv/release/app-tv-universal-release.apk out/SoundAura-TV-universal.apk
+          find app/build/outputs/apk -type f -name '*.apk' -print
+          phone="$(find app/build/outputs/apk/phone -type f -name '*universal*release.apk' | head -n 1)"
+          tv="$(find app/build/outputs/apk/tv -type f -name '*universal*release.apk' | head -n 1)"
+          test -n "$phone" && test -s "$phone"
+          test -n "$tv" && test -s "$tv"
+          cp "$phone" out/SoundAura-Phone.apk
+          cp "$tv" out/SoundAura-TV.apk
+          ls -lh out/*.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -50,5 +59,5 @@ jobs:
           gh release delete apk-latest --yes --cleanup-tag || true
           gh release create apk-latest out/*.apk \
             --title "SoundAura (последняя версия)" \
-            --notes "Сборка из ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Телефон — SoundAura-Phone-arm64.apk; Android TV — SoundAura-TV-universal.apk." \
+            --notes "Сборка из ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Телефон — SoundAura-Phone.apk; Android TV — SoundAura-TV.apk." \
             --target "$GITHUB_SHA"
