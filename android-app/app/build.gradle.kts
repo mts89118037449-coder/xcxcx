@@ -9,11 +9,11 @@ android {
 
     defaultConfig {
         applicationId = "com.zagruzchik.app"
-        minSdk = 29 // Android 10+
+        minSdk = 24 // Android 7.0+
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         targetSdk = 35
-        versionCode = 118
-        versionName = "9.48"
+        versionCode = 119
+        versionName = "9.49"
     }
 
     // Один постоянный ключ, чтобы новые версии ставились поверх старых без удаления.

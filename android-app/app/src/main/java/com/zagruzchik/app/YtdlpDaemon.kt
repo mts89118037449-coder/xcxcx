@@ -52,7 +52,7 @@ object YtdlpDaemon {
 
     /** Процесс жив — или поднимаем его. null — не получилось (тогда обычный yt-dlp). */
     private fun ensure(): Proc? = synchronized(this) {
-        proc?.takeIf { it.p.isAlive }?.let { return it }
+        proc?.takeIf { it.p.isRunning() }?.let { return it }
         proc = null
         if (System.currentTimeMillis() < brokenUntil) return null
         App.awaitReadyOrNull() ?: return null
@@ -83,8 +83,7 @@ object YtdlpDaemon {
                 this["TMPDIR"] = ctx.cacheDir.absolutePath
                 this["PATH"] = System.getenv("PATH") + ":" + native
             }
-            redirectError(File("/dev/null"))
-        }.start()
+        }.startWithSilentStderr()
         val reader = p.inputStream.bufferedReader()
         // Ждём «готов» не дольше 30 секунд.
         val ready = CompletableFuture<String?>()
@@ -156,7 +155,7 @@ object YtdlpDaemon {
 
     /** Отменить ещё не начатые запросы с этой меткой (новый поиск — старый больше не нужен). */
     fun cancel(tag: String) {
-        val pr = proc?.takeIf { it.p.isAlive } ?: return
+        val pr = proc?.takeIf { it.p.isRunning() } ?: return
         runCatching {
             val line = JSONObject().put("op", "cancel").put("tag", tag).toString()
             synchronized(pr) { pr.stdin.write(line); pr.stdin.newLine(); pr.stdin.flush() }

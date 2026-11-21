@@ -39,7 +39,7 @@ object AudioFx {
     private var eq: Equalizer? = null
     private var bass: BassBoost? = null
     private var virt: Virtualizer? = null
-    private var dyn: android.media.audiofx.DynamicsProcessing? = null
+    private var dyn: android.media.audiofx.AudioEffect? = null
     private var session = 0
     private var app: Context? = null
 
@@ -101,7 +101,7 @@ object AudioFx {
         bass = runCatching { BassBoost(0, audioSession) }.getOrNull()
         virt = runCatching { Virtualizer(0, audioSession) }.getOrNull()
         // Выравнивание громкости: один компрессор на весь спектр и ограничитель, чтобы не было перегруза.
-        dyn = runCatching {
+        dyn = if (android.os.Build.VERSION.SDK_INT >= 28) runCatching {
             val cfg = android.media.audiofx.DynamicsProcessing.Config.Builder(
                 android.media.audiofx.DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION, 2, false, 0, true, 1, false, 0, true).build()
             android.media.audiofx.DynamicsProcessing(0, audioSession, cfg).apply {
@@ -110,7 +110,7 @@ object AudioFx {
                     setLimiterByChannelIndex(ch, android.media.audiofx.DynamicsProcessing.Limiter(true, true, 0, 1f, 60f, 10f, -1.5f, 0f))
                 }
             }
-        }.onFailure { Log.w(TAG, "no dynamics", it) }.getOrNull()
+        }.onFailure { Log.w(TAG, "no dynamics", it) }.getOrNull() else null
         apply(ctx)
     }
 

@@ -58,15 +58,15 @@
     <style name="TA.Display" parent="TextAppearance.Material3.DisplaySmall"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
     <style name="TA.Headline" parent="TextAppearance.Material3.HeadlineMedium"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
     <style name="TA.HeadlineSmall" parent="TextAppearance.Material3.HeadlineSmall"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
-    <style name="TA.TitleLarge" parent="TextAppearance.Material3.TitleLarge"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textFontWeight">600</item></style>
-    <style name="TA.TitleMedium" parent="TextAppearance.Material3.TitleMedium"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textFontWeight">600</item></style>
-    <style name="TA.TitleSmall" parent="TextAppearance.Material3.TitleSmall"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textFontWeight">600</item><item name="android:textSize">15sp</item></style>
+    <style name="TA.TitleLarge" parent="TextAppearance.Material3.TitleLarge"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textStyle">bold</item></style>
+    <style name="TA.TitleMedium" parent="TextAppearance.Material3.TitleMedium"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textStyle">bold</item></style>
+    <style name="TA.TitleSmall" parent="TextAppearance.Material3.TitleSmall"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textStyle">bold</item><item name="android:textSize">15sp</item></style>
     <style name="TA.BodyLarge" parent="TextAppearance.Material3.BodyLarge"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item></style>
     <style name="TA.BodyMedium" parent="TextAppearance.Material3.BodyMedium"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item></style>
     <style name="TA.BodySmall" parent="TextAppearance.Material3.BodySmall"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textSize">13sp</item></style>
-    <style name="TA.LabelLarge" parent="TextAppearance.Material3.LabelLarge"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textFontWeight">600</item></style>
-    <style name="TA.LabelMedium" parent="TextAppearance.Material3.LabelMedium"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textFontWeight">600</item></style>
-    <style name="TA.LabelSmall" parent="TextAppearance.Material3.LabelSmall"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textFontWeight">600</item></style>
+    <style name="TA.LabelLarge" parent="TextAppearance.Material3.LabelLarge"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textStyle">bold</item></style>
+    <style name="TA.LabelMedium" parent="TextAppearance.Material3.LabelMedium"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textStyle">bold</item></style>
+    <style name="TA.LabelSmall" parent="TextAppearance.Material3.LabelSmall"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textStyle">bold</item></style>
 
     <!-- Прозрачное окно, поверх которого выезжает нижняя панель «Поделиться». -->
     <style name="ShareTheme" parent="AppTheme">

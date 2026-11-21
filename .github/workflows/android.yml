@@ -35,17 +35,17 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk out/SoundAura-universal.apk
 
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: SoundAura-apk
           path: android-app/out/*.apk
 
-      # Свежая сборка всегда лежит в релизе «SoundAura (последняя версия)».
-      - name: Publish release
+      - name: Publish verified build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete apk-latest --yes --cleanup-tag || true
-          gh release create apk-latest out/*.apk \
-            --title "SoundAura (последняя версия)" \
-            --notes "Сборка из ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Один APK для телефонов и Android TV (ARM32 и ARM64)." \
-            --target "$GITHUB_SHA"
+          tag="apk-${GITHUB_SHA}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title "SoundAura (${GITHUB_SHA::7})" --target "$GITHUB_SHA" --notes "Один APK для ARM32 и ARM64."
+          fi
+          gh release upload "$tag" out/SoundAura-universal.apk --clobber

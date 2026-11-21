@@ -62,7 +62,7 @@ object Covers {
     private fun load(ctx: Context, id: String, files: List<SavedFile>, url: String?): Bitmap? {
         val disk = file(ctx, id)
         // 1) Из готового файла (обложка MP3 или кадр видео).
-        for (f in files.take(3)) {
+        if (android.os.Build.VERSION.SDK_INT >= 29) for (f in files.take(3)) {
             val b = runCatching { ctx.contentResolver.loadThumbnail(Uri.parse(f.uri), Size(SIZE, SIZE), null) }.getOrNull()
             if (b != null) return b.also { save(it, disk) }
         }

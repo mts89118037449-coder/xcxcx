@@ -92,15 +92,14 @@ object Align {
         ).apply {
             environment()["LD_LIBRARY_PATH"] = "${pkgs}/ffmpeg/usr/lib:${pkgs}/python/usr/lib"
             environment()["SSL_CERT_FILE"] = "${pkgs}/python/usr/etc/tls/cert.pem"
-            redirectError(File("/dev/null"))
-        }.start()
+        }.startWithSilentStderr()
         // Сторож: не дольше 90 секунд на кусок, что бы ни случилось со связью.
-        val watchdog = Thread { runCatching { if (!p.waitFor(limitSec, TimeUnit.SECONDS)) p.destroy() } }.apply { isDaemon = true; start() }
+        val watchdog = Thread { runCatching { TimeUnit.SECONDS.sleep(limitSec); p.destroy() } }.apply { isDaemon = true; start() }
         val bytes = try {
             p.inputStream.use { it.readBytes() }
         } finally {
             watchdog.interrupt()
-            if (!p.waitFor(2, TimeUnit.SECONDS)) p.destroy()
+            p.destroy()
         }
         if (bytes.size < SR * 2 * 5) return null // меньше 5 секунд — не годится
         return ShortArray(bytes.size / 2) { i -> ((bytes[2 * i].toInt() and 0xFF) or (bytes[2 * i + 1].toInt() shl 8)).toShort() }

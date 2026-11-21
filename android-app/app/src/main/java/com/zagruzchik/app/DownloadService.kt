@@ -20,6 +20,7 @@ object Notifications {
     const val FOREGROUND_ID = 1
 
     fun createChannels(ctx: Context) {
+        if (android.os.Build.VERSION.SDK_INT < 26) return
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(PROGRESS, "Фоновая загрузка", NotificationManager.IMPORTANCE_LOW))
         nm.deleteNotificationChannel("result") // старые уведомления «Скачано» больше не используются
@@ -32,7 +33,7 @@ object Notifications {
             Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE,
         )
-        return Notification.Builder(ctx, PROGRESS)
+        return androidx.core.app.NotificationCompat.Builder(ctx, PROGRESS)
             .setSmallIcon(R.drawable.ic_stat_download)
             .setContentTitle(if (active > 1) "Скачиваю: $active" else "Скачиваю…")
             .setContentText("Ход загрузки — в приложении")
@@ -55,7 +56,7 @@ class DownloadService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(Notifications.FOREGROUND_ID, Notifications.foreground(this, activeCount()), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        androidx.core.app.ServiceCompat.startForeground(this, Notifications.FOREGROUND_ID, Notifications.foreground(this, activeCount()), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         val job = intent?.getStringExtra(EXTRA_JOB)?.let { Jobs.get(it) }
         if (job == null) {
             if (running == 0) stopSelf(startId)
@@ -151,7 +152,7 @@ class DownloadService : Service() {
         /** Добавляет загрузку в список и запускает её. */
         fun enqueue(ctx: Context, url: String, format: Format, hint: String? = null): Job {
             val job = Jobs.create(url, format, hint)
-            ctx.startForegroundService(Intent(ctx, DownloadService::class.java).putExtra(EXTRA_JOB, job.id))
+            androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, DownloadService::class.java).putExtra(EXTRA_JOB, job.id))
             return job
         }
     }

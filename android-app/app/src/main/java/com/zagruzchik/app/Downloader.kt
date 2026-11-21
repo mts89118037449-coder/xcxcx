@@ -580,6 +580,25 @@ object Storage {
 
     fun publish(ctx: Context, file: File, subfolder: String? = null): Pair<Uri, String> {
         val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
+        if (android.os.Build.VERSION.SDK_INT >= 29) return publishToDownloads(ctx, file, mime, subfolder)
+        val root = File(ctx.filesDir, "downloads")
+        val targetDir = File(root, java.util.UUID.randomUUID().toString())
+        if (!targetDir.mkdirs()) throw UserError("Не удалось создать папку загрузки")
+        val target = File(targetDir, file.name)
+        try {
+            file.copyTo(target)
+            val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", target)
+            file.delete()
+            return uri to mime
+        } catch (e: Exception) {
+            target.delete()
+            targetDir.delete()
+            throw e
+        }
+    }
+
+    @androidx.annotation.RequiresApi(29)
+    private fun publishToDownloads(ctx: Context, file: File, mime: String, subfolder: String?): Pair<Uri, String> {
         val resolver = ctx.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
