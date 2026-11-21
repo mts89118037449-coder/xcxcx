@@ -55,7 +55,7 @@ object Images {
         return sampleBitmap(bytes, maxPx)\n    }\n\n    private fun sampleBitmap(bytes: ByteArray, maxPx: Int): Bitmap? {\n        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxPx) sample *= 2
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxPx) sample *= 2
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.RGB_565 // обложкам прозрачность не нужна — вдвое меньше памяти
