@@ -11,7 +11,7 @@
     android:orientation="vertical"
     android:paddingHorizontal="18dp"
     android:paddingVertical="14dp"
-    android:visibility="invisible">
+    android:visibility="gone">
 
     <TextView
         android:id="@+id/npLyrPrev"
@@ -30,7 +30,7 @@
         android:ellipsize="end"
         android:fontFamily="@font/onest"
         android:gravity="center_vertical"
-        android:lines="2"
+        android:maxLines="2"
         android:textColor="?attr/colorOnSurface"
         android:textFontWeight="700"
         android:textSize="22sp" />
@@ -40,7 +40,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:ellipsize="end"
-        android:lines="2"
+        android:maxLines="2"
         android:textSize="16sp"
         android:textColor="?attr/colorOnSurfaceVariant" />
 </LinearLayout>

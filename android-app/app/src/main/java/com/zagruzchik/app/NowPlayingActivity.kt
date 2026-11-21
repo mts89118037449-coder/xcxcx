@@ -234,11 +234,16 @@ class NowPlayingActivity : AppCompatActivity() {
 
     /** Текст новой песни — фоном; синхронный (LRCLIB) — строки пойдут вместе с музыкой. */
     private fun loadLyrics(t: Track) {
-        if (t.title.isBlank() || !Settings.lyricsInPlayer(this)) return
+        if (t.title.isBlank() || !Settings.lyricsInPlayer(this)) {
+            lyricsKey = null
+            lyrics = null
+            findViewById<View>(R.id.npLyricsPeek).isVisible = false
+            return
+        }
         val key = Library.key(t)
         if (key == lyricsKey) return
         lyricsKey = key; lyrics = null; lyricLine = -2
-        findViewById<View>(R.id.npLyricsPeek).visibility = View.INVISIBLE
+        findViewById<View>(R.id.npLyricsPeek).isVisible = false
         Thread {
             val r = runCatching { Lyrics.find(t) }.getOrNull()
             runOnUiThread { if (lyricsKey == key && !isDestroyed) { lyrics = r; updateLyrics() } }
@@ -250,7 +255,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val r = lyrics
         val c = controller
         val preview = extras()?.getBoolean(Playback.X_PREVIEW) == true
-        if (r == null || c == null || preview || showingPending()) { peek.visibility = View.INVISIBLE; return } // место остаётся занятым — экран не прыгает
+        if (r == null || c == null || preview || showingPending()) { peek.isVisible = false; lyricLine = -2; return }
         val prev = findViewById<TextView>(R.id.npLyrPrev)
         val now = findViewById<TextView>(R.id.npLyrNow)
         val next = findViewById<TextView>(R.id.npLyrNext)
@@ -259,16 +264,18 @@ class NowPlayingActivity : AppCompatActivity() {
             if (lyricLine == -1) return
             lyricLine = -1
             val lines = r.text.lines().filter { it.isNotBlank() && !it.startsWith("[") }
-            prev.visibility = View.INVISIBLE
+            prev.isVisible = false
             now.text = lines.getOrNull(0).orEmpty(); next.text = lines.getOrNull(1).orEmpty()
-            peek.visibility = if (lines.isNotEmpty()) View.VISIBLE else View.INVISIBLE
+            next.isVisible = lines.size > 1
+            peek.isVisible = lines.isNotEmpty()
             return
         }
         val pos = Playback.position(c) + 300
         val i = r.synced.indexOfLast { it.timeMs <= pos }
         if (i == lyricLine && peek.isVisible) return
         lyricLine = i
-        prev.isVisible = true
+        prev.isVisible = i > 0
+        next.isVisible = i + 1 < r.synced.size
         prev.text = r.synced.getOrNull(i - 1)?.text.orEmpty()
         now.text = r.synced.getOrNull(i)?.text?.ifEmpty { "♪" } ?: "♪"
         next.text = r.synced.getOrNull(i + 1)?.text.orEmpty()
@@ -304,8 +311,11 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         val pending = showingPending()
         val p = Playback.Pending
-        // Место под карточку состояния занято всегда — экран не прыгает, когда она появляется и исчезает.
-        loading.isVisible = pending // стоит в одном месте с текстом песни (np_bottom_slot) — экран не сдвигается
+        loading.isVisible = pending
+        if (pending || extras()?.getBoolean(Playback.X_PREVIEW) == true) {
+            findViewById<View>(R.id.npLyricsPeek).isVisible = false
+            lyricLine = -2
+        }
         // Сменилась песня — название, исполнитель и обложка мягко проявляются, а не подменяются рывком.
         val nowKey = if (pending) p.track?.let { it.title + "|" + it.artist } else c?.mediaMetadata?.let { "${it.title}|${it.artist}" }
         val changed = nowKey != null && nowKey != shownKey
