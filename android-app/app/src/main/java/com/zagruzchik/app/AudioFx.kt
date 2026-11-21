@@ -102,16 +102,21 @@ object AudioFx {
         virt = runCatching { Virtualizer(0, audioSession) }.getOrNull()
         // Выравнивание громкости: один компрессор на весь спектр и ограничитель, чтобы не было перегруза.
         dyn = if (android.os.Build.VERSION.SDK_INT >= 28) runCatching {
-            val cfg = android.media.audiofx.DynamicsProcessing.Config.Builder(
-                android.media.audiofx.DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION, 2, false, 0, true, 1, false, 0, true).build()
-            android.media.audiofx.DynamicsProcessing(0, audioSession, cfg).apply {
-                for (ch in 0 until 2) {
-                    setMbcBandByChannelIndex(ch, 0, android.media.audiofx.DynamicsProcessing.MbcBand(true, 20000f, 30f, 300f, 3f, -22f, 6f, -70f, 1f, 0f, 5f))
-                    setLimiterByChannelIndex(ch, android.media.audiofx.DynamicsProcessing.Limiter(true, true, 0, 1f, 60f, 10f, -1.5f, 0f))
-                }
-            }
+            createDynamics(audioSession)
         }.onFailure { Log.w(TAG, "no dynamics", it) }.getOrNull() else null
         apply(ctx)
+    }
+
+    @androidx.annotation.RequiresApi(28)
+    private fun createDynamics(audioSession: Int): android.media.audiofx.AudioEffect {
+        val cfg = android.media.audiofx.DynamicsProcessing.Config.Builder(
+            android.media.audiofx.DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION, 2, false, 0, true, 1, false, 0, true).build()
+        return android.media.audiofx.DynamicsProcessing(0, audioSession, cfg).apply {
+            for (ch in 0 until 2) {
+                setMbcBandByChannelIndex(ch, 0, android.media.audiofx.DynamicsProcessing.MbcBand(true, 20000f, 30f, 300f, 3f, -22f, 6f, -70f, 1f, 0f, 5f))
+                setLimiterByChannelIndex(ch, android.media.audiofx.DynamicsProcessing.Limiter(true, true, 0, 1f, 60f, 10f, -1.5f, 0f))
+            }
+        }
     }
 
     @Synchronized fun release() {
