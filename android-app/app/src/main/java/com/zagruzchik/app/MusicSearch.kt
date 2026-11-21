@@ -236,10 +236,14 @@ object Streams {
     // ---- Своя ссылка для песни: если поиск не находит, человек указывает страницу сам — запоминаем навсегда. ----
     private val pins by lazy { App.instance.getSharedPreferences("pins", 0) }
     fun pinned(t: Track): String? = pins.getString(key(t), null)
-    fun pin(t: Track, url: String?) {
+    fun pin(t: Track, url: String?, option: Option? = null) {
         val k = key(t)
         pins.edit().apply { if (url.isNullOrBlank()) remove(k) else putString(k, url.trim()) }.apply()
         failed.remove(k); done.remove(k)
+        option?.ready?.takeIf { option.where == url && System.currentTimeMillis() - option.created < 120_000 }?.let {
+            detours.remove(k)
+            done[k] = System.currentTimeMillis() to it
+        }
     }
 
     /** Что ответила каждая площадка в последнем поиске этой песни — чтобы понять, почему не нашлась. */
@@ -289,6 +293,10 @@ object Streams {
     fun streamFrom(t: Track, where: String, wantTotal: Long? = null): StreamInfo? = runCatching { fromKnown(t, where, wantTotal) }.getOrNull()
 
     private fun fromKnown(t: Track, where: String, wantTotal: Long? = null): StreamInfo? {
+        if (where.startsWith("direct:https://")) {
+            val url = where.removePrefix("direct:")
+            return StreamInfo(url, url, Describe.site(url), t.cover, t.title)
+        }
         if (where.startsWith("zaycev:")) {
             val p = where.split(':')
             val id = p.getOrNull(1)?.toLongOrNull() ?: return null
@@ -343,22 +351,24 @@ object Streams {
         // Источник, выбранный человеком для этой песни (или своя ссылка), — всегда первым.
         if (pin != null) {
             var err: Throwable? = null
-            repeat(2) {
-                runCatching { fromKnown(t, pin) }.onFailure { err = it }.getOrNull()?.let { detours.remove(k); return it }
-            }
+            runCatching { fromKnown(t, pin) }.onFailure { err = it }.getOrNull()?.let { detours.remove(k); return it }
             detours += k
             AppLog.add("ВЫБРАННЫЙ ИСТОЧНИК не ответил для «${t.label}» (${nameOf(pin)})${why(err)} — играю из другого места, выбор остаётся")
         } else detours.remove(k)
-        knownRaw(k)?.takeIf { !it.startsWith("none:") }?.let { where ->
-            runCatching { fromKnown(t, where) }.getOrNull()?.let { return it }
-            // Больше не играет оттуда (удалили, закрыли) — забываем и ищем заново. Запись Telegram оставляем, если он просто не подключён.
-            if (!where.startsWith("tg:") || Telegram.ready) remember(k, null)
+        val known = knownRaw(k)?.takeUnless { it.startsWith("none:") || it == pin }
+        val bg = Ytdlp.isBackground
+        val remembered = known?.let { where ->
+            searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) { fromKnown(t, where) } }
+        }
+        if (remembered != null) {
+            // Дать быстрой сохранённой ссылке фору, затем искать параллельно.
+            runCatching { remembered.get(300, java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrNull()?.let { return it }
         }
         val log = java.util.concurrent.ConcurrentLinkedQueue<String>()
         live[k] = log
         val picked = java.util.concurrent.ConcurrentHashMap<String, String>()
         try {
-            return search(t, log, picked, light).also { s ->
+            return search(t, log, picked, light, remembered = remembered).also { s ->
                 val where = picked[s.source.substringBefore(" ·")] ?: s.pageUrl.takeIf { it != s.url && it.startsWith("http") }
                 if (where != null) remember(k, where)
             }
@@ -370,7 +380,7 @@ object Streams {
     }
 
     /** Один найденный вариант песни: площадка, название записи и «где лежит» (для запоминания выбора). */
-    class Option(val label: String, val title: String, val where: String)
+    class Option(val label: String, val title: String, val where: String, val ready: StreamInfo? = null) { val created = System.currentTimeMillis() }
 
     /**
      * Живой список источников песни: пополняется по мере ответа площадок. Первым в нём сразу стоит источник,
@@ -381,7 +391,11 @@ object Streams {
         @Volatile var done = false
         val since = System.currentTimeMillis()
         val listeners = java.util.concurrent.CopyOnWriteArraySet<() -> Unit>()
-        internal fun add(o: Option) { if (list.none { it.where == o.where }) { list += o; listeners.forEach { it() } } }
+        internal fun add(o: Option) {
+            val i = list.indexOfFirst { it.where == o.where }
+            if (i < 0) list += o else if (list[i].ready == null && o.ready != null) list[i] = o else return
+            listeners.forEach { it() }
+        }
         internal fun finish() { done = true; listeners.forEach { it() } }
     }
 
@@ -431,14 +445,14 @@ object Streams {
     private fun nameOf(where: String) = when {
         where.startsWith("zaycev:") -> "Zaycev · MP3 ${where.split(':').getOrNull(2).orEmpty()}".trim()
         where.startsWith("tg:") -> where.substringAfter('|', "Telegram")
-        else -> Describe.site(where)
+        else -> Describe.site(where.removePrefix("direct:"))
     }
 
     /** Какой источник сейчас закреплён за песней (выбран человеком). null — выбирается автоматически. */
     fun chosen(t: Track): String? = pinned(t)
 
     private fun search(t: Track, log: java.util.Queue<String>, picked: MutableMap<String, String>, light: Boolean = false,
-                       collect: ((Option) -> Unit)? = null): StreamInfo {
+                       collect: ((Option) -> Unit)? = null, remembered: java.util.concurrent.Future<StreamInfo?>? = null): StreamInfo {
         val sources = listOf(
             "SoundCloud" to "scsearch8:${t.query}",
             "YouTube" to "ytsearch8:${t.query}",
@@ -452,7 +466,6 @@ object Streams {
         val bg = Ytdlp.isBackground // подготовка заранее не мешает нажатому
         val problems = java.util.concurrent.ConcurrentLinkedQueue<String>()
         val foundOn = java.util.concurrent.ConcurrentLinkedQueue<String>()
-        val uncensored = java.util.concurrent.ConcurrentHashMap.newKeySet<StreamInfo>()
         val waiting = java.util.concurrent.ConcurrentHashMap.newKeySet<String>().also { waitingOn[key(t)] = it }
         // Zaycev — MP3 до 320 kbps, отвечает быстро: первым по старшинству.
         val zaycev = searchPool.submit<StreamInfo?> {
@@ -470,10 +483,7 @@ object Streams {
             ok.take(3).sortedWith(compareByDescending<ZaycevSource.Found> { it.explicit }.thenByDescending { it.bitrate }).firstNotNullOfOrNull { c ->
                 runCatching { ZaycevSource.streamUrl(c.id) }.getOrNull()?.let { u ->
                     picked["Zaycev"] = "zaycev:${c.id}:${c.bitrate}"
-                    StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title).also { s ->
-                        // Без цензуры (или песня изначально «чистая») — такой результат равен SoundCloud; иначе он запасной.
-                        if (c.explicit || !t.explicit) uncensored += s
-                    }
+                    StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title)
                 }
             }.also { log += "Zaycev звук: ${if (it != null) "готов" else "нет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
         }
@@ -566,26 +576,17 @@ object Streams {
                 sounds(name, ok)
             } } finally { waiting -= name } }
         }
-        // Старшинство: Zaycev → Telegram → YouTube Music → SoundCloud → YouTube → SoundCloud по одному названию.
-        // Запасные площадки (Rutube, Dailymotion, Internet Archive, Audius, Яндекс) — тоже с самого начала, младшими участниками:
-        // раньше до них доходило только после 40 секунд ожидания основных.
-        val spare = if (light) null else searchPool.submit<StreamInfo?> {
-            val t0 = System.currentTimeMillis()
-            // Яндекс без входа звук не отдаёт никогда (yt-dlp падает внутри: «NoneType … yandexmusic.py:110», журнал 20.11) — не тратим на него время.
-            val found = runCatching { WebSearch.extraCandidates(t) }.getOrDefault(emptyList()).filter { !it.source.startsWith("Яндекс") }.take(4)
-            log += "Запасные площадки: подошло ${found.size}" + found.joinToString("") { "\n  ${it.source} · ${it.title.take(50)} | ${it.artist.take(26)} | ${it.duration} с" } +
-                "\n  поиск за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
-            found.map { w -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
-                if (w.direct) StreamInfo(w.url, w.url, w.source, w.cover, w.title)
-                else { App.awaitReady(); Downloader.streamOf(w.url, w.source, w.title, problems) }
-            } } }.firstNotNullOfOrNull { runCatching { it.get(15, java.util.concurrent.TimeUnit.SECONDS) }.getOrNull() }
+        val spare = if (light) emptyList() else WebSearch.playbackSources.map { lookup ->
+            searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
+                val matches = WebSearch.rankCandidates(t, lookup(t.query))
+                matches.take(2).firstNotNullOfOrNull { w ->
+                    if (w.direct) StreamInfo(w.url, w.url, w.source, w.cover, w.title)
+                    else { App.awaitReady(); Downloader.streamOf(w.url, w.source, w.title, problems) }
+                }
+            } }
         }
-        // Смысл приложения — музыка без цензуры, поэтому старшинство такое:
-        // SoundCloud (там лежат исходные версии) → Zaycev → Telegram → YouTube Music → YouTube → запасные.
-        // Все ищут одновременно; не-SoundCloud берём, только когда SoundCloud ответил, что песни нет (или молчит дольше 6 с).
-        // Исключение — запись Zaycev с пометкой «без цензуры»: она ничем не хуже, её берём сразу.
         val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
-        val jobs = soundcloud + listOf(zaycev, telegram, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + listOfNotNull(spare)
+        val jobs = listOfNotNull(remembered) + soundcloud + listOf(zaycev, telegram, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
         val started = System.currentTimeMillis()
         if (collect != null) {
             // Режим «показать все источники»: отдаём каждый найденный вариант сразу, как только площадка ответила.
@@ -594,8 +595,8 @@ object Streams {
                 for (f in jobs) {
                     if (!f.isDone || !told.add(f)) continue
                     val s = runCatching { f.get() }.getOrNull() ?: continue
-                    val where = picked[s.source.substringBefore(" ·")] ?: s.pageUrl.takeIf { it != s.url && it.startsWith("http") } ?: continue
-                    collect(Option(s.source, s.title, where))
+                    val where = picked[s.source.substringBefore(" ·")] ?: s.pageUrl.takeIf { it != s.url && it.startsWith("http") } ?: s.url.takeIf { f in spare && it.startsWith("https://") }?.let { "direct:$it" } ?: continue
+                    collect(Option(s.source, s.title, where, s))
                 }
                 if (jobs.all { it.isDone } || System.currentTimeMillis() - started > 25_000) break
                 Thread.sleep(50)
@@ -603,19 +604,18 @@ object Streams {
             throw UserError("источники собраны")
         }
         while (true) {
-            for ((i, f) in jobs.withIndex()) {
+            for (f in jobs) {
                 if (!f.isDone) continue
-                val s = runCatching { f.get() }.getOrNull() ?: continue
-                val seniorsDone = jobs.take(i).all { it.isDone }
-                val waited = System.currentTimeMillis() - started
-                val preferred = f in soundcloud || s in uncensored
-                if (seniorsDone || (preferred && waited > 1200) || waited > 6000) return s
+                val stream = runCatching { f.get() }.getOrNull() ?: continue
+                jobs.forEach { if (!it.isDone) it.cancel(true) }
+                return stream
             }
             if (jobs.all { it.isDone }) break
             // Основные площадки отвечают дольше 25 с — не ждём их, идём к запасным.
             if (System.currentTimeMillis() - started > 25_000) { log += "Ждал площадки 25 с — не дождался"; break }
             Thread.sleep(40)
         }
+        jobs.forEach { if (!it.isDone) it.cancel(true) }
         if (light) throw UserError("В быстрых источниках не нашлась")
         if (problems.isNotEmpty()) log += "Ошибки:\n  " + problems.distinct().joinToString("\n  ") { it.take(160) }
         // Честно: где песня есть и почему не играет (чаще всего — платная на SoundCloud).

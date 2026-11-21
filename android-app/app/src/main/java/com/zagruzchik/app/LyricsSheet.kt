@@ -19,7 +19,7 @@ import kotlin.concurrent.thread
  * текущая строка подсвечивается и сама прокручивается, нажатие на строку — перемотка к ней.
  */
 object LyricsSheet {
-    fun show(act: Activity, t: Track, position: () -> Long, seek: (Long) -> Unit) {
+    fun show(act: Activity, t: Track, position: () -> Long, seek: (Long) -> Unit, onVisibilityChanged: () -> Unit) {
         val dlg = BottomSheetDialog(act)
         val pad = act.dp(20)
         val root = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, act.dp(8), pad, 0) }
@@ -40,6 +40,15 @@ object LyricsSheet {
         }
         head.addView(karaoke)
         root.addView(head)
+        root.addView(MaterialButton(act, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            val visible = Settings.lyricsInPlayer(act)
+            text = if (visible) "Скрыть текст в плеере" else "Показывать текст в плеере"
+            setOnClickListener {
+                Settings.setLyricsInPlayer(act, !visible)
+                onVisibilityChanged()
+                dlg.dismiss()
+            }
+        })
 
         val progress = CircularProgressIndicator(act).apply { isIndeterminate = true }
         root.addView(progress, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -116,7 +125,7 @@ object LyricsSheet {
                 karaoke.isVisible = synced.isNotEmpty()
                 karaoke.addOnCheckedChangeListener { _, on -> if (on) showSynced() else showPlain(r.text) }
                 // Синхронный текст есть, а Genius нет — сразу караоке; иначе — текст Genius.
-                if (synced.isNotEmpty() && r.source != "Genius") karaoke.isChecked = true else showPlain(r.text)
+                if (synced.isNotEmpty()) karaoke.isChecked = true else showPlain(r.text)
             }
         }
     }

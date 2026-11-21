@@ -113,6 +113,11 @@ object WebSearch {
      * Дополнительные источники для «Слушать»/«Скачать» песни из каталога, если её нет на
      * SoundCloud/YouTube: Яндекс, Rutube, Internet Archive, Dailymotion, Audius.
      */
+    val playbackSources = listOf(::archive, ::rutube, ::dailymotion, ::audius)
+
+    fun rankCandidates(t: Track, results: List<WebResult>) =
+        Match.ranked(t, results) { Triple(it.title, it.artist + " | " + it.title.substringBefore(" - ", ""), it.duration) }
+
     fun extraCandidates(t: Track): List<WebResult> {
         val q = t.query
         val jobs = listOf(::yandex, ::archive, ::rutube, ::dailymotion, ::audius).map { f -> pool.submit<List<WebResult>> { runCatching { f(q) }.getOrDefault(emptyList()) } }
@@ -121,7 +126,7 @@ object WebSearch {
         val all = jobs.flatMap { j ->
             runCatching { j.get(maxOf(1, deadline - System.currentTimeMillis()), java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrDefault(emptyList())
         }
-        return Match.ranked(t, all) { Triple(it.title, it.artist + " | " + it.title.substringBefore(" - ", ""), it.duration) }
+        return rankCandidates(t, all)
     }
 
     /** Насколько результат похож на запрос: доля слов запроса, которые есть в названии/исполнителе. */

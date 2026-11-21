@@ -175,7 +175,11 @@ object Playback {
         hooked?.takeIf { nowPlayingKey == k }?.let { c -> resumeAt = maxOf(0L, position(c) - 5_000); resumeKey = k; resumeSet = System.currentTimeMillis() }
         MediaCache.forget(t); HeadCache.drop(t)
         val i = queue.indexOfFirst { Library.key(it.track) == k }
-        if (i >= 0) playQueue(ctx, queue, i, openScreen = false) else playTrack(ctx, t, openScreen = false)
+        if (Streams.chosen(t) != null) {
+            val selected = QItem(t, sourceUrl = queue.getOrNull(i)?.sourceUrl)
+            val items = if (i >= 0) queue.toMutableList().apply { set(i, selected) } else listOf(selected)
+            playQueue(ctx, items, i.coerceAtLeast(0), openScreen = false)
+        } else if (i >= 0) playQueue(ctx, queue, i, openScreen = false) else playTrack(ctx, t, openScreen = false)
     }
 
     private fun playQueue(ctx: Context, given: List<QItem>, start: Int, openScreen: Boolean, auto: Boolean) {

@@ -175,7 +175,7 @@ class NowPlayingActivity : AppCompatActivity() {
             val t = currentTrack() ?: return@setOnClickListener
             val d = controller?.let { Playback.duration(it) }?.takeIf { it > 0 }?.let { (it / 1000).toInt() } ?: 0
             LyricsSheet.show(this, t.copy(durationSec = d), position = { controller?.let { Playback.position(it) } ?: 0L },
-                seek = { ms -> controller?.let { Playback.seek(it, ms) } })
+                seek = { ms -> controller?.let { Playback.seek(it, ms) } }, onVisibilityChanged = { render() })
         }
         // Исполнитель — ссылкой на его страницу: популярное, альбомы, радио.
         artist.setOnClickListener {

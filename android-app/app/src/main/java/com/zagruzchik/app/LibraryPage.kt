@@ -1,5 +1,6 @@
 package com.zagruzchik.app
 
+import androidx.core.widget.doAfterTextChanged
 import android.app.Activity
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -71,7 +72,13 @@ class LibraryPage(
     private val onSurface = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurface, Color.WHITE)
     private val muted = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurfaceVariant, Color.GRAY)
 
+    private var query = ""
+    private fun matches(value: String) = value.contains(query, ignoreCase = true)
+
     init {
+        val field = a.findViewById<android.widget.EditText>(R.id.libraryQuery)
+        val filter = Runnable { query = field.text.toString().trim(); refresh(reset = true) }
+        field.doAfterTextChanged { field.removeCallbacks(filter); field.postDelayed(filter, 150) }
         a.findViewById<View>(R.id.libShuffleAll).setOnClickListener {
             val items = songs().shuffled()
             if (items.isEmpty()) snack("Медиатека пока пуста — ставьте ♥ песням") else Playback.playQueue(a, items, 0)
@@ -109,7 +116,7 @@ class LibraryPage(
 
     /** Любимые песни в выбранном порядке. */
     private fun songs(): List<Playback.QItem> {
-        val fav = Library.favorites
+        val fav = Library.favorites.filter { matches(it.artist + " " + it.title) }
         val sorted = when (sort) {
             Sort.RECENT -> fav
             Sort.ABC -> fav.sortedBy { it.title.lowercase() }
@@ -120,7 +127,7 @@ class LibraryPage(
 
     private fun empty(text: String) {
         content.addView(TextView(a).apply {
-            this.text = text; textSize = 15f; setTextColor(muted); gravity = Gravity.CENTER
+            this.text = if (query.isBlank()) text else "Ничего не найдено"; textSize = 15f; setTextColor(muted); gravity = Gravity.CENTER
             setPadding(a.dp(16), a.dp(48), a.dp(16), a.dp(16)); setLineSpacing(0f, 1.3f)
         })
     }
@@ -135,7 +142,7 @@ class LibraryPage(
             Tab.SONGS -> songsTab()
             Tab.ARTISTS -> artistsTab()
             Tab.ALBUMS -> albumsTab()
-            Tab.PLAYLISTS -> playlistsTab()
+            Tab.PLAYLISTS -> { playlistsTab(); if (content.childCount == 0) empty("Нет плейлистов") }
             Tab.DOWNLOADED -> downloadedTab()
             Tab.HISTORY -> historyTab()
         }
@@ -177,7 +184,7 @@ class LibraryPage(
     private fun songsTab() {
         val items = songs()
         if (items.isEmpty()) {
-            content.addView(importCard())
+            if (query.isBlank()) content.addView(importCard())
             return empty("Ставьте ♥ песням или перенесите медиатеку из другого сервиса —\nпесни появятся здесь.")
         }
         content.addView(mixCard("Умный микс", "${items.size} любимых · самое ваше — чаще") {
@@ -216,7 +223,7 @@ class LibraryPage(
 
     /** Исполнители из любимого и скачанного: сетка кругов, число песен; фото — фоном. */
     private fun artistsTab() {
-        val all = (Library.favorites + Library.downloaded().map { it.first }).filter { it.artist.isNotBlank() }
+        val all = (Library.favorites + Library.downloaded().map { it.first }).filter { it.artist.isNotBlank() && matches(it.artist) }
         val groups = all.groupBy { it.artist.split(Regex("""\s*(,|&| feat\.? | ft\.? )\s*""", RegexOption.IGNORE_CASE)).first().trim() }
             .mapValues { (_, l) -> l.distinctBy { Library.key(it) } }
             .entries.sortedByDescending { it.value.size }
@@ -266,8 +273,8 @@ class LibraryPage(
 
     /** Альбомы: сохранённые (♥ на странице альбома) и скачанные целиком. */
     private fun albumsTab() {
-        val saved = Library.albums
-        val downloaded = Jobs.all.filter { it.status == Status.DONE && it.kind == Kind.MUSIC && it.files.size > 1 }
+        val saved = Library.albums.filter { matches(it.artist + " " + it.title) }
+        val downloaded = Jobs.all.filter { it.status == Status.DONE && it.kind == Kind.MUSIC && it.files.size > 1 && matches(it.title) }
         if (saved.isEmpty() && downloaded.isEmpty()) return empty("Откройте альбом и нажмите ♥ —\nон появится здесь. Скачанные альбомы — тоже.")
         val grid = GridLayout(a).apply { columnCount = 2 }
         fun add(title: String, sub: String, cover: String?, click: () -> Unit) {
@@ -312,8 +319,8 @@ class LibraryPage(
 
     /** Ваши плейлисты (перенесённые) и подборки, которые собираются сами. */
     private fun playlistsTab() {
-        content.addView(importCard())
-        Library.playlists.forEach { p ->
+        if (query.isBlank()) content.addView(importCard())
+        Library.playlists.filter { matches(it.name) }.forEach { p ->
             val r = LinearLayout(a).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = a.dp(76)
                 isClickable = true; isFocusable = true
@@ -330,7 +337,7 @@ class LibraryPage(
             r.addView(col)
             content.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = a.dp(8) })
         }
-        if (Library.playlists.isNotEmpty()) content.addView(TextView(a, null, 0, R.style.SectionTitle).apply { text = "Собираются сами" })
+        if (query.isBlank() && Library.playlists.isNotEmpty()) content.addView(TextView(a, null, 0, R.style.SectionTitle).apply { text = "Собираются сами" })
         val fav = Library.favorites
         val history = History.all.filter { it.kind == Kind.MUSIC }
         fun q(l: List<Track>) = l.map { Playback.QItem(it, Library.localFor(it), it.url) }
@@ -342,6 +349,7 @@ class LibraryPage(
             Triple("Без интернета", "всё, что на телефоне", { Library.downloaded().map { (t, f) -> Playback.QItem(t, f) } }),
         )
         lists.forEachIndexed { i, (title, sub, make) ->
+            if (!matches(title)) return@forEachIndexed
             val r = LinearLayout(a).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = a.dp(76)
                 isClickable = true; isFocusable = true
@@ -365,8 +373,8 @@ class LibraryPage(
 
     /** Скачанная музыка и видео. */
     private fun downloadedTab() {
-        val music = Library.downloaded()
-        val videos = Jobs.all.filter { it.status == Status.DONE && it.kind == Kind.VIDEO }
+        val music = Library.downloaded().filter { (t, f) -> matches(t.artist + " " + t.title) || matches(f.name) }
+        val videos = Jobs.all.filter { it.status == Status.DONE && it.kind == Kind.VIDEO && matches(it.title) }
         if (music.isEmpty() && videos.isEmpty()) return empty("Скачанного пока нет.\nСкачайте песню или поставьте ♥ — она появится здесь.")
         val items = music.map { (t, f) -> Playback.QItem(t, f) }
         if (videos.isNotEmpty()) {
@@ -380,7 +388,7 @@ class LibraryPage(
     }
 
     private fun historyTab() {
-        val all = History.all
+        val all = History.all.filter { matches(it.track.artist + " " + it.track.title) }
         if (all.isEmpty()) return empty("Здесь будет всё, что вы слушали и смотрели.\nПовторное включение — мгновенно.")
         paged(all.size) { ei ->
             val e = all[ei]

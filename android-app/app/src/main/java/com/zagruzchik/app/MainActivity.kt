@@ -792,6 +792,7 @@ class MainActivity : AppCompatActivity() {
                 .flatMap { j -> j.files.map { it to j.album } }
             Playback.play(this, queue, 0)
         }
+        findViewById<android.widget.EditText>(R.id.jobsQuery).doAfterTextChanged { refreshJobs() }
         val list = findViewById<RecyclerView>(R.id.jobsList)
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
@@ -841,11 +842,16 @@ class MainActivity : AppCompatActivity() {
         }
         (siteChips.parent as View).isVisible = counts.size > 1
 
-        val shown = byKind.filter { siteFilter == null || it.site == siteFilter }
+        val query = findViewById<android.widget.EditText>(R.id.jobsQuery).text.toString().trim()
+        val shown = byKind.filter { j ->
+            (siteFilter == null || j.site == siteFilter) && (query.isEmpty() || j.title.contains(query, true) ||
+                j.album.orEmpty().contains(query, true) || j.files.any { it.name.contains(query, true) })
+        }
         adapter.submit(shown)
         playAll.isVisible = kindFilter == Kind.MUSIC && shown.any { it.status == Status.DONE }
         jobsEmpty.isVisible = shown.isEmpty()
         findViewById<TextView>(R.id.emptyTitle).text = when {
+            query.isNotEmpty() -> "Ничего не найдено"
             all.isEmpty() -> "Пока ничего не скачано"
             kindFilter == Kind.MUSIC -> "Музыки пока нет"
             kindFilter == Kind.VIDEO -> "Видео пока нет"

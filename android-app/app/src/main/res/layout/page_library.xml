@@ -32,6 +32,17 @@
             app:tint="?attr/colorOnSurface" />
     </LinearLayout>
 
+    <EditText
+        android:id="@+id/libraryQuery"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:minHeight="48dp"
+        android:hint="Поиск в медиатеке"
+        android:inputType="text"
+        android:singleLine="true"
+        android:imeOptions="actionSearch" />
+
     <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

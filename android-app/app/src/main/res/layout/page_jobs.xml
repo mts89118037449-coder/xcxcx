@@ -5,6 +5,17 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
+    <EditText
+        android:id="@+id/jobsQuery"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:minHeight="48dp"
+        android:hint="Поиск в загрузках"
+        android:inputType="text"
+        android:singleLine="true"
+        android:imeOptions="actionSearch" />
+
     <com.google.android.material.button.MaterialButtonToggleGroup
         android:id="@+id/kinds"
         android:layout_width="match_parent"

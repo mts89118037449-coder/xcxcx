@@ -27,10 +27,10 @@ object SourcePicker {
             .setView(ScrollView(a).apply { addView(box) })
             .setNegativeButton("Закрыть", null).create()
 
-        fun choose(where: String?, label: String) {
+        fun choose(where: String?, label: String, option: Streams.Option? = null) {
             dialog.dismiss()
             if (where == Streams.chosen(t) && where != null) return
-            Streams.pin(t, where)
+            Streams.pin(t, where, option)
             AppLog.add("ИСТОЧНИК ВЫБРАН для «${t.label}»: $label")
             Playback.replay(a, t)
             onChosen()
@@ -52,7 +52,7 @@ object SourcePicker {
             row("Автоматически", "как решит приложение", current == null) { choose(null, "автоматически") }
             live.list.forEach { o ->
                 val sub = if (o.title.isNotBlank() && !o.title.equals(t.title, true)) "запись: «${o.title.take(60)}»" else null
-                row(o.label, sub, o.where == current) { choose(o.where, o.label) }
+                row(o.label, sub, o.where == current) { choose(o.where, o.label, o) }
             }
             foot.text = if (!live.done) "Ищу на остальных площадках… список пополняется"
                 else if (live.list.isEmpty()) "Площадки сейчас ничего не отдали" else "Поиск закончен: найдено ${live.list.size}"

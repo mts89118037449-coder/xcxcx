@@ -150,10 +150,11 @@ class SmokeView(ctx: Context) : View(ctx) {
         // Сглаживаем вспышку, чтобы яркость не дёргалась: быстрый подъём, плавный спад.
         // Удар баса — чёткий толчок: подъём ~35 мс, спад ~150 мс (не дёргано, но и не размазано).
         shown += (beat - shown) * (if (beat > shown) minOf(1f, dt * 28f) else minOf(1f, dt * 7f))
-        val pulse = 0.55f + 0.65f * shown
         // Сколько полос звучит сейчас (бас, середина, верх): от этого — ширина и густота дыма.
         val bands = if (playing) Exciter.bandsNow() else null
         for (i in 0..2) { val v = bands?.get(i) ?: 0f; bandShown[i] += (v - bandShown[i]) * minOf(1f, dt * (if (v > bandShown[i]) 12f else 3f)) }
+        val instrumental = maxOf(bandShown[1], bandShown[2]).coerceIn(0f, 1f)
+        val pulse = 0.65f + 0.65f * maxOf(shown, instrumental)
         val rich = bandShown.count { it > 0.3f }                      // 0..3
         val fullness = (2f * bandShown[0] + bandShown[1] + bandShown[2]) / 4f // бас весит вдвое
         // Новые ноты — новые клубы.
@@ -182,7 +183,7 @@ class SmokeView(ctx: Context) : View(ctx) {
         // Ореол вплотную к обложке — из него «выходит» дым.
         halo?.let { h ->
             paint.shader = h
-            paint.alpha = (255 * (0.3f + 0.65f * shown) * level).toInt().coerceIn(0, 255)
+            paint.alpha = (255 * (0.4f + 0.6f * maxOf(shown, instrumental)) * level).toInt().coerceIn(0, 255)
             canvas.save(); canvas.translate(cx, cy)
             val hs = radius * (1.55f + 0.7f * shown + 0.2f * bandShown[0])
             canvas.scale(hs, hs); canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
@@ -236,12 +237,12 @@ class SmokeView(ctx: Context) : View(ctx) {
                 val a = j.dir + spread + j.bend * out + 0.15f * sin(p * 5f + j.seed + k)
                 val d = radius * 0.85f + reach * out * (0.8f + 0.25f * rnd(j.seed, k, 13))
                 val size = radius * scale * (0.45f + 1.35f * out) * (0.8f + 0.4f * rnd(j.seed, k, 14))
-                val alpha = minOf(if (j.band == 0) 0.95f else 0.55f, minOf(1f, p * 6f) * (1f - p) * (1f - p * 0.5f) * (if (j.band == 0) 1.2f else 0.75f * j.power) * level) * j.fade
+                val alpha = minOf(if (j.band == 0) 0.95f else 0.88f, minOf(1f, p * 6f) * (1f - p) * (1f - p * 0.5f) * (if (j.band == 0) 1.2f else (0.9f + 0.4f * bandShown[j.band]) * j.power) * level) * j.fade
                 if (alpha <= 0.01f) continue
                 val idx = ((a / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES
                 layer(canvas, idx, alpha, cx + cos(a) * d, cy + sin(a) * d - radius * 0.3f * out,
                     Math.toDegrees(a.toDouble()).toFloat() + 60f * p + k * 90f, size * 1.3f, size * 1.1f, j.seed * 3 + k,
-                    if (j.band == 0) 0.3f * (1f - p) + 0.25f * shown else 0f)   // облака баса — ярче, особенно в начале
+                    if (j.band == 0) 0.3f * (1f - p) + 0.25f * shown else 0.15f + 0.35f * bandShown[j.band])
             }
         }
         if (playing || billows.isNotEmpty() || kotlin.math.abs(level - target) > 0.01f) postInvalidateOnAnimation()
