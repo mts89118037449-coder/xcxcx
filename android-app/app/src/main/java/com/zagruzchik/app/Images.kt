@@ -71,6 +71,7 @@ object Images {
         val c = key?.let { memory.get(it) }
         if (c != null) { view.setImageBitmap(c); return }
         view.setImageResource(placeholder)
+        if (url.isNullOrEmpty()) return
         // Строку убрали с экрана (новый поиск перерисовал список) — её обложка больше не нужна.
         var gone = false
         view.addOnAttachStateChangeListener(object : android.view.View.OnAttachStateChangeListener {

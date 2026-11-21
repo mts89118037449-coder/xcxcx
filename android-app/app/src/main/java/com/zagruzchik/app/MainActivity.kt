@@ -364,9 +364,10 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(R.id.musicResults).isVisible = q.length >= 2
             findViewById<View>(R.id.homeSection).isVisible = q.length < 2
             musicSearch.removeCallbacks(musicSearchRun)
+            musicSeq++ // Предыдущий ответ уже относится к другому тексту.
             if (q.length >= 2) {
                 findViewById<View>(R.id.musicProgress).isVisible = true
-                musicSearch.postDelayed(musicSearchRun, 450)
+                musicSearch.postDelayed(musicSearchRun, 300)
             }
         }
         musicSearch.setOnEditorActionListener { _, _, _ -> hideKeyboard(); true }
@@ -527,6 +528,8 @@ class MainActivity : AppCompatActivity() {
         val catalog = findViewById<LinearLayout>(R.id.catalogList)
         val web = findViewById<LinearLayout>(R.id.webList)
         web.removeAllViews()
+        webDrawn = emptyList()
+        webQueue = emptyList()
         findViewById<View>(R.id.webProgress).isVisible = true
         val shelves = findViewById<LinearLayout>(R.id.searchShelves)
         shelves.removeAllViews()
@@ -587,7 +590,8 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var webPending: WebState? = null
     private var webScheduled = false
     private var webLastDraw = 0L
-    private var webDrawn: List<String> = emptyList()
+    private var webDrawn: List<WebResult> = emptyList()
+    private var webQueue: List<Playback.QItem> = emptyList()
 
     private fun postWeb(seq: Int, q: String, shown: List<WebResult>, answered: Int, done: Boolean, failed: List<String>) {
         runOnUiThread {
@@ -630,25 +634,32 @@ class MainActivity : AppCompatActivity() {
             shown.isEmpty() -> "Ищу на ${WebSearch.sourceCount} площадках… ответили $answered"
             else -> "Нашлось на: ${sources.joinToString(", ")}" + if (done) "" else " · ищу дальше…"
         } + if (failed.isNotEmpty()) "\nНе ответили: ${failed.joinToString("; ")}" else ""
-        // Список не изменился (ответила площадка, но её результаты ниже порога) — строки не трогаем.
-        val urls = shown.map { it.url }
-        if (urls == webDrawn && web.childCount == urls.size) return
-        webDrawn = urls
-        web.removeAllViews()
-        val items = shown.map { w ->
+        if (shown == webDrawn) return
+        val previous = webDrawn.mapIndexed { i, result -> result to web.getChildAt(i) }.toMap()
+        val wanted = shown.toHashSet()
+        previous.forEach { (result, row) -> if (result !in wanted) web.removeView(row) }
+        webDrawn = shown
+        webQueue = shown.map { w ->
             Playback.QItem(w.track(), null, null, if (w.direct) null else w.url, if (w.direct) w.url else null, w.source)
         }
-        shown.forEachIndexed { i, w ->
-            web.addView(
-                trackRow(
-                    web, items[i].track,
-                    pageUrl = items[i].pageUrl,
-                    directUrl = items[i].directUrl,
-                    directSource = w.source,
-                    subtitle = listOf(w.source, w.artist).filter { it.isNotBlank() }.joinToString(" · "),
-                    onPlay = { Playback.playQueue(this, items, i) },
-                )
-            )
+        // Оставляем общий префикс на месте, затем выстраиваем хвост, сохраняя готовые строки и обложки.
+        var moving = false
+        shown.forEachIndexed { index, result ->
+            val row = previous[result]
+            if (row == null) {
+                val item = webQueue[index]
+                web.addView(trackRow(web, item.track, pageUrl = item.pageUrl, directUrl = item.directUrl,
+                    directSource = result.source, subtitle = listOf(result.source, result.artist)
+                        .filter { it.isNotBlank() }.joinToString(" · "),
+                    onPlay = {
+                        val position = webDrawn.indexOf(result)
+                        if (position >= 0) Playback.playQueue(this, webQueue, position)
+                    }))
+            } else if (moving || web.getChildAt(index) !== row) {
+                moving = true
+                web.bringChildToFront(row)
+            }
+            if (row == null && index < web.childCount - 1) moving = true
         }
     }
 

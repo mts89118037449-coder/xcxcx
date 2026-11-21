@@ -57,7 +57,12 @@ class NowPlayingActivity : AppCompatActivity() {
             updateProgress()
             updateLyrics()
             // Пока играет фрагмент — обновляем «найдена · продолжит через N с».
-            if (extras()?.getBoolean(Playback.X_PREVIEW) == true) render()
+            if (!showingPending() && extras()?.getBoolean(Playback.X_PREVIEW) == true) {
+                controller?.let { c ->
+                    val text = Cast.deviceName(this@NowPlayingActivity)?.let { "На телевизоре: $it" } ?: previewStatus(c)
+                    if (source.text != text) source.text = text
+                }
+            }
             // Пока песня ищется — показываем, что уже ответили площадки.
             seekView.postDelayed(this, 250)
         }
@@ -285,6 +290,10 @@ class NowPlayingActivity : AppCompatActivity() {
         return Track(t, m.artist?.toString().orEmpty(), cover = m.artworkUri?.toString())
     }
 
+    private fun previewStatus(c: MediaController) =
+        Playback.joinIn(c)?.let { "Полная версия найдена · продолжит без паузы через $it с" }
+            ?: "Фрагмент · ищу полную версию, продолжит с этого же места"
+
     private fun render() {
         val c = controller
         // Видео — на отдельный экран.
@@ -324,8 +333,7 @@ class NowPlayingActivity : AppCompatActivity() {
                 tv != null -> "На телевизоре: $tv"
                 src == null -> ""
                 src == "Скачано" -> "Из загрузок · без интернета"
-                isPreview -> Playback.joinIn(c)?.let { s -> "Полная версия найдена · продолжит без паузы через $s с" }
-                    ?: "Фрагмент · ищу полную версию, продолжит с этого же места"
+                isPreview -> previewStatus(c)
                 else -> "Играет из $src" + (Playback.startInfo?.let { " · старт: $it" } ?: "")
             }
             setCover(m.artworkUri?.toString(), m.artworkData)
