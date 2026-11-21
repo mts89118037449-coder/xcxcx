@@ -233,7 +233,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val key = Library.key(t)
         if (key == lyricsKey) return
         lyricsKey = key; lyrics = null; lyricLine = -2
-        findViewById<View>(R.id.npLyricsPeek).visibility = View.INVISIBLE
+        findViewById<View>(R.id.npLyricsPeek).visibility = View.GONE
         Thread {
             val r = runCatching { Lyrics.find(t) }.getOrNull()
             runOnUiThread { if (lyricsKey == key && !isDestroyed) { lyrics = r; updateLyrics() } }
@@ -245,7 +245,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val r = lyrics
         val c = controller
         val preview = extras()?.getBoolean(Playback.X_PREVIEW) == true
-        if (r == null || c == null || preview || showingPending()) { peek.visibility = View.INVISIBLE; return } // место остаётся занятым — экран не прыгает
+        if (r == null || c == null || preview || showingPending()) { peek.visibility = View.GONE; return } // освобождаем место для обложки и управления
         val prev = findViewById<TextView>(R.id.npLyrPrev)
         val now = findViewById<TextView>(R.id.npLyrNow)
         val next = findViewById<TextView>(R.id.npLyrNext)
@@ -254,9 +254,9 @@ class NowPlayingActivity : AppCompatActivity() {
             if (lyricLine == -1) return
             lyricLine = -1
             val lines = r.text.lines().filter { it.isNotBlank() && !it.startsWith("[") }
-            prev.visibility = View.INVISIBLE
+            prev.visibility = View.GONE
             now.text = lines.getOrNull(0).orEmpty(); next.text = lines.getOrNull(1).orEmpty()
-            peek.visibility = if (lines.isNotEmpty()) View.VISIBLE else View.INVISIBLE
+            peek.visibility = if (lines.isNotEmpty()) View.VISIBLE else View.GONE
             return
         }
         val pos = Playback.position(c) + 300
@@ -323,10 +323,10 @@ class NowPlayingActivity : AppCompatActivity() {
             source.text = when {
                 tv != null -> "На телевизоре: $tv"
                 src == null -> ""
-                src == "Скачано" -> "Из загрузок · без интернета"
+                src == "Скачано" -> "Сохранено на устройстве"
                 isPreview -> Playback.joinIn(c)?.let { s -> "Полная версия найдена · продолжит без паузы через $s с" }
                     ?: "Фрагмент · ищу полную версию, продолжит с этого же места"
-                else -> "Играет из $src" + (Playback.startInfo?.let { " · старт: $it" } ?: "")
+                else -> "Источник: $src"
             }
             setCover(m.artworkUri?.toString(), m.artworkData)
             // Вверху — откуда играет: площадка, память, телефон или ТВ.
