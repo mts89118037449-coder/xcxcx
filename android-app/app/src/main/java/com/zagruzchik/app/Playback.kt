@@ -651,7 +651,7 @@ object Playback {
     fun previous(ctx: Context) = controller(ctx.applicationContext) { it.seekToPrevious() }
 
     /** Следующие 8 песен очереди готовим заранее — переходы без ожидания. */
-    private const val AHEAD = 2 // больше — и подготовка душит сеть и ту песню, которую нажали
+    private const val AHEAD = 3 // три следующие песни готовим заранее; фон уступает нажатому
 
     private var aheadGen = -1
     // Куда перемотать новую запись после смены источника (replay).
@@ -679,7 +679,7 @@ object Playback {
     private fun fill(app: Context, gen: Int) {
         if (filling || gen != queueGen) return
         val c = hooked ?: return
-        if (c.mediaItemCount - 1 - c.currentMediaItemIndex >= 2) return
+        if (c.mediaItemCount - 1 - c.currentMediaItemIndex >= AHEAD) return
         if (nextToAdd >= queue.size) return radio(app, gen)
         val q = queue[nextToAdd]
         filling = true
