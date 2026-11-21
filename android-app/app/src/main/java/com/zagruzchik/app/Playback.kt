@@ -631,7 +631,7 @@ object Playback {
     @Volatile private var waitingFull: Track? = null
 
     /** Есть ли следующая песня: уже в проигрывателе или ещё в текущем списке. */
-    fun hasNext(c: MediaController) = c.hasNextMediaItem() || nextToAdd < queue.size
+    fun hasNext(c: MediaController) = c.hasNextMediaItem() || nextToAdd < queue.size || queue.indexOfFirst { Library.key(it.track) == nowPlayingKey } in 0 until queue.lastIndex
 
     /**
      * Следующая песня из текущего списка. Если она ещё не подготовлена в проигрывателе —
@@ -643,12 +643,26 @@ object Playback {
             when {
                 c.hasNextMediaItem() -> c.seekToNextMediaItem()
                 nextToAdd < queue.size -> playQueue(app, queue, nextToAdd, openScreen = false)
+                else -> {
+                    val index = queue.indexOfFirst { Library.key(it.track) == nowPlayingKey }
+                    if (index >= 0 && index < queue.lastIndex) playQueue(app, queue, index + 1, openScreen = false)
+                }
             }
         }
     }
 
     /** Предыдущая: в начале песни — прошлая, дальше 3 секунд — с начала этой. */
-    fun previous(ctx: Context) = controller(ctx.applicationContext) { it.seekToPrevious() }
+    fun previous(ctx: Context) {
+        val app = ctx.applicationContext
+        controller(app) { c ->
+            if (c.hasPreviousMediaItem()) c.seekToPreviousMediaItem()
+            else {
+                val index = queue.indexOfFirst { Library.key(it.track) == nowPlayingKey }
+                if (index > 0) playQueue(app, queue, index - 1, openScreen = false)
+                else c.seekTo(0)
+            }
+        }
+    }
 
     /** Следующие 8 песен очереди готовим заранее — переходы без ожидания. */
     private const val AHEAD = 3 // три следующие песни готовим заранее; фон уступает нажатому
