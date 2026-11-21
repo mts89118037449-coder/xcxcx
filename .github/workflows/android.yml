@@ -38,10 +38,11 @@ jobs:
           unzip -tq "$APK" | tail -n 2
           SDK_BUILD_TOOLS="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
-          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | head -n 4
+          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" > out-package-info.txt
+          sed -n '1,4p' out-package-info.txt
           mkdir -p out
           cp "$APK" out/SoundAura.apk
-          sha256sum out/SoundAura.apk | tee out/SoundAura.apk.sha256
+          ( cd out && sha256sum SoundAura.apk > SoundAura.apk.sha256 )
           ls -lh out/SoundAura.apk
 
       - name: Publish branch release
