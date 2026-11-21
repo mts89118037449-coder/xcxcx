@@ -23,6 +23,8 @@ import kotlin.math.exp
 @UnstableApi
 class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
     companion object {
+        @Volatile var timeline = 0L
+            private set
         private val beats = ConcurrentLinkedDeque<Pair<Long, Float>>()   // (время в записи, мкс; сила 0..1)
         @Volatile private var posUs = 0L
         @Volatile private var posAt = 0L
@@ -37,7 +39,7 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
             return posUs + (now - posAt) * 1000
         }
 
-        /** Сила пульса сейчас, 0..1: вспышка в момент удара и затухание за ~0,4 с. null — ритма нет (пауза, другой формат). */
+        /** Сила пульса сейчас, 0..1: вспышка в момент удара и затухание за ~0,23 с. null — ритма нет (пауза, другой формат). */
         fun beatNow(): Float? {
             val pos = nowUs() ?: return null
             var v = 0f
@@ -47,7 +49,7 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
                 val age = pos - t
                 if (age > 700_000) { it.remove(); continue }
                 if (age >= 0) {
-                    v = maxOf(v, strength * (1f - age / 420_000f).coerceAtLeast(0f))
+                    v = maxOf(v, strength * (1f - age / 230_000f).coerceAtLeast(0f))
                     if (t > lastPlayed) { lastPlayed = t; lastPlayedAt = SystemClock.uptimeMillis() }
                 }
             }
@@ -80,7 +82,7 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
             while (it.hasNext()) {
                 val n = it.next()
                 if (pos - n.first > 2_000_000) { it.remove(); continue }
-                if (n.first in (after + 1)..pos) out += n
+                if (n.first > after && pos - n.first in 0..120_000) out += n
             }
             return out
         }
@@ -118,13 +120,14 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
     private var lastPts = Long.MIN_VALUE
 
     // Детектор: энергия баса (ниже ~150 Гц) в окнах ~23 мс; всплеск над средним уровнем — удар.
-    private var bassLp = 0f
+    private var bassLp = FloatArray(2)
     private var energy = 0f
     private var inWindow = 0
     private var average = 0f
     private var lastBeatUs = Long.MIN_VALUE / 2
     private var midAlpha = 0.25f
-    private var midLp = 0f
+    private var midLp = FloatArray(2)
+    private val previousEnergy = FloatArray(3)
     private val bandE = FloatArray(3)
     private val bandAvg = FloatArray(3)
     private val lastNoteUs = LongArray(3) { Long.MIN_VALUE / 2 }
@@ -134,6 +137,10 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
             inputFormat.channelCount > 0 && inputFormat.sampleRate > 0
         if (enabled) {
             channels = inputFormat.channelCount
+            if (bassLp.size != channels) {
+                bassLp = FloatArray(channels)
+                midLp = FloatArray(channels)
+            }
             rate = inputFormat.sampleRate
             bassAlpha = (1.0 - exp(-2.0 * PI * 150.0 / rate)).toFloat()
             window = (rate * 0.023f).toInt().coerceAtLeast(256)
@@ -155,18 +162,22 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
         val step = channels * 2
         var frame = 0L
         while (b.remaining() >= step) {
-            val s = b.getShort(b.position()) / 32768f       // первый канал
-            b.position(b.position() + step)
-            bassLp += bassAlpha * (s - bassLp)
-            energy += bassLp * bassLp
-            midLp += midAlpha * (s - midLp)
-            val mid = midLp - bassLp; val high = s - midLp
-            bandE[1] += mid * mid; bandE[2] += high * high
+            for (ch in 0 until channels) {
+                val sample = b.short / 32768f
+                bassLp[ch] += bassAlpha * (sample - bassLp[ch])
+                midLp[ch] += midAlpha * (sample - midLp[ch])
+                val mid = midLp[ch] - bassLp[ch]
+                val high = sample - midLp[ch]
+                energy += bassLp[ch] * bassLp[ch]
+                bandE[1] += mid * mid
+                bandE[2] += high * high
+            }
             frame++
             if (++inWindow >= window) {
-                val e = energy / window
+                val samples = window * channels
+                val e = energy / samples
                 val atUs = ptsUs + (frame - window / 2) * 1_000_000L / rate   // середина окна — там и был удар
-                if (e > average * 1.55f + 0.0004f && atUs - lastBeatUs > 230_000 && e > 0.5f * bandE[1] / window /* бас правда громче середины: иначе это гитара просачивается в низ (проверено на синтетике: 31 ложный «удар» → 0) */) {
+                if (e > previousEnergy[0] * 1.12f && e > average * 1.55f + 0.0004f && atUs - lastBeatUs > 230_000 && e > 0.5f * bandE[1] / samples /* бас правда громче середины: иначе это гитара просачивается в низ (проверено на синтетике: 31 ложный «удар» → 0) */) {
                     if (atUs - lastBeatUs in 250_000..1_500_000) intervals += atUs - lastBeatUs
                     lastBeatUs = atUs
                     val strength = ((e / (average + 0.0004f) - 1f) / 2.5f).coerceIn(0.35f, 1f)
@@ -176,26 +187,27 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
                 }
                 average += (e - average) * 0.045f
                 // Полосы: уровень относительно своего среднего и всплески-«ноты» в середине и верху.
-                bandE[0] = e * window
-                bassSum += e; allSum += e + bandE[1] / window + bandE[2] / window
+                bandE[0] = energy
+                bassSum += e; allSum += e + bandE[1] / samples + bandE[2] / samples
                 val lv = FloatArray(3)
                 // Вес полосы — её доля в общем звуке: раньше каждая полоса мерилась сама с собой, и тихая гитара давала столько же
                 // «нот», сколько громкая, а тяжёлый бас среди них терялся (владелец 20.11: «гитара перебивает всё, бассы не чувствуются»).
-                val total = bandAvg[0] + bandAvg[1] + bandAvg[2] + 1e-9f
+                val total = bandE.sum() / samples + 1e-9f
                 for (b in 0..2) {
-                    val eb = bandE[b] / window
+                    val eb = bandE[b] / samples
                     val floor = if (b == 2) 0.00002f else 0.0001f
                     val ratio = eb / (bandAvg[b] + floor)
-                    val presence = if (b == 0) 1f else (bandAvg[b] / total * 2.5f).coerceIn(0.15f, 1f)
+                    val presence = if (b == 0) 1f else (eb / total * 2.5f).coerceIn(0.15f, 1f)
                     lv[b] = ((ratio - 0.6f) / 1.6f).coerceIn(0f, 1f) * presence
-                    // Бочка «просачивается» в середину — ноту середины в момент удара баса не считаем (проверено на синтетике:
-                    // без этого 24 срабатывания на 8 аккордов, с ним — 9).
-                    if (b > 0 && ratio > 1.5f && eb > floor * 2 && atUs - lastNoteUs[b] > 160_000 &&
-                        !(b == 1 && kotlin.math.abs(atUs - lastBeatUs) < 70_000)) {
+                    // Во время басового удара отдельная атака середины остаётся видна,
+                    // если её энергия заметно выше утечки из низкочастотного фильтра.
+                    if (b > 0 && eb > previousEnergy[b] * 1.18f && ratio > 1.5f && eb > floor * 2 && atUs - lastNoteUs[b] > 160_000 &&
+                        !(b == 1 && kotlin.math.abs(atUs - lastBeatUs) < 70_000 && eb < e * 0.55f)) {
                         lastNoteUs[b] = atUs
                         val strength = ((ratio - 1f) / 2.5f).coerceIn(0.3f, 1f) * presence
                         if (strength >= 0.25f) notes.addLast(Triple(atUs, b, strength)) // слабая нота тихой полосы — без дыма
                     }
+                    previousEnergy[b] = eb
                     bandAvg[b] += (eb - bandAvg[b]) * 0.03f
                     bandE[b] = 0f
                 }
@@ -216,8 +228,9 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
 
     override fun flush() {
         // Перемотка или новая запись: прежние удары больше не прозвучат, шкала времени начинается заново.
-        beats.clear(); levels.clear(); notes.clear(); midLp = 0f; bandE.fill(0f); bandAvg.fill(0f); lastNoteUs.fill(Long.MIN_VALUE / 2); lastPts = Long.MIN_VALUE; lastBeatUs = Long.MIN_VALUE / 2
-        bassLp = 0f; energy = 0f; inWindow = 0; average = 0f
+        beats.clear(); levels.clear(); notes.clear(); midLp.fill(0f); previousEnergy.fill(0f); bandE.fill(0f); bandAvg.fill(0f); lastNoteUs.fill(Long.MIN_VALUE / 2); lastPts = Long.MIN_VALUE; lastBeatUs = Long.MIN_VALUE / 2
+        timeline++
+        bassLp.fill(0f); energy = 0f; inWindow = 0; average = 0f
         lastPlayed = 0L; posAt = 0L
         super.flush()
     }

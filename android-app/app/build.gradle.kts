@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val combinedArmApk = providers.gradleProperty("combinedArmApk").orNull == "true"
+
 android {
     namespace = "com.zagruzchik.app"
     compileSdk = 35
@@ -10,9 +12,10 @@ android {
     defaultConfig {
         applicationId = "com.zagruzchik.app"
         minSdk = 29 // Android 10+
+        if (combinedArmApk) ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         targetSdk = 35
-        versionCode = 116
-        versionName = "9.46"
+        versionCode = 117
+        versionName = "9.47"
     }
 
     // Один постоянный ключ, чтобы новые версии ставились поверх старых без удаления.
@@ -37,7 +40,7 @@ android {
     // Отдельные APK под процессоры: arm64 — почти все телефоны с 2017 года, armeabi-v7a — старые.
     splits {
         abi {
-            isEnable = true
+            isEnable = !combinedArmApk
             reset()
             include("arm64-v8a", "armeabi-v7a")
             isUniversalApk = false
