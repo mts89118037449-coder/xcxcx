@@ -3459,7 +3459,7 @@ HSPLcom/zagruzchik/app/MainActivity;->postWeb$lambda$110(Lcom/zagruzchik/app/Mai
 HSPLcom/zagruzchik/app/MainActivity;->postWeb(ILjava/lang/String;Ljava/util/List;IZLjava/util/List;)V
 HSPLcom/zagruzchik/app/MainActivity;->prefs_delegate$lambda$1(Lcom/zagruzchik/app/MainActivity;)Landroid/content/SharedPreferences;
 HSPLcom/zagruzchik/app/MainActivity;->rankWeb$lambda$118$lambda$117$lambda$116(Lkotlin/jvm/functions/Function2;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Integer;
-HSPLcom/zagruzchik/app/MainActivity;->rankWeb(Ljava/lang/String;Ljava/util/List;)Ljava/util/List;
+HSPLcom/zagruzchik/app/MainActivity;->rankWeb(Ljava/util/List;)Ljava/util/List;
 HSPLcom/zagruzchik/app/MainActivity;->refreshJobs$chip(Lcom/zagruzchik/app/MainActivity;Ljava/lang/String;Ljava/lang/String;)Lcom/google/android/material/chip/Chip;
 HSPLcom/zagruzchik/app/MainActivity;->refreshJobs$lambda$146(Lcom/zagruzchik/app/MainActivity;Lcom/google/android/material/chip/ChipGroup;Ljava/util/List;)V
 HSPLcom/zagruzchik/app/MainActivity;->refreshJobs()V

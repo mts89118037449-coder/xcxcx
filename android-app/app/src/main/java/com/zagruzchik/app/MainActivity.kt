@@ -565,19 +565,21 @@ class MainActivity : AppCompatActivity() {
                 Streams.prefetchMany(found, 4) // к нажатию ▶ полная версия уже готова
             }
         }
-        // Везде в интернете: 9 площадок разом, результаты появляются по мере ответа.
-        val collected = java.util.Collections.synchronizedList(mutableListOf<WebResult>())
-        val answered = java.util.concurrent.atomic.AtomicInteger(0)
-        val failed = java.util.Collections.synchronizedList(mutableListOf<String>())
-        WebSearch.searchAll(q, onResults = { src, r, err ->
-            collected += r
-            if (err != null) failed += "$src ($err)"
-            val n = answered.incrementAndGet()
-            // Сортировка — здесь, в фоне; на экран — не чаще раза в 350 мс (раньше список целиком
-            // перестраивался после ответа каждой из 9 площадок, и экран подвисал).
-            postWeb(seq, q, rankWeb(q, collected.toList()), n, done = false, failed.toList())
+        val collected = mutableListOf<Pair<WebResult, Double>>()
+        val failed = mutableListOf<String>()
+        var answered = 0
+        WebSearch.searchAll(q, onResults = { src, results, err ->
+            val scored = results.map { it to WebSearch.relevance(q, it) }.filter { it.second >= 0.34 }
+            synchronized(collected) {
+                collected += scored
+                if (err != null) failed += "$src ($err)"
+                answered++
+                postWeb(seq, q, rankWeb(collected), answered, done = false, failed.toList())
+            }
         }, onDone = {
-            postWeb(seq, q, rankWeb(q, collected.toList()), answered.get(), done = true, failed.toList())
+            synchronized(collected) {
+                postWeb(seq, q, rankWeb(collected), answered, done = true, failed.toList())
+            }
         })
     }
 
@@ -588,8 +590,9 @@ class MainActivity : AppCompatActivity() {
     private var webDrawn: List<String> = emptyList()
 
     private fun postWeb(seq: Int, q: String, shown: List<WebResult>, answered: Int, done: Boolean, failed: List<String>) {
-        webPending = WebState(seq, q, shown, answered, done, failed)
         runOnUiThread {
+            if (seq != musicSeq) return@runOnUiThread
+            webPending = WebState(seq, q, shown, answered, done, failed)
             if (webScheduled) return@runOnUiThread
             webScheduled = true
             val wait = (350 - (System.currentTimeMillis() - webLastDraw)).coerceAtLeast(0)
@@ -604,10 +607,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Похожие на запрос — выше; совсем непохожие не показываем; повторы — один раз; сверху — разные площадки. */
-    private fun rankWeb(q: String, all: List<WebResult>): List<WebResult> {
+    private fun rankWeb(all: List<Pair<WebResult, Double>>): List<WebResult> {
         val seen = HashSet<String>()
-        return all.map { it to WebSearch.relevance(q, it) }
-            .filter { it.second >= 0.34 }
+        return all
             .sortedByDescending { it.second }
             .map { it.first }
             .filter { seen.add(it.url) }
@@ -625,7 +627,7 @@ class MainActivity : AppCompatActivity() {
         val sources = shown.map { it.source }.distinct()
         findViewById<TextView>(R.id.webHint).text = when {
             shown.isEmpty() && done -> "Нигде не нашлось. Проверьте написание или попробуйте только название."
-            shown.isEmpty() -> "Ищу на 9 площадках… ответили $answered"
+            shown.isEmpty() -> "Ищу на ${WebSearch.sourceCount} площадках… ответили $answered"
             else -> "Нашлось на: ${sources.joinToString(", ")}" + if (done) "" else " · ищу дальше…"
         } + if (failed.isNotEmpty()) "\nНе ответили: ${failed.joinToString("; ")}" else ""
         // Список не изменился (ответила площадка, но её результаты ниже порога) — строки не трогаем.

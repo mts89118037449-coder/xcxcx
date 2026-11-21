@@ -48,7 +48,44 @@ object WebSearch {
         Source("Dailymotion", ::dailymotion),
         Source("Audius", ::audius),
         Source("Mixcloud", ::mixcloud),
+        Source("KUTX", station("KUTX", 599651321)),
+        Source("KPSU", station("KPSU", 878736550)),
     )
+
+    val sourceCount get() = SOURCES.size
+
+    /** Каталоги передач Song of the Day. Повторный поиск использует уже полученный список. */
+    private fun station(name: String, id: Int): (String) -> List<WebResult> {
+        val lock = Any()
+        var catalog = emptyList<WebResult>()
+        var expires = 0L
+        return { query ->
+            val entries = synchronized(lock) {
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (now >= expires) {
+                    val url = "https://itunes.apple.com/lookup?id=$id&entity=podcastEpisode&limit=35"
+                    val episodes = JSONObject(Http.get(url, timeoutMs = 5000)).getJSONArray("results")
+                    catalog = (0 until episodes.length()).mapNotNull { i ->
+                        val ep = episodes.getJSONObject(i)
+                        val audio = ep.optString("episodeUrl")
+                        if (!audio.startsWith("https://") || ep.optString("kind") != "podcast-episode") return@mapNotNull null
+                        val parts = ep.optString("trackName").split(": ", " – ", " - ", " — ", limit = 2)
+                        val title = parts.last().replace("“", "").replace("”", "").trim()
+                        if (title.isBlank()) return@mapNotNull null
+                        WebResult(audio, title, if (parts.size == 2) parts.first() else "",
+                            ep.optInt("trackTimeMillis") / 1000, name, ep.optString("artworkUrl600").ifBlank { null }, direct = true)
+                    }
+                    expires = now + 3600000L
+                }
+                catalog
+            }
+            val words = Match.norm(query).split(' ').filter(String::isNotBlank)
+            entries.filter { entry ->
+                val text = Match.norm(entry.artist + " " + entry.title)
+                words.isNotEmpty() && words.all(text::contains)
+            }
+        }
+    }
 
     /** Все источники разом. [onResults] вызывается из фоновых потоков по мере ответа каждого источника. */
     fun searchAll(q: String, onResults: (source: String, results: List<WebResult>, error: String?) -> Unit, onDone: () -> Unit): List<Future<*>> {
