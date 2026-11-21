@@ -15,7 +15,7 @@ android {
         versionName = "9.42"
     }
 
-    // Один постоянный ключ, чтобы новые версии ставились поверх старых без удаления.
+    // Раздельные APK: телефон и Android TV. У TV отдельный package id.\n    flavorDimensions += "device"\n    productFlavors {\n        create("phone") { dimension = "device" }\n        create("tv") {\n            dimension = "device"\n            applicationIdSuffix = ".tv"\n            versionNameSuffix = "-tv"\n        }\n    }\n\n    // Один постоянный ключ, чтобы новые версии ставились поверх старых без удаления.
     signingConfigs {
         create("app") {
             storeFile = file("signing.jks")
@@ -40,7 +40,7 @@ android {
             isEnable = true
             reset()
             include("arm64-v8a", "armeabi-v7a")
-            isUniversalApk = false
+            isUniversalApk = true // для Android TV с неизвестной архитектурой
         }
     }
 
