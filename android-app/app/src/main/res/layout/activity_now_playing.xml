@@ -127,6 +127,8 @@
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorOnSurfaceVariant" />
 
+        <include layout="@layout/np_bottom_slot" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -180,7 +182,6 @@
         </LinearLayout>
 
         <!-- «Перемешать» в этом варианте живёт в нижней панели -->
-        <include layout="@layout/np_bottom_slot" />
         <include layout="@layout/np_actions_ring" />
     </LinearLayout>
 </FrameLayout>
