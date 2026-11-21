@@ -103,6 +103,8 @@ class DownloadService : Service() {
                 val (uri, mime) = Storage.publish(this, f, result.subfolder)
                 SavedFile(uri.toString(), name, mime)
             }
+            AppLog.add("ЗАГРУЗКА готова: ${Describe.site(url)} · ${format.label} → " +
+                saved.joinToString { "${it.name.substringAfterLast('.')} (${it.mime})" })
             Jobs.update(id, save = true) {
                 status = Status.DONE
                 files = saved
@@ -118,6 +120,7 @@ class DownloadService : Service() {
         } catch (e: Exception) {
             Log.e("Zagruzchik", "download failed: $url", e)
             val msg = (e as? UserError)?.message ?: e.message ?: "Неизвестная ошибка"
+            if (!token.cancelled) AppLog.add("ЗАГРУЗКА ОШИБКА: ${Describe.site(url)} · ${format.label}: $msg")
             Jobs.update(id, save = true) { status = if (token.cancelled) Status.CANCELLED else Status.FAILED; error = msg; detail = "" }
         } finally {
             finish(id, startId)

@@ -69,7 +69,7 @@ class ShareActivity : AppCompatActivity() {
         if (music) {
             Playback.prefetchLink(url, shared)
             view.findViewById<android.view.View>(R.id.formats).isVisible = !Music.needsSearch(url)
-            download.text = "Скачать MP3"
+            download.text = if (Service.of(url) == Service.YOUTUBE) "Скачать" else "Скачать MP3"
             download.backgroundTintList = android.content.res.ColorStateList.valueOf(
                 com.google.android.material.color.MaterialColors.getColor(download, com.google.android.material.R.attr.colorSecondaryContainer))
             download.setTextColor(com.google.android.material.color.MaterialColors.getColor(download, com.google.android.material.R.attr.colorOnSecondaryContainer))

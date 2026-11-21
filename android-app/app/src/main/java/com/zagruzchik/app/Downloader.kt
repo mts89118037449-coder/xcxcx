@@ -466,12 +466,16 @@ object Downloader {
         addOption("-P", dir.absolutePath)
         Cookies.snapshot(ctx)?.let { addOption("--cookies", it.absolutePath) } // своя копия: общий файл yt-dlp не портит
         when (format) {
+            // Видео — H.264 + AAC: лучшая дорожка YouTube обычно AV1/VP9, а их многие телефоны, галерея и Telegram не показывают —
+            // остаётся только звук (владелец 21.11: «загрузил видео, поделился — выгружается как звук»).
             Format.BEST -> {
-                addOption("-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b")
+                addOption("-f", "bv*+ba/b")
+                addOption("-S", "vcodec:h264,acodec:aac")
                 addOption("--merge-output-format", "mp4")
             }
             Format.P720 -> {
-                addOption("-f", "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/bv*[height<=720]+ba/b[height<=720]/b")
+                addOption("-f", "bv*[height<=720]+ba/b[height<=720]/b")
+                addOption("-S", "vcodec:h264,acodec:aac")
                 addOption("--merge-output-format", "mp4")
             }
             Format.MP3 -> {
