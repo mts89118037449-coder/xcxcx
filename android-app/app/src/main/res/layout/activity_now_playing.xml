@@ -27,109 +27,126 @@
         android:paddingHorizontal="22dp"
         android:paddingBottom="18dp">
 
-        <include layout="@layout/np_top_bar" />
-
-        <FrameLayout
-            android:id="@+id/npCoverBox"
+        <ScrollView
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:minHeight="240dp">
+            android:fillViewport="true"
+            android:scrollbars="none">
 
-            <FrameLayout
-                android:id="@+id/npCoverFrame"
-                android:layout_width="320dp"
-                android:layout_height="320dp"
-                android:layout_gravity="center">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
 
-                <com.zagruzchik.app.RingProgressView
-                    android:id="@+id/npSeek"
+                <include layout="@layout/np_top_bar" />
+
+                <FrameLayout
+                    android:id="@+id/npCoverBox"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:contentDescription="Перемотка" />
+                    android:layout_height="64dp"
+                    android:layout_weight="1">
 
-                <ImageView
-                    android:id="@+id/npCover"
+                    <FrameLayout
+                        android:id="@+id/npCoverFrame"
+                        android:layout_width="320dp"
+                        android:layout_height="320dp"
+                        android:layout_gravity="center">
+
+                        <com.zagruzchik.app.RingProgressView
+                            android:id="@+id/npSeek"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:contentDescription="Перемотка" />
+
+                        <ImageView
+                            android:id="@+id/npCover"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:layout_margin="34dp"
+                            android:importantForAccessibility="no"
+                            android:scaleType="centerCrop" />
+
+                        <View
+                            android:layout_width="34dp"
+                            android:layout_height="34dp"
+                            android:layout_gravity="center"
+                            android:background="@drawable/disc_hole" />
+                    </FrameLayout>
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/npPos"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0:00"
+                        android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="8dp"
+                        android:text="/"
+                        android:textAppearance="?attr/textAppearanceLabelLarge"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+
+                    <TextView
+                        android:id="@+id/npDur"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0:00"
+                        android:textAppearance="?attr/textAppearanceLabelLarge"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/npTitle"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:layout_margin="34dp"
-                    android:importantForAccessibility="no"
-                    android:scaleType="centerCrop" />
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:textAppearance="@style/TA.HeadlineSmall"
+                    android:textSize="24sp" />
 
-                <View
-                    android:layout_width="34dp"
-                    android:layout_height="34dp"
-                    android:layout_gravity="center"
-                    android:background="@drawable/disc_hole" />
-            </FrameLayout>
-        </FrameLayout>
+                <TextView
+                    android:id="@+id/npArtist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:textAppearance="?attr/textAppearanceBodyLarge"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                <TextView
+                    android:id="@+id/npSource"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:textAppearance="?attr/textAppearanceBodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                <include layout="@layout/np_actions_ring" />
+                <include layout="@layout/np_bottom_slot" />
+            </LinearLayout>
+        </ScrollView>
 
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/npPos"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0:00"
-                android:textAppearance="?attr/textAppearanceLabelLarge" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:paddingHorizontal="8dp"
-                android:text="/"
-                android:textAppearance="?attr/textAppearanceLabelLarge"
-                android:textColor="?attr/colorOnSurfaceVariant" />
-
-            <TextView
-                android:id="@+id/npDur"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0:00"
-                android:textAppearance="?attr/textAppearanceLabelLarge"
-                android:textColor="?attr/colorOnSurfaceVariant" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/npTitle"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:ellipsize="end"
-            android:gravity="center"
-            android:maxLines="1"
-            android:textAppearance="@style/TA.HeadlineSmall"
-            android:textSize="24sp" />
-
-        <TextView
-            android:id="@+id/npArtist"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:background="?attr/selectableItemBackground"
-            android:ellipsize="end"
-            android:gravity="center"
-            android:maxLines="1"
-            android:textAppearance="?attr/textAppearanceBodyLarge"
-            android:textColor="?attr/colorOnSurfaceVariant" />
-
-        <TextView
-            android:id="@+id/npSource"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:ellipsize="end"
-            android:gravity="center"
-            android:maxLines="1"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="?attr/colorOnSurfaceVariant" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="80dp"
             android:layout_marginTop="14dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
@@ -138,7 +155,7 @@
                 android:id="@+id/npLike"
                 style="?attr/materialIconButtonStyle"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:contentDescription="В любимое"
                 app:icon="@drawable/ic_favorite_border"
@@ -148,7 +165,7 @@
                 android:id="@+id/npPrev"
                 style="?attr/materialIconButtonStyle"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:contentDescription="Предыдущая"
                 app:icon="@drawable/ic_skip_previous"
@@ -161,7 +178,7 @@
                 android:id="@+id/npNext"
                 style="?attr/materialIconButtonStyle"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:contentDescription="Следующая"
                 app:icon="@drawable/ic_skip_next"
@@ -172,15 +189,12 @@
                 android:id="@+id/npRepeat"
                 style="?attr/materialIconButtonStyle"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:contentDescription="Повтор"
                 app:icon="@drawable/ic_repeat"
                 app:iconTint="?attr/colorOnSurfaceVariant" />
         </LinearLayout>
 
-        <!-- «Перемешать» в этом варианте живёт в нижней панели -->
-        <include layout="@layout/np_bottom_slot" />
-        <include layout="@layout/np_actions_ring" />
     </LinearLayout>
 </FrameLayout>

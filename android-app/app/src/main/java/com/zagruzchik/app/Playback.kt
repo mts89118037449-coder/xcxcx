@@ -137,6 +137,8 @@ object Playback {
     private val queueWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
     private var queue: List<QItem> = emptyList()
     private var queueGen = 0
+    private var activeQueueGen = -1
+    private var requestedIndex: Int? = null
     private var nextToAdd = 0
     private var filling = false
     private var hooked: MediaController? = null
@@ -194,7 +196,8 @@ object Playback {
         Streams.busy() // фон («Медиатека на телефоне», подготовка) уступает сеть нажатому
         queue = items
         startIndex = start.coerceIn(0, items.lastIndex)
-        nextToAdd = start + 1
+        requestedIndex = null
+        nextToAdd = startIndex + 1
         filling = false
         val first = items[start.coerceIn(0, items.lastIndex)]
         LinkCache.prefetch(first.track, first.sourceUrl)
@@ -399,6 +402,7 @@ object Playback {
         controller(app) { c ->
             if (gen != queueGen) return@controller
             val onPreview = c.currentMediaItem?.mediaId == previewUrl
+            if (!onPreview) return@controller
             // Бесшовно: полная версия встаёт в очередь сразу за фрагментом, обрезанная так, что начинается
             // ровно с того места песни, где фрагмент закончится. Проигрыватель заранее её подгружает и
             // переходит без паузы, перемотки и затухания — на слух звук просто становится полным.
@@ -407,7 +411,10 @@ object Playback {
                 c.playbackState != androidx.media3.common.Player.STATE_ENDED && c.playbackState != androidx.media3.common.Player.STATE_IDLE
             // Настройка «Сразу»: не ждём конца фрагмента — переключаемся на полную с того же места.
             if (previewAlive && align != null && Settings.joinMode(app) == Settings.JoinMode.IMMEDIATE) {
-                c.setMediaItem(full, align.fullPositionMs(c.currentPosition + 300))
+                val index = c.currentMediaItemIndex
+                val position = align.fullPositionMs(c.currentPosition + 300)
+                c.replaceMediaItem(index, full)
+                c.seekTo(index, position)
                 c.prepare(); c.play()
                 hook(app, c); fill(app, gen)
                 return@controller
@@ -431,7 +438,9 @@ object Playback {
             }
             // Фрагмент так и не заиграл (ошибка) — полную с начала, а не с середины.
             val target = if (onPreview && align != null && c.playerError == null) align.fullPositionMs(previewPos) else 0L
-            c.setMediaItem(full, target)
+            val index = c.currentMediaItemIndex
+            c.replaceMediaItem(index, full)
+            c.seekTo(index, target)
             c.prepare()
             c.play()
             hook(app, c)
@@ -447,6 +456,7 @@ object Playback {
     private fun start(app: Context, gen: Int, item: MediaItem, fill: Boolean = true) {
         controller(app) { c ->
             if (gen != queueGen) return@controller
+            activeQueueGen = gen
             c.setMediaItem(item)
             c.prepare()
             c.play()
@@ -455,7 +465,7 @@ object Playback {
         }
     }
 
-    /** Следим за переходами: как только до конца очереди в проигрывателе меньше двух песен — готовим следующую. */
+    /** Следим за переходами: пополняем запас подготовленных песен. */
     private fun hook(app: Context, c: MediaController) {
         if (hooked === c) return
         hooked = c
@@ -529,7 +539,7 @@ object Playback {
                     Pending.set(t, loading = true, error = null)
                     val failedGen = queueGen
                     main.postDelayed({
-                        if (failedGen == queueGen) {
+                        if (failedGen == queueGen && c.currentMediaItem?.mediaMetadata == m && requestedIndex == null) {
                             val i = queue.indexOfFirst { Library.key(it.track) == key }
                             if (i >= 0) playQueue(app, queue, i, openScreen = false)
                             else playTrack(app, t, openScreen = false)
@@ -637,25 +647,27 @@ object Playback {
     /** Есть ли следующая песня: уже в проигрывателе или ещё в текущем списке. */
     fun hasNext(c: MediaController) = c.hasNextMediaItem() || nextToAdd < queue.size
 
-    /**
-     * Следующая песня из текущего списка. Если она ещё не подготовлена в проигрывателе —
-     * не ждём, а сразу включаем её (из списка, с начала).
-     */
     fun next(ctx: Context) {
         val app = ctx.applicationContext
         controller(app) { c ->
-            when {
-                c.hasNextMediaItem() -> c.seekToNextMediaItem()
-                nextToAdd < queue.size -> playQueue(app, queue, nextToAdd, openScreen = false)
+            if (activeQueueGen != queueGen && nextToAdd < queue.size) {
+                playQueue(app, queue, nextToAdd, openScreen = false)
+            } else if (requestedIndex == null && c.hasNextMediaItem()) {
+                c.seekToNextMediaItem()
+            } else if (nextToAdd < queue.size) {
+                requestedIndex = requestedIndex?.let { (it + 1).coerceIn(nextToAdd, queue.lastIndex) } ?: nextToAdd
+                fill(app, queueGen)
             }
         }
     }
 
-    /** Предыдущая: в начале песни — прошлая, дальше 3 секунд — с начала этой. */
-    fun previous(ctx: Context) = controller(ctx.applicationContext) { it.seekToPrevious() }
+    fun previous(ctx: Context) = controller(ctx.applicationContext) {
+        requestedIndex = null
+        it.seekToPrevious()
+    }
 
-    /** Следующие 8 песен очереди готовим заранее — переходы без ожидания. */
-    private const val AHEAD = 2 // больше — и подготовка душит сеть и ту песню, которую нажали
+    private const val READY_TRACKS = 6
+    private const val AHEAD = 2
 
     private var aheadGen = -1
     // Куда перемотать новую запись после смены источника (replay).
@@ -674,6 +686,7 @@ object Playback {
     private fun resetQueue() {
         queueGen++
         queue = emptyList()
+        requestedIndex = null
         nextToAdd = 0
         filling = false
     }
@@ -681,11 +694,12 @@ object Playback {
     private var radioGen = -1 // для какой очереди уже искали радио (чтобы не искать по кругу)
 
     private fun fill(app: Context, gen: Int) {
-        if (filling || gen != queueGen) return
+        if (filling || gen != queueGen || gen != activeQueueGen) return
         val c = hooked ?: return
-        if (c.mediaItemCount - 1 - c.currentMediaItemIndex >= 2) return
+        if (requestedIndex == null && c.mediaItemCount - 1 - c.currentMediaItemIndex >= READY_TRACKS) return
         if (nextToAdd >= queue.size) return radio(app, gen)
-        val q = queue[nextToAdd]
+        val index = nextToAdd
+        val q = queue[index]
         filling = true
         queueWorker.execute {
             val item = q.local?.let { item(it).withTrack(q.track) }
@@ -701,8 +715,12 @@ object Playback {
                     // Проигрыватель уже доиграл (фрагмент кончился, а полной версии нет) — сам он не продолжит: включаем добавленную.
                     val stalled = c.playbackState == androidx.media3.common.Player.STATE_ENDED || c.playbackState == androidx.media3.common.Player.STATE_IDLE
                     c.addMediaItem(item)
-                    if (stalled) { c.seekToDefaultPosition(c.mediaItemCount - 1); c.prepare(); c.play() }
+                    val selected = requestedIndex?.let { index >= it } == true
+                    if (selected) requestedIndex = null
+                    if (selected || stalled) c.seekToDefaultPosition(c.mediaItemCount - 1)
+                    if (stalled) { c.prepare(); c.play() }
                 }
+                if (nextToAdd >= queue.size) requestedIndex = null
                 fill(app, gen)
             }
         }

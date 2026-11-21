@@ -25,128 +25,145 @@
         android:paddingHorizontal="22dp"
         android:paddingBottom="18dp">
 
-        <include layout="@layout/np_top_bar" />
-
-        <FrameLayout
-            android:id="@+id/npCoverBox"
+        <ScrollView
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="8dp"
             android:layout_weight="1"
-            android:minHeight="220dp">
-
-            <FrameLayout
-                android:id="@+id/npCoverFrame"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:layout_gravity="center">
-
-                <com.google.android.material.imageview.ShapeableImageView
-                    android:id="@+id/npCover"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:elevation="10dp"
-                    android:importantForAccessibility="no"
-                    android:scaleType="centerCrop"
-                    app:shapeAppearanceOverlay="@style/WaveCoverShape" />
-            </FrameLayout>
-        </FrameLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:gravity="bottom"
-            android:orientation="horizontal">
+            android:fillViewport="true"
+            android:scrollbars="none">
 
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:gravity="start"
                 android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/npTitle"
+                <include layout="@layout/np_top_bar" />
+
+                <FrameLayout
+                    android:id="@+id/npCoverBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:layout_marginTop="8dp"
+                    android:layout_weight="1">
+
+                    <FrameLayout
+                        android:id="@+id/npCoverFrame"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center">
+
+                        <com.google.android.material.imageview.ShapeableImageView
+                            android:id="@+id/npCover"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:elevation="10dp"
+                            android:importantForAccessibility="no"
+                            android:scaleType="centerCrop"
+                            app:shapeAppearanceOverlay="@style/WaveCoverShape" />
+                    </FrameLayout>
+                </FrameLayout>
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:maxLines="1"
-                    android:textAppearance="@style/TA.HeadlineSmall"
-                    android:textSize="24sp" />
+                    android:layout_marginTop="22dp"
+                    android:gravity="bottom"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/npTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textAppearance="@style/TA.HeadlineSmall"
+                            android:textSize="24sp" />
+
+                        <TextView
+                            android:id="@+id/npArtist"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:background="?attr/selectableItemBackground"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textAppearance="?attr/textAppearanceBodyLarge"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/npLike"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:background="@drawable/bg_aura_circle"
+                        android:contentDescription="В любимое"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:padding="0dp"
+                        app:backgroundTint="@null"
+                        app:icon="@drawable/ic_favorite_border"
+                        app:iconGravity="textStart"
+                        app:iconPadding="0dp"
+                        app:iconSize="22dp"
+                        app:iconTint="@android:color/white" />
+                </LinearLayout>
 
                 <TextView
-                    android:id="@+id/npArtist"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/npSource"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:background="?attr/selectableItemBackground"
                     android:ellipsize="end"
                     android:maxLines="1"
-                    android:textAppearance="?attr/textAppearanceBodyLarge"
+                    android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
+
+                <com.zagruzchik.app.WaveSeekView
+                    android:id="@+id/npSeek"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="14dp"
+                    android:contentDescription="Перемотка" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/npPos"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="0:00"
+                        android:textAppearance="?attr/textAppearanceLabelMedium"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+
+                    <TextView
+                        android:id="@+id/npDur"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0:00"
+                        android:textAppearance="?attr/textAppearanceLabelMedium"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+                </LinearLayout>
+
+                <include layout="@layout/np_actions" />
+                <include layout="@layout/np_bottom_slot" />
             </LinearLayout>
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/npLike"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="@drawable/bg_aura_circle"
-                android:contentDescription="В любимое"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:padding="0dp"
-                app:backgroundTint="@null"
-                app:icon="@drawable/ic_favorite_border"
-                app:iconGravity="textStart"
-                app:iconPadding="0dp"
-                app:iconSize="22dp"
-                app:iconTint="@android:color/white" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/npSource"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="?attr/colorOnSurfaceVariant" />
-
-        <com.zagruzchik.app.WaveSeekView
-            android:id="@+id/npSeek"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="14dp"
-            android:contentDescription="Перемотка" />
+        </ScrollView>
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/npPos"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="0:00"
-                android:textAppearance="?attr/textAppearanceLabelMedium"
-                android:textColor="?attr/colorOnSurfaceVariant" />
-
-            <TextView
-                android:id="@+id/npDur"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0:00"
-                android:textAppearance="?attr/textAppearanceLabelMedium"
-                android:textColor="?attr/colorOnSurfaceVariant" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="80dp"
             android:layout_marginTop="8dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
@@ -155,7 +172,7 @@
                 android:id="@+id/npShuffle"
                 style="?attr/materialIconButtonStyle"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:contentDescription="Перемешать"
                 app:icon="@drawable/ic_shuffle"
@@ -165,7 +182,7 @@
                 android:id="@+id/npPrev"
                 style="?attr/materialIconButtonStyle"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:contentDescription="Предыдущая"
                 app:icon="@drawable/ic_skip_previous"
@@ -178,7 +195,7 @@
                 android:id="@+id/npNext"
                 style="?attr/materialIconButtonStyle"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:contentDescription="Следующая"
                 app:icon="@drawable/ic_skip_next"
@@ -189,14 +206,12 @@
                 android:id="@+id/npRepeat"
                 style="?attr/materialIconButtonStyle"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
                 android:contentDescription="Повтор"
                 app:icon="@drawable/ic_repeat"
                 app:iconTint="?attr/colorOnSurfaceVariant" />
         </LinearLayout>
 
-        <include layout="@layout/np_bottom_slot" />
-        <include layout="@layout/np_actions" />
     </LinearLayout>
 </FrameLayout>
