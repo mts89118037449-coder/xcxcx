@@ -22,7 +22,7 @@ object Images {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
     }
     // Свежие запросы — первыми (при наборе текста старые строки уже не нужны).
-    private val pool = ThreadPoolExecutor(4, 4, 30, TimeUnit.SECONDS, object : LinkedBlockingDeque<Runnable>() {
+    private val pool = ThreadPoolExecutor(3, 3, 30, TimeUnit.SECONDS, object : LinkedBlockingDeque<Runnable>() {
         override fun offer(e: Runnable) = offerFirst(e)
     })
     private val main = Handler(Looper.getMainLooper())
@@ -51,11 +51,11 @@ object Images {
             connectTimeout = 10_000; readTimeout = 15_000
             try { inputStream.use { it.readBytes() } } finally { disconnect() }
         }
-        if (maxPx <= 0) return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        if (maxPx <= 0) {\n            // Большую обложку ограничиваем 1024 px: меньше памяти и быстрее отрисовка.\n            return sampleBitmap(bytes, 1024)\n        }
+        return sampleBitmap(bytes, maxPx)\n    }\n\n    private fun sampleBitmap(bytes: ByteArray, maxPx: Int): Bitmap? {\n        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         var sample = 1
-        while (bounds.outWidth / (sample * 2) >= maxPx && bounds.outHeight / (sample * 2) >= maxPx) sample *= 2
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxPx) sample *= 2
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.RGB_565 // обложкам прозрачность не нужна — вдвое меньше памяти
