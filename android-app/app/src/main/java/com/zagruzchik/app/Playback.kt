@@ -191,7 +191,8 @@ object Playback {
         nextToAdd = start + 1
         filling = false
         val first = items[start.coerceIn(0, items.lastIndex)]
-        LinkCache.prefetch(first.track, first.sourceUrl)
+        // Поиск ссылок для «Поделиться» не должен конкурировать с запуском аудио.
+        main.postDelayed({ if (gen == queueGen) LinkCache.prefetch(first.track, first.sourceUrl) }, 3000)
         // Соседние песни готовим, когда нажатая уже зазвучала (или через 8 с): раньше их поиск шёл одновременно с ней
         // и отнимал сеть — журнал 17.11: нажатая песня ждала 12,7 с, пока рядом искались две следующие.
         aheadGen = gen
@@ -664,7 +665,10 @@ object Playback {
             val item = q.local?.let { item(it).withTrack(q.track) }
                 ?: MediaCache.fileFor(q.track)?.let { cachedItem(q, it) }
                 ?: (if (q.pageUrl == null && q.directUrl == null) HeadCache.entry(q.track)?.let { headItem(q, it) } else null)
-                ?: runCatching { Ytdlp.inBackground { resolve(q) }.also { MediaCache.store(app, q.track, it) }.let { streamItem(q, it) } }.getOrNull() // не нашлась — пропускаем
+                ?: runCatching { Ytdlp.inBackground { resolve(q) }.let { stream ->
+                    // В очередь добавляем сразу: полное скачивание в кэш не должно задерживать следующую песню.
+                    streamItem(q, stream).also { worker.execute { runCatching { MediaCache.store(app, q.track, stream) } } }
+                } }.getOrNull() // не нашлась — пропускаем
             main.post {
                 if (gen != queueGen) return@post
                 filling = false
