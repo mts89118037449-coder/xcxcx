@@ -136,7 +136,8 @@ object Playback {
 
     private val queueWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
     private var queue: List<QItem> = emptyList()
-    private var queueGen = 0
+    @Volatile private var queueGen = 0
+    private var retainHistoryGen = -1
     private var activeQueueGen = -1
     private var requestedIndex: Int? = null
     private var nextToAdd = 0
@@ -154,6 +155,9 @@ object Playback {
      * Следующие песни готовятся заранее, пока играет текущая, — переход без пауз.
      */
     fun playQueue(ctx: Context, items: List<QItem>, start: Int, openScreen: Boolean = true) = playQueue(ctx, items, start, openScreen, auto = false)
+
+    fun playAura(ctx: Context, items: List<QItem>) =
+        playQueue(ctx, items, 0, openScreen = true, auto = false, retainHistory = true)
 
     private var startIndex = 0
     private var skips = 0 // сколько песен подряд пропустили сами (не нашлись) — чтобы не листать очередь бесконечно
@@ -184,12 +188,13 @@ object Playback {
         } else if (i >= 0) playQueue(ctx, queue, i, openScreen = false) else playTrack(ctx, t, openScreen = false)
     }
 
-    private fun playQueue(ctx: Context, given: List<QItem>, start: Int, openScreen: Boolean, auto: Boolean) {
+    private fun playQueue(ctx: Context, given: List<QItem>, start: Int, openScreen: Boolean, auto: Boolean, retainHistory: Boolean = false) {
         if (given.isEmpty()) return
         // Источник, выбранный человеком для песни, главнее страницы, запомненной в истории.
         val items = given.map { if (it.pageUrl != null && it.directUrl == null && Streams.chosen(it.track) != null) QItem(it.track, it.local, it.sourceUrl) else it }
         val app = ctx.applicationContext
         val gen = ++queueGen
+        if (retainHistory) retainHistoryGen = gen
         if (!auto) skips = 0
         tapAt = System.currentTimeMillis(); startInfo = null
         AppLog.add("НАЖАТИЕ «${items.getOrNull(start)?.track?.label}» (очередь ${items.size})")
@@ -340,7 +345,7 @@ object Playback {
                         main.postDelayed({
                             if (gen != queueGen) return@postDelayed
                             skips++
-                            playQueue(app, queue, nextToAdd, openScreen = false, auto = true)
+                            playQueue(app, queue, nextToAdd, openScreen = false, auto = true, retainHistory = retainHistoryGen == gen)
                         }, 2500)
                     } else {
                         Pending.set(first.track, loading = false, error = msg)
@@ -457,7 +462,13 @@ object Playback {
         controller(app) { c ->
             if (gen != queueGen) return@controller
             activeQueueGen = gen
-            c.setMediaItem(item)
+            if (retainHistoryGen == gen && c.currentMediaItem != null && c.currentMediaItem?.mediaMetadata?.extras?.getBoolean(X_VIDEO) != true) {
+                val next = c.currentMediaItemIndex + 1
+                c.replaceMediaItems(next, c.mediaItemCount, listOf(item))
+                c.seekToDefaultPosition(next)
+            } else {
+                c.setMediaItem(item)
+            }
             c.prepare()
             c.play()
             hook(app, c)
@@ -645,25 +656,27 @@ object Playback {
     @Volatile private var waitingFull: Track? = null
 
     /** Есть ли следующая песня: уже в проигрывателе или ещё в текущем списке. */
-    fun hasNext(c: MediaController) = c.hasNextMediaItem() || nextToAdd < queue.size
+    fun hasNext(c: MediaController) = c.hasNextMediaItem() || nextToAdd < queue.size || radioGen == queueGen
 
     fun next(ctx: Context) {
         val app = ctx.applicationContext
         controller(app) { c ->
             if (activeQueueGen != queueGen && nextToAdd < queue.size) {
-                playQueue(app, queue, nextToAdd, openScreen = false)
+                playQueue(app, queue, nextToAdd, openScreen = false, auto = false, retainHistory = retainHistoryGen == queueGen)
             } else if (requestedIndex == null && c.hasNextMediaItem()) {
                 c.seekToNextMediaItem()
             } else if (nextToAdd < queue.size) {
                 requestedIndex = requestedIndex?.let { (it + 1).coerceIn(nextToAdd, queue.lastIndex) } ?: nextToAdd
                 fill(app, queueGen)
+            } else if (radioGen == queueGen) {
+                requestedIndex = nextToAdd
             }
         }
     }
 
     fun previous(ctx: Context) = controller(ctx.applicationContext) {
         requestedIndex = null
-        it.seekToPrevious()
+        if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() else it.seekToPrevious()
     }
 
     private const val READY_TRACKS = 6
@@ -702,6 +715,7 @@ object Playback {
         val q = queue[index]
         filling = true
         queueWorker.execute {
+            if (gen != queueGen) return@execute
             val item = q.local?.let { item(it).withTrack(q.track) }
                 ?: MediaCache.fileFor(q.track)?.let { cachedItem(q, it) }
                 ?: (if (q.pageUrl == null && q.directUrl == null) HeadCache.entry(q.track)?.let { headItem(q, it) } else null)
@@ -743,6 +757,7 @@ object Playback {
             var more = emptyList<Track>()
             var from = ""
             for (seed in seeds) {
+                if (gen != queueGen) return@execute
                 more = runCatching { Catalog.radio(seed, played) }.getOrDefault(emptyList())
                 if (more.isNotEmpty()) { from = seed.artist; break }
             }

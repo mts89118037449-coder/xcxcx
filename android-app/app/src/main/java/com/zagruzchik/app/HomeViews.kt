@@ -136,19 +136,27 @@ object HomeViews {
      * «Аура дня»: каждое нажатие — новая подборка (радио любимых исполнителей + новые песни по вашим тегам), а не перемешанная
      * прошлая. Следующая готовится заранее, сразу после нажатия, — поэтому играет мгновенно.
      */
-    fun playAura(a: Activity, snack: (String) -> Unit) {
-        // Каждое нажатие — новая сборка; прошлая подборка играет, пока собирается новая. Заставка — с первого кадра.
+    fun playAura(a: androidx.activity.ComponentActivity) {
         val overlay = AuraOverlay.show(a)
         thread {
-            val mixed = AuraDay.build(a)
-            if (mixed.isNotEmpty()) AuraDay.played(a, mixed)
+            val proposed = runCatching { AuraDay.build(a.applicationContext) }.getOrDefault(emptyList())
+            val mixed = if (proposed.size >= 2) proposed else {
+                (proposed + Library.downloaded().map { it.first }.shuffled() + Library.favorites.shuffled())
+                    .distinctBy { Library.key(it) }.take(30)
+            }
             a.runOnUiThread {
-                if (mixed.isEmpty()) { overlay.say("Нет связи — попробуйте ещё раз"); overlay.dismiss(1500) }
-                else {
-                    overlay.dismiss(200)
-                    // Окно могли закрыть, пока шла сборка, — тогда включаем без него (плеер откроется отдельно).
-                    val ctx: android.content.Context = if (a.isFinishing || a.isDestroyed) a.applicationContext else a
-                    Playback.playQueue(ctx, mixed.map { Playback.QItem(it, Library.localFor(it), it.url) }, 0)
+                if (overlay.cancelled || a.isFinishing || a.isDestroyed) return@runOnUiThread
+                if (!a.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                    overlay.dismiss(0, now = true)
+                    return@runOnUiThread
+                }
+                if (mixed.isEmpty()) {
+                    overlay.say("Нет связи — попробуйте ещё раз")
+                    overlay.dismiss(1500)
+                } else {
+                    overlay.dismiss(0, now = true)
+                    thread { AuraDay.played(a.applicationContext, mixed) }
+                    Playback.playAura(a, mixed.map { Playback.QItem(it, Library.localFor(it), it.url) })
                 }
             }
         }

@@ -437,7 +437,7 @@ class MainActivity : AppCompatActivity() {
             if (fav.isEmpty()) "Лучшее из чарта — в порядке под ваш вкус"
             else fav.joinToString(", ") + " и новое по вашим тегам" + Tags.topCached.takeIf { it.isNotEmpty() }?.joinToString(" · ", prefix = "\n")
                 .orEmpty(),
-        ) { HomeViews.playAura(this, ::snack) })
+        ) { HomeViews.playAura(this) })
 
         val releases = News.releases
         val fresh = releases.count { it.isNew }

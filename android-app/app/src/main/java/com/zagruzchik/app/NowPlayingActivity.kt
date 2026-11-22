@@ -264,9 +264,8 @@ class NowPlayingActivity : AppCompatActivity() {
             if (lyricLine == -1) return
             lyricLine = -1
             val lines = r.text.lines().filter { it.isNotBlank() && !it.startsWith("[") }
-            prev.isVisible = false
+            prev.text = ""
             now.text = lines.getOrNull(0).orEmpty(); next.text = lines.getOrNull(1).orEmpty()
-            next.isVisible = lines.size > 1
             peek.isVisible = lines.isNotEmpty()
             return
         }
@@ -274,8 +273,6 @@ class NowPlayingActivity : AppCompatActivity() {
         val i = r.synced.indexOfLast { it.timeMs <= pos }
         if (i == lyricLine && peek.isVisible) return
         lyricLine = i
-        prev.isVisible = i > 0
-        next.isVisible = i + 1 < r.synced.size
         prev.text = r.synced.getOrNull(i - 1)?.text.orEmpty()
         now.text = r.synced.getOrNull(i)?.text?.ifEmpty { "♪" } ?: "♪"
         next.text = r.synced.getOrNull(i + 1)?.text.orEmpty()

@@ -1,6 +1,6 @@
 package com.zagruzchik.app
 
-import android.app.Activity
+import androidx.activity.ComponentActivity
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -19,7 +19,7 @@ import androidx.core.content.res.ResourcesCompat
  * Заставка, пока собирается «Аура дня»: на весь экран — клубящийся дым в цветах ауры и по шагам, что происходит
  * («беру ваших исполнителей…», «ищу новое по тегам…»). Уходит плавно, когда включается первая песня.
  */
-class AuraOverlay private constructor(private val a: Activity) {
+class AuraOverlay private constructor(private val a: ComponentActivity) {
     private val root = FrameLayout(a).apply {
         setBackgroundColor(0xF20B0A10.toInt())
         isClickable = true // экран под заставкой не нажимается
@@ -40,6 +40,15 @@ class AuraOverlay private constructor(private val a: Activity) {
     private val shownAt = SystemClock.uptimeMillis()
     private var gone = false
 
+    var cancelled = false
+        private set
+    private val back = object : androidx.activity.OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            cancelled = true
+            dismiss(0, now = true)
+        }
+    }
+
     init {
         // Цвета дыма — фирменные цвета ауры: «обложка» из кругового градиента, с краёв которой дым и берёт цвета.
         smoke.setCover(auraBitmap())
@@ -58,8 +67,9 @@ class AuraOverlay private constructor(private val a: Activity) {
         (a.findViewById<ViewGroup>(android.R.id.content)).addView(root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         root.animate().alpha(1f).setDuration(140).start()
         step.text = "Собираю твою ауру…"
-        // Нажатие по заставке — спрятать её; сборка продолжается, музыка включится, когда будет готово.
-        root.setOnClickListener { dismiss(0, now = true) }
+        // Назад или нажатие по заставке отменяет переход в новую подборку.
+        a.onBackPressedDispatcher.addCallback(a, back)
+        root.setOnClickListener { back.handleOnBackPressed() }
         title.scaleX = 0.9f; title.scaleY = 0.9f
         title.animate().scaleX(1f).scaleY(1f).setDuration(900).setInterpolator(DecelerateInterpolator()).start()
     }
@@ -91,6 +101,7 @@ class AuraOverlay private constructor(private val a: Activity) {
         val wait = if (now) 0L else maxOf(0L, 1200 - (SystemClock.uptimeMillis() - shownAt)) + extraMs
         root.postDelayed({
             if (gone) return@postDelayed
+            back.remove()
             gone = true
             root.animate().alpha(0f).setDuration(420).withEndAction {
                 smoke.playing = false
@@ -100,7 +111,7 @@ class AuraOverlay private constructor(private val a: Activity) {
     }
 
     companion object {
-        fun show(a: Activity): AuraOverlay = AuraOverlay(a)
+        fun show(a: ComponentActivity): AuraOverlay = AuraOverlay(a)
     }
 }
 
