@@ -73,10 +73,14 @@ object HeadCache {
     fun byId(id: String?): Entry? = id?.substringBeforeLast('.')?.let { byId[it] }
     fun has(t: Track) = entry(t) != null
 
-    fun drop(t: Track) { byKey.remove(Library.key(t))?.let { byId.remove(it.id); it.file.delete(); dirty = true } }
+    fun drop(t: Track) {
+        if (!::dir.isInitialized) return
+        byKey.remove(Library.key(t))?.let { byId.remove(it.id); it.file.delete(); dirty = true }
+    }
 
     /** Убрать сохранённые начала, взятые из источников, подходящих под условие. */
     fun dropWhere(match: (String) -> Boolean) {
+        if (!::dir.isInitialized) return
         byKey.values.filter { match(it.where) }.forEach { e -> byKey.remove(e.key); byId.remove(e.id); e.file.delete(); dirty = true }
     }
 
