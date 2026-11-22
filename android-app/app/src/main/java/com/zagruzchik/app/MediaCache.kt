@@ -18,7 +18,16 @@ object MediaCache {
     private val pending = mutableSetOf<String>()
     private val worker = Executors.newSingleThreadExecutor()
 
+    @Volatile private var inited = false
+
+    /**
+     * Вызывается из App в фоне, чтобы не держать запуск. Если какой-то метод пришёл раньше —
+     * он доделывает инициализацию сам (синхронно, один раз). После [init] чтение индекса не повторяется.
+     */
+    @Synchronized
     fun init(ctx: Context) {
+        if (inited) return
+        inited = true
         dir = File(ctx.filesDir, "media_cache").apply { mkdirs() }
         indexFile = File(dir, "index.json")
         runCatching { JSONObject(indexFile.readText()) }.getOrNull()?.let { o ->
@@ -41,6 +50,9 @@ object MediaCache {
         } }, "media-cache-check").start()
     }
 
+    /** Доготавливаемся сами, если фоновый запуск ещё не дошёл до нас (первые доли секунды работы приложения). */
+    fun ensure() { if (!inited) init(App.instance) }
+
     private const val CHUNK = 1024L * 1024
     private val AUDIO = setOf("m4a", "mp4", "webm", "opus", "ogg", "mp3", "aac", "flac", "mka", "wav")
 
@@ -57,6 +69,7 @@ object MediaCache {
 
     @Synchronized
     fun fileFor(t: Track): File? {
+        ensure()
         val e = index[Library.key(t)] ?: return null
         val f = File(dir, e.optString("file"))
         if (!f.exists()) return null
@@ -69,12 +82,12 @@ object MediaCache {
 
     /** Есть ли в памяти — только проверка, без записи на диск (её зовут при отрисовке списков). */
     @Synchronized
-    fun has(t: Track): Boolean = index[Library.key(t)]?.let { !stale(t, it) && File(dir, it.optString("file")).exists() } == true
+    fun has(t: Track): Boolean { ensure(); return index[Library.key(t)]?.let { !stale(t, it) && File(dir, it.optString("file")).exists() } == true }
 
     /** Файл скачан не из того источника, который человек выбрал для этой песни. */
     private fun stale(t: Track, e: JSONObject): Boolean = Streams.chosen(t).let { it != null && e.optString("pin") != it }
 
-    val sizeBytes: Long @Synchronized get() = index.values.sumOf { it.optLong("size") }
+    val sizeBytes: Long @Synchronized get() { ensure(); return index.values.sumOf { it.optLong("size") } }
 
     /**
      * Сохранить песню в память по ссылке на звук, которая уже есть (без yt-dlp: раньше на каждую прослушанную песню
@@ -83,6 +96,7 @@ object MediaCache {
      */
     fun store(ctx: Context, t: Track, s: StreamInfo) {
         if (!plain(s.url)) return
+        ensure()
         store(ctx, t, s.url, directOnly = true)
     }
 
@@ -91,6 +105,7 @@ object MediaCache {
     /** Сохранить песню в память по странице/ссылке, откуда она звучала. Фоном, по одной. */
     fun store(ctx: Context, t: Track, url: String, directOnly: Boolean = false) {
         if (Settings.cacheLimitMb(ctx) <= 0) return
+        ensure()
         val key = Library.key(t)
         synchronized(this) { if (index.containsKey(key) || !pending.add(key)) return }
         worker.execute {
@@ -104,6 +119,7 @@ object MediaCache {
      * [keep] — любимая: при нехватке места её не вытесняет прослушанное. true — файл на месте.
      */
     fun storeNow(ctx: Context, t: Track, s: StreamInfo, keep: Boolean = true): Boolean {
+        ensure()
         val key = Library.key(t)
         synchronized(this) { if (index.containsKey(key)) return true; if (!pending.add(key)) return false }
         // Только прямой загрузкой по ссылке на звук (без Python); поток по кусочкам (HLS) — пропускаем.
@@ -181,6 +197,7 @@ object MediaCache {
     /** Убрать песню из памяти (файл не играет) — в следующий раз она снова придёт из сети. */
     @Synchronized
     fun forget(t: Track) {
+        ensure()
         index.remove(Library.key(t))?.let { File(dir, it.optString("file")).delete() }
         save()
     }
@@ -195,6 +212,7 @@ object MediaCache {
 
     @Synchronized
     fun clear() {
+        ensure()
         index.values.forEach { File(dir, it.optString("file")).delete() }
         index.clear()
         save()
