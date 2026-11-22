@@ -29,11 +29,12 @@ class App : Application() {
         History.init(this)
         Taste.init(this)
         News.init(this)
-        MediaCache.init(this)
-        HeadCache.init(this) // начала песен для мгновенного старта
         // Всё, что не нужно в первую секунду, — не в главном потоке: окно открывается быстрее.
         Thread({
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) // окно — первым
+            // Индексы памяти прослушанного и начал песен читаются с диска — не в главном потоке.
+            MediaCache.init(this@App)
+            HeadCache.init(this@App) // начала песен для мгновенного старта
             SmokeSprites.all // текстура дыма — заранее, чтобы заставка и плеер показывали дым с первого кадра
             Tags.init(this)
             News.checkOnLaunch() // новинки любимых исполнителей — проверяем при каждом запуске
