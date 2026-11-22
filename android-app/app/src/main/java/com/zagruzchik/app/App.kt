@@ -29,11 +29,13 @@ class App : Application() {
         History.init(this)
         Taste.init(this)
         News.init(this)
-        MediaCache.init(this)
-        HeadCache.init(this) // начала песен для мгновенного старта
         // Всё, что не нужно в первую секунду, — не в главном потоке: окно открывается быстрее.
         Thread({
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) // окно — первым
+            // Индексы памяти прослушанного и начал песен читаются с диска — раньше это делал главный поток,
+            // и окно ждало диск. Методы кэшей умеют работать, даже если кто-то пришёл раньше готовности.
+            MediaCache.init(this)
+            HeadCache.init(this) // начала песен для мгновенного старта
             if (!packageName.endsWith(".tv")) SmokeSprites.all // на телевизоре тяжёлый эффект не прогреваем
             Tags.init(this)
             News.checkOnLaunch() // новинки любимых исполнителей — проверяем при каждом запуске
