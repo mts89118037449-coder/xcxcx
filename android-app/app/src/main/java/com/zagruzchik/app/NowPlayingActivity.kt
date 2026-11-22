@@ -29,6 +29,7 @@ import com.google.android.material.R as M
  */
 class NowPlayingActivity : AppCompatActivity() {
 
+    private var preparingShare = false
     private var controller: MediaController? = null
     private lateinit var cover: ImageView
     private lateinit var title: TextView
@@ -146,6 +147,7 @@ class NowPlayingActivity : AppCompatActivity() {
         retry.setOnClickListener { Playback.retry(this) }
         // Не нашлась — по нажатию на сообщение: что ответили площадки и поле для своей ссылки.
         status.setOnClickListener { Playback.Pending.track?.takeIf { Playback.Pending.error != null }?.let(::notFoundDialog) }
+        findViewById<View>(R.id.npShare).setOnClickListener { share() }
         findViewById<View>(R.id.npMore).setOnClickListener(::showActions)
         findViewById<View>(R.id.npLyricsPeek).setOnClickListener { openLyrics() }
         // Исполнитель — ссылкой на его страницу: популярное, альбомы, радио.
@@ -265,6 +267,7 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         val pending = showingPending()
         val p = Playback.Pending
+        findViewById<View>(R.id.npShare).isEnabled = currentTrack() != null
         loading.isVisible = pending
         if (pending || extras()?.getBoolean(Playback.X_PREVIEW) == true) {
             findViewById<View>(R.id.npLyricsPeek).isVisible = false
@@ -512,18 +515,40 @@ class NowPlayingActivity : AppCompatActivity() {
         action("Слушать в другом сервисе", track != null) {
             track?.let { TransferActivity.openTrack(this, it, x?.getString(Playback.X_SOURCE_URL)) }
         }
-        action("Поделиться", track != null) { share() }
         action("Эквалайзер") { startActivity(Intent(this, EqualizerActivity::class.java)) }
         popup.show()
     }
 
     private fun share() {
         val t = currentTrack() ?: return
-        val x = extras()
-        val local = x?.getString(Playback.X_LOCAL_URI)?.let {
-            SongShareSheet.LocalFile(it, x.getString(Playback.X_LOCAL_MIME) ?: "audio/mpeg", x.getString(Playback.X_LOCAL_NAME) ?: "песня")
+        val item = controller?.currentMediaItem?.takeUnless { showingPending() }
+        val info = item?.mediaMetadata?.extras
+        val source = info?.getString(Playback.X_SOURCE_URL)
+        val audio = info?.getString(Playback.X_LOCAL_URI) ?: item?.mediaId?.takeIf {
+            it.startsWith("http") && info?.getBoolean(Playback.X_PREVIEW) != true && info?.getBoolean(Playback.X_HEAD) != true
         }
-        SongShareSheet.show(this, t, x?.getString(Playback.X_SOURCE_URL), local, coverBitmap)
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("Поделиться песней")
+            .setItems(arrayOf("Карточкой", "MP3-файлом")) { _, mode ->
+                if (mode == 0) {
+                    val entry = LinkCache.prefetch(t, source)
+                    SongCard.share(this, entry.track, Images.cached(entry.track.cover), LinkCache.linksFor(entry))
+                } else if (!preparingShare) {
+                    preparingShare = true
+                    val status = Snackbar.make(seekView, "Готовлю MP3 · ${t.title}", Snackbar.LENGTH_INDEFINITE)
+                    status.show()
+                    Thread {
+                        val result = runCatching { ShareMp3.intent(applicationContext, t, audio) }
+                        runOnUiThread {
+                            preparingShare = false
+                            if (isDestroyed || isFinishing) return@runOnUiThread
+                            status.dismiss()
+                            result.onSuccess { startActivity(Intent.createChooser(it, "Отправить MP3")) }
+                                .onFailure { Snackbar.make(seekView, "Не удалось подготовить MP3", Snackbar.LENGTH_LONG).show() }
+                        }
+                    }.start()
+                }
+            }.show()
     }
 
     /** Скачать то, что звучит сейчас: по странице потока — без повторного поиска. */
