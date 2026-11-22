@@ -51,8 +51,15 @@ object Images {
             connectTimeout = 10_000; readTimeout = 15_000
             try { inputStream.use { it.readBytes() } } finally { disconnect() }
         }
-        if (maxPx <= 0) {\n            // Большую обложку ограничиваем 1024 px: меньше памяти и быстрее отрисовка.\n            return sampleBitmap(bytes, 1024)\n        }
-        return sampleBitmap(bytes, maxPx)\n    }\n\n    private fun sampleBitmap(bytes: ByteArray, maxPx: Int): Bitmap? {\n        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        if (maxPx <= 0) {
+            // Большую обложку ограничиваем 1024 px: меньше памяти и быстрее отрисовка.
+            return sampleBitmap(bytes, 1024)
+        }
+        return sampleBitmap(bytes, maxPx)
+    }
+
+    private fun sampleBitmap(bytes: ByteArray, maxPx: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         var sample = 1
         while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxPx) sample *= 2
