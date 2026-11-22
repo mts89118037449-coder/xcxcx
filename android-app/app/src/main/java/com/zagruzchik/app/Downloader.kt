@@ -225,10 +225,13 @@ object Downloader {
 
         val problems = mutableListOf<String>()
         var attempt = 0
-        for ((name, query) in searches) {
+        val exactPage = t.url?.takeIf { Service.of(it) == Service.YANDEX && "/album/" in it && "/track/" in it }
+        val attempts = if (exactPage == null) searches else listOf(Service.YANDEX.title to exactPage) + searches
+        for ((name, query) in attempts) {
             if (token.cancelled) throw CancelledError()
             progress(name, 0f, "")
-            val candidates = Match.ranked(t, search(query, name)) { Triple(it.title, it.author, it.duration) }.take(3)
+            val candidates = if (query == exactPage) listOf(Candidate(query, t.title, t.artist, t.durationSec, name))
+                else Match.ranked(t, search(query, name)) { Triple(it.title, it.author, it.duration) }.take(3)
             for (c in candidates) {
                 if (token.cancelled) throw CancelledError()
                 val before = dir.listFiles().orEmpty().toSet()
@@ -393,7 +396,28 @@ object Downloader {
             problems?.add("$source: ссылка на звук не пришла за 15 с")
             return null
         }
-        return viaYtdlp(pageUrl, source, title, problems)
+        val stream = viaYtdlp(pageUrl, source, title, problems) ?: return null
+        if (Service.of(pageUrl) != Service.YANDEX) return stream
+        // Экстрактор Яндекса может вернуть HTTP. Плеер принимает только HTTPS.
+        val secure = stream.url.replaceFirst(Regex("^http://"), "https://")
+        if (!secure.startsWith("https://")) return null
+        val usable = runCatching {
+            val conn = java.net.URL(secure).openConnection() as javax.net.ssl.HttpsURLConnection
+            try {
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                conn.setRequestProperty("Range", "bytes=0-2")
+                conn.responseCode in listOf(200, 206) && conn.inputStream.use { input ->
+                    val a = input.read(); val b = input.read(); val c = input.read()
+                    (a == 0x49 && b == 0x44 && c == 0x33) || (a == 0xff && b >= 0 && (b and 0xe0) == 0xe0)
+                }
+            } finally { conn.disconnect() }
+        }.getOrDefault(false)
+        if (!usable) {
+            problems?.add("$source: сервер не отдал доступный MP3")
+            return null
+        }
+        return stream.copy(url = secure, pageUrl = pageUrl)
     }
 
     private val streamPool = java.util.concurrent.Executors.newCachedThreadPool()

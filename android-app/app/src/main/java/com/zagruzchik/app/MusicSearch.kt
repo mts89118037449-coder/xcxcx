@@ -468,6 +468,27 @@ object Streams {
         val foundOn = java.util.concurrent.ConcurrentLinkedQueue<String>()
         val waiting = java.util.concurrent.ConcurrentHashMap.newKeySet<String>().also { waitingOn[key(t)] = it }
         // Zaycev — MP3 до 320 kbps, отвечает быстро: первым по старшинству.
+        val yandexName = Service.YANDEX.title
+        waiting += yandexName
+        val yandex = searchPool.submit<StreamInfo?> {
+            try {
+                Ytdlp.withBackground(bg) {
+                    val exact = t.url?.takeIf { Service.of(it) == Service.YANDEX && "/album/" in it && "/track/" in it }
+                    val pages = exact?.let { listOf(it) } ?: WebSearch.rankCandidates(t, WebSearch.yandex(t.query))
+                        .map { it.url }.filter { "/album/" in it }.distinct().take(2)
+                    log += "$yandexName: подходящих страниц ${pages.size}"
+                    if (pages.isNotEmpty()) App.awaitReady()
+                    pages.firstNotNullOfOrNull { page ->
+                        Downloader.streamOf(page, yandexName, t.title, problems)?.also { picked[yandexName] = page }
+                    }
+                }
+            } catch (e: Exception) {
+                log += yandexName + why(e)
+                null
+            } finally {
+                waiting -= yandexName
+            }
+        }
         val zaycev = searchPool.submit<StreamInfo?> {
             val t0 = System.currentTimeMillis()
             val got = runCatching { ZaycevSource.search(t.query) }
@@ -586,7 +607,7 @@ object Streams {
             } }
         }
         val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
-        val jobs = listOfNotNull(remembered) + soundcloud + listOf(zaycev, telegram, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
+        val jobs = listOfNotNull(remembered) + listOf(zaycev, yandex) + soundcloud + listOf(telegram, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
         val started = System.currentTimeMillis()
         if (collect != null) {
             // Режим «показать все источники»: отдаём каждый найденный вариант сразу, как только площадка ответила.

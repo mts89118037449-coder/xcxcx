@@ -425,6 +425,7 @@ object YandexSource {
             o.optString("title") + version,
             (0 until artists.length()).joinToString(", ") { artists.getJSONObject(it).optString("name") },
             o.optInt("durationMs") / 1000,
+            url = link(o),
             cover = o.optString("coverUri").takeIf { it.isNotEmpty() }?.let { "https://" + it.replace("%%", "400x400") },
         )
     }

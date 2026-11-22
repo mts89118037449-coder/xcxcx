@@ -163,8 +163,8 @@ object WebSearch {
         }
     }
 
-    private fun yandex(q: String): List<WebResult> {
-        val r = Http.json("https://api.music.yandex.net/search?type=track&page=0&text=" + Http.enc(q))
+    fun yandex(q: String): List<WebResult> {
+        val r = JSONObject(Http.get("https://api.music.yandex.net/search?type=track&page=0&text=" + Http.enc(q), timeoutMs = 4500))
             .optJSONObject("result")?.optJSONObject("tracks")?.optJSONArray("results") ?: return emptyList()
         return (0 until minOf(r.length(), 8)).mapNotNull { i ->
             val o = r.getJSONObject(i)
