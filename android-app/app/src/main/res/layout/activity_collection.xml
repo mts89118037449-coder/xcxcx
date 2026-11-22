@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/colorSurface">
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/colScroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="32dp">
+
+            <!-- Исполнитель: фото на всю ширину, имя поверх, снизу растворяется в фон -->
+            <FrameLayout
+                android:id="@+id/colHero"
+                android:layout_width="match_parent"
+                android:layout_height="380dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/colHeroImage"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:importantForAccessibility="no"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/ph_artist" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="240dp"
+                    android:layout_gravity="bottom"
+                    android:background="@drawable/fade_to_surface" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="20dp"
+                    android:paddingBottom="14dp">
+
+                    <TextView
+                        android:id="@+id/colHeroName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/TA.Headline"
+                        android:textSize="36sp" />
+
+                    <TextView
+                        android:id="@+id/colHeroSub"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+                </LinearLayout>
+            </FrameLayout>
+
+            <!-- Альбом / чарт: обложка по центру -->
+            <LinearLayout
+                android:id="@+id/colHead"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingHorizontal="20dp"
+                android:paddingTop="64dp">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/colImage"
+                    android:layout_width="240dp"
+                    android:layout_height="240dp"
+                    android:elevation="8dp"
+                    android:importantForAccessibility="no"
+                    android:scaleType="centerCrop"
+                    app:shapeAppearanceOverlay="@style/NowPlayingCoverShape" />
+
+                <TextView
+                    android:id="@+id/colTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:gravity="center"
+                    android:textAppearance="@style/TA.HeadlineSmall"
+                    android:textSize="24sp" />
+
+                <TextView
+                    android:id="@+id/colSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:gravity="center"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/colButtons"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="20dp"
+                android:visibility="gone">
+
+                <ImageButton
+                    android:id="@+id/colPlay"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:background="@drawable/bg_aura_circle"
+                    android:contentDescription="Слушать"
+                    android:src="@drawable/ic_play_arrow"
+                    app:tint="@android:color/white" />
+
+                <ImageButton
+                    android:id="@+id/colShuffle"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="10dp"
+                    android:background="@drawable/bg_round_button"
+                    android:contentDescription="Перемешать"
+                    android:src="@drawable/ic_shuffle"
+                    app:tint="?attr/colorOnSurface" />
+
+                <ImageButton
+                    android:id="@+id/colLike"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="10dp"
+                    android:background="@drawable/bg_round_button"
+                    android:contentDescription="В медиатеку"
+                    android:src="@drawable/ic_favorite_border"
+                    android:visibility="gone"
+                    app:tint="?attr/colorOnSurface" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/colRadio"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="10dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="Радио"
+                    android:visibility="gone"
+                    app:cornerRadius="24dp"
+                    app:icon="@drawable/ic_queue_music" />
+            </LinearLayout>
+
+            <com.google.android.material.progressindicator.LinearProgressIndicator
+                android:id="@+id/colProgress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="20dp"
+                android:layout_marginTop="24dp"
+                android:indeterminate="true"
+                app:indicatorColor="@color/aura2"
+                app:trackCornerRadius="4dp" />
+
+            <TextView
+                android:id="@+id/colError"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:gravity="center"
+                android:paddingHorizontal="20dp"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/colContent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="20dp" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <ImageButton
+        android:id="@+id/colBack"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_glass_circle"
+        android:contentDescription="Назад"
+        android:src="@drawable/ic_arrow_back"
+        app:tint="@android:color/white" />
+</FrameLayout>
