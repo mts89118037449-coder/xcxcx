@@ -12,8 +12,8 @@ android {
         minSdk = 24 // Android 7.0+
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         targetSdk = 35
-        versionCode = 120
-        versionName = "9.50"
+        versionCode = 121
+        versionName = "9.51"
     }
 
     // Один постоянный ключ, чтобы новые версии ставились поверх старых без удаления.

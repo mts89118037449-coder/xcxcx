@@ -39,9 +39,6 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var pos: TextView
     private lateinit var dur: TextView
     private lateinit var play: MaterialButton
-    private lateinit var shuffle: View
-    private lateinit var repeat: MaterialButton
-    private lateinit var download: View
     private lateinit var loading: View
     private lateinit var status: TextView
     private lateinit var retry: View
@@ -99,9 +96,6 @@ class NowPlayingActivity : AppCompatActivity() {
         dur = findViewById(R.id.npDur)
         play = findViewById(R.id.npPlay)
         glow = Aura.Glow(findViewById(R.id.npAura))
-        shuffle = findViewById(R.id.npShuffle)
-        repeat = findViewById(R.id.npRepeat)
-        download = findViewById(R.id.npDownload)
         loading = findViewById(R.id.npLoading)
         status = findViewById(R.id.npStatus)
         retry = findViewById(R.id.npRetry)
@@ -141,16 +135,6 @@ class NowPlayingActivity : AppCompatActivity() {
         Swipe.attach(findViewById(R.id.npCoverFrame), onRight = { Playback.next(this) }, onLeft = { Playback.previous(this) })
         // Нажатие на диск переворачивает его: с обратной стороны — «компакт-диск на свету».
         findViewById<View>(R.id.npCoverFrame).setOnClickListener { flipDisc() }
-        shuffle.setOnClickListener { controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
-        repeat.setOnClickListener {
-            controller?.let {
-                it.repeatMode = when (it.repeatMode) {
-                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                    else -> Player.REPEAT_MODE_OFF
-                }
-            }
-        }
         // Перемотка: по кольцу пальцем по кругу или по волне — влево-вправо.
         seek.onScrub = { f ->
             val d = controller?.let { Playback.duration(it) } ?: 0
@@ -162,39 +146,12 @@ class NowPlayingActivity : AppCompatActivity() {
         retry.setOnClickListener { Playback.retry(this) }
         // Не нашлась — по нажатию на сообщение: что ответили площадки и поле для своей ссылки.
         status.setOnClickListener { Playback.Pending.track?.takeIf { Playback.Pending.error != null }?.let(::notFoundDialog) }
-        val share = View.OnClickListener { share() }
-        findViewById<View>(R.id.npShare).setOnClickListener(share)
-        findViewById<View>(R.id.npShareTop).setOnClickListener(share)
-        findViewById<View>(R.id.npWhere).setOnClickListener {
-            currentTrack()?.let { TransferActivity.openTrack(this, it, extras()?.getString(Playback.X_SOURCE_URL)) }
-        }
-        download.setOnClickListener { downloadCurrent() }
-        findViewById<View>(R.id.npLyricsPeek).setOnClickListener { findViewById<View>(R.id.npLyrics).performClick() }
-        findViewById<View>(R.id.npFx).setOnClickListener { startActivity(Intent(this, EqualizerActivity::class.java)) }
-        findViewById<View>(R.id.npLyrics).setOnClickListener {
-            val t = currentTrack() ?: return@setOnClickListener
-            val d = controller?.let { Playback.duration(it) }?.takeIf { it > 0 }?.let { (it / 1000).toInt() } ?: 0
-            LyricsSheet.show(this, t.copy(durationSec = d), position = { controller?.let { Playback.position(it) } ?: 0L },
-                seek = { ms -> controller?.let { Playback.seek(it, ms) } }, onVisibilityChanged = { render() })
-        }
+        findViewById<View>(R.id.npMore).setOnClickListener(::showActions)
+        findViewById<View>(R.id.npLyricsPeek).setOnClickListener { openLyrics() }
         // Исполнитель — ссылкой на его страницу: популярное, альбомы, радио.
         artist.setOnClickListener {
             val name = currentTrack()?.artist?.takeIf { it.isNotBlank() && it != "Скачано" } ?: return@setOnClickListener
             Rows.openArtist(this, name)
-        }
-        findViewById<MaterialButton>(R.id.npLike).setOnClickListener {
-            val t = currentTrack() ?: return@setOnClickListener
-            val x = extras()
-            val local = x?.getString(Playback.X_LOCAL_URI) != null && x.getString(Playback.X_SOURCE) == "Скачано"
-            val saved = Library.like(this, LinkCache.get(t)?.track ?: t, x?.getString(Playback.X_PAGE_URL), x?.getString(Playback.X_SOURCE_URL))
-            val msg = when {
-                !saved -> "Убрано из любимого"
-                local || !Settings.saveLiked(this) -> "В любимом"
-                MediaCache.has(t) -> "В любимом · сохраняю на телефон из памяти"
-                else -> "В любимом · скачиваю на телефон"
-            }
-            Snackbar.make(seekView, msg, Snackbar.LENGTH_SHORT).show()
-            render()
         }
         setupCastButton(findViewById(R.id.npCast))
     }
@@ -365,23 +322,6 @@ class NowPlayingActivity : AppCompatActivity() {
         discBack.playing = playing
         play.contentDescription = if (playing) "Пауза" else "Играть"
         play.isEnabled = !pending
-        shuffle.alpha = if (c?.shuffleModeEnabled == true) 1f else 0.45f
-        repeat.alpha = if (c?.repeatMode == Player.REPEAT_MODE_OFF || c == null) 0.45f else 1f
-        repeat.setIconResource(if (c?.repeatMode == Player.REPEAT_MODE_ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat)
-        // «Скачано» — только для файла в Загрузках; память прослушанного — не загрузка.
-        val local = extras()?.getString(Playback.X_LOCAL_URI) != null && extras()?.getString(Playback.X_SOURCE) == "Скачано" && !pending
-        download.isEnabled = !local && !pending
-        download.alpha = if (download.isEnabled || local) 1f else 0.45f
-        findViewById<TextView>(R.id.npDownloadText).text = if (local) "Скачано" else "Скачать"
-        findViewById<ImageView>(R.id.npDownloadIcon).setImageResource(if (local) R.drawable.ic_check_circle else R.drawable.ic_download)
-        val liked = currentTrack()?.let { Library.isSaved(it) } == true
-        findViewById<MaterialButton>(R.id.npLike).apply {
-            setIconResource(if (liked) R.drawable.ic_favorite else R.drawable.ic_favorite_border)
-            // В «кольце» сердечко само красится в цвет ауры, в «волне» оно на градиентном круге.
-            if (seekView is RingProgressView) iconTint = android.content.res.ColorStateList.valueOf(
-                if (liked) AuraColors.c3(this@NowPlayingActivity) else MaterialColors.getColor(this, M.attr.colorOnSurfaceVariant))
-            contentDescription = if (liked) "Убрать из библиотеки" else "В библиотеку"
-        }
         updateProgress()
         // Ссылки для «Отправить» готовим сразу, пока песня играет.
         currentTrack()?.let { LinkCache.prefetch(it, extras()?.getString(Playback.X_SOURCE_URL)) }
@@ -513,6 +453,70 @@ class NowPlayingActivity : AppCompatActivity() {
         return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
     }
 
+    private fun openLyrics() {
+        val t = currentTrack() ?: return
+        val d = controller?.let { Playback.duration(it) }?.takeIf { it > 0 }?.let { (it / 1000).toInt() } ?: 0
+        LyricsSheet.show(this, t.copy(durationSec = d), position = { controller?.let { Playback.position(it) } ?: 0L },
+            seek = { ms -> controller?.let { Playback.seek(it, ms) } }, onVisibilityChanged = { render() })
+    }
+
+    private fun toggleLike() {
+        val t = currentTrack() ?: return
+        val x = extras()
+        val local = x?.getString(Playback.X_LOCAL_URI) != null && x.getString(Playback.X_SOURCE) == "Скачано"
+        val saved = Library.like(this, LinkCache.get(t)?.track ?: t, x?.getString(Playback.X_PAGE_URL), x?.getString(Playback.X_SOURCE_URL))
+        val msg = when {
+            !saved -> "Убрано из любимого"
+            local || !Settings.saveLiked(this) -> "В любимом"
+            MediaCache.has(t) -> "В любимом · сохраняю на телефон из памяти"
+            else -> "В любимом · скачиваю на телефон"
+        }
+        Snackbar.make(seekView, msg, Snackbar.LENGTH_SHORT).show()
+        render()
+    }
+
+    private fun showActions(anchor: View) {
+        val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
+        val track = currentTrack()
+        val c = controller
+        val x = extras()
+        val pending = showingPending()
+        val url = x?.getString(Playback.X_PAGE_URL) ?: x?.getString(Playback.X_SOURCE_URL)
+        val local = x?.getString(Playback.X_LOCAL_URI) != null && x.getString(Playback.X_SOURCE) == "Скачано" && !pending
+        val downloading = url != null && Jobs.all.any { it.active && it.url == url }
+
+        fun action(label: String, enabled: Boolean = true, run: () -> Unit): android.view.MenuItem =
+            popup.menu.add(label).apply {
+                isEnabled = enabled
+                setOnMenuItemClickListener { run(); true }
+            }
+
+        action("Текст песни", track != null) { openLyrics() }
+        action(if (track != null && Library.isSaved(track)) "Убрать из любимого" else "В любимое", track != null) { toggleLike() }
+        action("Перемешать", c != null) { c?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }.apply {
+            isCheckable = true
+            isChecked = c?.shuffleModeEnabled == true
+        }
+        val modes = popup.menu.addSubMenu("Повтор")
+        modes.item.isEnabled = c != null
+        listOf(Player.REPEAT_MODE_OFF to "Выключен", Player.REPEAT_MODE_ALL to "Вся очередь",
+            Player.REPEAT_MODE_ONE to "Одна песня").forEach { (mode, label) ->
+            modes.add(1, mode, mode, label).apply {
+                isCheckable = true
+                isChecked = c?.repeatMode == mode
+                setOnMenuItemClickListener { c?.repeatMode = mode; true }
+            }
+        }
+        action(when { local -> "Скачано"; downloading -> "Скачивается…"; else -> "Скачать" },
+            !pending && !local && !downloading && url != null) { downloadCurrent() }
+        action("Слушать в другом сервисе", track != null) {
+            track?.let { TransferActivity.openTrack(this, it, x?.getString(Playback.X_SOURCE_URL)) }
+        }
+        action("Поделиться", track != null) { share() }
+        action("Эквалайзер") { startActivity(Intent(this, EqualizerActivity::class.java)) }
+        popup.show()
+    }
+
     private fun share() {
         val t = currentTrack() ?: return
         val x = extras()
@@ -534,8 +538,6 @@ class NowPlayingActivity : AppCompatActivity() {
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
             }
             .show()
-        download.isEnabled = false
-        findViewById<TextView>(R.id.npDownloadText).text = "Качаю…"
     }
 
     private fun notFoundDialog(t: Track) {

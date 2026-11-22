@@ -24,8 +24,8 @@
         android:fitsSystemWindows="true"
         android:gravity="center_horizontal"
         android:orientation="vertical"
-        android:paddingHorizontal="22dp"
-        android:paddingBottom="18dp">
+        android:paddingHorizontal="16dp"
+        android:paddingBottom="2dp">
 
         <ScrollView
             android:layout_width="match_parent"
@@ -109,7 +109,7 @@
                     android:id="@+id/npTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
+                    android:layout_marginTop="6dp"
                     android:ellipsize="end"
                     android:gravity="center"
                     android:maxLines="1"
@@ -138,63 +138,11 @@
                     android:maxLines="1"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
-
-                <include layout="@layout/np_actions_ring" />
                 <include layout="@layout/np_bottom_slot" />
             </LinearLayout>
         </ScrollView>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="80dp"
-            android:layout_marginTop="14dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/npLike"
-                style="?attr/materialIconButtonStyle"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:contentDescription="В любимое"
-                app:icon="@drawable/ic_favorite_border"
-                app:iconSize="26dp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/npPrev"
-                style="?attr/materialIconButtonStyle"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:contentDescription="Предыдущая"
-                app:icon="@drawable/ic_skip_previous"
-                app:iconSize="34dp"
-                app:iconTint="?attr/colorOnSurface" />
-
-            <include layout="@layout/np_play_button" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/npNext"
-                style="?attr/materialIconButtonStyle"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:contentDescription="Следующая"
-                app:icon="@drawable/ic_skip_next"
-                app:iconSize="34dp"
-                app:iconTint="?attr/colorOnSurface" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/npRepeat"
-                style="?attr/materialIconButtonStyle"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:contentDescription="Повтор"
-                app:icon="@drawable/ic_repeat"
-                app:iconTint="?attr/colorOnSurfaceVariant" />
-        </LinearLayout>
+        <include layout="@layout/np_transport" />
 
     </LinearLayout>
 </FrameLayout>
