@@ -147,6 +147,19 @@ class NowPlayingActivity : AppCompatActivity() {
         retry.setOnClickListener { Playback.retry(this) }
         // Не нашлась — по нажатию на сообщение: что ответили площадки и поле для своей ссылки.
         status.setOnClickListener { Playback.Pending.track?.takeIf { Playback.Pending.error != null }?.let(::notFoundDialog) }
+        findViewById<View>(R.id.npLike).setOnClickListener { toggleLike() }
+        findViewById<View>(R.id.npSpeed).setOnClickListener { anchor ->
+            val c = controller ?: return@setOnClickListener
+            val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
+            for (speed in listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)) {
+                popup.menu.add(speedLabel(speed)).apply {
+                    isCheckable = true
+                    isChecked = c.playbackParameters.speed == speed
+                    setOnMenuItemClickListener { c.setPlaybackSpeed(speed); true }
+                }
+            }
+            popup.show()
+        }
         findViewById<View>(R.id.npShare).setOnClickListener { share() }
         findViewById<View>(R.id.npMore).setOnClickListener(::showActions)
         findViewById<View>(R.id.npLyricsPeek).setOnClickListener { openLyrics() }
@@ -267,7 +280,19 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         val pending = showingPending()
         val p = Playback.Pending
-        findViewById<View>(R.id.npShare).isEnabled = currentTrack() != null
+        val track = currentTrack()
+        val saved = track?.let(Library::isSaved) == true
+        findViewById<ImageView>(R.id.npLike).apply {
+            isEnabled = track != null
+            setImageResource(if (saved) R.drawable.ic_favorite else R.drawable.ic_favorite_border)
+            contentDescription = if (saved) "Убрать из любимого" else "В любимое"
+        }
+        findViewById<TextView>(R.id.npSpeed).apply {
+            isEnabled = c?.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH) == true
+            text = speedLabel(c?.playbackParameters?.speed ?: 1f)
+            contentDescription = "Скорость воспроизведения $text"
+        }
+        findViewById<View>(R.id.npShare).isEnabled = track != null
         loading.isVisible = pending
         if (pending || extras()?.getBoolean(Playback.X_PREVIEW) == true) {
             findViewById<View>(R.id.npLyricsPeek).isVisible = false
@@ -437,18 +462,28 @@ class NowPlayingActivity : AppCompatActivity() {
             GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(top, surface, surface))
     }
 
+    private fun speedLabel(speed: Float) = speed.toString().removeSuffix(".0").replace('.', ',') + "×"
+
+    private var positionSecond = -1L
+    private var durationSecond = -1L
+
     private fun updateProgress() {
         val c = controller ?: return
-        if (showingPending()) {
-            seek.progress = 0f; pos.text = "0:00"; dur.text = "0:00"; return
+        val pending = showingPending()
+        val d = if (pending) 0L else Playback.duration(c).coerceAtLeast(0)
+        val p = if (pending) 0L else Playback.position(c).coerceAtLeast(0)
+        if (!seek.isScrubbing) {
+            val fraction = if (d > 0) (p.toFloat() / d).coerceIn(0f, 1f) else 0f
+            if (seek.progress != fraction) seek.progress = fraction
+            if (positionSecond != p / 1000) {
+                positionSecond = p / 1000
+                pos.text = time(p)
+            }
         }
-        val d = Playback.duration(c)
-        val p = Playback.position(c)
-        if (d > 0 && !seek.isScrubbing) {
-            seek.progress = (p.toFloat() / d).coerceIn(0f, 1f)
-            pos.text = time(p)
+        if (durationSecond != d / 1000) {
+            durationSecond = d / 1000
+            dur.text = time(d)
         }
-        dur.text = if (d > 0) time(d) else "0:00"
     }
 
     private fun time(ms: Long): String {
@@ -465,9 +500,9 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun toggleLike() {
         val t = currentTrack() ?: return
-        val x = extras()
+        val x = extras()?.takeUnless { showingPending() }
         val local = x?.getString(Playback.X_LOCAL_URI) != null && x.getString(Playback.X_SOURCE) == "Скачано"
-        val saved = Library.like(this, LinkCache.get(t)?.track ?: t, x?.getString(Playback.X_PAGE_URL), x?.getString(Playback.X_SOURCE_URL))
+        val saved = Library.like(this, t, x?.getString(Playback.X_PAGE_URL), x?.getString(Playback.X_SOURCE_URL))
         val msg = when {
             !saved -> "Убрано из любимого"
             local || !Settings.saveLiked(this) -> "В любимом"
@@ -495,7 +530,6 @@ class NowPlayingActivity : AppCompatActivity() {
             }
 
         action("Текст песни", track != null) { openLyrics() }
-        action(if (track != null && Library.isSaved(track)) "Убрать из любимого" else "В любимое", track != null) { toggleLike() }
         action("Перемешать", c != null) { c?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }.apply {
             isCheckable = true
             isChecked = c?.shuffleModeEnabled == true
