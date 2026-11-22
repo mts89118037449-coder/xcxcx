@@ -11,11 +11,22 @@ android {
         applicationId = "com.zagruzchik.app"
         minSdk = 29 // Android 10+
         targetSdk = 35
-        versionCode = 112
-        versionName = "9.42"
+        versionCode = 119
+        versionName = "9.49"
     }
 
-    // Раздельные APK: телефон и Android TV. У TV отдельный package id.\n    flavorDimensions += "device"\n    productFlavors {\n        create("phone") { dimension = "device" }\n        create("tv") {\n            dimension = "device"\n            applicationIdSuffix = ".tv"\n            versionNameSuffix = "-tv"\n        }\n    }\n\n    // Один постоянный ключ, чтобы новые версии ставились поверх старых без удаления.
+    // Раздельные APK: телефон и Android TV. У TV отдельный package id.
+    flavorDimensions += "device"
+    productFlavors {
+        create("phone") { dimension = "device" }
+        create("tv") {
+            dimension = "device"
+            applicationIdSuffix = ".tv"
+            versionNameSuffix = "-tv"
+        }
+    }
+
+    // Один постоянный ключ, чтобы новые версии ставились поверх старых без удаления.
     signingConfigs {
         create("app") {
             storeFile = file("signing.jks")
