@@ -132,15 +132,29 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        setupDownloadPage()
-        setupJobsPage()
-        setupSettingsPage()
+        // Собираем только тот экран, который открывается: остальные вкладки достраиваются
+        // при первом переходе на них (ensurePage в applyPage) — запуск не ждёт невидимое.
         setupMiniPlayer()
-        setupMusicPage()
-
-        showPage(savedInstanceState?.getInt("page") ?: R.id.nav_music) // приложение открывается на музыке
+        val initial = savedInstanceState?.getInt("page") ?: R.id.nav_music
+        ensurePage(initial)
+        showPage(initial) // приложение открывается на музыке
         handleIntent(intent)
         if (savedInstanceState == null) askNotificationPermission()
+    }
+
+    /** Какие вкладки уже собраны (view привязаны, слушатели навешаны). */
+    private val builtPages = mutableSetOf<Int>()
+
+    /** Собрать вкладку при первом открытии. После сборки — сразу актуальное содержимое. */
+    private fun ensurePage(id: Int) {
+        if (!builtPages.add(id)) return
+        when (id) {
+            R.id.nav_music -> setupMusicPage()
+            R.id.nav_download -> { setupDownloadPage(); refreshSummary(); pasteFromClipboard(force = false) }
+            R.id.nav_jobs -> { setupJobsPage(); refreshJobs() }
+            R.id.nav_settings -> { setupSettingsPage(); refreshSites() }
+            R.id.nav_library -> { } // содержимое медиатеки строит LibraryPage (создаётся с «Музыкой»)
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -192,6 +206,7 @@ class MainActivity : AppCompatActivity() {
             ACTION_PASTE_DOWNLOAD, ACTION_PASTE_LINKS -> pendingClipAction = intent.action
         }
         intent?.getStringExtra(DownloadService.EXTRA_URL)?.let {
+            ensurePage(R.id.nav_download)
             input.setText(it)
             showPage(R.id.nav_download)
         }
@@ -205,6 +220,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Показать содержимое вкладки. Вызывается нижней панелью при выборе вкладки. */
     private fun applyPage(id: Int) {
+        ensurePage(id)
         currentPage = id
         pages.forEach { (k, v) ->
             val show = k == id
@@ -676,7 +692,7 @@ class MainActivity : AppCompatActivity() {
         beforePlay = { hideKeyboard() })
 
     private fun hideKeyboard() {
-        getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.hideSoftInputFromWindow(input.windowToken, 0)
+        getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.hideSoftInputFromWindow(window.decorView.windowToken, 0)
     }
 
     // Android разрешает читать буфер обмена, только когда окно в фокусе.
@@ -688,7 +704,7 @@ class MainActivity : AppCompatActivity() {
             runClipAction(action)
             return
         }
-        if (input.text.isNullOrBlank()) pasteFromClipboard(force = false)
+        if (::input.isInitialized && input.text.isNullOrBlank()) pasteFromClipboard(force = false)
     }
 
     private fun runClipAction(action: String) {
@@ -710,6 +726,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Сам подставляет только новые ссылки: уже скачанные и стёртые крестиком — нет. */
     private fun pasteFromClipboard(force: Boolean) {
+        if (!::input.isInitialized) return // вкладка «Скачать» ещё не собрана — подставим при её открытии
         val clip = getSystemService(ClipboardManager::class.java).primaryClip
         val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
         val url = Links.extract(text)
@@ -737,21 +754,24 @@ class MainActivity : AppCompatActivity() {
         val all = Jobs.all
         val active = all.filter { it.active }
         nav.setBadge(R.id.nav_jobs, active.size)
-        activeCard.isVisible = active.isNotEmpty()
-        if (active.isNotEmpty()) {
-            val running = active.firstOrNull { it.status == Status.RUNNING }
-            activeTitle.text = when {
-                running == null -> "В очереди: ${active.size}"
-                active.size == 1 -> "Скачиваю: ${running.title}"
-                else -> "Скачиваю ${active.size}: ${running.title}"
+        // Карточка «скачиваю» живёт на вкладке «Скачать»: она собирается при первом открытии.
+        if (::activeCard.isInitialized) {
+            activeCard.isVisible = active.isNotEmpty()
+            if (active.isNotEmpty()) {
+                val running = active.firstOrNull { it.status == Status.RUNNING }
+                activeTitle.text = when {
+                    running == null -> "В очереди: ${active.size}"
+                    active.size == 1 -> "Скачиваю: ${running.title}"
+                    else -> "Скачиваю ${active.size}: ${running.title}"
+                }
+                val p = running?.progress ?: 0f
+                if (activeProgress.isIndeterminate != (p <= 0f)) {
+                    activeProgress.isVisible = false
+                    activeProgress.isIndeterminate = p <= 0f
+                    activeProgress.isVisible = true
+                }
+                if (p > 0f) activeProgress.setProgressCompat((p * 10).toInt(), true)
             }
-            val p = running?.progress ?: 0f
-            if (activeProgress.isIndeterminate != (p <= 0f)) {
-                activeProgress.isVisible = false
-                activeProgress.isIndeterminate = p <= 0f
-                activeProgress.isVisible = true
-            }
-            if (p > 0f) activeProgress.setProgressCompat((p * 10).toInt(), true)
         }
         toolbar.menu.findItem(R.id.action_clear)?.isVisible = all.any { !it.active }
     }
@@ -805,6 +825,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Пересобрать список с учётом фильтров «Музыка/Видео» и сервиса. */
     private fun refreshJobs() {
+        if (!::jobsEmpty.isInitialized) return // вкладка «Загрузки» ещё не собрана — пересоберётся при открытии
         val all = Jobs.all
         val byKind = all.filter { kindFilter == null || it.kind == kindFilter }
         // Чипы сервисов — только те, что есть в текущей вкладке, с количеством.
@@ -1407,6 +1428,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshSites() {
+        if (!::sites.isInitialized) return // вкладка «Настройки» ещё не собрана — пересоберётся при открытии
         val logged = Cookies.loggedInSites(this).toSet()
         sites.removeAllViews()
         Cookies.SITES.forEachIndexed { i, site ->
