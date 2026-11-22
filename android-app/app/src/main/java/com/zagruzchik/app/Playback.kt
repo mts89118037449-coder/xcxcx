@@ -210,7 +210,11 @@ object Playback {
         // и отнимал сеть — журнал 17.11: нажатая песня ждала 12,7 с, пока рядом искались две следующие.
         aheadGen = gen
         main.postDelayed({ if (aheadGen == gen) { aheadGen = -1; prefetchAhead(nextToAdd) } }, 8000)
-        if (openScreen) ctx.startActivity(Intent(ctx, NowPlayingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        if (openScreen) {
+            val intent = Intent(ctx, NowPlayingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            if (ctx !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(intent)
+        }
 
         first.local?.let { f ->
             Pending.set(null, loading = false, error = null)
@@ -499,9 +503,14 @@ object Playback {
                 ) Pending.set(null, loading = false, error = null)
                 // Фрагмент перешёл в полную версию — убираем его из очереди («назад» не вернёт к нему).
                 val i = c.currentMediaItemIndex
-                if (i > 0 && c.getMediaItemAt(i - 1).mediaMetadata.extras?.getBoolean(X_PREVIEW) == true) main.post {
-                    val j = c.currentMediaItemIndex
-                    if (j > 0 && c.getMediaItemAt(j - 1).mediaMetadata.extras?.getBoolean(X_PREVIEW) == true) c.removeMediaItem(j - 1)
+                if (i > 0 && mediaItem?.mediaMetadata?.extras?.getBoolean(X_PREVIEW) != true) {
+                    val preview = c.getMediaItemAt(i - 1)
+                    if (preview.mediaMetadata.extras?.getBoolean(X_PREVIEW) == true &&
+                        preview.mediaMetadata.title == mediaItem?.mediaMetadata?.title &&
+                        preview.mediaMetadata.artist == mediaItem?.mediaMetadata?.artist) main.post {
+                        val j = c.currentMediaItemIndex
+                        if (j > 0 && c.currentMediaItem == mediaItem && c.getMediaItemAt(j - 1) == preview) c.removeMediaItem(j - 1)
+                    }
                 }
                 learn(reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_SEEK)
                 nowPlayingKey = mediaItem?.mediaMetadata?.title?.toString()?.let { Library.key(Track(it, mediaItem.mediaMetadata.artist?.toString().orEmpty())) }
@@ -526,7 +535,11 @@ object Playback {
                     val i = c.currentMediaItemIndex
                     val rest = queue.drop(maxOf(0, nextToAdd - (c.mediaItemCount - i)))
                     val here = rest.firstOrNull { Library.key(it.track) == Library.key(t) } ?: QItem(t, null, m.extras?.getString(X_SOURCE_URL))
-                    main.post { playQueue(app, listOf(here) + rest.filter { it !== here }, 0, openScreen = false) }
+                    val failedGen = activeQueueGen
+                    main.post {
+                        if (failedGen == queueGen && c.currentMediaItem?.mediaMetadata == m && requestedIndex == null)
+                            playQueue(app, listOf(here) + rest.filter { it !== here }, 0, openScreen = false)
+                    }
                     return
                 }
                 if (c.currentMediaItem?.mediaMetadata?.extras?.getBoolean(X_PREVIEW) == true && waitingFull != null) {
@@ -548,7 +561,7 @@ object Playback {
                     MediaCache.forget(t)
                     HeadCache.drop(t)
                     Pending.set(t, loading = true, error = null)
-                    val failedGen = queueGen
+                    val failedGen = activeQueueGen
                     main.postDelayed({
                         if (failedGen == queueGen && c.currentMediaItem?.mediaMetadata == m && requestedIndex == null) {
                             val i = queue.indexOfFirst { Library.key(it.track) == key }
