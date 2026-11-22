@@ -1,0 +1,63 @@
+name: Android APK
+
+on:
+  push:
+    paths:
+      - "android-app/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: soundaura-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK
+        run: ./gradlew assemblePhoneRelease assembleTvRelease --no-daemon --build-cache --stacktrace
+
+      - name: Prepare exactly two APKs
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          find app/build/outputs/apk -type f -name '*.apk' -print
+          phone="$(find app/build/outputs/apk/phone -type f -name '*universal*release.apk' | head -n 1)"
+          tv="$(find app/build/outputs/apk/tv -type f -name '*universal*release.apk' | head -n 1)"
+          test -n "$phone" && test -s "$phone"
+          test -n "$tv" && test -s "$tv"
+          cp "$phone" out/SoundAura-Phone.apk
+          cp "$tv" out/SoundAura-TV.apk
+          ls -lh out/*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SoundAura-Phone-and-TV
+          path: android-app/out/*.apk
+
+      # Свежая сборка всегда лежит в релизе «SoundAura (последняя версия)».
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-latest --yes --cleanup-tag || true
+          gh release create apk-latest out/*.apk \
+            --title "SoundAura (последняя версия)" \
+            --notes "Сборка из ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Телефон — SoundAura-Phone.apk; Android TV — SoundAura-TV.apk." \
+            --target "$GITHUB_SHA"

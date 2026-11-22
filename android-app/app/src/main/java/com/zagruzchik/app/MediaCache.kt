@@ -1,0 +1,238 @@
+package com.zagruzchik.app
+
+import android.content.Context
+import com.yausername.youtubedl_android.YoutubeDLRequest
+import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.Executors
+
+/**
+ * Память прослушанного: всё, что звучало из интернета, тихо сохраняется в приложение,
+ * чтобы в следующий раз играть мгновенно и без интернета. Старое удаляется, когда память
+ * больше лимита из Настроек (по умолчанию 2 ГБ).
+ */
+object MediaCache {
+    private lateinit var dir: File
+    private lateinit var indexFile: File
+    private val index = LinkedHashMap<String, JSONObject>() // ключ песни → {file, size, used, title, artist, cover}
+    private val pending = mutableSetOf<String>()
+    private val worker = Executors.newSingleThreadExecutor()
+
+    @Volatile private var inited = false
+
+    /**
+     * Вызывается из App в фоне, чтобы не держать запуск. Если какой-то метод пришёл раньше —
+     * он доделывает инициализацию сам (синхронно, один раз). После [init] чтение индекса не повторяется.
+     */
+    @Synchronized
+    fun init(ctx: Context) {
+        if (inited) return
+        inited = true
+        dir = File(ctx.filesDir, "media_cache").apply { mkdirs() }
+        indexFile = File(dir, "index.json")
+        runCatching { JSONObject(indexFile.readText()) }.getOrNull()?.let { o ->
+            o.keys().forEach { k -> index[k] = o.getJSONObject(k) }
+        }
+        // Проверка файлов на диске (обрывки, лишнее) — в фоне: при запуске это сотни обращений к диску в главном потоке.
+        Thread({ android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); synchronized(this) {
+            // Обрывки недокачанного (раньше могли попасть в память и обрывать песню через пару минут) — удаляем.
+            index.entries.removeAll { e ->
+                val f = File(dir, e.value.optString("file"))
+                val bad = !f.exists() || !isFinal(f.name)
+                if (bad) f.delete()
+                bad
+            }
+            val known = index.values.map { it.optString("file") }.toSet() + indexFile.name
+            // Свежие файлы не трогаем: это может быть идущая загрузка (проверка теперь идёт в фоне, одновременно с работой).
+            dir.listFiles().orEmpty().filter { it.isFile && it.name !in known && !it.name.endsWith(".tmp") &&
+                System.currentTimeMillis() - it.lastModified() > 600_000 }.forEach { it.delete() }
+            save()
+        } }, "media-cache-check").start()
+    }
+
+    /** Доготавливаемся сами, если фоновый запуск ещё не дошёл до нас (первые доли секунды работы приложения). */
+    fun ensure() { if (!inited) init(App.instance) }
+
+    private const val CHUNK = 1024L * 1024
+    private val AUDIO = setOf("m4a", "mp4", "webm", "opus", "ogg", "mp3", "aac", "flac", "mka", "wav")
+
+    /** Готовый файл, а не кусок загрузки (.part, -Frag12, .ytdl, .temp). */
+    private fun isFinal(name: String) = name.substringAfterLast('.').lowercase() in AUDIO &&
+        listOf(".part", "-frag", ".ytdl", ".temp").none { name.lowercase().contains(it) }
+
+    /** Длительность файла, мс (0 — не читается: значит, файл битый или недокачан). */
+    private fun durationMs(f: File): Long = runCatching {
+        val m = android.media.MediaMetadataRetriever()
+        try { m.setDataSource(f.absolutePath); m.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L }
+        finally { m.release() }
+    }.getOrDefault(0L)
+
+    @Synchronized
+    fun fileFor(t: Track): File? {
+        ensure()
+        val e = index[Library.key(t)] ?: return null
+        val f = File(dir, e.optString("file"))
+        if (!f.exists()) return null
+        // За песней закреплён другой источник, чем тот, откуда этот файл, — файл не годится.
+        if (stale(t, e)) { index.remove(Library.key(t)); f.delete(); save(); return null }
+        e.put("used", System.currentTimeMillis())
+        save()
+        return f
+    }
+
+    /** Есть ли в памяти — только проверка, без записи на диск (её зовут при отрисовке списков). */
+    @Synchronized
+    fun has(t: Track): Boolean { ensure(); return index[Library.key(t)]?.let { !stale(t, it) && File(dir, it.optString("file")).exists() } == true }
+
+    /** Файл скачан не из того источника, который человек выбрал для этой песни. */
+    private fun stale(t: Track, e: JSONObject): Boolean = Streams.chosen(t).let { it != null && e.optString("pin") != it }
+
+    val sizeBytes: Long @Synchronized get() { ensure(); return index.values.sumOf { it.optLong("size") } }
+
+    /**
+     * Сохранить песню в память по ссылке на звук, которая уже есть (без yt-dlp: раньше на каждую прослушанную песню
+     * запускался отдельный процесс Python — журнал 17.11: телефон захлёбывался, поиск и интерфейс стояли).
+     * Потоки по кусочкам (HLS, SoundCloud) не сохраняем — это снова Python.
+     */
+    fun store(ctx: Context, t: Track, s: StreamInfo) {
+        if (!plain(s.url)) return
+        ensure()
+        store(ctx, t, s.url, directOnly = true)
+    }
+
+    private fun plain(u: String) = u.startsWith("http") && !u.contains(".m3u8")
+
+    /** Сохранить песню в память по странице/ссылке, откуда она звучала. Фоном, по одной. */
+    fun store(ctx: Context, t: Track, url: String, directOnly: Boolean = false) {
+        if (Settings.cacheLimitMb(ctx) <= 0) return
+        ensure()
+        val key = Library.key(t)
+        synchronized(this) { if (index.containsKey(key) || !pending.add(key)) return }
+        worker.execute {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            try { download(ctx, t, url, keep = false, direct = directOnly) } finally { synchronized(this) { pending -= key } }
+        }
+    }
+
+    /**
+     * Скачать песню целиком прямо сейчас (в потоке вызывающего) — для «Медиатеки на телефоне».
+     * [keep] — любимая: при нехватке места её не вытесняет прослушанное. true — файл на месте.
+     */
+    fun storeNow(ctx: Context, t: Track, s: StreamInfo, keep: Boolean = true): Boolean {
+        ensure()
+        val key = Library.key(t)
+        synchronized(this) { if (index.containsKey(key)) return true; if (!pending.add(key)) return false }
+        // Только прямой загрузкой по ссылке на звук (без Python); поток по кусочкам (HLS) — пропускаем.
+        if (!plain(s.url)) { synchronized(this) { pending -= key }; return false }
+        return try { download(ctx, t, s.url, keep, direct = true) }
+        finally { synchronized(this) { pending -= key } }
+    }
+
+    /** Есть ли ещё место под лимитом (с запасом на одну песню). */
+    fun hasRoom(ctx: Context): Boolean = sizeBytes < Settings.cacheLimitMb(ctx) * 1024L * 1024L - 12L * 1024 * 1024
+
+    private fun download(ctx: Context, t: Track, url: String, keep: Boolean, direct: Boolean = false): Boolean {
+        val key = Library.key(t)
+        if (Streams.detoured(t)) return false // выбранный источник не ответил, это замена — на телефон её не кладём
+        val pin = Streams.chosen(t)
+        val name = key.hashCode().toUInt().toString(16)
+        val ok = if (direct) runCatching {
+            // Прямая ссылка на звук — качаем сами, без Python, кусками по 1 МБ (YouTube режет скорость цельным запросам).
+            val tmp = File(dir, "$name.part.tmp")
+            var pos = 0L; var total = -1L; var ext = "mp3"
+            tmp.outputStream().use { out ->
+                while (total < 0 || pos < total) {
+                    val c = Net.open(java.net.URL(url))
+                    c.connectTimeout = 10_000; c.readTimeout = 20_000
+                    c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
+                    c.setRequestProperty("Range", "bytes=$pos-${pos + CHUNK - 1}")
+                    try {
+                        val code = c.responseCode
+                        if (code !in 200..299) throw java.io.IOException("HTTP $code")
+                        if (pos == 0L) {
+                            val type = c.contentType.orEmpty()
+                            ext = when { type.contains("flac") -> "flac"; type.contains("mp4") || type.contains("m4a") || type.contains("aac") -> "m4a"; type.contains("ogg") || type.contains("opus") -> "ogg"; type.contains("webm") -> "webm"; else -> "mp3" }
+                        }
+                        total = if (code == 206) c.getHeaderField("Content-Range")?.substringAfter('/')?.toLongOrNull() ?: -1L else c.contentLengthLong
+                        val n = c.inputStream.use { it.copyTo(out, 64 * 1024) }
+                        if (n <= 0) break
+                        pos += n
+                        // Фоновая загрузка («Медиатека на телефоне») уступает человеку между кусками: нажали песню или открыли
+                        // источники — ждёт; и не забирает весь канал (через медленный VPN это душило всё остальное, журнал 20.11).
+                        if (keep) { Streams.waitForeground(); Thread.sleep(700) }
+                        if (code == 200 || total < 0) break // сервер отдал всё сразу (или размер не сообщил)
+                    } finally { c.disconnect() }
+                }
+            }
+            tmp.renameTo(File(dir, "$name.$ext"))
+        }.getOrDefault(false) else run {
+            App.awaitReadyOrNull() ?: return false
+            val r = YoutubeDLRequest(url).apply {
+                addOption("--no-playlist")
+                addOption("--no-warnings")
+                addOption("-f", "bestaudio/best")
+                addOption("-N", "4")
+                addOption("-o", File(dir, "$name.%(ext)s").absolutePath)
+            }
+            runCatching { Ytdlp.inBackground { Ytdlp.execute(r, timeoutSec = 600) } }.isSuccess
+        }
+        val pieces = dir.listFiles().orEmpty().filter { it.name.startsWith("$name.") }
+        val f = pieces.firstOrNull { isFinal(it.name) }
+        // В память — только целиком скачанное: загрузка завершилась и длительность файла как у песни.
+        val dur = f?.let { durationMs(it) } ?: 0L
+        val whole = ok && f != null && dur > 0 && (t.durationSec <= 0 || dur >= t.durationSec * 1000L * 0.9)
+        if (!whole) { pieces.forEach { it.delete() }; return false }
+        // Пока качали, человек выбрал другой источник — скачанное уже «не то».
+        if (Streams.chosen(t) != pin) { pieces.forEach { it.delete() }; return false }
+        pieces.filter { it != f }.forEach { it.delete() }
+        synchronized(this) {
+            index[key] = JSONObject().put("file", f!!.name).put("size", f.length()).put("used", System.currentTimeMillis())
+                .put("title", t.title).put("artist", t.artist).put("cover", t.cover ?: "").put("keep", keep).put("pin", pin ?: "")
+            trim(ctx)
+            save()
+        }
+        return true
+    }
+
+    /** Убрать песню из памяти (файл не играет) — в следующий раз она снова придёт из сети. */
+    @Synchronized
+    fun forget(t: Track) {
+        ensure()
+        index.remove(Library.key(t))?.let { File(dir, it.optString("file")).delete() }
+        save()
+    }
+
+    /** Скопировать песню из памяти — например, чтобы сохранить её в «Загрузки» без повторного скачивания. */
+    fun copyOf(t: Track, to: File): File? {
+        val f = fileFor(t) ?: return null
+        val out = File(to, "${t.label.replace(Regex("""[\\/:*?"<>|]"""), "_").take(120)}.${f.extension}")
+        f.copyTo(out, overwrite = true)
+        return out
+    }
+
+    @Synchronized
+    fun clear() {
+        ensure()
+        index.values.forEach { File(dir, it.optString("file")).delete() }
+        index.clear()
+        save()
+    }
+
+    /** Удаляем давно не звучавшее, пока не уложимся в лимит. */
+    private fun trim(ctx: Context) {
+        val limit = Settings.cacheLimitMb(ctx) * 1024L * 1024L
+        while (sizeBytes > limit && index.isNotEmpty()) {
+            // Сначала уходит просто прослушанное; любимое (скачанное «Медиатекой на телефоне») — в последнюю очередь.
+            val oldest = index.entries.filter { !it.value.optBoolean("keep") }.minByOrNull { it.value.optLong("used") }
+                ?: index.entries.minByOrNull { it.value.optLong("used") } ?: break
+            File(dir, oldest.value.optString("file")).delete()
+            index.remove(oldest.key)
+        }
+    }
+
+    private fun save() {
+        val o = JSONObject()
+        index.forEach { (k, v) -> o.put(k, v) }
+        runCatching { File(indexFile.path + ".tmp").apply { writeText(o.toString()) }.renameTo(indexFile) }
+    }
+}

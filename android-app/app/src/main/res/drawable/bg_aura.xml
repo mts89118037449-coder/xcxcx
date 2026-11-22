@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Фон экранов: спокойный, без свечения (свет на экран приносит обложка в плеере) -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"><solid android:color="@color/m3_background" /></shape>

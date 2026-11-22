@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="accent">#6A3DF0</color>
+    <color name="icon_bg">#0E7490</color>
+    <color name="aura_glow_violet">#00000000</color>
+    <color name="aura_glow_pink">#00000000</color>
+    <color name="mini_start">#FFFFFFFF</color>
+    <color name="mini_end">#FFFFFFFF</color>
+    <color name="line">#FFE2DEEA</color>
+    <color name="card">#FFFFFFFF</color>
+    <color name="glass">#0F15131B</color>
+    <color name="nav_idle">#FF7A7686</color>
+    <!-- Аура: фирменный градиент -->
+    <color name="aura1">#FF6236E8</color>
+    <color name="aura2">#FF9B3DE0</color>
+    <color name="aura3">#FFE0457F</color>
+</resources>
