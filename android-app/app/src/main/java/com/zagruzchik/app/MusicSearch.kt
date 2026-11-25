@@ -69,6 +69,28 @@ object Streams {
     private val done = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, StreamInfo>>()
     /** Платные (DRM) записи SoundCloud на этот сеанс: одна и та же запись пробовалась 3 раза подряд по 2–5 с (журнал 24.11) — больше не тратим. */
     private val drmSeen = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private const val BLACKLIST_TTL_MS = 180_000L // 3 минуты: упавшая ссылка/источник пропускаются при авто-восстановлении
+    private val blacklisted = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    fun blacklist(vararg urlsOrKeys: String?) {
+        val until = System.currentTimeMillis() + BLACKLIST_TTL_MS
+        for (raw in urlsOrKeys) {
+            val k = raw?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+            blacklisted[k] = until
+            if (k.startsWith("direct:")) blacklisted[k.removePrefix("direct:")] = until
+        }
+    }
+
+    private fun isBlacklisted(vararg urlsOrKeys: String?): Boolean {
+        val now = System.currentTimeMillis()
+        for (raw in urlsOrKeys) {
+            val k = raw?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+            val until = blacklisted[k] ?: continue
+            if (now < until) return true
+            blacklisted.remove(k, until)
+        }
+        return false
+    }
     private val pending = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.Future<StreamInfo>>()
     // Подготовка заранее: 3 одновременно, свежие экраны — первыми (очередь «последним пришёл — первым готовим»).
     private val pool = java.util.concurrent.ThreadPoolExecutor(2, 2, 30, java.util.concurrent.TimeUnit.SECONDS,
@@ -202,6 +224,7 @@ object Streams {
         // Заранее готовим только то, что точно без цензуры: помеченное так на Zaycev или песню, которая и в каталоге «чистая».
         val c = ok.take(3).filter { it.explicit || !t.explicit }.maxByOrNull { it.bitrate } ?: return null
         val u = ZaycevSource.streamUrl(c.id) ?: return null
+        if (isBlacklisted(u, "zaycev:${c.id}:${c.bitrate}")) return null
         remember(k, "zaycev:${c.id}:${c.bitrate}")
         return StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title).also { done[k] = System.currentTimeMillis() to it }
     }
@@ -245,7 +268,7 @@ object Streams {
 
     // Ссылки Zaycev живут меньше часа (привязаны к текущему часу) — держим их 10 минут.
     private fun cached(k: String) = done[k]?.let { (time, s) ->
-        s.takeIf { System.currentTimeMillis() - time < if (s.source.startsWith("Zaycev")) 10 * 60 * 1000L else TTL_MS }
+        s.takeIf { System.currentTimeMillis() - time < (if (s.source.startsWith("Zaycev")) 10 * 60 * 1000L else TTL_MS) && !isBlacklisted(it.url, it.pageUrl) }
     }
 
     // ---- Своя ссылка для песни: если поиск не находит, человек указывает страницу сам — запоминаем навсегда. ----
@@ -308,8 +331,10 @@ object Streams {
     fun streamFrom(t: Track, where: String, wantTotal: Long? = null): StreamInfo? = runCatching { fromKnown(t, where, wantTotal) }.getOrNull()
 
     private fun fromKnown(t: Track, where: String, wantTotal: Long? = null): StreamInfo? {
+        if (isBlacklisted(where)) return null
         if (where.startsWith("direct:https://")) {
             val url = where.removePrefix("direct:")
+            if (isBlacklisted(url)) return null
             return StreamInfo(url, url, Describe.site(url), t.cover, t.title)
         }
         if (where.startsWith("zaycev:")) {
@@ -500,8 +525,8 @@ object Streams {
                             .map { it.url }.filter { "/album/" in it }.distinct().take(2)
                         log += "$yandexName: подходящих страниц ${pages.size}"
                         if (pages.isNotEmpty()) App.awaitReady()
-                        pages.firstNotNullOfOrNull { page ->
-                            Downloader.streamOf(page, yandexName, t.title, problems)?.also { picked[yandexName] = page }
+                        pages.filter { !isBlacklisted(it) }.firstNotNullOfOrNull { page ->
+                            Downloader.streamOf(page, yandexName, t.title, problems)?.takeUnless { isBlacklisted(it.url, it.pageUrl) }?.also { picked[yandexName] = page }
                         }
                     }
                 } catch (e: Exception) {
@@ -526,6 +551,7 @@ object Streams {
             // Из подходящих — сначала помеченные «без цензуры», затем лучший битрейт (среди первых трёх).
             ok.take(3).sortedWith(compareByDescending<ZaycevSource.Found> { it.explicit }.thenByDescending { it.bitrate }).firstNotNullOfOrNull { c ->
                 runCatching { ZaycevSource.streamUrl(c.id) }.getOrNull()?.let { u ->
+                    if (isBlacklisted(u, "zaycev:${c.id}:${c.bitrate}")) return@let null
                     picked["Zaycev"] = "zaycev:${c.id}:${c.bitrate}"
                     StreamInfo(u, u, "Zaycev · MP3 ${c.bitrate}", t.cover ?: c.cover, c.title)
                 }
@@ -538,10 +564,22 @@ object Streams {
             val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
             log += "Hitmotop [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" + why(got.exceptionOrNull())
             if (ok.isNotEmpty()) foundOn += "Hitmotop"
-            ok.firstOrNull()?.let { c ->
+            ok.firstOrNull { !isBlacklisted(it.url) }?.let { c ->
                 picked["Hitmotop"] = "direct:${c.url}"
                 StreamInfo(c.url, c.url, "Hitmotop · MP3", t.cover ?: c.cover, c.title)
             }.also { log += "Hitmotop звук: ${if (it != null) "готов" else "нет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
+        }
+        val hearthis = searchPool.submit<StreamInfo?> {
+            val t0 = System.currentTimeMillis()
+            val got = runCatching { HearthisSource.search(t.query) }
+            val raw = got.getOrDefault(emptyList())
+            val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
+            log += "Hearthis [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" + why(got.exceptionOrNull())
+            if (ok.isNotEmpty()) foundOn += "Hearthis"
+            ok.firstOrNull { !isBlacklisted(it.url) }?.let { c ->
+                picked["Hearthis"] = "direct:${c.url}"
+                StreamInfo(c.url, c.url, "Hearthis · MP3", t.cover ?: c.cover, c.title)
+            }.also { log += "Hearthis звук: ${if (it != null) "готов" else "нет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
         }
         // Telegram (свой аккаунт): встроенный поиск музыки, файлы обычно 320 kbps, бывает FLAC. Только по нажатию —
         // в фоновой подготовке не используем: Telegram ограничивает частые запросы.
@@ -554,10 +592,12 @@ object Streams {
                 raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗"} ${c.title.take(60)} | ${c.artist.take(30)} | ${c.durationSec} с | ${c.format} ${c.kbps}" } +
                 "\n  за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
             // Из подходящих — без потерь, затем лучший битрейт (среди первых трёх).
-            val best = ok.take(3).sortedWith(compareByDescending<Telegram.Found> { it.format == "FLAC" }.thenByDescending { it.kbps }).firstOrNull() ?: return@submit null
+            val best = ok.take(3).sortedWith(compareByDescending<Telegram.Found> { it.format == "FLAC" }.thenByDescending { it.kbps })
+                .firstOrNull { !isBlacklisted("tg:${it.remoteId}|${it.label}") } ?: return@submit null
             foundOn += "Telegram"
             picked["Telegram"] = "tg:${best.remoteId}|${best.label}"
             val u = Telegram.streamUrl(best.remoteId)
+            if (isBlacklisted(u)) return@submit null
             StreamInfo(u, u, best.label, t.cover, best.title)
         }
         // ВКонтакте (свой аккаунт, веб-сессия как у сайта): почти вся русская музыка. Только по нажатию —
@@ -573,6 +613,7 @@ object Streams {
             if (ok.isEmpty()) return@submit null
             // Ссылки ВК недолговечны: для лучших вариантов берём свежие одним запросом, первый играющий — в дело.
             val best = runCatching { VkSource.streamOf(t, ok.take(5)) }.getOrNull() ?: return@submit null
+            if (isBlacklisted(best.second.url, best.second.pageUrl)) return@submit null
             foundOn += "ВК"
             picked["VK"] = best.first
             best.second
@@ -590,10 +631,11 @@ object Streams {
                 raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗ " + Match.reason(t, c.title, c.artist, c.durationSec)} · ${c.title.take(50)} | ${c.artist.take(26)} | ${c.durationSec} с" } +
                 "\n  поиск за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
             if (ok.isNotEmpty()) foundOn += "YouTube Music"
-            ok.take(3).firstNotNullOfOrNull { c ->
+            ok.take(3).filter { !isBlacklisted(it.url) }.firstNotNullOfOrNull { c ->
                 val t1 = System.currentTimeMillis()
                 val errs = java.util.concurrent.ConcurrentLinkedQueue<String>()
                 Ytdlp.withBackground(bg) { Downloader.streamOf(c.url, "YouTube Music", c.title, errs) }
+                    ?.takeUnless { isBlacklisted(it.url, it.pageUrl) }
                     .also { problems += errs; log += "YouTube Music звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет — " + errs.joinToString("; ").ifBlank { "без объяснения" }.take(200)} за ${(System.currentTimeMillis() - t1) / 100 / 10.0} с" }
             }
         }
@@ -606,14 +648,14 @@ object Streams {
         }
         fun sounds(name: String, candidates: List<Downloader.Candidate>): StreamInfo? {
             // Ссылки берём по две одновременно (лучший вариант может оказаться платным — DRM), до 4 вариантов.
-            val fresh = candidates.filter { it.url !in drmSeen }
+            val fresh = candidates.filter { it.url !in drmSeen && !isBlacklisted(it.url) }
             if (fresh.size < candidates.size) log += "$name: платных (DRM) знаем заранее — ${candidates.size - fresh.size} пропущено, не тратя время"
             return fresh.take(4).chunked(2).firstNotNullOfOrNull { pair ->
                 val tasks = pair.map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                     val t0 = System.currentTimeMillis()
                     if (Service.of(c.url).let { it != Service.YOUTUBE && it != Service.YOUTUBE_MUSIC && it != Service.SOUNDCLOUD }) App.awaitReady() // YouTube и SoundCloud берёт и телефон — движок не ждём
                     val errs = java.util.concurrent.ConcurrentLinkedQueue<String>()
-                    Downloader.streamOf(c.url, name.substringBefore(" ("), c.title, errs).also {
+                    Downloader.streamOf(c.url, name.substringBefore(" ("), c.title, errs)?.takeUnless { isBlacklisted(it.url, it.pageUrl) }.also {
                         problems += errs
                         // Платная запись повторной попыткой не оживает — запоминаем на сеанс.
                         if (it == null && errs.any { e -> e.contains("DRM") || e.contains("платн", ignoreCase = true) }) drmSeen += c.url
@@ -662,9 +704,9 @@ object Streams {
         fun startSpare() = if (light) emptyList() else WebSearch.playbackSources.map { lookup ->
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                 val matches = WebSearch.rankCandidates(t, lookup(t.query))
-                matches.take(2).firstNotNullOfOrNull { w ->
+                matches.filter { !isBlacklisted(it.url) }.take(2).firstNotNullOfOrNull { w ->
                     if (w.direct) StreamInfo(w.url, w.url, w.source, w.cover, w.title)
-                    else { App.awaitReady(); Downloader.streamOf(w.url, w.source, w.title, problems) }
+                    else { App.awaitReady(); Downloader.streamOf(w.url, w.source, w.title, problems)?.takeUnless { isBlacklisted(it.url, it.pageUrl) } }
                 }
             } }
         }
@@ -674,7 +716,7 @@ object Streams {
             val viaYtdlp = startViaYtdlp()
             val spare = startSpare()
             val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
-            val jobs = listOfNotNull(remembered, zaycev, hitmotop, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
+            val jobs = listOfNotNull(remembered, zaycev, hitmotop, hearthis, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
             // Режим «показать все источники»: отдаём каждый найденный вариант сразу, как только площадка ответила.
             val told = HashSet<Any>()
             while (true) {
@@ -697,7 +739,7 @@ object Streams {
         var viaYtdlp: List<java.util.concurrent.Future<StreamInfo?>> = emptyList()
         var spare: List<java.util.concurrent.Future<StreamInfo?>> = emptyList()
         var jobs: List<java.util.concurrent.Future<StreamInfo?>> =
-            listOfNotNull(remembered, zaycev, hitmotop, onPhone.getOrNull(0), telegram, vk, ytm, onPhone.getOrNull(1))
+            listOfNotNull(remembered, zaycev, hitmotop, hearthis, onPhone.getOrNull(0), telegram, vk, ytm, onPhone.getOrNull(1))
         while (true) {
             if (!slowStarted && (System.currentTimeMillis() - started >= 1200 || jobs.all { it.isDone })) {
                 slowStarted = true
@@ -705,7 +747,7 @@ object Streams {
                 viaYtdlp = startViaYtdlp()
                 spare = startSpare()
                 val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
-                jobs = listOfNotNull(remembered, zaycev, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
+                jobs = listOfNotNull(remembered, zaycev, hitmotop, hearthis, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
             }
             for (f in jobs) {
                 if (!f.isDone) continue
@@ -731,7 +773,7 @@ object Streams {
             else if (problems.isNotEmpty()) append("Нашёл, но не играет: ${problems.first()}.")
             else append("Не нашёл «${t.label}».")
             if (missing.isNotEmpty()) append(" На ${missing.joinToString(" и ")} её нет.")
-            append(" Искал: Zaycev, Hitmotop," + (if (Telegram.ready) " Telegram," else "") + (if (VkSource.loggedIn) " ВК," else "") + " SoundCloud, YouTube, YouTube Music, Яндекс, Bandcamp, Rutube, Internet Archive, Dailymotion, Audius.")
+            append(" Искал: Zaycev, Hitmotop, Hearthis," + (if (Telegram.ready) " Telegram," else "") + (if (VkSource.loggedIn) " ВК," else "") + " SoundCloud, YouTube, YouTube Music, Яндекс, Bandcamp, Rutube, Internet Archive, Dailymotion, Audius.")
             append(" Нажмите на это сообщение — можно указать ссылку на песню вручную.")
         })
     }

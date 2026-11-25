@@ -54,6 +54,7 @@ class PlayerActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         Playback.controller(this) { c ->
+            if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) return@controller
             controller = c
             view.player = c
             c.addListener(listener)

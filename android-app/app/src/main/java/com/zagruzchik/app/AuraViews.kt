@@ -75,6 +75,10 @@ class RingProgressView @JvmOverloads constructor(ctx: Context, attrs: AttributeS
     private val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val knobPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
     private val box = RectF()
+    private val arcMatrix = android.graphics.Matrix()
+    private var shaderW = -1
+    private var shaderH = -1
+    private var shaderAccent: Int? = null
 
     fun trackColor(c: Int) { track.color = c; invalidate() }
 
@@ -84,9 +88,13 @@ class RingProgressView @JvmOverloads constructor(ctx: Context, attrs: AttributeS
         track.strokeWidth = stroke; arc.strokeWidth = stroke
         canvas.drawOval(box, track)
         val cx = width / 2f; val cy = height / 2f
-        val g = accent?.let { shades(it) } ?: intArrayOf(AuraColors.c1(context), AuraColors.c2(context), AuraColors.c3(context))
-        arc.shader = SweepGradient(cx, cy, intArrayOf(g[0], g[1], g[2], g[0]), null)
-            .apply { setLocalMatrix(android.graphics.Matrix().apply { setRotate(-90f, cx, cy) }) }
+        if (shaderW != width || shaderH != height || shaderAccent != accent) {
+            shaderW = width; shaderH = height; shaderAccent = accent
+            val g = accent?.let { shades(it) } ?: intArrayOf(AuraColors.c1(context), AuraColors.c2(context), AuraColors.c3(context))
+            arcMatrix.setRotate(-90f, cx, cy)
+            arc.shader = SweepGradient(cx, cy, intArrayOf(g[0], g[1], g[2], g[0]), null)
+                .apply { setLocalMatrix(arcMatrix) }
+        }
         if (progress > 0f) canvas.drawArc(box, -90f, 360f * progress, false, arc)
         if (knob) {
             val a = (progress * 2 * PI - PI / 2).toFloat()

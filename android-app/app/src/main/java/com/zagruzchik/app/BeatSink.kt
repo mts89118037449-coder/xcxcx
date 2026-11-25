@@ -89,14 +89,17 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
 
         // Для тегов песни: интервалы между ударами и доля баса за всё время, что песня звучала.
         private val intervals = java.util.Collections.synchronizedList(ArrayList<Long>())
-        @Volatile private var bassSum = 0.0
-        @Volatile private var allSum = 0.0
+        private var bassSum = 0.0
+        private var allSum = 0.0
 
         /** Темп (ударов в минуту) и доля баса с прошлого вызова; счёт начинается заново. null — мерить было нечего. */
         fun takeStats(): Pair<Int, Float>? {
-            val iv = synchronized(intervals) { intervals.toList().also { intervals.clear() } }
-            val share = if (allSum > 0) (bassSum / allSum).toFloat() else 0f
-            bassSum = 0.0; allSum = 0.0
+            val (iv, share) = synchronized(intervals) {
+                val list = intervals.toList().also { intervals.clear() }
+                val s = if (allSum > 0) (bassSum / allSum).toFloat() else 0f
+                bassSum = 0.0; allSum = 0.0
+                list to s
+            }
             if (iv.size < 16 && share <= 0f) return null
             var bpm = 0
             if (iv.size >= 16) {
@@ -188,7 +191,9 @@ class BeatSink(sink: AudioSink) : ForwardingAudioSink(sink) {
                 average += (e - average) * 0.045f
                 // Полосы: уровень относительно своего среднего и всплески-«ноты» в середине и верху.
                 bandE[0] = energy
-                bassSum += e; allSum += e + bandE[1] / samples + bandE[2] / samples
+                synchronized(intervals) {
+                    bassSum += e; allSum += e + bandE[1] / samples + bandE[2] / samples
+                }
                 val lv = FloatArray(3)
                 // Вес полосы — её доля в общем звуке: раньше каждая полоса мерилась сама с собой, и тихая гитара давала столько же
                 // «нот», сколько громкая, а тяжёлый бас среди них терялся (владелец 20.11: «гитара перебивает всё, бассы не чувствуются»).

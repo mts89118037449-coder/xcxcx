@@ -17,32 +17,40 @@ object MediaCache {
     private val index = LinkedHashMap<String, JSONObject>() // ключ песни → {file, size, used, title, artist, cover}
     private val pending = mutableSetOf<String>()
     private val worker = Executors.newSingleThreadExecutor()
+    private val metaWorker = Executors.newSingleThreadExecutor()
     @Volatile private var inited = false
 
     @Synchronized
     fun init(ctx: Context) {
         if (inited) return
-        inited = true
         dir = File(ctx.filesDir, "media_cache").apply { mkdirs() }
         indexFile = File(dir, "index.json")
         runCatching { JSONObject(indexFile.readText()) }.getOrNull()?.let { o ->
             o.keys().forEach { k -> index[k] = o.getJSONObject(k) }
         }
+        inited = true
         // Проверка файлов на диске (обрывки, лишнее) — в фоне: при запуске это сотни обращений к диску в главном потоке.
-        Thread({ android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); synchronized(this) {
-            // Обрывки недокачанного (раньше могли попасть в память и обрывать песню через пару минут) — удаляем.
-            index.entries.removeAll { e ->
-                val f = File(dir, e.value.optString("file"))
+        Thread({
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            val snapshot = synchronized(this) { index.entries.map { it.key to it.value.optString("file") } }
+            val badKeys = mutableListOf<String>()
+            for ((k, fileName) in snapshot) {
+                val f = File(dir, fileName)
                 val bad = !f.exists() || !isFinal(f.name)
-                if (bad) f.delete()
-                bad
+                if (bad) {
+                    f.delete()
+                    badKeys += k
+                }
             }
-            val known = index.values.map { it.optString("file") }.toSet() + indexFile.name
+            val known = synchronized(this) {
+                badKeys.forEach { index.remove(it) }
+                index.values.map { it.optString("file") }.toSet() + indexFile.name
+            }
             // Свежие файлы не трогаем: это может быть идущая загрузка (проверка теперь идёт в фоне, одновременно с работой).
             dir.listFiles().orEmpty().filter { it.isFile && it.name !in known && !it.name.endsWith(".tmp") &&
                 System.currentTimeMillis() - it.lastModified() > 600_000 }.forEach { it.delete() }
-            save()
-        } }, "media-cache-check").start()
+            synchronized(this) { save() }
+        }, "media-cache-check").start()
     }
 
     /** Доготавливаемся сами, если фоновый запуск ещё не дошёл до нас (первые доли секунды работы приложения). */
@@ -65,13 +73,22 @@ object MediaCache {
     @Synchronized
     fun fileFor(t: Track): File? {
         ensure()
-        val e = index[Library.key(t)] ?: return null
+        val key = Library.key(t)
+        val e = index[key] ?: return null
         val f = File(dir, e.optString("file"))
-        if (!f.exists()) return null
+        if (!f.exists()) {
+            index.remove(key)
+            metaWorker.execute { synchronized(this) { save() } }
+            return null
+        }
         // За песней закреплён другой источник, чем тот, откуда этот файл, — файл не годится.
-        if (stale(t, e)) { index.remove(Library.key(t)); f.delete(); save(); return null }
+        if (stale(t, e)) {
+            index.remove(key)
+            metaWorker.execute { f.delete(); synchronized(this) { save() } }
+            return null
+        }
         e.put("used", System.currentTimeMillis())
-        save()
+        metaWorker.execute { synchronized(this) { save() } }
         return f
     }
 
@@ -79,7 +96,7 @@ object MediaCache {
     @Synchronized
     fun has(t: Track): Boolean {
         ensure()
-        return index[Library.key(t)]?.let { !stale(t, it) && File(dir, it.optString("file")).exists() } == true
+        return index[Library.key(t)]?.let { !stale(t, it) } == true
     }
 
     /** Файл скачан не из того источника, который человек выбрал для этой песни. */

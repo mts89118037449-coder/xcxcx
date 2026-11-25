@@ -44,6 +44,7 @@ object WebSearch {
         Source("YouTube") { q -> fast("YouTube") { NewPipeSource.search(false, q) } ?: ytdlp("ytsearch8:$q", "YouTube") },
         Source("Яндекс Музыка", ::yandex),
         Source("Hitmotop", ::hitmotop),
+        Source("Hearthis", ::hearthis),
         Source("Bandcamp", ::bandcamp),
         Source("Rutube", ::rutube),
         Source("Internet Archive", ::archive),
@@ -122,7 +123,7 @@ object WebSearch {
 
     fun extraCandidates(t: Track): List<WebResult> {
         val q = t.query
-        val jobs = listOf(::yandex, ::archive, ::rutube, ::dailymotion, ::audius, ::bandcamp).map { f -> pool.submit<List<WebResult>> { runCatching { f(q) }.getOrDefault(emptyList()) } }
+        val jobs = listOf(::yandex, ::hearthis, ::archive, ::rutube, ::dailymotion, ::audius, ::bandcamp).map { f -> pool.submit<List<WebResult>> { runCatching { f(q) }.getOrDefault(emptyList()) } }
         // Ждём все площадки не дольше 6 с суммарно: медленная не задерживает остальных.
         val deadline = System.currentTimeMillis() + 6000
         val all = jobs.flatMap { j ->
@@ -252,6 +253,9 @@ object WebSearch {
     /** Bandcamp: открытый поиск сайта (без ключа). Звук со страницы трека достаёт движок (yt-dlp). */
     private fun hitmotop(q: String): List<WebResult> =
         HitmotopSource.search(q, 10).map { WebResult(it.url, it.title, it.artist, it.durationSec, "Hitmotop", it.cover, direct = true) }
+
+    private fun hearthis(q: String): List<WebResult> =
+        HearthisSource.search(q, 10).map { WebResult(it.url, it.title, it.artist, it.durationSec, "Hearthis", it.cover, direct = true, views = it.views) }
 
     private fun bandcamp(q: String): List<WebResult> {
         val html = Http.get("https://bandcamp.com/search?q=" + Http.enc(q) + "&item_type=t", Http.DESKTOP_UA, 6000)

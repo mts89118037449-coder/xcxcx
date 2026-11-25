@@ -248,6 +248,7 @@ class CollectionActivity : AppCompatActivity() {
         thread {
             val list = runCatching { Catalog.radio(Track(a.name, a.name), emptyList()) }.getOrDefault(emptyList())
             runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
                 if (list.isEmpty()) snack("Радио сейчас недоступно")
                 else Playback.playQueue(this, list.map { Playback.QItem(it, Library.localFor(it), it.url) }, 0)
             }

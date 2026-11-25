@@ -16,9 +16,10 @@ object Previews {
     /** Свежая ссылка на фрагмент: по ISRC (точно та же запись) или поиском по исполнителю и названию. */
     fun refresh(t: Track): String? {
         t.isrc?.let { isrc ->
-            runCatching { Http.get("https://api.deezer.com/track/isrc:$isrc", timeoutMs = 4000) }.getOrNull()
-                ?.let { org.json.JSONObject(it).optString("preview").takeIf { p -> p.startsWith("http") } }
-                ?.let { return it }
+            runCatching {
+                val body = Http.get("https://api.deezer.com/track/isrc:$isrc", timeoutMs = 4000)
+                org.json.JSONObject(body).optString("preview").takeIf { p -> p.startsWith("http") }
+            }.getOrNull()?.let { return it }
         }
         val data = Http.json("https://api.deezer.com/search?limit=6&q=" + Http.enc("${t.artist} ${t.title}")).optJSONArray("data") ?: return null
         val found = (0 until data.length()).map { DeezerSource.track(data.getJSONObject(it)) }

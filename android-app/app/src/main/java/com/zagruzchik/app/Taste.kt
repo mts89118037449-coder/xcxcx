@@ -3,6 +3,7 @@ package com.zagruzchik.app
 import android.content.Context
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.Executors
 import kotlin.math.ln
 
 /**
@@ -16,6 +17,7 @@ object Taste {
     private val tracks = HashMap<String, Stat>()
     private val artists = HashMap<String, Int>()
     private val names = HashMap<String, String>() // ключ → имя как пишется (для поиска новинок)
+    private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "taste-io") }
 
     fun init(ctx: Context) {
         file = File(ctx.filesDir, "taste.json")
@@ -124,6 +126,7 @@ object Taste {
         artists.forEach { (k, n) -> a.put(k, n) }
         val n = JSONObject()
         names.forEach { (k, v) -> n.put(k, v) }
-        runCatching { File(file.path + ".tmp").apply { writeText(JSONObject().put("t", t).put("a", a).put("n", n).toString()) }.renameTo(file) }
+        val json = JSONObject().put("t", t).put("a", a).put("n", n).toString()
+        io.execute { runCatching { File(file.path + ".tmp").apply { writeText(json) }.renameTo(file) } }
     }
 }

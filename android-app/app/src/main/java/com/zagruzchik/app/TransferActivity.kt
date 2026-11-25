@@ -156,7 +156,13 @@ class TransferActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.mp3).text = if (item.tracks.size > 1) "MP3 · ${item.tracks.size}" else "MP3"
         t.cover?.let { c ->
             pool.execute {
-                val bmp = runCatching { URL(c).openStream().use { BitmapFactory.decodeStream(it) } }.getOrNull()
+                val bmp = runCatching {
+                    val conn = URL(c).openConnection().apply {
+                        connectTimeout = 10_000
+                        readTimeout = 10_000
+                    }
+                    conn.getInputStream().use { BitmapFactory.decodeStream(it) }
+                }.getOrNull()
                 main.post { if (bmp != null && !isDestroyed) { coverBitmap = bmp; cover.setImageBitmap(bmp) } }
             }
         }

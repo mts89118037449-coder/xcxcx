@@ -124,10 +124,15 @@ object Tags {
     fun refreshTop() { topCached = runCatching { top(3) }.getOrDefault(emptyList()) }
 
     fun save() {
-        if (!dirty || !::file.isInitialized) return
-        val o = JSONObject()
-        synchronized(this) { map.forEach { (k, v) -> o.put(k, v) }; dirty = false }
-        runCatching { File(file.path + ".tmp").apply { writeText(o.toString()) }.renameTo(file) }
+        if (!::file.isInitialized) return
+        val json = synchronized(this) {
+            if (!dirty) return
+            val o = JSONObject()
+            map.forEach { (k, v) -> o.put(k, v) }
+            dirty = false
+            o.toString()
+        }
+        synchronized(file) { runCatching { File(file.path + ".tmp").apply { writeText(json) }.renameTo(file) } }
     }
 
     @Volatile private var enriching = false

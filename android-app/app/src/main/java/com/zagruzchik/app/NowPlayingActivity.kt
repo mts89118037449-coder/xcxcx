@@ -175,6 +175,7 @@ class NowPlayingActivity : AppCompatActivity() {
         super.onStart()
         Playback.Pending.listen(pendingListener)
         Playback.controller(this) { c ->
+            if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) return@controller
             controller = c
             c.addListener(listener)
             render()

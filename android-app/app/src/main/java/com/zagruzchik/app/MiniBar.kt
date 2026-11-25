@@ -34,6 +34,7 @@ object MiniBar {
         ShareActivity::class.java, LoginActivity::class.java,
     )
     private val bars = WeakHashMap<Activity, Bar>()
+    private val artExec = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     fun install(app: Application) {
         app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
@@ -93,6 +94,7 @@ object MiniBar {
         private var controller: MediaController? = null
         private var started = false
         private var coverUrl: String? = null
+        private var coverArtKey: String? = null
         private val listener = object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) = update()
         }
@@ -183,9 +185,23 @@ object MiniBar {
             val art = m.artworkData
             val url = m.artworkUri?.toString()
             when {
-                art != null -> { coverUrl = null; runCatching { cover.setImageBitmap(BitmapFactory.decodeByteArray(art, 0, art.size)) } }
-                url != null && url != coverUrl -> { coverUrl = url; Images.into(cover, url, R.drawable.ph_cover) }
-                url == null -> { coverUrl = null; cover.setImageResource(R.drawable.ph_cover) }
+                art != null -> {
+                    coverUrl = null
+                    val artKey = "${m.title}|${m.artist}|${art.size}"
+                    if (artKey != coverArtKey) {
+                        coverArtKey = artKey
+                        artExec.execute {
+                            val bmp = runCatching { BitmapFactory.decodeByteArray(art, 0, art.size) }.getOrNull()
+                            cover.post {
+                                if (started && coverArtKey == artKey) {
+                                    if (bmp != null) cover.setImageBitmap(bmp) else cover.setImageResource(R.drawable.ph_cover)
+                                }
+                            }
+                        }
+                    }
+                }
+                url != null && url != coverUrl -> { coverArtKey = null; coverUrl = url; Images.into(cover, url, R.drawable.ph_cover) }
+                url == null -> { coverArtKey = null; coverUrl = null; cover.setImageResource(R.drawable.ph_cover) }
             }
         }
     }

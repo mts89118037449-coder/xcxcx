@@ -47,11 +47,15 @@ object SongCard {
         })
         if (cover != null) {
             val scaled = Bitmap.createScaledBitmap(cover, size.toInt(), size.toInt(), true)
-            c.drawRoundRect(coverRect, 48f, 48f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                shader = BitmapShader(scaled, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
-                    setLocalMatrix(android.graphics.Matrix().apply { setTranslate(left, 110f) })
-                }
-            })
+            try {
+                c.drawRoundRect(coverRect, 48f, 48f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    shader = BitmapShader(scaled, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
+                        setLocalMatrix(android.graphics.Matrix().apply { setTranslate(left, 110f) })
+                    }
+                })
+            } finally {
+                if (scaled !== cover) scaled.recycle()
+            }
         } else {
             c.drawRoundRect(coverRect, 48f, 48f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = blend(base, Color.WHITE, 0.15f) })
             c.drawText("♪", W / 2f, coverRect.centerY() + 110f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -92,7 +96,12 @@ object SongCard {
         val text = Transfer.shareText(t, links)
         val dir = File(ctx.cacheDir, "share").apply { mkdirs() }
         val file = File(dir, "song.png")
-        file.outputStream().use { render(t, cover, links.map { it.service }).compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val bmp = render(t, cover, links.map { it.service })
+        try {
+            file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally {
+            bmp.recycle()
+        }
         val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", file)
         return Intent(Intent.ACTION_SEND)
             .setType("image/png")
@@ -103,7 +112,13 @@ object SongCard {
 
     /** Отправить карточку (картинка + текст со ссылками) — с выбором приложения. */
     fun share(ctx: Context, t: Track, cover: Bitmap?, links: List<Transfer.Link>) {
-        ctx.startActivity(Intent.createChooser(intent(ctx, t, cover, links), "Отправить карточку песни").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val appCtx = ctx.applicationContext
+        Thread {
+            val send = runCatching { intent(appCtx, t, cover, links) }.getOrNull() ?: return@Thread
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                appCtx.startActivity(Intent.createChooser(send, "Отправить карточку песни").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }.start()
     }
 
     private fun drawText(c: Canvas, text: String, y: Float, size: Float, color: Int, bold: Boolean, maxLines: Int): Float {
@@ -125,7 +140,7 @@ object SongCard {
 
     private fun dominant(b: Bitmap): Int {
         val s = Bitmap.createScaledBitmap(b, 1, 1, true)
-        return s.getPixel(0, 0)
+        return try { s.getPixel(0, 0) } finally { if (s !== b) s.recycle() }
     }
 
     private fun blend(a: Int, b: Int, t: Float) = Color.rgb(

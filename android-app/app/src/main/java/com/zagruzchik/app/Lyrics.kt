@@ -20,8 +20,8 @@ object Lyrics {
         cache[k]?.let { return it }
         val genius = pool.submit<Pair<String, String>?> { runCatching { genius(t) }.getOrNull() }
         val lrc = pool.submit<Pair<String?, List<Line>>?> { runCatching { lrclib(t) }.getOrNull() }
-        val g = runCatching { genius.get() }.getOrNull()
-        val l = runCatching { lrc.get() }.getOrNull()
+        val g = runCatching { genius.get(15, java.util.concurrent.TimeUnit.SECONDS) }.getOrNull()
+        val l = runCatching { lrc.get(15, java.util.concurrent.TimeUnit.SECONDS) }.getOrNull()
         val synced = l?.second.orEmpty()
         val r = when {
             g != null -> Result(g.first, "Genius", g.second, synced)
@@ -104,8 +104,10 @@ object Lyrics {
             val open = s.lastIndexOf("<div", i)
             val start = s.indexOf('>', i) + 1
             val end = closingDiv(s, start)
-            if (open < 0 || end < 0) return s
-            s = s.substring(0, open) + s.substring(s.indexOf('>', end) + 1)
+            if (open < 0 || start <= 0 || end < 0) return s
+            val closeEnd = s.indexOf('>', end)
+            if (closeEnd < 0) return s
+            s = s.substring(0, open) + s.substring(closeEnd + 1)
         }
     }
 

@@ -68,8 +68,8 @@ object SongShareSheet {
         val targets = v.findViewById<LinearLayout>(R.id.shTargets)
         val pm = activity.packageManager
         MESSENGERS.filter { runCatching { pm.getLaunchIntentForPackage(it) != null }.getOrDefault(false) }.forEach { pkg ->
+            val info = runCatching { pm.getApplicationInfo(pkg, 0) }.getOrNull() ?: return@forEach
             val t = activity.layoutInflater.inflate(R.layout.item_share_target, targets, false)
-            val info = pm.getApplicationInfo(pkg, 0)
             t.findViewById<ImageView>(R.id.tgIcon).setImageDrawable(pm.getApplicationIcon(info))
             t.findViewById<TextView>(R.id.tgLabel).text = pm.getApplicationLabel(info)
             t.setOnClickListener {

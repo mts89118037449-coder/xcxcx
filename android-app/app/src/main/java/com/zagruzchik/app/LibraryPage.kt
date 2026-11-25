@@ -263,7 +263,10 @@ class LibraryPage(
         pictures[name]?.let { if (it.isNotEmpty()) set(it); return }
         photoPool.execute {
             val pic = pictures[name] ?: runCatching { Catalog.artistByName(name)?.picture }.getOrNull().orEmpty().also { pictures[name] = it }
-            if (pic.isNotEmpty()) a.runOnUiThread { set(pic) }
+            if (pic.isNotEmpty()) a.runOnUiThread {
+                if (a.isFinishing || a.isDestroyed) return@runOnUiThread
+                set(pic)
+            }
         }
     }
 

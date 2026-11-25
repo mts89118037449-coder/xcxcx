@@ -168,7 +168,10 @@ object Playback {
     fun retry(ctx: Context) {
         val q = queue.getOrNull(startIndex) ?: return
         Streams.forgetFailure(q.track)
-        playQueue(ctx, queue, startIndex, openScreen = false)
+        Streams.blacklist(q.directUrl, q.pageUrl)
+        val reset = if (q.pageUrl != null || q.directUrl != null || q.directSource != null) QItem(q.track, q.local, q.sourceUrl) else q
+        val items = if (reset !== q) queue.toMutableList().apply { set(startIndex, reset) } else queue
+        playQueue(ctx, items, startIndex, openScreen = false)
     }
 
     /**
@@ -551,6 +554,8 @@ object Playback {
                 AppLog.error("проигрыватель: «${m?.title}» из ${m?.extras?.getString(X_SOURCE)} (${error.errorCodeName})", error)
                 val t = Track(m?.title?.toString().orEmpty(), m?.artist?.toString().orEmpty(), cover = m?.artworkUri?.toString())
                 Streams.forget(t) // ссылка не играет — в следующий раз ищем заново, а не берём её же
+                val failedUrl = c.currentMediaItem?.localConfiguration?.uri?.toString() ?: c.currentMediaItem?.mediaId
+                Streams.blacklist(failedUrl, m?.extras?.getString(X_PAGE_URL))
                 val key = Library.key(t)
                 val now = System.currentTimeMillis()
                 val previous = recoveryAt.put(key, now)
@@ -566,8 +571,12 @@ object Playback {
                     main.postDelayed({
                         if (failedGen == queueGen && c.currentMediaItem?.mediaMetadata == m && requestedIndex == null) {
                             val i = queue.indexOfFirst { Library.key(it.track) == key }
-                            if (i >= 0) playQueue(app, queue, i, openScreen = false)
-                            else playTrack(app, t, openScreen = false)
+                            if (i >= 0) {
+                                val cur = queue[i]
+                                val reset = if (cur.pageUrl != null || cur.directUrl != null || cur.directSource != null) QItem(cur.track, cur.local, cur.sourceUrl) else cur
+                                val items = if (reset !== cur) queue.toMutableList().apply { set(i, reset) } else queue
+                                playQueue(app, items, i, openScreen = false)
+                            } else playTrack(app, t, openScreen = false)
                         }
                     }, 350)
                 } else {

@@ -109,12 +109,13 @@ object LyricsSheet {
         }
 
         dlg.setOnShowListener { scroll.post(ticker) }
+        dlg.setOnDismissListener { scroll.removeCallbacks(ticker) }
         dlg.show()
 
         thread {
             val r = runCatching { Lyrics.find(t) }.getOrNull()
             act.runOnUiThread {
-                if (!dlg.isShowing) return@runOnUiThread
+                if (act.isFinishing || act.isDestroyed || !dlg.isShowing) return@runOnUiThread
                 progress.isVisible = false
                 if (r == null) {
                     showPlain("Текст не нашёлся ни на Genius, ни в LRCLIB.")

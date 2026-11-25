@@ -77,7 +77,7 @@ class App : Application() {
         val reachable = runCatching {
             (java.net.URL("https://api.github.com/").openConnection() as java.net.HttpURLConnection).run {
                 connectTimeout = 5000; readTimeout = 5000
-                responseCode.also { disconnect() } in 200..499
+                try { responseCode in 200..499 } finally { disconnect() }
             }
         }.getOrDefault(false)
         if (!reachable) return

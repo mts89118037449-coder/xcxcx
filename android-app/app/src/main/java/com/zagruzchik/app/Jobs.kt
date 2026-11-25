@@ -8,6 +8,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.Executors
 
 enum class Status { QUEUED, RUNNING, DONE, FAILED, CANCELLED }
 
@@ -72,6 +73,7 @@ class Job(
 object Jobs {
     private const val MAX_HISTORY = 100
     private val main = Handler(Looper.getMainLooper())
+    private val io = Executors.newSingleThreadExecutor()
     private val list = mutableListOf<Job>()
     private val tokens = mutableMapOf<String, CancelToken>()
     private val listeners = mutableSetOf<(Job?) -> Unit>()
@@ -171,10 +173,13 @@ object Jobs {
                 })
             })
         }
-        runCatching {
-            val tmp = File(file.path + ".tmp")
-            tmp.writeText(arr.toString())
-            tmp.renameTo(file)
+        val json = arr.toString()
+        io.execute {
+            runCatching {
+                val tmp = File(file.path + ".tmp")
+                tmp.writeText(json)
+                tmp.renameTo(file)
+            }
         }
     }
 

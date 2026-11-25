@@ -85,7 +85,7 @@ class DownloadService : Service() {
                     val name = file.name
                     val (uri, mime) = Storage.publish(this@DownloadService, file, subfolder)
                     published += SavedFile(uri.toString(), name, mime)
-                    val snapshot = published.toList()
+                    val snapshot = synchronized(published) { published.toList() }
                     Jobs.update(id, save = true) { files = snapshot }
                 }
                 override fun onProgress(percent: Float, detail: String) {
@@ -99,7 +99,7 @@ class DownloadService : Service() {
                 }
             }, hint)
             Jobs.update(id) { progress = 100f; detail = "Сохраняю в «Загрузки»…" }
-            val saved = published.toList() + result.files.map { f ->
+            val saved = synchronized(published) { published.toList() } + result.files.map { f ->
                 val name = f.name
                 val (uri, mime) = Storage.publish(this, f, result.subfolder)
                 SavedFile(uri.toString(), name, mime)

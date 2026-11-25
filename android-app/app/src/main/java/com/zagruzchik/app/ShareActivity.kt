@@ -19,6 +19,7 @@ class ShareActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var secondsLeft = AUTO_START_SEC
     private var started = false
+    private var sheet: BottomSheetDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,6 +45,7 @@ class ShareActivity : AppCompatActivity() {
         }
 
         val sheet = BottomSheetDialog(this)
+        this.sheet = sheet
         val view = layoutInflater.inflate(R.layout.sheet_share, null)
         sheet.setContentView(view)
         sheet.behavior.state = BottomSheetBehavior.STATE_EXPANDED
@@ -135,6 +137,9 @@ class ShareActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        sheet?.setOnDismissListener(null)
+        sheet?.dismiss()
+        sheet = null
         super.onDestroy()
     }
 

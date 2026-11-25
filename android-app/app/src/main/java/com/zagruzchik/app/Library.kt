@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.CopyOnWriteArraySet
 
 /**
  * Библиотека: сохранённые песни (♥) и скачанная музыка.
@@ -12,18 +13,18 @@ import java.io.File
 object Library {
     private lateinit var file: File
     private val saved = mutableListOf<Track>()
-    private val listeners = mutableSetOf<() -> Unit>()
+    private val listeners = CopyOnWriteArraySet<() -> Unit>()
 
     fun init(ctx: Context) {
         loadAlbums(ctx)
         loadPlaylists(ctx)
         file = File(ctx.filesDir, "library.json")
-        saved.clear()
-        savedKeys = null; savedLoose = null
+        synchronized(saved) { saved.clear(); savedKeys = null; savedLoose = null }
         val arr = runCatching { JSONArray(file.readText()) }.getOrNull() ?: return
+        val loaded = ArrayList<Track>(arr.length())
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            saved += Track(
+            loaded += Track(
                 o.getString("title"), o.optString("artist"), o.optInt("duration"),
                 isrc = o.optString("isrc").ifEmpty { null }, cover = o.optString("cover").ifEmpty { null },
                 url = o.optString("url").ifEmpty { null }, preview = o.optString("preview").ifEmpty { null },
@@ -31,7 +32,11 @@ object Library {
         }
         // Перенос из файла в 6.3 мог записать вместо исполнителя «spotify:artist:…» — такие песни убираем (перенесите файл заново).
         // …и подписи кнопок, попавшие в медиатеку при переносе с экрана («Открыть контекстное меню для элемента…»).
-        if (saved.removeAll { Importer.isId(it.artist) || ScreenImportService.isUiText(it.artist) || ScreenImportService.isUiText(it.title) }) save()
+        val cleaned = synchronized(saved) {
+            saved.addAll(loaded)
+            saved.removeAll { Importer.isId(it.artist) || ScreenImportService.isUiText(it.artist) || ScreenImportService.isUiText(it.title) }
+        }
+        if (cleaned) save()
     }
 
     // Ключ песни считается через нормализацию текста — недёшево, а в списках он нужен десятки раз: запоминаем.
@@ -42,17 +47,20 @@ object Library {
 
     private lateinit var albumsFile: File
     private val savedAlbums = mutableListOf<Album>()
-    val albums: List<Album> get() = savedAlbums.toList()
+    val albums: List<Album> get() = synchronized(savedAlbums) { savedAlbums.toList() }
 
     private fun albumKey(a: Album) = a.id?.toString() ?: (Match.base(a.title) + "|" + Match.norm(a.artist))
-    fun isAlbumSaved(a: Album) = savedAlbums.any { albumKey(it) == albumKey(a) }
+    fun isAlbumSaved(a: Album) = synchronized(savedAlbums) { savedAlbums.any { albumKey(it) == albumKey(a) } }
 
     fun toggleAlbum(a: Album): Boolean {
-        val was = savedAlbums.removeAll { albumKey(it) == albumKey(a) }
-        if (!was) savedAlbums.add(0, a)
+        val (was, snapshot) = synchronized(savedAlbums) {
+            val w = savedAlbums.removeAll { albumKey(it) == albumKey(a) }
+            if (!w) savedAlbums.add(0, a)
+            w to savedAlbums.toList()
+        }
         runCatching {
             val arr = JSONArray()
-            savedAlbums.forEach { x ->
+            snapshot.forEach { x ->
                 arr.put(JSONObject().put("id", x.id ?: 0).put("title", x.title).put("artist", x.artist).put("cover", x.cover ?: "")
                     .put("year", x.year ?: "").put("explicit", x.explicit).put("type", x.type))
             }
@@ -64,13 +72,16 @@ object Library {
 
     private fun loadAlbums(ctx: Context) {
         albumsFile = File(ctx.filesDir, "library_albums.json")
-        savedAlbums.clear()
-        val arr = runCatching { JSONArray(albumsFile.readText()) }.getOrNull() ?: return
+        val arr = runCatching { JSONArray(albumsFile.readText()) }.getOrNull()
+        val loaded = ArrayList<Album>()
+        if (arr != null) {
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            savedAlbums += Album(o.optLong("id").takeIf { it > 0 }, o.optString("title"), o.optString("artist"), o.optString("cover").ifEmpty { null },
+            loaded += Album(o.optLong("id").takeIf { it > 0 }, o.optString("title"), o.optString("artist"), o.optString("cover").ifEmpty { null },
                 o.optString("year").ifEmpty { null }, o.optBoolean("explicit"), o.optString("type", "album"))
         }
+        }
+        synchronized(savedAlbums) { savedAlbums.clear(); savedAlbums.addAll(loaded) }
     }
 
     // ---------------- Плейлисты (перенесённые из других сервисов) ----------------
@@ -79,17 +90,17 @@ object Library {
 
     private lateinit var playlistsFile: File
     private val savedPlaylists = mutableListOf<Playlist>()
-    val playlists: List<Playlist> get() = savedPlaylists.toList()
-    fun playlist(id: String) = savedPlaylists.firstOrNull { it.id == id }
+    val playlists: List<Playlist> get() = synchronized(savedPlaylists) { savedPlaylists.toList() }
+    fun playlist(id: String) = synchronized(savedPlaylists) { savedPlaylists.firstOrNull { it.id == id } }
 
     fun addPlaylist(name: String, source: String, tracks: List<Track>): Playlist {
         val p = Playlist(java.util.UUID.randomUUID().toString(), name, source, tracks, System.currentTimeMillis())
-        savedPlaylists.add(0, p); savePlaylists(); changed()
+        synchronized(savedPlaylists) { savedPlaylists.add(0, p) }; savePlaylists(); changed()
         return p
     }
 
     fun removePlaylist(id: String) {
-        savedPlaylists.removeAll { it.id == id }; savePlaylists(); changed()
+        synchronized(savedPlaylists) { savedPlaylists.removeAll { it.id == id } }; savePlaylists(); changed()
     }
 
     private fun trackJson(t: Track) = JSONObject().put("title", t.title).put("artist", t.artist).put("duration", t.durationSec)
@@ -101,7 +112,8 @@ object Library {
 
     private fun savePlaylists() = runCatching {
         val arr = JSONArray()
-        savedPlaylists.forEach { p ->
+        val snapshot = synchronized(savedPlaylists) { savedPlaylists.toList() }
+        snapshot.forEach { p ->
             arr.put(JSONObject().put("id", p.id).put("name", p.name).put("source", p.source).put("created", p.created)
                 .put("tracks", JSONArray().apply { p.tracks.forEach { put(trackJson(it)) } }))
         }
@@ -110,17 +122,20 @@ object Library {
 
     private fun loadPlaylists(ctx: Context) {
         playlistsFile = File(ctx.filesDir, "playlists.json")
-        savedPlaylists.clear()
         var broken = false
-        val arr = runCatching { JSONArray(playlistsFile.readText()) }.getOrNull() ?: return
+        val loaded = ArrayList<Playlist>()
+        val arr = runCatching { JSONArray(playlistsFile.readText()) }.getOrNull()
+        if (arr != null) {
         for (i in 0 until arr.length()) runCatching {
             val o = arr.getJSONObject(i)
             val ta = o.optJSONArray("tracks") ?: JSONArray()
             val tracks = (0 until ta.length()).map { trackFrom(ta.getJSONObject(it)) }
             val good = tracks.filterNot { Importer.isId(it.artist) }
-            if (good.isNotEmpty()) savedPlaylists += Playlist(o.getString("id"), o.optString("name"), o.optString("source"), good, o.optLong("created"))
+            if (good.isNotEmpty()) loaded += Playlist(o.getString("id"), o.optString("name"), o.optString("source"), good, o.optLong("created"))
             if (good.size != tracks.size) broken = true
         }
+        }
+        synchronized(savedPlaylists) { savedPlaylists.clear(); savedPlaylists.addAll(loaded) }
         if (broken) savePlaylists()
     }
 
@@ -131,9 +146,8 @@ object Library {
     fun addFavorites(tracks: List<Track>): Int {
         val fresh = synchronized(saved) {
             val have = saved.map(::key).toHashSet()
-            tracks.filter { have.add(key(it)) }.also { saved.addAll(0, it) }
+            tracks.filter { have.add(key(it)) }.also { saved.addAll(0, it); savedKeys = null; savedLoose = null }
         }
-        savedKeys = null; savedLoose = null
         save()
         changed()
         if (fresh.isNotEmpty()) runCatching { Warm.start(App.instance) } // перенесённое — тоже готовим заранее
@@ -147,12 +161,13 @@ object Library {
     fun enriched(playlistId: String?, pairs: List<Pair<Track, Track>>) {
         val by = HashMap<String, Track>(); pairs.forEach { (old, new) -> if (old != new) by[key(old)] = new }
         if (by.isEmpty()) return
-        synchronized(saved) { saved.replaceAll { by[key(it)] ?: it } }
-        savedKeys = null; savedLoose = null
+        synchronized(saved) { saved.replaceAll { by[key(it)] ?: it }; savedKeys = null; savedLoose = null }
         save()
         playlistId?.let { id ->
-            val i = savedPlaylists.indexOfFirst { it.id == id }
-            if (i >= 0) savedPlaylists[i].let { p -> savedPlaylists[i] = Playlist(p.id, p.name, p.source, p.tracks.map { by[key(it)] ?: it }, p.created) }
+            synchronized(savedPlaylists) {
+                val i = savedPlaylists.indexOfFirst { it.id == id }
+                if (i >= 0) savedPlaylists[i].let { p -> savedPlaylists[i] = Playlist(p.id, p.name, p.source, p.tracks.map { by[key(it)] ?: it }, p.created) }
+            }
             runCatching { savePlaylists() }
         }
         changed()
@@ -161,8 +176,8 @@ object Library {
     /** Слушатели — это экраны: зовём их в главном потоке (перенос идёт в фоне). */
     private val main by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
     private fun changed() {
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) listeners.toList().forEach { it() }
-        else main.post { listeners.toList().forEach { it() } }
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) listeners.forEach { it() }
+        else main.post { listeners.forEach { it() } }
     }
 
     fun key(t: Track): String {
@@ -201,16 +216,19 @@ object Library {
 
     val favorites: List<Track> get() = synchronized(saved) { saved.toList() }
 
-    fun isSaved(t: Track): Boolean =
-        (savedKeys ?: favorites.map(::key).toHashSet().also { savedKeys = it }).contains(key(t)) ||
-            (savedLoose ?: favorites.map(::looseKey).toHashSet().also { savedLoose = it }).contains(looseKey(t))
+    fun isSaved(t: Track): Boolean {
+        val (sk, sl) = synchronized(saved) {
+            (savedKeys ?: saved.map(::key).toHashSet().also { savedKeys = it }) to
+                (savedLoose ?: saved.map(::looseKey).toHashSet().also { savedLoose = it })
+        }
+        return sk.contains(key(t)) || sl.contains(looseKey(t))
+    }
 
     /** Добавить/убрать из «Избранного». Возвращает, сохранена ли песня теперь. */
     fun toggle(t: Track): Boolean {
         val k = key(t)
         val lk = looseKey(t)
-        val was = synchronized(saved) { saved.removeAll { key(it) == k || looseKey(it) == lk }.also { if (!it) saved.add(0, t) } }
-        savedKeys = null; savedLoose = null
+        val was = synchronized(saved) { saved.removeAll { key(it) == k || looseKey(it) == lk }.also { if (!it) saved.add(0, t); savedKeys = null; savedLoose = null } }
         save()
         changed()
         return !was

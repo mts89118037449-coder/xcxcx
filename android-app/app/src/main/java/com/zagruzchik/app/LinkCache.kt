@@ -10,7 +10,7 @@ import java.util.concurrent.Executors
  * Поэтому «Поделиться» в плеере срабатывает сразу, без ожидания.
  */
 object LinkCache {
-    class Entry(var track: Track) {
+    class Entry(@Volatile var track: Track) {
         val links = ConcurrentHashMap<Service, Transfer.Link>()
         val listeners = mutableListOf<() -> Unit>()
         val ready get() = links.size >= Transfer.ORDER.size
@@ -29,7 +29,7 @@ object LinkCache {
         val k = key(t)
         entries[k]?.let { return it }
         val e = Entry(t)
-        entries[k] = e
+        entries.putIfAbsent(k, e)?.let { return it }
         pool.execute {
             val rich = runCatching { Transfer.enrich(t) }.getOrDefault(t)
             e.track = rich
@@ -40,8 +40,11 @@ object LinkCache {
                 if (e.links.containsKey(s)) continue
                 pool.execute {
                     // Ссылки для «Поделиться» — фоновая работа: не мешает тому, что играет и ищется.
-                    e.links[s] = Ytdlp.inBackground { Transfer.find(s, rich, Downloader::youtubeId) }
-                    notify(e)
+                    runCatching { Ytdlp.inBackground { Transfer.find(s, rich, Downloader::youtubeId) } }
+                        .onSuccess {
+                            e.links[s] = it
+                            notify(e)
+                        }
                 }
             }
         }

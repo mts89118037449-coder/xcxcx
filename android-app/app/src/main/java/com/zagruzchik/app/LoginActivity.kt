@@ -6,6 +6,7 @@ import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -13,6 +14,7 @@ import androidx.core.view.isVisible
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.snackbar.Snackbar
+import kotlin.concurrent.thread
 
 /** Встроенное окно входа: человек входит на сайт как обычно, а мы сохраняем вход для загрузчика. */
 class LoginActivity : AppCompatActivity() {
@@ -55,13 +57,28 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun save() {
-        val n = Cookies.saveFromWebView(this, site)
-        if (n == 0) {
-            Snackbar.make(web, "Вход не найден. Сначала войдите в аккаунт на этой странице.", Snackbar.LENGTH_LONG).show()
-            return
+        val app = applicationContext
+        thread {
+            val n = Cookies.saveFromWebView(app, site)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (n == 0) {
+                    Snackbar.make(web, "Вход не найден. Сначала войдите в аккаунт на этой странице.", Snackbar.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Вход в ${site.name} сохранён", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+            }
         }
-        Toast.makeText(this, "Вход в ${site.name} сохранён", Toast.LENGTH_SHORT).show()
-        finish()
+    }
+
+    override fun onDestroy() {
+        if (::web.isInitialized) {
+            web.stopLoading()
+            (web.parent as? ViewGroup)?.removeView(web)
+            web.destroy()
+        }
+        super.onDestroy()
     }
 
     companion object {

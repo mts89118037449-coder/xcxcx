@@ -316,10 +316,8 @@ object AppleSource {
     private val ALBUM = Regex("""/album/(?:[^/]+/)?(\d+)""")
     private val TRACK_PARAM = Regex("""[?&]i=(\d+)""")
 
-    private var country = "us"
-
     /** Ищем в магазине страны из ссылки, потом в американском (российский часто отвечает 403). */
-    private fun lookup(id: String, entity: String? = null): JSONArray {
+    private fun lookup(id: String, country: String, entity: String? = null): JSONArray {
         val tail = entity?.let { "&entity=$it&limit=200" } ?: ""
         for (c in listOf(country, "us").distinct()) {
             val r = runCatching { Http.json("https://itunes.apple.com/lookup?id=$id&country=$c$tail").getJSONArray("results") }.getOrNull()
@@ -337,10 +335,10 @@ object AppleSource {
     )
 
     fun resolve(url: String): MusicItem {
-        country = Regex("""music\.apple\.com/([a-z]{2})/""").find(url)?.groupValues?.get(1) ?: "us"
+        val country = Regex("""music\.apple\.com/([a-z]{2})/""").find(url)?.groupValues?.get(1) ?: "us"
         val trackId = TRACK_PARAM.find(url)?.groupValues?.get(1) ?: SONG.find(url)?.groupValues?.get(1)
         if (trackId != null) {
-            val r = lookup(trackId)
+            val r = lookup(trackId, country)
             if (r.length() == 0) throw UserError("Apple Music: трек не найден")
             val t = track(r.getJSONObject(0))
             return MusicItem("track", t.label, listOf(t), Service.APPLE)
@@ -348,7 +346,7 @@ object AppleSource {
         if (url.contains("/playlist/")) return playlist(url)
         val albumId = ALBUM.find(url)?.groupValues?.get(1)
             ?: throw UserError("Apple Music: поддерживаются ссылки на треки, альбомы и плейлисты")
-        val r = lookup(albumId, "song")
+        val r = lookup(albumId, country, "song")
         if (r.length() == 0) throw UserError("Apple Music: альбом не найден")
         val name = r.getJSONObject(0).optString("collectionName")
         val tracks = (1 until r.length()).map { r.getJSONObject(it) }.filter { it.optString("wrapperType") == "track" }.map(::track)

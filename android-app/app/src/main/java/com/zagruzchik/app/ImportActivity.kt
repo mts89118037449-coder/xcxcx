@@ -46,12 +46,20 @@ class ImportActivity : AppCompatActivity() {
 
     private val openFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@registerForActivityResult
-        val text = runCatching { contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() } }.getOrNull()
-        if (text == null) { status.isVisible = true; status.text = "Не получилось прочитать файл"; return@registerForActivityResult }
-        val name = runCatching {
-            contentResolver.query(uri, null, null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(c.getColumnIndexOrThrow(android.provider.OpenableColumns.DISPLAY_NAME)) else null }
-        }.getOrNull()?.substringBeforeLast('.') ?: "Из файла"
-        start { Importer.fromText(text, name) }
+        if (busy) return@registerForActivityResult
+        busy = true; go.isEnabled = false; status.isVisible = true; status.text = "Читаю файл…"
+        thread {
+            val text = runCatching { contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } }.getOrNull()
+            val name = if (text != null) runCatching {
+                contentResolver.query(uri, null, null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(c.getColumnIndexOrThrow(android.provider.OpenableColumns.DISPLAY_NAME)) else null }
+            }.getOrNull()?.substringBeforeLast('.') ?: "Из файла" else ""
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                busy = false; go.isEnabled = true
+                if (text == null) { status.isVisible = true; status.text = "Не получилось прочитать файл" }
+                else start { Importer.fromText(text, name) }
+            }
+        }
     }
 
     private val onSurface by lazy { MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSurface, Color.WHITE) }
@@ -275,10 +283,17 @@ class ImportActivity : AppCompatActivity() {
                 val pl = Library.addPlaylist(r.name, r.source, r.tracks)
                 val added = if (toFav.isChecked) Library.addFavorites(r.tracks) else 0
                 val need = r.tracks.filter { it.cover == null || it.durationSec == 0 }
-                runOnUiThread { finished(pl, added, need.size) }
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    finished(pl, added, need.size)
+                }
                 if (need.isNotEmpty()) enrichInBackground(pl.id, need)
             } catch (e: Exception) {
                 runOnUiThread {
+                    if (isFinishing || isDestroyed) {
+                        busy = false
+                        return@runOnUiThread
+                    }
                     busy = false; go.isEnabled = true; progress.isVisible = false
                     status.text = (e as? UserError)?.message ?: "Не получилось: ${e.message}"
                 }

@@ -44,6 +44,7 @@ object YtdlpDaemon {
     private fun stop() {
         proc?.let { old ->
             old.p.destroy()
+            runCatching { old.stdin.close() }
             old.pending.values.forEach { it.completeExceptionally(IllegalStateException("restart")) }
             old.pending.clear()
         }
@@ -92,6 +93,7 @@ object YtdlpDaemon {
         runCatching { JSONObject(first ?: "").optString("version").takeIf { it.isNotBlank() }?.let { version = it } }
         if (first == null || !first.contains("\"ready\"")) {
             p.destroy()
+            runCatching { reader.close() }
             throw IllegalStateException("daemon not ready: $first")
         }
         val me = Proc(p, p.outputStream.bufferedWriter())
@@ -104,6 +106,8 @@ object YtdlpDaemon {
                 }
             } catch (_: Exception) {
             }
+            runCatching { reader.close() }
+            runCatching { me.stdin.close() }
             // Процесс умер — все, кто ждёт, получают ошибку и идут обычным путём.
             synchronized(this) { if (proc === me) { proc = null } }
             me.pending.values.forEach { it.completeExceptionally(IllegalStateException("daemon died")) }

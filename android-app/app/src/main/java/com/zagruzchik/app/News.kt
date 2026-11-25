@@ -22,6 +22,7 @@ object News {
     @Volatile var releases: List<Release> = emptyList(); private set
     @Volatile var checking = false; private set
     @Volatile var checkedArtists = 0; private set
+    @Volatile private var lastChecked = 0L
     private val known = java.util.concurrent.ConcurrentHashMap<Long, Long>() // id релиза → когда впервые увидели
     private val listeners = mutableSetOf<() -> Unit>()
     private val pool = Executors.newFixedThreadPool(4)
@@ -33,6 +34,7 @@ object News {
     fun init(ctx: Context) {
         file = File(ctx.filesDir, "news.json")
         val o = runCatching { JSONObject(file.readText()) }.getOrNull() ?: return
+        lastChecked = o.optLong("checked")
         o.optJSONObject("known")?.let { k -> k.keys().forEach { id -> known[id.toLong()] = k.optLong(id) } }
         val arr = o.optJSONArray("releases") ?: JSONArray()
         releases = (0 until arr.length()).mapNotNull { i -> runCatching { readRelease(arr.getJSONObject(i)) }.getOrNull() }
@@ -40,14 +42,15 @@ object News {
 
     /** Проверка при запуске (не чаще раза в 20 минут — повороты экрана и возвраты не считаются). */
     fun checkOnLaunch() {
-        val last = runCatching { JSONObject(file.readText()).optLong("checked") }.getOrDefault(0)
-        if (checking || System.currentTimeMillis() - last < 20 * 60_000L) return
+        if (checking || System.currentTimeMillis() - lastChecked < 20 * 60_000L) return
         check()
     }
 
     fun check() {
-        if (checking) return
-        checking = true
+        synchronized(this) {
+            if (checking) return
+            checking = true
+        }
         changed()
         Thread({
             try {
@@ -95,6 +98,7 @@ object News {
                     }
                 }))
         }
+        lastChecked = checked
         runCatching { File(file.path + ".tmp").apply { writeText(JSONObject().put("checked", checked).put("known", k).put("releases", arr).toString()) }.renameTo(file) }
     }
 

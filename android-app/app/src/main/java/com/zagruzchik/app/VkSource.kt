@@ -164,16 +164,19 @@ object VkSource {
                 outputStream.use { it.write(post.toByteArray(Charsets.UTF_8)) }
             }
         }
-        val code = c.responseCode
-        // ВК обновляет куки сессии в ответах — сохраняем, иначе через час-два «сессия истекла».
-        c.headerFields["Set-Cookie"]?.takeIf { it.isNotEmpty() }?.let { mergeCookies(URL(url).host, it) }
-        if (code == 429) { pausedUntil = System.currentTimeMillis() + 5 * 60_000L; throw UserError("ВК просит подождать пару минут — слишком частые запросы") }
-        if (code in 300..399) { pausedUntil = System.currentTimeMillis() + 60_000L; throw UserError("Сессия ВК истекла — войдите заново: Настройки → «Музыка из ВК»") }
-        val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader(Charsets.UTF_8)?.readText().orEmpty()
-        c.disconnect()
-        if ("captcha" in text) { pausedUntil = System.currentTimeMillis() + 5 * 60_000L; throw UserError("ВК просит капчу — откройте Настройки → «Музыка из ВК» и пройдите её в браузере") }
-        if (code !in 200..299) throw UserError("ВК ответил кодом $code")
-        return text
+        try {
+            val code = c.responseCode
+            // ВК обновляет куки сессии в ответах — сохраняем, иначе через час-два «сессия истекла».
+            c.headerFields["Set-Cookie"]?.takeIf { it.isNotEmpty() }?.let { mergeCookies(URL(url).host, it) }
+            if (code == 429) { pausedUntil = System.currentTimeMillis() + 5 * 60_000L; throw UserError("ВК просит подождать пару минут — слишком частые запросы") }
+            if (code in 300..399) { pausedUntil = System.currentTimeMillis() + 60_000L; throw UserError("Сессия ВК истекла — войдите заново: Настройки → «Музыка из ВК»") }
+            val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader(Charsets.UTF_8)?.readText().orEmpty()
+            if ("captcha" in text) { pausedUntil = System.currentTimeMillis() + 5 * 60_000L; throw UserError("ВК просит капчу — откройте Настройки → «Музыка из ВК» и пройдите её в браузере") }
+            if (code !in 200..299) throw UserError("ВК ответил кодом $code")
+            return text
+        } finally {
+            c.disconnect()
+        }
     }
 
     private fun stripHtml(s: String): String = s.replace(Regex("<[^>]+>"), "")
@@ -261,6 +264,7 @@ object VkSource {
     }
 
     /** Обновить сохранённые куки хоста из заголовков Set-Cookie (ротация remixsid и т.п.). */
+    @Synchronized
     private fun mergeCookies(host: String, setCookies: List<String>) {
         val cur = LinkedHashMap<String, String>()
         cookie(host).split("; ").filter { it.isNotBlank() }.forEach {

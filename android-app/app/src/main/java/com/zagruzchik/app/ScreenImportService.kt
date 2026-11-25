@@ -34,9 +34,9 @@ class ScreenImportService : AccessibilityService() {
 
     override fun onServiceConnected() { instance = this }
 
-    override fun onDestroy() { hide(); instance = null; super.onDestroy() }
+    override fun onDestroy() { collecting = false; main.removeCallbacksAndMessages(null); hide(); instance = null; super.onDestroy() }
 
-    override fun onInterrupt() {}
+    override fun onInterrupt() { collecting = false; main.removeCallbacksAndMessages(null); hide() }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         val pkg = e.packageName?.toString() ?: return

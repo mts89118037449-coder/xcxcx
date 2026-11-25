@@ -35,6 +35,7 @@ object Cookies {
 
     private fun isCookieLine(line: String) = line.startsWith("#HttpOnly_") || (line.isNotBlank() && !line.startsWith("#"))
 
+    @Synchronized
     private fun merge(ctx: Context, newLines: List<String>): Int {
         val f = file(ctx)
         val map = LinkedHashMap<String, String>()
@@ -66,6 +67,7 @@ object Cookies {
      * Своя копия куки для отдельного запуска yt-dlp: он перезаписывает файл куки в конце работы, и параллельные запуски
      * портили общий файл (журнал 17.11: «cookies.txt does not look like a Netscape format cookies file»). null — входов нет.
      */
+    @Synchronized
     fun snapshot(ctx: Context): File? {
         val f = file(ctx).takeIf { it.exists() } ?: return null
         val dir = File(ctx.cacheDir, "cookies").apply { mkdirs() }
@@ -74,6 +76,7 @@ object Cookies {
     }
 
     /** При запуске: испорченный файл куки чиним (возвращаем заголовок), пустой — убираем; брошенные копии — тоже. */
+    @Synchronized
     fun repair(ctx: Context) {
         ctx.filesDir.listFiles()?.filter { it.name.startsWith("ck-") && it.name.endsWith(".txt") }?.forEach { it.delete() }
         val f = file(ctx).takeIf { it.exists() } ?: return
@@ -86,6 +89,7 @@ object Cookies {
         }
     }
 
+    @Synchronized
     fun loggedInSites(ctx: Context): List<String> {
         val f = file(ctx)
         if (!f.exists()) return emptyList()
@@ -93,6 +97,7 @@ object Cookies {
         return SITES.filter { s -> domains.any { it.endsWith(s.domain.trimStart('.')) } }.map { it.name }
     }
 
+    @Synchronized
     fun clear(ctx: Context) {
         file(ctx).delete()
         CookieManager.getInstance().removeAllCookies(null)

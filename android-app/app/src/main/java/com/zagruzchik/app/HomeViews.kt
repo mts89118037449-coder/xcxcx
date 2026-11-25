@@ -171,6 +171,7 @@ object HomeViews {
         thread {
             val list = runCatching { Catalog.radio(seed, emptyList()) }.getOrDefault(emptyList())
             a.runOnUiThread {
+                if (a.isFinishing || a.isDestroyed) return@runOnUiThread
                 if (list.isEmpty()) snack("Радио сейчас недоступно")
                 else Playback.playQueue(a, list.map { Playback.QItem(it, Library.localFor(it), it.url) }, 0)
             }

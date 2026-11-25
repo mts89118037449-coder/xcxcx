@@ -20,6 +20,7 @@ class VkLoginActivity : Activity() {
 
     private lateinit var status: TextView
     private lateinit var out: Button
+    private var web: WebView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,7 +43,7 @@ class VkLoginActivity : Activity() {
                 finish()
             }
         }
-        val web = WebView(this).apply {
+        val webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.userAgentString = UA
@@ -54,12 +55,13 @@ class VkLoginActivity : Activity() {
                 }
             }
         }
+        web = webView
         root.addView(status, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        root.addView(web, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(out, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         setContentView(root)
         render()
-        web.loadUrl("https://m.vk.ru/")
+        webView.loadUrl("https://m.vk.ru/")
     }
 
     private fun checkLogin(web: WebView) {
@@ -88,6 +90,13 @@ class VkLoginActivity : Activity() {
             status.text = "Войдите в свой аккаунт ВК — как в обычном браузере. Приложение видит только куки сессии, пароль — нет."
             out.visibility = android.view.View.GONE
         }
+    }
+
+    override fun onDestroy() {
+        (web?.parent as? ViewGroup)?.removeView(web)
+        web?.destroy()
+        web = null
+        super.onDestroy()
     }
 
     companion object {

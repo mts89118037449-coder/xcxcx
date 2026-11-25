@@ -99,6 +99,7 @@ object LocalServer {
     }
 
     private fun handle(c: Socket) {
+        c.soTimeout = 15_000
         val input = c.getInputStream().bufferedReader()
         val request = input.readLine() ?: return
         var range: String? = null
@@ -114,8 +115,14 @@ object LocalServer {
             out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".toByteArray()); out.flush(); return
         }
         val (uri, mime) = entry
-        app.contentResolver.openAssetFileDescriptor(uri, "r")!!.use { afd ->
+        val afd = app.contentResolver.openAssetFileDescriptor(uri, "r") ?: run {
+            out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".toByteArray()); out.flush(); return
+        }
+        afd.use {
             val total = afd.length
+            if (total <= 0L) {
+                out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".toByteArray()); out.flush(); return
+            }
             var start = 0L
             var end = total - 1
             range?.let { r ->

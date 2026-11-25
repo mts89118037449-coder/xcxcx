@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 internal object ShareMp3 {
     fun intent(ctx: Context, track: Track, audio: String?): Intent {
@@ -40,7 +41,11 @@ internal object ShareMp3 {
                 environment()["SSL_CERT_FILE"] = "$pkgs/python/usr/etc/tls/cert.pem"
             }.startWithSilentStderr()
             try {
-                check(process.waitFor() == 0 && output.length() > 0)
+                if (!process.waitFor(120, TimeUnit.SECONDS)) {
+                    process.destroyForcibly()
+                    error("ffmpeg timeout")
+                }
+                check(process.exitValue() == 0 && output.length() > 0)
             } finally {
                 process.destroy()
             }

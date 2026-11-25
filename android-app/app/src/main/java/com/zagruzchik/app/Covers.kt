@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.LruCache
 import android.util.Size
+import java.net.HttpURLConnection
 import java.io.File
 import java.net.URL
 import java.util.concurrent.Executors
@@ -37,7 +38,6 @@ object Covers {
         val k = key(job)
         memory.get(k)?.let { return it }
         if (k in loading || k in failed) return memory.get(job.id) // старое превью, пока грузится новое
-        if (job.files.isEmpty() && job.coverUrl == null && !file(ctx, job.id).exists()) return null
         loading += k
         val app = ctx.applicationContext
         val files = job.files
@@ -70,7 +70,11 @@ object Covers {
         if (disk.exists()) BitmapFactory.decodeFile(disk.path)?.let { return it }
         // 3) Превью из источника.
         if (url != null) {
-            val bytes = URL(url).openStream().use { it.readBytes() }
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 10_000
+                readTimeout = 15_000
+            }
+            val bytes = try { conn.inputStream.use { it.readBytes() } } finally { conn.disconnect() }
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
             var sample = 1
@@ -86,9 +90,13 @@ object Covers {
     }
 
     fun forget(id: String) {
-        memory.remove(id)
-        loading.removeAll { it.startsWith("$id:") }
-        failed.removeAll { it.startsWith("$id:") }
-        runCatching { File(File(App.instance.filesDir, "covers"), "$id.jpg").delete() }
+        memory.snapshot().keys.filter { it == id || it.startsWith("$id:") }.forEach { memory.remove(it) }
+        main.post {
+            loading.removeAll { it.startsWith("$id:") }
+            failed.removeAll { it.startsWith("$id:") }
+        }
+        pool.execute {
+            runCatching { File(File(App.instance.filesDir, "covers"), "$id.jpg").delete() }
+        }
     }
 }
