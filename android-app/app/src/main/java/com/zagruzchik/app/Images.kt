@@ -50,39 +50,79 @@ object Images {
     // Лежит в cacheDir — система сама чистит при нехватке места; сами держим до ~60 МБ.
     private val diskDir by lazy { java.io.File(App.instance.cacheDir, "img").apply { mkdirs() } }
 
-    private fun diskFile(url: String): java.io.File {
-        val h = java.security.MessageDigest.getInstance("SHA-1").digest(url.toByteArray()).joinToString("") { "%02x".format(it) }
-        return java.io.File(diskDir, h)
-    }
+    private val writesSincePrune = java.util.concurrent.atomic.AtomicInteger(0)
+    private val pruneLock = Any()
+
+    private fun diskFile(url: String): java.io.File = java.io.File(diskDir, Http.sha1(url))
 
     private fun pruneDisk() {
-        val files = diskDir.listFiles() ?: return
-        var total = files.sumOf { it.length() }
-        if (total < 60L * 1024 * 1024) return
-        for (f in files.sortedBy { it.lastModified() }) {
-            if (total <= 30L * 1024 * 1024) break
-            total -= f.length(); f.delete()
+        synchronized(pruneLock) {
+            val files = diskDir.listFiles() ?: return
+            var total = 0L
+            val entries = ArrayList<Triple<java.io.File, Long, Long>>(files.size)
+            for (f in files) {
+                val len = f.length()
+                total += len
+                entries += Triple(f, f.lastModified(), len)
+            }
+            if (total < 60L * 1024 * 1024) return
+            entries.sortBy { it.second }
+            for ((f, _, len) in entries) {
+                if (total <= 30L * 1024 * 1024) break
+                if (f.delete()) total -= len
+            }
         }
     }
 
     private fun fetch(url: String): ByteArray = (URL(url).openConnection() as HttpURLConnection).run {
+        setRequestProperty("User-Agent", Http.MOBILE_UA)
         connectTimeout = 10_000; readTimeout = 15_000
-        try { inputStream.use { it.readBytes() } } finally { disconnect() }
+        try {
+            if (responseCode !in 200..299) {
+                runCatching { errorStream?.close() }
+                throw Http.HttpError(responseCode, url)
+            }
+            inputStream.use { it.readBytes() }
+        } finally { disconnect() }
     }
 
-    private fun decode(url: String, maxPx: Int): Bitmap? {
-        val f = diskFile(url)
-        val bytes = runCatching { f.readBytes() }.getOrNull()
-            ?: fetch(url).also { b -> runCatching { f.writeBytes(b); f.setLastModified(System.currentTimeMillis()); pruneDisk() } }
+    private fun decodeBytes(bytes: ByteArray, maxPx: Int): Bitmap? {
+        if (bytes.isEmpty()) return null
         if (maxPx <= 0) return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         var sample = 1
         while (bounds.outWidth / (sample * 2) >= maxPx && bounds.outHeight / (sample * 2) >= maxPx) sample *= 2
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.RGB_565 // обложкам прозрачность не нужна — вдвое меньше памяти
         })
+    }
+
+    private fun decode(url: String, maxPx: Int): Bitmap? {
+        val f = diskFile(url)
+        val cachedBytes = if (f.exists()) runCatching { f.readBytes() }.getOrNull() else null
+        if (cachedBytes != null) {
+            decodeBytes(cachedBytes, maxPx)?.let { return it }
+            runCatching { f.delete() } // битый или пустой файл в кэше — удаляем и качаем заново
+        }
+        val netBytes = fetch(url)
+        val bmp = decodeBytes(netBytes, maxPx) ?: return null
+        runCatching {
+            val tmp = java.io.File(diskDir, "${f.name}.tmp.${Thread.currentThread().id}")
+            tmp.writeBytes(netBytes)
+            if (tmp.renameTo(f)) {
+                f.setLastModified(System.currentTimeMillis())
+                if (writesSincePrune.incrementAndGet() >= 25) {
+                    writesSincePrune.set(0)
+                    pruneDisk()
+                }
+            } else {
+                tmp.delete()
+            }
+        }
+        return bmp
     }
 
     /** В список: картинка размером с вид; подставляется, только если строку не переиспользовали под другую песню. */
@@ -105,7 +145,10 @@ object Images {
     }
 
     /** Основной цвет картинки — для фона плеера. */
-    fun dominant(b: Bitmap): Int = Bitmap.createScaledBitmap(b, 1, 1, true).getPixel(0, 0)
+    fun dominant(b: Bitmap): Int {
+        val s = Bitmap.createScaledBitmap(b, 1, 1, true)
+        return s.getPixel(0, 0).also { if (s !== b) s.recycle() }
+    }
 
     /**
      * Основной акцент обложки: самый «весомый» оттенок среди по-настоящему цветных точек (серые и тёмные не считаются),
@@ -114,7 +157,8 @@ object Images {
     fun accent(b: Bitmap): Int {
         val n = 24
         val small = runCatching { Bitmap.createScaledBitmap(b, n, n, true) }.getOrNull() ?: return 0xFFD8D8DE.toInt()
-        val px = IntArray(n * n); small.getPixels(px, 0, n, 0, 0, n, n)
+        val px = IntArray(n * n)
+        try { small.getPixels(px, 0, n, 0, 0, n, n) } finally { if (small !== b) small.recycle() }
         val w = FloatArray(12); val r = FloatArray(12); val g = FloatArray(12); val bl = FloatArray(12)
         val hsv = FloatArray(3)
         for (p in px) {

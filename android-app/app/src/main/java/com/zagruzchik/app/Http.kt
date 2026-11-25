@@ -20,7 +20,10 @@ object Http {
         conn.readTimeout = timeoutMs
         try {
             val code = conn.responseCode
-            if (code !in 200..299) throw HttpError(code, url)
+            if (code !in 200..299) {
+                runCatching { conn.errorStream?.close() }
+                throw HttpError(code, url)
+            }
             return conn.inputStream.bufferedReader().use { it.readText() }
         } finally {
             conn.disconnect()
@@ -41,10 +44,22 @@ object Http {
 
     val isOffline get() = offline.get() == true
 
-    private fun diskFile(url: String): java.io.File {
-        val h = java.security.MessageDigest.getInstance("SHA-1").digest(url.toByteArray()).joinToString("") { "%02x".format(it) }
-        return java.io.File(App.instance.cacheDir, "http/$h").apply { parentFile?.mkdirs() }
+    private val sha1Digest = ThreadLocal.withInitial { java.security.MessageDigest.getInstance("SHA-1") }
+
+    internal fun sha1(s: String): String {
+        val bytes = sha1Digest.get()!!.apply { reset() }.digest(s.toByteArray())
+        val hex = CharArray(bytes.size * 2)
+        val digits = "0123456789abcdef"
+        for (i in bytes.indices) {
+            val v = bytes[i].toInt() and 0xFF
+            hex[i * 2] = digits[v ushr 4]
+            hex[i * 2 + 1] = digits[v and 0x0F]
+        }
+        return String(hex)
     }
+
+    private fun diskFile(url: String): java.io.File =
+        java.io.File(App.instance.cacheDir, "http/${sha1(url)}").apply { parentFile?.mkdirs() }
 
     /**
      * JSON с сохранением на телефон. В режиме [fromDisk] — только сохранённое (любой давности);
@@ -54,9 +69,21 @@ object Http {
         val f = diskFile(url)
         if (isOffline) return JSONObject(f.readText())
         return try {
-            get(url, timeoutMs = timeoutMs).also { text -> runCatching { f.writeText(text) } }.let(::JSONObject)
+            val text = get(url, timeoutMs = timeoutMs)
+            val json = JSONObject(text)
+            runCatching {
+                val tmp = java.io.File(f.parentFile, "${f.name}.tmp.${Thread.currentThread().id}")
+                tmp.writeText(text)
+                if (!tmp.renameTo(f)) tmp.delete()
+            }
+            json
         } catch (e: Exception) {
-            if (f.exists()) JSONObject(f.readText()) else throw e
+            if (f.exists()) {
+                runCatching { JSONObject(f.readText()) }.getOrElse {
+                    f.delete()
+                    throw e
+                }
+            } else throw e
         }
     }
 
