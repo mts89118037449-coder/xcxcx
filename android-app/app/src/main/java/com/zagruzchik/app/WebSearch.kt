@@ -43,6 +43,7 @@ object WebSearch {
         Source("YouTube Music") { q -> fast("YouTube Music") { NewPipeSource.searchSongs(q) } ?: emptyList() },
         Source("YouTube") { q -> fast("YouTube") { NewPipeSource.search(false, q) } ?: ytdlp("ytsearch8:$q", "YouTube") },
         Source("Яндекс Музыка", ::yandex),
+        Source("Bandcamp", ::bandcamp),
         Source("Rutube", ::rutube),
         Source("Internet Archive", ::archive),
         Source("Dailymotion", ::dailymotion),
@@ -113,14 +114,14 @@ object WebSearch {
      * Дополнительные источники для «Слушать»/«Скачать» песни из каталога, если её нет на
      * SoundCloud/YouTube: Яндекс, Rutube, Internet Archive, Dailymotion, Audius.
      */
-    val playbackSources = listOf(::archive, ::rutube, ::dailymotion, ::audius)
+    val playbackSources = listOf(::archive, ::rutube, ::dailymotion, ::audius, ::bandcamp)
 
     fun rankCandidates(t: Track, results: List<WebResult>) =
         Match.ranked(t, results) { Triple(it.title, it.artist + " | " + it.title.substringBefore(" - ", ""), it.duration) }
 
     fun extraCandidates(t: Track): List<WebResult> {
         val q = t.query
-        val jobs = listOf(::yandex, ::archive, ::rutube, ::dailymotion, ::audius).map { f -> pool.submit<List<WebResult>> { runCatching { f(q) }.getOrDefault(emptyList()) } }
+        val jobs = listOf(::yandex, ::archive, ::rutube, ::dailymotion, ::audius, ::bandcamp).map { f -> pool.submit<List<WebResult>> { runCatching { f(q) }.getOrDefault(emptyList()) } }
         // Ждём все площадки не дольше 6 с суммарно: медленная не задерживает остальных.
         val deadline = System.currentTimeMillis() + 6000
         val all = jobs.flatMap { j ->
@@ -245,5 +246,17 @@ object WebSearch {
             WebResult(c.optString("url"), c.optString("name"), c.optJSONObject("user")?.optString("name").orEmpty(),
                 c.optInt("audio_length"), "Mixcloud", c.optJSONObject("pictures")?.optString("medium"))
         }.filter { it.url.startsWith("http") }
+    }
+
+    /** Bandcamp: открытый поиск сайта (без ключа). Звук со страницы трека достаёт движок (yt-dlp). */
+    private fun bandcamp(q: String): List<WebResult> {
+        val html = Http.get("https://bandcamp.com/search?q=" + Http.enc(q) + "&item_type=t", Http.DESKTOP_UA, 6000)
+        return Regex("data-search=\"([^\"]+)\"").findAll(html).mapNotNull { m ->
+            val o = runCatching { JSONObject(android.text.Html.fromHtml(m.groupValues[1], 0).toString()) }.getOrNull() ?: return@mapNotNull null
+            if (o.optString("type") != "t") return@mapNotNull null
+            val url = o.optString("url").takeIf { it.startsWith("http") } ?: return@mapNotNull null
+            WebResult(url, o.optString("name"), o.optString("artist"), 0, "Bandcamp",
+                o.optLong("art_id").takeIf { it > 0 }?.let { "https://f4.bcbits.com/img/a${it}_10.jpg" })
+        }.take(8).toList()
     }
 }

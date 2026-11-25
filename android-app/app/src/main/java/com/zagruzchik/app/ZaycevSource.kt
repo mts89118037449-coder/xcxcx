@@ -16,8 +16,8 @@ object ZaycevSource {
     class Found(val id: Long, val title: String, val artist: String, val durationSec: Int, val bitrate: Int, val cover: String?, val explicit: Boolean = false)
 
     /** Результаты поиска (только те, что можно слушать), в порядке выдачи. Ответ — около килобайта. */
-    fun search(query: String): List<Found> {
-        val o = JSONObject(Http.get("$BASE/api/external/pages/search/tracks?q=${Http.enc(query)}&page=1&limit=10", Http.DESKTOP_UA, 3000))
+    fun search(query: String): List<Found> = twice {
+        val o = JSONObject(Http.get("$BASE/api/external/pages/search/tracks?q=${Http.enc(query)}&page=1&limit=10", Http.DESKTOP_UA, 8000))
         val ids = o.optJSONArray("trackIds") ?: return emptyList()
         val info = o.optJSONObject("tracksInfo") ?: return emptyList()
         return (0 until ids.length()).mapNotNull { i ->
@@ -31,11 +31,15 @@ object ZaycevSource {
     }
 
     /** Ссылка на звук (живёт недолго). null — трек не отдаётся. */
-    fun streamUrl(id: Long): String? {
+    fun streamUrl(id: Long): String? = twice {
         val meta = post("$BASE/api/external/track/filezmeta", JSONObject().put("trackIds", JSONArray().put(id)).put("subscription", false).toString())
         val hash = JSONObject(meta).optJSONArray("tracks")?.optJSONObject(0)?.optString("streaming")?.takeIf { it.isNotBlank() && it != "false" && it != "null" } ?: return null
-        return JSONObject(Http.get("$BASE/api/external/track/play/$hash", Http.DESKTOP_UA, 3000)).optString("url").takeIf { it.startsWith("http") }
+        return JSONObject(Http.get("$BASE/api/external/track/play/$hash", Http.DESKTOP_UA, 8000)).optString("url").takeIf { it.startsWith("http") }
     }
+
+    /** Сеть флапается (журнал 24.11: «Read timed out» за 3 с, а через 5 с — ответ 320 kbps) — даём вторую попытку. */
+    private inline fun <T> twice(block: () -> T): T =
+        try { block() } catch (e: java.net.SocketTimeoutException) { block() } catch (e: java.net.SocketException) { block() }
 
     private fun post(url: String, body: String): String {
         val c = URL(url).openConnection() as HttpURLConnection
@@ -43,7 +47,7 @@ object ZaycevSource {
         c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
         c.setRequestProperty("Content-Type", "application/json")
         c.setRequestProperty("Referer", "$BASE/")
-        c.connectTimeout = 3000; c.readTimeout = 3000
+        c.connectTimeout = 5000; c.readTimeout = 8000
         try {
             c.outputStream.use { it.write(body.toByteArray()) }
             if (c.responseCode !in 200..299) throw Http.HttpError(c.responseCode, url)
