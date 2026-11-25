@@ -38,9 +38,14 @@ class PlaybackService : MediaSessionService() {
                     .setAudioProcessors(arrayOf<androidx.media3.common.audio.AudioProcessor>(Exciter())).build()
                     .let { BeatSink(it) } // ритм для экрана — по часам самого звука
         }
+        val hitmotopHttp = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setUserAgent(Http.DESKTOP_UA)
+            .setAllowCrossProtocolRedirects(true)
+            .setDefaultRequestProperties(mapOf("Accept-Language" to "ru,en;q=0.8", "Referer" to "https://rus.hitmotop.com/"))
+        val hitmotopFactory = DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(this, hitmotopHttp))
         val player = ExoPlayer.Builder(this, renderers)
             // «aura://head/…» — начало песни с телефона, продолжение из сети (мгновенный старт); остальное — как обычно.
-            .setMediaSourceFactory(MergingFactory(DefaultMediaSourceFactory(this), DefaultMediaSourceFactory(AuraDataSourceFactory(this))))
+            .setMediaSourceFactory(MergingFactory(DefaultMediaSourceFactory(this), DefaultMediaSourceFactory(AuraDataSourceFactory(this)), hitmotopFactory))
             // Начинаем играть, как только есть 0,7 с звука (по умолчанию ждёт 2,5 с), и держим запас на минуту вперёд.
             .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder()
                 .setBufferDurationsMs(50_000, 50_000, 1_000, 2_500).build())
@@ -151,16 +156,24 @@ class PlaybackService : MediaSessionService() {
      * Видео с YouTube при просмотре во время загрузки приходит двумя потоками: картинка и звук.
      * Если у элемента есть ссылка на отдельный звук — склеиваем их на лету.
      */
-    private class MergingFactory(private val plain: DefaultMediaSourceFactory, private val aura: DefaultMediaSourceFactory) : MediaSource.Factory {
-        override fun setDrmSessionManagerProvider(p: DrmSessionManagerProvider) = apply { plain.setDrmSessionManagerProvider(p); aura.setDrmSessionManagerProvider(p) }
-        override fun setLoadErrorHandlingPolicy(p: LoadErrorHandlingPolicy) = apply { plain.setLoadErrorHandlingPolicy(p); aura.setLoadErrorHandlingPolicy(p) }
+    private class MergingFactory(
+        private val plain: DefaultMediaSourceFactory,
+        private val aura: DefaultMediaSourceFactory,
+        private val hitmotop: DefaultMediaSourceFactory,
+    ) : MediaSource.Factory {
+        override fun setDrmSessionManagerProvider(p: DrmSessionManagerProvider) = apply { plain.setDrmSessionManagerProvider(p); aura.setDrmSessionManagerProvider(p); hitmotop.setDrmSessionManagerProvider(p) }
+        override fun setLoadErrorHandlingPolicy(p: LoadErrorHandlingPolicy) = apply { plain.setLoadErrorHandlingPolicy(p); aura.setLoadErrorHandlingPolicy(p); hitmotop.setLoadErrorHandlingPolicy(p) }
         override fun getSupportedTypes() = plain.supportedTypes
 
         override fun createMediaSource(mediaItem: MediaItem): MediaSource {
             // Свой источник данных — только для «начала с телефона» и для YouTube (чтение кусками).
             // Всё остальное (SoundCloud, файлы, Zaycev, Telegram) идёт стандартным путём проигрывателя.
             val u = mediaItem.localConfiguration?.uri
-            val base = if (u?.scheme == "aura" || u?.host?.endsWith("googlevideo.com") == true) aura else plain
+            val base = when {
+                u?.scheme == "aura" || u?.host?.endsWith("googlevideo.com") == true -> aura
+                u?.host?.contains("hitmotop") == true || u?.host?.contains("hitmcdn") == true -> hitmotop
+                else -> plain
+            }
             val audio = mediaItem.requestMetadata.extras?.getString(Playback.EXTRA_AUDIO_URL)
             val main = base.createMediaSource(mediaItem)
             if (audio.isNullOrEmpty()) return main

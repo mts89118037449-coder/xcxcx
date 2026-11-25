@@ -103,6 +103,8 @@ object HeadCache {
         val c = Net.open(URL(s.url))
         c.connectTimeout = 8000; c.readTimeout = 15000
         c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
+        c.setRequestProperty("Accept-Language", "ru,en;q=0.8")
+        if ("hitmotop" in s.url) c.setRequestProperty("Referer", "https://rus.hitmotop.com/")
         c.setRequestProperty("Range", "bytes=0-${HEAD - 1}")
         try {
             val code = c.responseCode
@@ -178,6 +180,8 @@ object HeadCache {
         val c = Net.open(URL(url))
         c.connectTimeout = 6000; c.readTimeout = 6000
         c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
+        c.setRequestProperty("Accept-Language", "ru,en;q=0.8")
+        if ("hitmotop" in url) c.setRequestProperty("Referer", "https://rus.hitmotop.com/")
         c.setRequestProperty("Range", "bytes=$from-${from + 1}")
         try {
             if (c.responseCode != 206) return -1
