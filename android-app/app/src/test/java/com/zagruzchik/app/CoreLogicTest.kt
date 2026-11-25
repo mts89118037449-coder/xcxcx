@@ -60,4 +60,23 @@ class CoreLogicTest {
         assertEquals(240, res[0].durationSec)
         assertEquals(1500L, res[0].views)
     }
+
+    @Test
+    fun streamsBlacklistAndBreaker() {
+        val url = "https://example.com/test-track-${System.nanoTime()}.mp3"
+        assertTrue(!Streams.isBlacklisted(url))
+        Streams.blacklist("direct:$url")
+        assertTrue(Streams.isBlacklisted(url))
+        assertTrue(Streams.isBlacklisted("direct:$url"))
+
+        val b = Streams.Breaker()
+        assertTrue(!b.open)
+        b.fail()
+        assertTrue(!b.open)
+        b.ok()
+        b.fail()
+        assertTrue(!b.open)
+        b.fail()
+        assertTrue(b.open)
+    }
 }

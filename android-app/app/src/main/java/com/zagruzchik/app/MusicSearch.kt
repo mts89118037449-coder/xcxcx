@@ -81,7 +81,7 @@ object Streams {
         }
     }
 
-    private fun isBlacklisted(vararg urlsOrKeys: String?): Boolean {
+    internal fun isBlacklisted(vararg urlsOrKeys: String?): Boolean {
         val now = System.currentTimeMillis()
         for (raw in urlsOrKeys) {
             val k = raw?.trim()?.takeIf { it.isNotEmpty() } ?: continue
@@ -210,7 +210,7 @@ object Streams {
     // не ждём её 3 минуты: каждая попытка стоила 6–15 секунд ожидания.
     // Предохранители пропускают площадку только для работы в фоне. Нажатую песню ищем везде: журнал 17.11 — «Кальций»
     // «не нашлась», потому что YouTube был пропущен после пары сбоев сети, хотя мог бы ответить.
-    private class Breaker { val fails = java.util.concurrent.atomic.AtomicInteger(); @Volatile var until = 0L
+    internal class Breaker { val fails = java.util.concurrent.atomic.AtomicInteger(); @Volatile var until = 0L
         val open get() = System.currentTimeMillis() < until
         fun ok() { fails.set(0) }
         fun fail() { if (fails.incrementAndGet() >= 2) { until = System.currentTimeMillis() + 3 * 60_000L; fails.set(0) } } }
