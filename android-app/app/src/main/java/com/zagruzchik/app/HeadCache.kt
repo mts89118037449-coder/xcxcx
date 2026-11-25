@@ -106,7 +106,7 @@ object HeadCache {
         c.connectTimeout = 8000; c.readTimeout = 15000
         c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
         c.setRequestProperty("Accept-Language", "ru,en;q=0.8")
-        if ("hitmotop" in s.url) c.setRequestProperty("Referer", "https://rus.hitmotop.com/")
+        if ("hitmotop" in s.url || "hitmcdn" in s.url) c.setRequestProperty("Referer", "https://rus.hitmotop.com/")
         c.setRequestProperty("Range", "bytes=0-${HEAD - 1}")
         try {
             val code = c.responseCode

@@ -67,4 +67,5 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
     implementation("com.github.tdlibx:td:1.8.56") // Telegram: поиск музыки через свой аккаунт
     implementation("com.squareup.okhttp3:okhttp:4.12.0") // Keep-Alive и HTTP/2 пул для быстрого поиска и обложек
+    testImplementation("junit:junit:4.13.2")
 }

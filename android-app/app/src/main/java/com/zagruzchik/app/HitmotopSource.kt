@@ -13,7 +13,25 @@ object HitmotopSource {
     class Found(val title: String, val artist: String, val durationSec: Int, val url: String, val cover: String?)
 
     fun search(query: String, limit: Int = 15): List<Found> {
-        val html = Http.get("$BASE/search?q=${Http.enc(query)}", Http.DESKTOP_UA, 7000)
+        val norm = query.replace('ё', 'е').replace('Ё', 'Е').trim()
+        val first = fetch(norm, limit)
+        if (first.isNotEmpty()) return first
+        val simple = norm
+            .replace(Regex("""\s*[(\[].*?[)\]]"""), "")
+            .replace(Regex("""\s+(feat|ft)\.?\s.*$""", RegexOption.IGNORE_CASE), "")
+            .trim()
+        if (simple.isNotEmpty() && !simple.equals(norm, ignoreCase = true)) {
+            return fetch(simple, limit)
+        }
+        return emptyList()
+    }
+
+    private fun fetch(query: String, limit: Int): List<Found> {
+        val html = Http.get("$BASE/search?q=${Http.enc(query)}", Http.DESKTOP_UA, 7000, headers = mapOf("Referer" to "$BASE/"))
+        return parseHtml(html, limit)
+    }
+
+    internal fun parseHtml(html: String, limit: Int = 15): List<Found> {
         return ITEM_RE.findAll(html).mapNotNull { m ->
             val o = runCatching { JSONObject(m.groupValues[1]) }.getOrNull() ?: return@mapNotNull null
             val url = o.optString("url").takeIf { it.startsWith("http") } ?: return@mapNotNull null

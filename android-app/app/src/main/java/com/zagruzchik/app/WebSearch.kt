@@ -205,11 +205,12 @@ object WebSearch {
         ).optJSONObject("response")?.optJSONArray("docs") ?: return emptyList()
         val ids = (0 until docs.length()).map { docs.getJSONObject(it).optString("identifier") }.filter { it.isNotEmpty() }
         val items = ids.map { id -> pool.submit<List<WebResult>> { runCatching { archiveItem(id, q) }.getOrDefault(emptyList()) } }
-        return items.flatMap { runCatching { it.get() }.getOrDefault(emptyList()) }
+        val deadline = System.currentTimeMillis() + 6000
+        return items.flatMap { runCatching { it.get(maxOf(1, deadline - System.currentTimeMillis()), java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrDefault(emptyList()) }
     }
 
     private fun archiveItem(id: String, q: String): List<WebResult> {
-        val m = Http.json("https://archive.org/metadata/$id")
+        val m = JSONObject(Http.get("https://archive.org/metadata/$id", timeoutMs = 5000))
         val meta = m.optJSONObject("metadata") ?: JSONObject()
         val creator = meta.optString("creator")
         val files = m.optJSONArray("files") ?: return emptyList()

@@ -96,8 +96,9 @@ object Match {
     fun versionPenaltyWords(title: String, source: String): List<String> {
         val t = norm(title); val src = norm(source)
         val unc = isUncensored(title)
+        val origMix = t.contains("original mix")
         return VERSION_WORDS.filter { w ->
-            t.contains(w) && !src.contains(w) && !(unc && (w == "censored" || w == "цензур"))
+            t.contains(w) && !src.contains(w) && !(unc && (w == "censored" || w == "цензур")) && !(origMix && w == "mix")
         }
     }
 
@@ -112,10 +113,11 @@ object Match {
             .replace(Regex("""\s+(feat|ft)\.?\s.*$""", RegexOption.IGNORE_CASE), "")
             .substringBefore(" - ")
             .substringBefore(" — ")
+            .substringBefore(" – ")
     )
 
     // Приписки, которые не делают запись другой версией: «official audio», «лирик видео», «премьера трека»…
-    private val PLAIN_TAGS = listOf("official", "audio", "lyric", "лирик", "текст", "премьера", "visualizer", "визуал", "клип", "video", "видео", "hd", "hq", "4k")
+    private val PLAIN_TAGS = listOf("official", "audio", "lyric", "лирик", "текст", "премьера", "visualizer", "визуал", "клип", "video", "видео", "hd", "hq", "4k", "original mix")
 
     private fun artists(a: String) = norm(a.replace(Regex("""\b(feat|ft)\b""", RegexOption.IGNORE_CASE), ","))
         .split(Regex("""\s*(,|&|\band\b|\bи\b|\bx\b)\s*""")).map { it.trim() }.filter { it.isNotEmpty() }

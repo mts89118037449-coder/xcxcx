@@ -623,8 +623,35 @@ object Playback {
                 }
                 // Подгрузка посреди песни (сеть не успевает) — с какой секунды и сколько длилась.
                 if (state == androidx.media3.common.Player.STATE_BUFFERING) {
-                    bufferingAt = System.currentTimeMillis()
-                    if (c.currentPosition > 1500) AppLog.add("ПОДГРУЗКА началась на ${c.currentPosition / 1000} с «${c.mediaMetadata.title}» из ${c.mediaMetadata.extras?.getString(X_SOURCE)} (в запасе ${(c.bufferedPosition - c.currentPosition) / 1000} с)")
+                    val since = System.currentTimeMillis()
+                    bufferingAt = since
+                    val m = c.currentMediaItem?.mediaMetadata
+                    val failedGen = activeQueueGen
+                    if (c.currentPosition > 1500) AppLog.add("ПОДГРУЗКА началась на ${c.currentPosition / 1000} с «${m?.title}» из ${m?.extras?.getString(X_SOURCE)} (в запасе ${(c.bufferedPosition - c.currentPosition) / 1000} с)")
+                    main.postDelayed({
+                        if (bufferingAt == since && failedGen == queueGen && c.playbackState == androidx.media3.common.Player.STATE_BUFFERING &&
+                            c.playWhenReady && (c.bufferedPosition - c.currentPosition) < 1_000L && c.currentMediaItem?.mediaMetadata == m && requestedIndex == null) {
+                            val t = Track(m?.title?.toString().orEmpty(), m?.artist?.toString().orEmpty(), cover = m?.artworkUri?.toString())
+                            val key = Library.key(t)
+                            val now = System.currentTimeMillis()
+                            val attempt = recoveryAt.compute(key) { _, prev ->
+                                if (prev == null || now - prev.first > 60_000L) now to 1 else prev.first to (prev.second + 1)
+                            }!!
+                            if (t.title.isNotBlank() && attempt.second <= 2) {
+                                AppLog.add("ДОЛГАЯ ПОДГРУЗКА «${t.label}» (>14 с) — переключаюсь на запасной источник")
+                                Streams.forget(t)
+                                Streams.blacklist(c.currentMediaItem?.localConfiguration?.uri?.toString() ?: c.currentMediaItem?.mediaId, m?.extras?.getString(X_PAGE_URL))
+                                MediaCache.forget(t); HeadCache.drop(t)
+                                val i = queue.indexOfFirst { Library.key(it.track) == key }
+                                if (i >= 0) {
+                                    val cur = queue[i]
+                                    val reset = if (cur.pageUrl != null || cur.directUrl != null || cur.directSource != null) QItem(cur.track, cur.local, cur.sourceUrl) else cur
+                                    val items = if (reset !== cur) queue.toMutableList().apply { set(i, reset) } else queue
+                                    playQueue(app, items, i, openScreen = false)
+                                } else playTrack(app, t, openScreen = false)
+                            }
+                        }
+                    }, 14_000L)
                 } else if (state == androidx.media3.common.Player.STATE_READY && bufferingAt > 0) {
                     val ms = System.currentTimeMillis() - bufferingAt; bufferingAt = 0
                     if (ms > 700 && c.currentPosition > 1500) AppLog.add("ПОДГРУЗКА закончилась: ждали ${ms / 100 / 10.0} с")

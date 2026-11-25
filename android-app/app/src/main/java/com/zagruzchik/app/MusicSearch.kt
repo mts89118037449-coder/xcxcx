@@ -150,7 +150,7 @@ object Streams {
      */
     fun prefetchMany(tracks: List<Track>, n: Int = 6) {
         synchronized(batch) {
-            batch.forEach { (k, f) -> if (f.cancel(false)) pending.remove(k, f) }
+            batch.forEach { (k, f) -> if (f.cancel(true)) pending.remove(k, f) }
             batch.clear()
         }
         // В обратном порядке: очередь LIFO, так первая песня экрана готовится первой.
@@ -163,6 +163,14 @@ object Streams {
     fun resolve(t: Track, force: Boolean = false): StreamInfo {
         val k = key(t)
         cached(k)?.let { return it }
+        // Отменяем устаревшие фоновые заготовки других песен, чтобы не забивали пул при быстром переключении.
+        synchronized(batch) {
+            val it = batch.iterator()
+            while (it.hasNext()) {
+                val (bk, bf) = it.next()
+                if (bk != k) { if (bf.cancel(true)) pending.remove(bk, bf); it.remove() }
+            }
+        }
         // Недавно искали и не нашли (платная, удалена) — не ищем те же пару минут заново (авто-переходы в очереди).
         if (force) failed.remove(k)
         else failed[k]?.let { (time, e) -> if (System.currentTimeMillis() - time < FAIL_TTL_MS) throw e else failed.remove(k) }
@@ -210,6 +218,7 @@ object Streams {
     private val ytmBreaker = Breaker()
     private val ytPhoneBreaker = Breaker()
     private val scPhoneBreaker = Breaker()
+    private val yandexBreaker = Breaker()
 
     private const val FAIL_TTL_MS = 3 * 60 * 1000L // авто-переходы не долбят одну и ту же недоступную песню, но 3 минуты — не 20
     private val failed = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, UserError>>()
@@ -518,6 +527,7 @@ object Streams {
         // Zaycev — MP3 до 320 kbps, отвечает быстро: первым по старшинству.
         val yandexName = Service.YANDEX.title
         fun startYandex() = if (light) null else run {
+            if (bg && yandexBreaker.open) { log += "$yandexName: пропущен — не отвечает без сессии (проверю снова через пару минут)"; return@run null }
             waiting += yandexName
             searchPool.submit<StreamInfo?> {
                 try {
@@ -527,11 +537,15 @@ object Streams {
                             .map { it.url }.filter { "/album/" in it }.distinct().take(2)
                         log += "$yandexName: подходящих страниц ${pages.size}"
                         if (pages.isNotEmpty()) App.awaitReady()
-                        pages.filter { !isBlacklisted(it) }.firstNotNullOfOrNull { page ->
+                        val res = pages.filter { !isBlacklisted(it) }.firstNotNullOfOrNull { page ->
                             Downloader.streamOf(page, yandexName, t.title, problems)?.takeUnless { isBlacklisted(it.url, it.pageUrl) }?.also { picked[yandexName] = page }
                         }
+                        if (res != null) yandexBreaker.ok()
+                        else if (problems.any { it.contains("yandexmusic", ignoreCase = true) || it.contains("NoneType", ignoreCase = true) }) yandexBreaker.fail()
+                        res
                     }
                 } catch (e: Exception) {
+                    if (e.message?.let { it.contains("yandexmusic", ignoreCase = true) || it.contains("NoneType", ignoreCase = true) } == true) yandexBreaker.fail()
                     log += yandexName + why(e)
                     null
                 } finally {
