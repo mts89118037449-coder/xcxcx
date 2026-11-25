@@ -130,7 +130,7 @@ object Downloader {
         App.awaitReady()
         try {
             return YtdlpDaemon.search("ytsearch1:$query", "YouTube").firstNotNullOfOrNull { c ->
-                Regex("[?&]v=([\\w-]{11})").find(c.url)?.groupValues?.get(1)
+                Regex("[?&]v=([\w-]{11})").find(c.url)?.groupValues?.get(1)
             }
         } catch (_: YtdlpDaemon.Unavailable) {
         } catch (_: UserError) {
@@ -486,6 +486,9 @@ object Downloader {
         addOption("--cache-dir", cacheDir())
         addOption("--no-mtime")
         addOption("-N", "4") // фрагменты потока качаются в 4 потока — заметно быстрее для HLS/DASH
+        // Прямые файлы качаем кусками по 10 МБ: каждый кусок — новое соединение со «свежей» скоростью.
+        // Обходит придушивание одного соединения (YouTube и др. режут долгие закачки до ~100 КБ/с).
+        addOption("--http-chunk-size", "10485760")
         addOption("--embed-metadata")
         addOption("-P", dir.absolutePath)
         Cookies.snapshot(ctx)?.let { addOption("--cookies", it.absolutePath) } // своя копия: общий файл yt-dlp не портит
