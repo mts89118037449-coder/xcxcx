@@ -130,9 +130,9 @@ object Playback {
     )
 
     /** Поток для песни: с конкретной страницы (результат SoundCloud/YouTube) или поиском по названию. */
-    private fun resolve(q: QItem): StreamInfo = q.directUrl?.let { StreamInfo(it, it, q.directSource ?: "интернета", q.track.cover, q.track.title) } ?: q.pageUrl?.let { page ->
+    private fun resolve(q: QItem, force: Boolean = false): StreamInfo = q.directUrl?.let { StreamInfo(it, it, q.directSource ?: "интернета", q.track.cover, q.track.title) } ?: q.pageUrl?.let { page ->
         Streams.page(page, Describe.site(page), q.track.title) ?: throw UserError("Этот трек не играет: платный, удалён или недоступен в стране.")
-    } ?: Streams.resolve(q.track)
+    } ?: Streams.resolve(q.track, force)
 
     private val queueWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
     private var queue: List<QItem> = emptyList()
@@ -245,7 +245,8 @@ object Playback {
         }
         // Без пауз: полная версия готова (выше) — играет с начала; нет — сразу фрагмент, а полная
         // бесшовно подхватывает его с того же места. Ждать полную в тишине больше не будем.
-        val fullSoon = worker.submit<StreamInfo> { resolve(first) }
+        // Нажал человек (не авто-переход) — недавняя неудача поиска не в счёт: площадки флапают, ищем заново.
+        val fullSoon = worker.submit<StreamInfo> { resolve(first, force = !auto) }
         val preview = first.track.preview
         // Конкретная страница/файл (результат «Везде в интернете») — фрагмента у неё нет, просто ждём.
         val canPreview = first.pageUrl == null && first.directUrl == null
