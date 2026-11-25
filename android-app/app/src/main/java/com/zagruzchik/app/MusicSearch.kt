@@ -572,7 +572,7 @@ object Streams {
         val hearthis = searchPool.submit<StreamInfo?> {
             val t0 = System.currentTimeMillis()
             val got = runCatching { HearthisSource.search(t.query) }
-            val raw = got.getOrDefault(emptyList())
+            val raw = got.getOrDefault(emptyList()).filter { it.durationSec <= 900 }
             val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
             log += "Hearthis [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" + why(got.exceptionOrNull())
             if (ok.isNotEmpty()) foundOn += "Hearthis"

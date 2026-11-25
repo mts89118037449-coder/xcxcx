@@ -43,19 +43,21 @@ class Exciter : BaseAudioProcessor() {
         val n = inputBuffer.remaining()
         val out = replaceOutputBuffer(n)
         val mix = when (level) { 1 -> 0.18f; 2 -> 0.32f; else -> 0f }
+        if (mix == 0f) {
+            out.put(inputBuffer)
+            out.flip()
+            return
+        }
         var ch = 0
         while (inputBuffer.remaining() >= 2) {
             val s = inputBuffer.short / 32768f
-            var y = s
-            if (mix > 0f) {
-                lp[ch] += alpha * (s - lp[ch])          // низ и середина
-                val high = s - lp[ch]                   // только верх
-                // Мягкое ограничение рождает гармоники выше исходных; вычитаем сам верх — остаётся добавка.
-                val driven = high * 4f
-                val shaped = driven / (1f + kotlin.math.abs(driven))
-                y = s + mix * (shaped - high * 0.5f)
-                if (y > 1f) y = 1f else if (y < -1f) y = -1f
-            }
+            lp[ch] += alpha * (s - lp[ch])          // низ и середина
+            val high = s - lp[ch]                   // только верх
+            // Мягкое ограничение рождает гармоники выше исходных; вычитаем сам верх — остаётся добавка.
+            val driven = high * 4f
+            val shaped = driven / (1f + kotlin.math.abs(driven))
+            var y = s + mix * (shaped - high * 0.5f)
+            if (y > 1f) y = 1f else if (y < -1f) y = -1f
             out.putShort((y * 32767f).toInt().toShort())
             ch = if (ch + 1 >= channels) 0 else ch + 1
         }

@@ -161,8 +161,8 @@ object Playback {
 
     private var startIndex = 0
     private var skips = 0 // сколько песен подряд пропустили сами (не нашлись) — чтобы не листать очередь бесконечно
-    /** One automatic recovery per track in a short window; prevents endless retry loops. */
-    private val recoveryAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** Up to two automatic recoveries per track in a short window; prevents endless retry loops. */
+    private val recoveryAt = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Int>>()
 
     /** «Ещё раз»: искать ту же песню заново, не теряя очередь. */
     fun retry(ctx: Context) {
@@ -558,8 +558,10 @@ object Playback {
                 Streams.blacklist(failedUrl, m?.extras?.getString(X_PAGE_URL))
                 val key = Library.key(t)
                 val now = System.currentTimeMillis()
-                val previous = recoveryAt.put(key, now)
-                val canRecover = t.title.isNotBlank() && (previous == null || now - previous > 60_000L)
+                val attempt = recoveryAt.compute(key) { _, prev ->
+                    if (prev == null || now - prev.first > 60_000L) now to 1 else prev.first to (prev.second + 1)
+                }!!
+                val canRecover = t.title.isNotBlank() && attempt.second <= 2
                 if (canRecover) {
                     // A failed network stream is not proof the song is unavailable.
                     // Drop cached fragments and search again without losing the current queue.

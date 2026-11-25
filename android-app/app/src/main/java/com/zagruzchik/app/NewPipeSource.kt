@@ -90,7 +90,7 @@ object NewPipeSource {
     // ---- Открытые зеркала Piped: тот же поиск песен, если с телефона не получилось ----
     private val MIRRORS = listOf(
         "pipedapi.ducks.party", "pipedapi.kavin.rocks", "pipedapi.adminforge.de", "api.piped.private.coffee",
-        "pipedapi.leptons.xyz", "pipedapi.reallyaweso.me", "pipedapi.nosebs.ru", "piped-api.privacy.com.de",
+        "pipedapi.leptons.xyz", "pipedapi.reallyaweso.me",
     )
     @Volatile private var lastMirror: String? = null
     private val pool = java.util.concurrent.Executors.newCachedThreadPool()
