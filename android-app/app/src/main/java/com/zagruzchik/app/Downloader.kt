@@ -487,6 +487,10 @@ object Downloader {
         addOption("--cache-dir", cacheDir())
         addOption("--no-mtime")
         addOption("-N", "4") // фрагменты потока качаются в 4 потока — заметно быстрее для HLS/DASH
+        if (source.contains("hitmotop") || source.contains("hitmcdn")) {
+            addOption("--add-header", "Accept-Language: ru,en;q=0.8")
+            addOption("--add-header", "Referer: https://rus.hitmotop.com/")
+        }
         // Прямые файлы качаем кусками по 10 МБ: каждый кусок — новое соединение со «свежей» скоростью.
         // Обходит придушивание одного соединения (YouTube и др. режут долгие закачки до ~100 КБ/с).
         addOption("--http-chunk-size", "10485760")

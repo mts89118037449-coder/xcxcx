@@ -48,13 +48,15 @@ object HeadCache {
 
     fun init(ctx: Context) {
         dir = File(ctx.filesDir, "heads").apply { mkdirs() }
-        runCatching {
-            val arr = org.json.JSONArray(File(dir, "index.json").readText())
-            for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                val e = Entry(o.getString("id"), o.getString("key"), o.getString("title"), o.optString("artist"), o.optInt("duration"),
-                    o.getString("where"), o.optString("label"), o.getLong("total"), o.getLong("head"), o.optString("ext", "mp3"), o.optLong("used"))
-                if (e.file.length() == e.headLen) { byKey[e.key] = e; byId[e.id] = e }
+        pool.execute {
+            runCatching {
+                val arr = org.json.JSONArray(File(dir, "index.json").readText())
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    val e = Entry(o.getString("id"), o.getString("key"), o.getString("title"), o.optString("artist"), o.optInt("duration"),
+                        o.getString("where"), o.optString("label"), o.getLong("total"), o.getLong("head"), o.optString("ext", "mp3"), o.optLong("used"))
+                    if (e.file.length() == e.headLen) { byKey.putIfAbsent(e.key, e); byId.putIfAbsent(e.id, e) }
+                }
             }
         }
         saver.scheduleWithFixedDelay({ if (dirty) { dirty = false; runCatching { save() } } }, 5, 5, TimeUnit.SECONDS)
@@ -113,26 +115,32 @@ object HeadCache {
                 200 -> c.contentLengthLong.takeIf { it > 0 } ?: return false
                 else -> return false
             }
-            val tmp = File(dir, "$id.tmp")
-            var n = 0L
-            c.inputStream.use { ins -> tmp.outputStream().use { out ->
-                val buf = ByteArray(32 * 1024)
-                while (n < HEAD) { val r = ins.read(buf, 0, minOf(buf.size.toLong(), HEAD - n).toInt()); if (r < 0) break; out.write(buf, 0, r); n += r }
-            } }
-            if (n < minOf(HEAD, total)) { tmp.delete(); return false }
-            val type = c.contentType.orEmpty()
-            val ext = when {
-                type.contains("webm") || type.contains("opus") -> "webm"
-                type.contains("mp4") || type.contains("m4a") || type.contains("aac") -> "m4a"
-                type.contains("flac") -> "flac"
-                type.contains("ogg") -> "ogg"
-                else -> "mp3"
+            val tmp = File(dir, "$id.tmp.${Thread.currentThread().id}")
+            var renamed = false
+            try {
+                var n = 0L
+                c.inputStream.use { ins -> tmp.outputStream().use { out ->
+                    val buf = ByteArray(32 * 1024)
+                    while (n < HEAD) { val r = ins.read(buf, 0, minOf(buf.size.toLong(), HEAD - n).toInt()); if (r < 0) break; out.write(buf, 0, r); n += r }
+                } }
+                if (n < minOf(HEAD, total)) return false
+                val type = c.contentType.orEmpty()
+                val ext = when {
+                    type.contains("webm") || type.contains("opus") -> "webm"
+                    type.contains("mp4") || type.contains("m4a") || type.contains("aac") -> "m4a"
+                    type.contains("flac") -> "flac"
+                    type.contains("ogg") -> "ogg"
+                    else -> "mp3"
+                }
+                val e = Entry(id, key, t.title, t.artist, t.durationSec, where, s.source, total, n, ext, System.currentTimeMillis())
+                renamed = tmp.renameTo(e.file)
+                if (!renamed) return false
+                byKey[key] = e; byId[id] = e; dirty = true
+                trim()
+                return true
+            } finally {
+                if (!renamed) tmp.delete()
             }
-            val e = Entry(id, key, t.title, t.artist, t.durationSec, where, s.source, total, n, ext, System.currentTimeMillis())
-            tmp.renameTo(e.file)
-            byKey[key] = e; byId[id] = e; dirty = true
-            trim()
-            return true
         } finally { c.disconnect() }
     }
 
@@ -229,11 +237,12 @@ private class Chunked(private val base: DataSource.Factory, private val listener
     /** Открыть следующий кусок; возвращает полный размер файла (из ответа сервера) или -1. */
     private fun openChunk(): Long {
         runCatching { ds?.close() }
+        ds = null
         // Ссылка YouTube привязана к адресу, с которого её взяли: если брали мимо VPN — и читаем мимо VPN.
         val d = if (Net.youtubeDirect) NetDataSource() else base.createDataSource().also { x -> listeners.forEach(x::addTransferListener) }
+        ds = d
         val want = if (remaining > 0) minOf(CHUNK, remaining) else CHUNK
         d.open(DataSpec.Builder().setUri(uri!!).setPosition(pos).setLength(want).build())
-        ds = d
         headers = d.responseHeaders
         val total = headers.entries.firstOrNull { it.key.equals("Content-Range", true) }?.value?.firstOrNull()?.substringAfter('/')?.toLongOrNull() ?: -1L
         chunkLeft = if (total > 0) minOf(want, total - pos) else want
@@ -320,8 +329,15 @@ private class AuraDataSource(private val base: DataSource.Factory) : DataSource 
         }
         if (upstream == null && chunked == null) {
             val url = Uri.parse(HeadCache.awaitTail(e))
-            if (Chunked.fits(url)) chunked = Chunked(base, listeners).also { it.open(url, pos, remaining) }
-            else upstream = base.createDataSource().also { it.open(DataSpec.Builder().setUri(url).setPosition(pos).setLength(remaining).build()) }
+            if (Chunked.fits(url)) {
+                val c = Chunked(base, listeners)
+                chunked = c
+                c.open(url, pos, remaining)
+            } else {
+                val d = base.createDataSource()
+                upstream = d
+                d.open(DataSpec.Builder().setUri(url).setPosition(pos).setLength(remaining).build())
+            }
         }
         val want = minOf(length.toLong(), remaining).toInt()
         val n = chunked?.read(buffer, offset, want) ?: upstream!!.read(buffer, offset, want)

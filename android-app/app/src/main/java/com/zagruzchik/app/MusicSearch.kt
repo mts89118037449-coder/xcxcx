@@ -207,6 +207,8 @@ object Streams {
         fun ok() { fails.set(0) }
         fun fail() { if (fails.incrementAndGet() >= 2) { until = System.currentTimeMillis() + 3 * 60_000L; fails.set(0) } } }
     private val ytBreaker = Breaker()
+    private val ytmBreaker = Breaker()
+    private val ytPhoneBreaker = Breaker()
     private val scPhoneBreaker = Breaker()
 
     private const val FAIL_TTL_MS = 3 * 60 * 1000L // авто-переходы не долбят одну и ту же недоступную песню, но 3 минуты — не 20
@@ -621,11 +623,11 @@ object Streams {
         // YouTube Music, вкладка «Песни»: с исполнителем и длительностью — находит и официальные авто-треки («Исполнитель – Topic»),
         // которых нет в обычном поиске YouTube. Ищем на самом телефоне, без Python; не вышло — через открытые зеркала.
         val ytm = searchPool.submit<StreamInfo?> {
-            if (bg && ytBreaker.open) { log += "YouTube Music: пропущен — YouTube не отвечает с этого телефона (проверю снова через пару минут)"; return@submit null }
+            if (bg && ytmBreaker.open) { log += "YouTube Music: пропущен — YouTube не отвечает с этого телефона (проверю снова через пару минут)"; return@submit null }
             val t0 = System.currentTimeMillis()
             var via = ""
             val raw = runCatching { NewPipeSource.searchSongs(t.query) { via = it } }.getOrDefault(emptyList())
-            if (raw.isEmpty() && via.contains("не ответил")) ytBreaker.fail() else if (raw.isNotEmpty()) ytBreaker.ok()
+            if (raw.isEmpty() && via.contains("не ответил")) ytmBreaker.fail() else if (raw.isNotEmpty()) ytmBreaker.ok()
             val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
             log += "YouTube Music [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size} · $via" +
                 raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗ " + Match.reason(t, c.title, c.artist, c.durationSec)} · ${c.title.take(50)} | ${c.artist.take(26)} | ${c.durationSec} с" } +
@@ -673,7 +675,7 @@ object Streams {
             val name = "$site (на телефоне)"
             waiting += name
             searchPool.submit<StreamInfo?> { try {
-                val breaker = if (site == "SoundCloud") scPhoneBreaker else ytBreaker
+                val breaker = if (site == "SoundCloud") scPhoneBreaker else ytPhoneBreaker
                 if (bg && breaker.open) { log += "$name: пропущен — не отвечает с этого телефона"; return@submit null }
                 val got = runCatching { NewPipeSource.search(site == "SoundCloud", query.substringAfter(':')) }
                 if (got.isFailure) breaker.fail() else breaker.ok()

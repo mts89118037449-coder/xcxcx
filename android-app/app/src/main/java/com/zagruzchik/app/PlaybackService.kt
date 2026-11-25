@@ -48,7 +48,7 @@ class PlaybackService : MediaSessionService() {
             .setMediaSourceFactory(MergingFactory(DefaultMediaSourceFactory(this), DefaultMediaSourceFactory(AuraDataSourceFactory(this)), hitmotopFactory))
             // Начинаем играть, как только есть 0,7 с звука (по умолчанию ждёт 2,5 с), и держим запас на минуту вперёд.
             .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                .setBufferDurationsMs(50_000, 50_000, 1_000, 2_500).build())
+                .setBufferDurationsMs(60_000, 60_000, 1_000, 4_500).build())
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
                 true, // ставить на паузу при звонке и других приложениях
