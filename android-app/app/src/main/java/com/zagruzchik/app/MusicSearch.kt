@@ -531,6 +531,18 @@ object Streams {
                 }
             }.also { log += "Zaycev звук: ${if (it != null) "готов" else "нет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
         }
+        val hitmotop = searchPool.submit<StreamInfo?> {
+            val t0 = System.currentTimeMillis()
+            val got = runCatching { HitmotopSource.search(t.query) }
+            val raw = got.getOrDefault(emptyList())
+            val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
+            log += "Hitmotop [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" + why(got.exceptionOrNull())
+            if (ok.isNotEmpty()) foundOn += "Hitmotop"
+            ok.firstOrNull()?.let { c ->
+                picked["Hitmotop"] = "direct:${c.url}"
+                StreamInfo(c.url, c.url, "Hitmotop · MP3", t.cover ?: c.cover, c.title)
+            }.also { log += "Hitmotop звук: ${if (it != null) "готов" else "нет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
+        }
         // Telegram (свой аккаунт): встроенный поиск музыки, файлы обычно 320 kbps, бывает FLAC. Только по нажатию —
         // в фоновой подготовке не используем: Telegram ограничивает частые запросы.
         val telegram = searchPool.submit<StreamInfo?> {
@@ -662,7 +674,7 @@ object Streams {
             val viaYtdlp = startViaYtdlp()
             val spare = startSpare()
             val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
-            val jobs = listOfNotNull(remembered, zaycev, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
+            val jobs = listOfNotNull(remembered, zaycev, hitmotop, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
             // Режим «показать все источники»: отдаём каждый найденный вариант сразу, как только площадка ответила.
             val told = HashSet<Any>()
             while (true) {
@@ -685,7 +697,7 @@ object Streams {
         var viaYtdlp: List<java.util.concurrent.Future<StreamInfo?>> = emptyList()
         var spare: List<java.util.concurrent.Future<StreamInfo?>> = emptyList()
         var jobs: List<java.util.concurrent.Future<StreamInfo?>> =
-            listOfNotNull(remembered, zaycev, onPhone.getOrNull(0), telegram, vk, ytm, onPhone.getOrNull(1))
+            listOfNotNull(remembered, zaycev, hitmotop, onPhone.getOrNull(0), telegram, vk, ytm, onPhone.getOrNull(1))
         while (true) {
             if (!slowStarted && (System.currentTimeMillis() - started >= 1200 || jobs.all { it.isDone })) {
                 slowStarted = true
@@ -719,7 +731,7 @@ object Streams {
             else if (problems.isNotEmpty()) append("Нашёл, но не играет: ${problems.first()}.")
             else append("Не нашёл «${t.label}».")
             if (missing.isNotEmpty()) append(" На ${missing.joinToString(" и ")} её нет.")
-            append(" Искал: Zaycev," + (if (Telegram.ready) " Telegram," else "") + (if (VkSource.loggedIn) " ВК," else "") + " SoundCloud, YouTube, YouTube Music, Яндекс, Bandcamp, Rutube, Internet Archive, Dailymotion, Audius.")
+            append(" Искал: Zaycev, Hitmotop," + (if (Telegram.ready) " Telegram," else "") + (if (VkSource.loggedIn) " ВК," else "") + " SoundCloud, YouTube, YouTube Music, Яндекс, Bandcamp, Rutube, Internet Archive, Dailymotion, Audius.")
             append(" Нажмите на это сообщение — можно указать ссылку на песню вручную.")
         })
     }

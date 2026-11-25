@@ -43,6 +43,7 @@ object WebSearch {
         Source("YouTube Music") { q -> fast("YouTube Music") { NewPipeSource.searchSongs(q) } ?: emptyList() },
         Source("YouTube") { q -> fast("YouTube") { NewPipeSource.search(false, q) } ?: ytdlp("ytsearch8:$q", "YouTube") },
         Source("Яндекс Музыка", ::yandex),
+        Source("Hitmotop", ::hitmotop),
         Source("Bandcamp", ::bandcamp),
         Source("Rutube", ::rutube),
         Source("Internet Archive", ::archive),
@@ -249,6 +250,9 @@ object WebSearch {
     }
 
     /** Bandcamp: открытый поиск сайта (без ключа). Звук со страницы трека достаёт движок (yt-dlp). */
+    private fun hitmotop(q: String): List<WebResult> =
+        HitmotopSource.search(q, 10).map { WebResult(it.url, it.title, it.artist, it.durationSec, "Hitmotop", it.cover, direct = true) }
+
     private fun bandcamp(q: String): List<WebResult> {
         val html = Http.get("https://bandcamp.com/search?q=" + Http.enc(q) + "&item_type=t", Http.DESKTOP_UA, 6000)
         return Regex("data-search=\"([^\"]+)\"").findAll(html).mapNotNull { m ->
