@@ -74,17 +74,7 @@ object Images {
         }
     }
 
-    private fun fetch(url: String): ByteArray = (URL(url).openConnection() as HttpURLConnection).run {
-        setRequestProperty("User-Agent", Http.MOBILE_UA)
-        connectTimeout = 10_000; readTimeout = 15_000
-        try {
-            if (responseCode !in 200..299) {
-                runCatching { errorStream?.close() }
-                throw Http.HttpError(responseCode, url)
-            }
-            inputStream.use { it.readBytes() }
-        } finally { disconnect() }
-    }
+    private fun fetch(url: String): ByteArray = Http.bytes(url, timeoutMs = 15_000)
 
     private fun decodeBytes(bytes: ByteArray, maxPx: Int): Bitmap? {
         if (bytes.isEmpty()) return null

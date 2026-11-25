@@ -7,9 +7,19 @@ import org.json.JSONObject
  * Возвращает треки с обложкой и длительностью; дальше их можно сразу слушать или скачать.
  */
 object MusicSearch {
+    private const val SEARCH_TTL_MS = 10 * 60_000L
+    private val searchCache = object : LinkedHashMap<String, Pair<Long, List<Track>>>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Long, List<Track>>>) = size > 50
+    }
+
     fun search(query: String, limit: Int = 20): List<Track> {
         val q = query.trim()
         if (q.length < 2) return emptyList()
+        val cacheKey = "${q.lowercase()}|$limit"
+        val now = System.currentTimeMillis()
+        synchronized(searchCache) {
+            searchCache[cacheKey]?.let { (ts, list) -> if (now - ts < SEARCH_TTL_MS) return list }
+        }
         val deezer = runCatching { deezer(q, limit) }.getOrDefault(emptyList())
         val apple = if (deezer.size < 8) runCatching { apple(q, limit) }.getOrDefault(emptyList()) else emptyList()
         // Без повторов: одна и та же песня из двух каталогов показывается один раз.
@@ -28,7 +38,9 @@ object MusicSearch {
         }.map { it.value }
         // Без повторов, но версия без цензуры не теряется за «чистой» с тем же названием.
         val seen = HashSet<String>()
-        return ranked.filter { seen.add(Match.base(it.title) + "|" + Match.norm(it.artist) + "|" + it.explicit) }.take(limit)
+        val result = ranked.filter { seen.add(Match.base(it.title) + "|" + Match.norm(it.artist) + "|" + it.explicit) }.take(limit)
+        if (result.isNotEmpty()) synchronized(searchCache) { searchCache[cacheKey] = System.currentTimeMillis() to result }
+        return result
     }
 
     private fun deezer(q: String, limit: Int): List<Track> {
@@ -478,24 +490,26 @@ object Streams {
         val waiting = java.util.concurrent.ConcurrentHashMap.newKeySet<String>().also { waitingOn[key(t)] = it }
         // Zaycev — MP3 до 320 kbps, отвечает быстро: первым по старшинству.
         val yandexName = Service.YANDEX.title
-        waiting += yandexName
-        val yandex = if (light) null else searchPool.submit<StreamInfo?> {
-            try {
-                Ytdlp.withBackground(bg) {
-                    val exact = t.url?.takeIf { Service.of(it) == Service.YANDEX && "/album/" in it && "/track/" in it }
-                    val pages = exact?.let { listOf(it) } ?: WebSearch.rankCandidates(t, WebSearch.yandex(t.query))
-                        .map { it.url }.filter { "/album/" in it }.distinct().take(2)
-                    log += "$yandexName: подходящих страниц ${pages.size}"
-                    if (pages.isNotEmpty()) App.awaitReady()
-                    pages.firstNotNullOfOrNull { page ->
-                        Downloader.streamOf(page, yandexName, t.title, problems)?.also { picked[yandexName] = page }
+        fun startYandex() = if (light) null else run {
+            waiting += yandexName
+            searchPool.submit<StreamInfo?> {
+                try {
+                    Ytdlp.withBackground(bg) {
+                        val exact = t.url?.takeIf { Service.of(it) == Service.YANDEX && "/album/" in it && "/track/" in it }
+                        val pages = exact?.let { listOf(it) } ?: WebSearch.rankCandidates(t, WebSearch.yandex(t.query))
+                            .map { it.url }.filter { "/album/" in it }.distinct().take(2)
+                        log += "$yandexName: подходящих страниц ${pages.size}"
+                        if (pages.isNotEmpty()) App.awaitReady()
+                        pages.firstNotNullOfOrNull { page ->
+                            Downloader.streamOf(page, yandexName, t.title, problems)?.also { picked[yandexName] = page }
+                        }
                     }
+                } catch (e: Exception) {
+                    log += yandexName + why(e)
+                    null
+                } finally {
+                    waiting -= yandexName
                 }
-            } catch (e: Exception) {
-                log += yandexName + why(e)
-                null
-            } finally {
-                waiting -= yandexName
             }
         }
         val zaycev = searchPool.submit<StreamInfo?> {
@@ -618,7 +632,7 @@ object Streams {
                 sounds(name, ok)
             } finally { waiting -= name } }
         }
-        val viaYtdlp = (if (light) emptyList() else sources).map { (site, query) ->
+        fun startViaYtdlp() = (if (light) emptyList() else sources).map { (site, query) ->
             val name = if (query.startsWith("scsearch10")) "$site по названию" else "$site (yt-dlp)"
             waiting += name
             searchPool.submit<StreamInfo?> { try { Ytdlp.withBackground(bg) {
@@ -633,7 +647,7 @@ object Streams {
                 sounds(name, ok)
             } } finally { waiting -= name } }
         }
-        val spare = if (light) emptyList() else WebSearch.playbackSources.map { lookup ->
+        fun startSpare() = if (light) emptyList() else WebSearch.playbackSources.map { lookup ->
             searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                 val matches = WebSearch.rankCandidates(t, lookup(t.query))
                 matches.take(2).firstNotNullOfOrNull { w ->
@@ -642,10 +656,13 @@ object Streams {
                 }
             } }
         }
-        val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
-        val jobs = listOfNotNull(remembered, zaycev, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
         val started = System.currentTimeMillis()
         if (collect != null) {
+            val yandex = startYandex()
+            val viaYtdlp = startViaYtdlp()
+            val spare = startSpare()
+            val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
+            val jobs = listOfNotNull(remembered, zaycev, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
             // Режим «показать все источники»: отдаём каждый найденный вариант сразу, как только площадка ответила.
             val told = HashSet<Any>()
             while (true) {
@@ -661,14 +678,30 @@ object Streams {
             jobs.forEach { if (!it.isDone) it.cancel(true) }
             throw UserError("источники собраны")
         }
+        // Даём быстрым источникам без Python (Zaycev, ВК, Telegram, NewPipe) фору 1.2 с,
+        // чтобы не нагружать сеть и VPN тяжёлым yt-dlp, если песня нашлась сразу.
+        var slowStarted = light
+        var yandex: java.util.concurrent.Future<StreamInfo?>? = null
+        var viaYtdlp: List<java.util.concurrent.Future<StreamInfo?>> = emptyList()
+        var spare: List<java.util.concurrent.Future<StreamInfo?>> = emptyList()
+        var jobs: List<java.util.concurrent.Future<StreamInfo?>> =
+            listOfNotNull(remembered, zaycev, onPhone.getOrNull(0), telegram, vk, ytm, onPhone.getOrNull(1))
         while (true) {
+            if (!slowStarted && (System.currentTimeMillis() - started >= 1200 || jobs.all { it.isDone })) {
+                slowStarted = true
+                yandex = startYandex()
+                viaYtdlp = startViaYtdlp()
+                spare = startSpare()
+                val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
+                jobs = listOfNotNull(remembered, zaycev, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
+            }
             for (f in jobs) {
                 if (!f.isDone) continue
                 val stream = runCatching { f.get() }.getOrNull() ?: continue
                 jobs.forEach { if (!it.isDone) it.cancel(true) }
                 return stream
             }
-            if (jobs.all { it.isDone }) break
+            if (slowStarted && jobs.all { it.isDone }) break
             // Основные площадки отвечают дольше 25 с — не ждём их, идём к запасным.
             if (System.currentTimeMillis() - started > 25_000) { log += "Ждал площадки 25 с — не дождался"; break }
             Thread.sleep(40)

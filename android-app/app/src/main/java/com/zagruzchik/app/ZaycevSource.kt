@@ -41,17 +41,6 @@ object ZaycevSource {
     private inline fun <T> twice(block: () -> T): T =
         try { block() } catch (e: java.net.SocketTimeoutException) { block() } catch (e: java.net.SocketException) { block() }
 
-    private fun post(url: String, body: String): String {
-        val c = URL(url).openConnection() as HttpURLConnection
-        c.requestMethod = "POST"; c.doOutput = true
-        c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
-        c.setRequestProperty("Content-Type", "application/json")
-        c.setRequestProperty("Referer", "$BASE/")
-        c.connectTimeout = 5000; c.readTimeout = 8000
-        try {
-            c.outputStream.use { it.write(body.toByteArray()) }
-            if (c.responseCode !in 200..299) throw Http.HttpError(c.responseCode, url)
-            return c.inputStream.bufferedReader().use { it.readText() }
-        } finally { c.disconnect() }
-    }
+    private fun post(url: String, body: String): String =
+        Http.post(url, body, ua = Http.DESKTOP_UA, timeoutMs = 8000, headers = mapOf("Referer" to "$BASE/"))
 }

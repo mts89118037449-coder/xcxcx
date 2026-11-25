@@ -1,32 +1,82 @@
 package com.zagruzchik.app
 
+import okhttp3.ConnectionPool
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 
-/** Простые HTTP-запросы для открытых API музыкальных сервисов. */
+/** Простые HTTP-запросы для открытых API музыкальных сервисов (с общим Keep-Alive / HTTP/2 пулом). */
 object Http {
     const val MOBILE_UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36"
     const val DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 
     class HttpError(val code: Int, url: String) : Exception("HTTP $code: $url")
 
-    fun get(url: String, ua: String = MOBILE_UA, timeoutMs: Int = 20_000): String {
-        val conn = URL(url).openConnection() as HttpURLConnection
-        conn.setRequestProperty("User-Agent", ua)
-        conn.setRequestProperty("Accept-Language", "ru,en;q=0.8")
-        conn.connectTimeout = minOf(15_000, timeoutMs)
-        conn.readTimeout = timeoutMs
-        try {
-            val code = conn.responseCode
-            if (code !in 200..299) {
-                runCatching { conn.errorStream?.close() }
-                throw HttpError(code, url)
-            }
-            return conn.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            conn.disconnect()
+    private val client = OkHttpClient.Builder()
+        .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .build()
+
+    private val noRedirectClient = client.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    private fun clientFor(timeoutMs: Int): OkHttpClient =
+        if (timeoutMs == 20_000) client
+        else client.newBuilder()
+            .connectTimeout(minOf(15_000, timeoutMs).toLong(), TimeUnit.MILLISECONDS)
+            .readTimeout(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
+            .build()
+
+    fun get(url: String, ua: String = MOBILE_UA, timeoutMs: Int = 20_000, headers: Map<String, String> = emptyMap()): String {
+        val req = Request.Builder().url(url)
+            .header("User-Agent", ua)
+            .header("Accept-Language", "ru,en;q=0.8")
+            .apply { headers.forEach { (k, v) -> header(k, v) } }
+            .build()
+        clientFor(timeoutMs).newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw HttpError(resp.code, url)
+            return resp.body?.string().orEmpty()
+        }
+    }
+
+    fun bytes(url: String, ua: String = MOBILE_UA, timeoutMs: Int = 15_000): ByteArray {
+        val req = Request.Builder().url(url)
+            .header("User-Agent", ua)
+            .build()
+        clientFor(timeoutMs).newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw HttpError(resp.code, url)
+            return resp.body?.bytes() ?: ByteArray(0)
+        }
+    }
+
+    fun post(
+        url: String,
+        body: String,
+        contentType: String = "application/json",
+        ua: String = DESKTOP_UA,
+        timeoutMs: Int = 15_000,
+        headers: Map<String, String> = emptyMap(),
+    ): String {
+        val req = Request.Builder().url(url)
+            .post(body.toRequestBody(contentType.toMediaType()))
+            .header("User-Agent", ua)
+            .header("Accept-Language", "ru,en;q=0.8")
+            .apply { headers.forEach { (k, v) -> header(k, v) } }
+            .build()
+        clientFor(timeoutMs).newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw HttpError(resp.code, url)
+            return resp.body?.string().orEmpty()
         }
     }
 
@@ -97,20 +147,14 @@ object Http {
     fun expand(url: String, done: (String) -> Boolean): String {
         var current = url
         repeat(6) {
-            val conn = URL(current).openConnection() as HttpURLConnection
-            conn.instanceFollowRedirects = false
-            conn.setRequestProperty("User-Agent", DESKTOP_UA)
-            conn.connectTimeout = 15_000
-            conn.readTimeout = 15_000
-            try {
-                val location = conn.getHeaderField("Location")
-                    ?: return runCatching { conn.inputStream.bufferedReader().use { it.readText() } }.getOrDefault(current)
+            val req = Request.Builder().url(current).header("User-Agent", DESKTOP_UA).build()
+            noRedirectClient.newCall(req).execute().use { resp ->
+                val location = resp.header("Location")
+                    ?: return runCatching { resp.body?.string().orEmpty() }.getOrDefault(current)
                 if (done(location)) return location
                 val next = runCatching { URL(URL(current), location).toString() }.getOrNull() ?: return location
                 if (!next.startsWith("http")) return location
                 current = next
-            } finally {
-                conn.disconnect()
             }
         }
         return current
