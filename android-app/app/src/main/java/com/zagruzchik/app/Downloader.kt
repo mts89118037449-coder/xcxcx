@@ -78,6 +78,7 @@ object Downloader {
 
     private val DESTINATION = Regex("""Destination: (.+)$""")
     private val SPEED = Regex("""of\s+~?\s*([\d.]+\w+)\s+at\s+([\d.]+\w+/s)(?:\s+ETA\s+(\S+))?""")
+    private val YT_ID = Regex("""[?&]v=([\w-]{11})""")
 
     fun download(
         ctx: Context, url: String, format: Format, jobId: String, token: CancelToken, ui: DownloadListener, hint: String? = null,
@@ -130,7 +131,7 @@ object Downloader {
         App.awaitReady()
         try {
             return YtdlpDaemon.search("ytsearch1:$query", "YouTube").firstNotNullOfOrNull { c ->
-                Regex("[?&]v=([\w-]{11})").find(c.url)?.groupValues?.get(1)
+                YT_ID.find(c.url)?.groupValues?.get(1)
             }
         } catch (_: YtdlpDaemon.Unavailable) {
         } catch (_: UserError) {
