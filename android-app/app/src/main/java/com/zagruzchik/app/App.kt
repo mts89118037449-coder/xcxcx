@@ -39,6 +39,7 @@ class App : Application() {
             Tags.init(this)
             News.checkOnLaunch() // новинки любимых исполнителей — проверяем при каждом запуске
             runCatching { Telegram.start(this) } // если аккаунт Telegram уже подключён — поднимаем его (нативная библиотека)
+            runCatching { VkSource.init(this) } // сессия ВК — просто настройки, поднимается мгновенно
             Shortcuts.publish(this)
             Tags.enrichFavorites() // жанры любимых — фоном, раз за запуск, только недостающие
             AuraDay.prepare(this)  // «Аура дня» — заранее, чтобы нажатие играло сразу

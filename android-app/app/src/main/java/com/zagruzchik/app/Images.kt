@@ -46,11 +46,34 @@ object Images {
         }
     }
 
-    private fun decode(url: String, maxPx: Int): Bitmap? {
-        val bytes = (URL(url).openConnection() as HttpURLConnection).run {
-            connectTimeout = 10_000; readTimeout = 15_000
-            try { inputStream.use { it.readBytes() } } finally { disconnect() }
+    // Дисковый кэш картинок: повторный поиск и списки показывают обложки сразу, без сети.
+    // Лежит в cacheDir — система сама чистит при нехватке места; сами держим до ~60 МБ.
+    private val diskDir by lazy { java.io.File(App.instance.cacheDir, "img").apply { mkdirs() } }
+
+    private fun diskFile(url: String): java.io.File {
+        val h = java.security.MessageDigest.getInstance("SHA-1").digest(url.toByteArray()).joinToString("") { "%02x".format(it) }
+        return java.io.File(diskDir, h)
+    }
+
+    private fun pruneDisk() {
+        val files = diskDir.listFiles() ?: return
+        var total = files.sumOf { it.length() }
+        if (total < 60L * 1024 * 1024) return
+        for (f in files.sortedBy { it.lastModified() }) {
+            if (total <= 30L * 1024 * 1024) break
+            total -= f.length(); f.delete()
         }
+    }
+
+    private fun fetch(url: String): ByteArray = (URL(url).openConnection() as HttpURLConnection).run {
+        connectTimeout = 10_000; readTimeout = 15_000
+        try { inputStream.use { it.readBytes() } } finally { disconnect() }
+    }
+
+    private fun decode(url: String, maxPx: Int): Bitmap? {
+        val f = diskFile(url)
+        val bytes = runCatching { f.readBytes() }.getOrNull()
+            ?: fetch(url).also { b -> runCatching { f.writeBytes(b); f.setLastModified(System.currentTimeMillis()); pruneDisk() } }
         if (maxPx <= 0) return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)

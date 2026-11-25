@@ -10,10 +10,10 @@ android {
     defaultConfig {
         applicationId = "com.zagruzchik.app"
         minSdk = 24 // Android 7.0+
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") } // v7a — для Android TV на ARM32 (см. 9.49)
         targetSdk = 35
-        versionCode = 200
-        versionName = "9.54"
+        versionCode = 205
+        versionName = "9.59"
     }
 
     // Один постоянный ключ, чтобы новые версии ставились поверх старых без удаления.
