@@ -1274,6 +1274,11 @@ class MainActivity : AppCompatActivity() {
             Telegram.ready -> "Подключён" + (Telegram.me.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
             else -> "Нужно закончить вход"
         }, "Свой аккаунт Telegram как источник: встроенный поиск музыки, часто 320 kbps") { TelegramActivity.open(this) }
+        settingRow(appearance, R.drawable.ic_play_arrow, "Музыка из ВК", when {
+            !VkSource.loggedIn -> "Не подключён"
+            VkSource.available -> "Подключён"
+            else -> "Пауза — ВК просил подождать"
+        }, "Свой аккаунт ВКонтакте как источник: почти вся русская музыка, вход через встроенный браузер") { VkLoginActivity.open(this) }
         settingRow(appearance, R.drawable.ic_upload_file, "Скопировать журнал", "Что искали и почему не включилось",
             "Ответы площадок и ошибки плеера — в буфер обмена; вставьте в чат, если песня не заиграла") { AppLog.copy(this) }
         val sm = Settings.startMode(this)
