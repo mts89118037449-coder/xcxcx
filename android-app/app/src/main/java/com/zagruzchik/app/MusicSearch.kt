@@ -55,6 +55,8 @@ data class StreamInfo(val url: String, val pageUrl: String, val source: String, 
 object Streams {
     private const val TTL_MS = 50 * 60 * 1000L // ссылки на поток живут около часа
     private val done = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, StreamInfo>>()
+    /** Платные (DRM) записи SoundCloud на этот сеанс: одна и та же запись пробовалась 3 раза подряд по 2–5 с (журнал 24.11) — больше не тратим. */
+    private val drmSeen = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pending = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.Future<StreamInfo>>()
     // Подготовка заранее: 3 одновременно, свежие экраны — первыми (очередь «последним пришёл — первым готовим»).
     private val pool = java.util.concurrent.ThreadPoolExecutor(2, 2, 30, java.util.concurrent.TimeUnit.SECONDS,
@@ -123,12 +125,15 @@ object Streams {
         tracks.take(n).reversed().forEach { t -> prefetch(t)?.let { batch += key(t) to it } }
     }
 
-    /** Готовый поток (ждёт, если он уже готовится). Вызывать не из главного потока. */
-    fun resolve(t: Track): StreamInfo {
+    /** Готовый поток (ждёт, если он уже готовится). Вызывать не из главного потока.
+     * [force] — человек нажал сам: недавняя неудача не в счёт, ищем заново (площадки флапают —
+     * журнал 24.11: Zaycev дал 320 kbps через 5 секунд после таймаута, а антикэш не пускал). */
+    fun resolve(t: Track, force: Boolean = false): StreamInfo {
         val k = key(t)
         cached(k)?.let { return it }
-        // Недавно искали и не нашли (платная, удалена) — не ищем те же полминуты заново.
-        failed[k]?.let { (time, e) -> if (System.currentTimeMillis() - time < FAIL_TTL_MS) throw e else failed.remove(k) }
+        // Недавно искали и не нашли (платная, удалена) — не ищем те же пару минут заново (авто-переходы в очереди).
+        if (force) failed.remove(k)
+        else failed[k]?.let { (time, e) -> if (System.currentTimeMillis() - time < FAIL_TTL_MS) throw e else failed.remove(k) }
         pending[k]?.let { f ->
             // Ещё в очереди подготовки — не ждём её, ищем сами сразу; уже ищется — ждём (так быстрее).
             if (f.cancel(false)) pending.remove(k, f)
@@ -172,7 +177,7 @@ object Streams {
     private val ytBreaker = Breaker()
     private val scPhoneBreaker = Breaker()
 
-    private const val FAIL_TTL_MS = 20 * 60 * 1000L
+    private const val FAIL_TTL_MS = 3 * 60 * 1000L // авто-переходы не долбят одну и ту же недоступную песню, но 3 минуты — не 20
     private val failed = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, UserError>>()
     /**
      * Только Zaycev: быстро (доли секунды) и почти без трафика — этим путём начала песен готовятся на любой сети.
@@ -310,6 +315,11 @@ object Streams {
             val u = Telegram.streamUrl(id)
             return StreamInfo(u, u, where.substringAfter('|', "Telegram"), t.cover, t.title)
         }
+        if (where.startsWith("vk:")) {
+            // Ссылка ВК недолговечна — каждый раз берём свежую (как сайт при нажатии «играть»).
+            if (!VkSource.available) throw UserError("ВК не подключён")
+            return VkSource.streamOf(t, where) ?: throw UserError("ВК не отдал ссылку")
+        }
         if (!isYoutube(where) && Service.of(where) != Service.SOUNDCLOUD) App.awaitReady() // YouTube и SoundCloud — средствами телефона, движок не ждём
         return Downloader.streamOf(where, Describe.site(where), t.title, wantTotal = wantTotal)
     }
@@ -445,6 +455,7 @@ object Streams {
     private fun nameOf(where: String) = when {
         where.startsWith("zaycev:") -> "Zaycev · MP3 ${where.split(':').getOrNull(2).orEmpty()}".trim()
         where.startsWith("tg:") -> where.substringAfter('|', "Telegram")
+        where.startsWith("vk:") -> "VK Музыка · MP3"
         else -> Describe.site(where.removePrefix("direct:"))
     }
 
@@ -525,6 +536,23 @@ object Streams {
             val u = Telegram.streamUrl(best.remoteId)
             StreamInfo(u, u, best.label, t.cover, best.title)
         }
+        // ВКонтакте (свой аккаунт, веб-сессия как у сайта): почти вся русская музыка. Только по нажатию —
+        // в фоновой подготовке не используем: ВК ограничивает частые запросы.
+        val vk = searchPool.submit<StreamInfo?> {
+            if (bg || !VkSource.available) return@submit null
+            val t0 = System.currentTimeMillis()
+            val raw = try { VkSource.search(t.query) } catch (e: Exception) { log += "ВК: ${(e as? UserError)?.message ?: e.message}"; return@submit null }
+            val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
+            log += "ВК [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" +
+                raw.take(5).joinToString("") { c -> "\n  ${if (c in ok) "✓" else "✗"} ${c.title.take(60)} | ${c.artist.take(30)} | ${c.durationSec} с" } +
+                "\n  за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
+            if (ok.isEmpty()) return@submit null
+            // Ссылки ВК недолговечны: для лучших вариантов берём свежие одним запросом, первый играющий — в дело.
+            val best = runCatching { VkSource.streamOf(t, ok.take(5)) }.getOrNull() ?: return@submit null
+            foundOn += "ВК"
+            picked["VK"] = best.first
+            best.second
+        }
         // YouTube Music, вкладка «Песни»: с исполнителем и длительностью — находит и официальные авто-треки («Исполнитель – Topic»),
         // которых нет в обычном поиске YouTube. Ищем на самом телефоне, без Python; не вышло — через открытые зеркала.
         val ytm = searchPool.submit<StreamInfo?> {
@@ -552,19 +580,24 @@ object Streams {
             raw.take(5).joinToString("") { c ->
             "\n  ${if (c in ok) "✓" else "✗ " + Match.reason(t, c.title, c.author, c.duration)} · ${c.title.take(50)} | ${c.author.take(26)} | ${c.duration} с"
         }
-        fun sounds(name: String, candidates: List<Downloader.Candidate>): StreamInfo? =
+        fun sounds(name: String, candidates: List<Downloader.Candidate>): StreamInfo? {
             // Ссылки берём по две одновременно (лучший вариант может оказаться платным — DRM), до 4 вариантов.
-            candidates.take(4).chunked(2).firstNotNullOfOrNull { pair ->
+            val fresh = candidates.filter { it.url !in drmSeen }
+            if (fresh.size < candidates.size) log += "$name: платных (DRM) знаем заранее — ${candidates.size - fresh.size} пропущено, не тратя время"
+            return fresh.take(4).chunked(2).firstNotNullOfOrNull { pair ->
                 pair.map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                     val t0 = System.currentTimeMillis()
                     if (Service.of(c.url).let { it != Service.YOUTUBE && it != Service.YOUTUBE_MUSIC && it != Service.SOUNDCLOUD }) App.awaitReady() // YouTube и SoundCloud берёт и телефон — движок не ждём
                     val errs = java.util.concurrent.ConcurrentLinkedQueue<String>()
                     Downloader.streamOf(c.url, name.substringBefore(" ("), c.title, errs).also {
                         problems += errs
+                        // Платная запись повторной попыткой не оживает — запоминаем на сеанс.
+                        if (it == null && errs.any { e -> e.contains("DRM") || e.contains("платн", ignoreCase = true) }) drmSeen += c.url
                         log += "$name звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет — " + (errs.joinToString("; ").ifBlank { "без объяснения" }).take(400)} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
                     }
                 } } }.firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
             }
+        }
         val onPhone = (if (light) emptyList() else sources.take(2)).map { (site, query) ->
             val name = "$site (на телефоне)"
             waiting += name
@@ -607,7 +640,7 @@ object Streams {
             } }
         }
         val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
-        val jobs = listOfNotNull(remembered) + listOf(zaycev, yandex) + soundcloud + listOf(telegram, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
+        val jobs = listOfNotNull(remembered) + listOf(zaycev, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
         val started = System.currentTimeMillis()
         if (collect != null) {
             // Режим «показать все источники»: отдаём каждый найденный вариант сразу, как только площадка ответила.
@@ -649,7 +682,7 @@ object Streams {
             else if (problems.isNotEmpty()) append("Нашёл, но не играет: ${problems.first()}.")
             else append("Не нашёл «${t.label}».")
             if (missing.isNotEmpty()) append(" На ${missing.joinToString(" и ")} её нет.")
-            append(" Искал: Zaycev," + (if (Telegram.ready) " Telegram," else "") + " SoundCloud, YouTube, YouTube Music, Яндекс, Rutube, Internet Archive, Dailymotion, Audius.")
+            append(" Искал: Zaycev," + (if (Telegram.ready) " Telegram," else "") + (if (VkSource.loggedIn) " ВК," else "") + " SoundCloud, YouTube, YouTube Music, Яндекс, Bandcamp, Rutube, Internet Archive, Dailymotion, Audius.")
             append(" Нажмите на это сообщение — можно указать ссылку на песню вручную.")
         })
     }
@@ -716,7 +749,7 @@ object Warm {
     private fun allowed(ctx: android.content.Context): Boolean = when (Settings.warm(ctx)) {
         Settings.Warm.OFF -> false
         Settings.Warm.ALWAYS -> true
-        Settings.Warm.WIFI -> runCatching {
+        Settings.W -> runCatching {
             !ctx.getSystemService(android.net.ConnectivityManager::class.java).isActiveNetworkMetered
         }.getOrDefault(false)
     }
