@@ -2,8 +2,6 @@ package com.zagruzchik.app
 
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * Zaycev.net — открытый бесплатный плеер без входа: MP3 до 320 kbps.
@@ -17,7 +15,12 @@ object ZaycevSource {
 
     /** Результаты поиска (только те, что можно слушать), в порядке выдачи. Ответ — около килобайта. */
     fun search(query: String): List<Found> = twice {
-        val o = JSONObject(Http.get("$BASE/api/external/pages/search/tracks?q=${Http.enc(query)}&page=1&limit=10", Http.DESKTOP_UA, 8000))
+        val raw = Http.get("$BASE/api/external/pages/search/tracks?q=${Http.enc(query)}&page=1&limit=10", Http.DESKTOP_UA, 8000, headers = mapOf("Referer" to "$BASE/"))
+        return parseSearchJson(raw)
+    }
+
+    internal fun parseSearchJson(raw: String): List<Found> {
+        val o = JSONObject(raw)
         val ids = o.optJSONArray("trackIds") ?: return emptyList()
         val info = o.optJSONObject("tracksInfo") ?: return emptyList()
         return (0 until ids.length()).mapNotNull { i ->
@@ -34,7 +37,7 @@ object ZaycevSource {
     fun streamUrl(id: Long): String? = twice {
         val meta = post("$BASE/api/external/track/filezmeta", JSONObject().put("trackIds", JSONArray().put(id)).put("subscription", false).toString())
         val hash = JSONObject(meta).optJSONArray("tracks")?.optJSONObject(0)?.optString("streaming")?.takeIf { it.isNotBlank() && it != "false" && it != "null" } ?: return null
-        return JSONObject(Http.get("$BASE/api/external/track/play/$hash", Http.DESKTOP_UA, 8000)).optString("url").takeIf { it.startsWith("http") }
+        return JSONObject(Http.get("$BASE/api/external/track/play/$hash", Http.DESKTOP_UA, 8000, headers = mapOf("Referer" to "$BASE/"))).optString("url").takeIf { it.startsWith("http") }
     }
 
     /** Сеть флапается (журнал 24.11: «Read timed out» за 3 с, а через 5 с — ответ 320 kbps) — даём вторую попытку. */

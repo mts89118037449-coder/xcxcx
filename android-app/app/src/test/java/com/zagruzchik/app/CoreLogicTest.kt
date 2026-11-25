@@ -79,4 +79,33 @@ class CoreLogicTest {
         b.fail()
         assertTrue(b.open)
     }
+
+    @Test
+    fun zaycevParseAndWebRelevance() {
+        val json = """
+            {
+              "trackIds": [101, 102],
+              "tracksInfo": {
+                "101": {"playbackEnabled": true, "track": "Ждать её", "artistName": "Playingtheangel", "duration": "03:05", "bitrate": 320, "imageJpg": "//cdn.zaycev.net/101.jpg", "explicit": true},
+                "102": {"playbackEnabled": false, "track": "Blocked", "artistName": "X", "duration": "02:00", "bitrate": 128}
+              }
+            }
+        """.trimIndent()
+        val z = ZaycevSource.parseSearchJson(json)
+        assertEquals(1, z.size)
+        assertEquals(101L, z[0].id)
+        assertEquals(185, z[0].durationSec)
+        assertEquals(320, z[0].bitrate)
+        assertEquals("https://cdn.zaycev.net/101.jpg", z[0].cover)
+        assertTrue(z[0].explicit)
+
+        // Translit & lookalike matching
+        val src = Track("Метеоритный дождь", "Скриптонит", 200)
+        assertTrue((Match.score(src, "Meteoritnyj dozhd", "Skriptonit", 200) ?: 0) > 0)
+        assertNull(Match.score(src, "Метеоритный дождь", "Скриптонит", 30))
+
+        val orig = WebResult("https://a/1.mp3", "Kahlil Gibran", "STRFKR", 220, "Hearthis", views = 10000)
+        val remix = WebResult("https://a/2.mp3", "Kahlil Gibran (Remix)", "STRFKR", 220, "Hearthis", views = 100)
+        assertTrue(WebSearch.relevance("STRFKR Kahlil Gibran", orig) > WebSearch.relevance("STRFKR Kahlil Gibran", remix))
+    }
 }
