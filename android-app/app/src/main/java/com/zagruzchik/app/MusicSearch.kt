@@ -749,7 +749,7 @@ object Warm {
     private fun allowed(ctx: android.content.Context): Boolean = when (Settings.warm(ctx)) {
         Settings.Warm.OFF -> false
         Settings.Warm.ALWAYS -> true
-        Settings.W -> runCatching {
+        Settings.Warm.WIFI -> runCatching {
             !ctx.getSystemService(android.net.ConnectivityManager::class.java).isActiveNetworkMetered
         }.getOrDefault(false)
     }
