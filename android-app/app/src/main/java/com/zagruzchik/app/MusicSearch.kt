@@ -60,10 +60,8 @@ object Streams {
     private val pending = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.Future<StreamInfo>>()
     // Подготовка заранее: 3 одновременно, свежие экраны — первыми (очередь «последним пришёл — первым готовим»).
     private val pool = java.util.concurrent.ThreadPoolExecutor(2, 2, 30, java.util.concurrent.TimeUnit.SECONDS,
-        java.util.concurrent.LinkedBlockingDeque<Runnable>().let { q ->
-            object : java.util.concurrent.LinkedBlockingDeque<Runnable>() {
-                override fun offer(e: Runnable) = offerFirst(e) // LIFO
-            }
+        object : java.util.concurrent.LinkedBlockingDeque<Runnable>() {
+            override fun offer(e: Runnable) = offerFirst(e) // LIFO
         })
     private val searchPool = java.util.concurrent.Executors.newCachedThreadPool()
     /** Подготовка, начатая списком (экраном): при новом экране ещё не начатые — отменяем. */
@@ -481,7 +479,7 @@ object Streams {
         // Zaycev — MP3 до 320 kbps, отвечает быстро: первым по старшинству.
         val yandexName = Service.YANDEX.title
         waiting += yandexName
-        val yandex = searchPool.submit<StreamInfo?> {
+        val yandex = if (light) null else searchPool.submit<StreamInfo?> {
             try {
                 Ytdlp.withBackground(bg) {
                     val exact = t.url?.takeIf { Service.of(it) == Service.YANDEX && "/album/" in it && "/track/" in it }
@@ -585,7 +583,7 @@ object Streams {
             val fresh = candidates.filter { it.url !in drmSeen }
             if (fresh.size < candidates.size) log += "$name: платных (DRM) знаем заранее — ${candidates.size - fresh.size} пропущено, не тратя время"
             return fresh.take(4).chunked(2).firstNotNullOfOrNull { pair ->
-                pair.map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
+                val tasks = pair.map { c -> searchPool.submit<StreamInfo?> { Ytdlp.withBackground(bg) {
                     val t0 = System.currentTimeMillis()
                     if (Service.of(c.url).let { it != Service.YOUTUBE && it != Service.YOUTUBE_MUSIC && it != Service.SOUNDCLOUD }) App.awaitReady() // YouTube и SoundCloud берёт и телефон — движок не ждём
                     val errs = java.util.concurrent.ConcurrentLinkedQueue<String>()
@@ -595,7 +593,12 @@ object Streams {
                         if (it == null && errs.any { e -> e.contains("DRM") || e.contains("платн", ignoreCase = true) }) drmSeen += c.url
                         log += "$name звук «${c.title.take(40)}»: ${if (it != null) "готов" else "не играет — " + (errs.joinToString("; ").ifBlank { "без объяснения" }).take(400)} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с"
                     }
-                } } }.firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
+                } } }
+                try {
+                    tasks.firstNotNullOfOrNull { runCatching { it.get() }.getOrNull() }
+                } finally {
+                    tasks.forEach { if (!it.isDone) it.cancel(true) }
+                }
             }
         }
         val onPhone = (if (light) emptyList() else sources.take(2)).map { (site, query) ->
@@ -640,7 +643,7 @@ object Streams {
             } }
         }
         val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
-        val jobs = listOfNotNull(remembered) + listOf(zaycev, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
+        val jobs = listOfNotNull(remembered, zaycev, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
         val started = System.currentTimeMillis()
         if (collect != null) {
             // Режим «показать все источники»: отдаём каждый найденный вариант сразу, как только площадка ответила.
@@ -655,6 +658,7 @@ object Streams {
                 if (jobs.all { it.isDone } || System.currentTimeMillis() - started > 25_000) break
                 Thread.sleep(50)
             }
+            jobs.forEach { if (!it.isDone) it.cancel(true) }
             throw UserError("источники собраны")
         }
         while (true) {

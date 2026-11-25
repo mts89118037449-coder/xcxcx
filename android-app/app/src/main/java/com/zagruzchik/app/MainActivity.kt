@@ -163,6 +163,7 @@ class MainActivity : AppCompatActivity() {
             c.addListener(playerListener)
             updateMini()
         }
+        mini.removeCallbacks(miniTicker)
         mini.post(miniTicker)
         refreshSites()
     }

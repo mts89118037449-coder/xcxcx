@@ -49,12 +49,17 @@ object NewPipeSource {
         // Телефон и зеркало — одновременно; берём того, кто первым ответил непустым списком (раньше шли по очереди — до 16 с).
         val local = pool.submit<List<Found>> { onDevice(query) }
         val mirror = pool.submit<List<Found>> { piped(query) }
-        val deadline = System.currentTimeMillis() + 6000
-        while (System.currentTimeMillis() < deadline) {
-            if (local.isDone) runCatching { local.get() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { via("на телефоне"); return it }
-            if (mirror.isDone) runCatching { mirror.get() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { via("зеркало ${lastMirror.orEmpty()}"); return it }
-            if (local.isDone && mirror.isDone) break
-            Thread.sleep(30)
+        try {
+            val deadline = System.currentTimeMillis() + 6000
+            while (System.currentTimeMillis() < deadline) {
+                if (local.isDone) runCatching { local.get() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { via("на телефоне"); return it }
+                if (mirror.isDone) runCatching { mirror.get() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { via("зеркало ${lastMirror.orEmpty()}"); return it }
+                if (local.isDone && mirror.isDone) break
+                Thread.sleep(30)
+            }
+        } finally {
+            if (!local.isDone) local.cancel(true)
+            if (!mirror.isDone) mirror.cancel(true)
         }
         fun err(f: java.util.concurrent.Future<List<Found>>, name: String) = if (!f.isDone) "$name: не ответил за 6 с" else
             runCatching { f.get() }.exceptionOrNull()?.let { e -> (e.cause ?: e).let { "$name: ${it.javaClass.simpleName} ${it.message.orEmpty().take(80)}" } } ?: "$name: пусто"
