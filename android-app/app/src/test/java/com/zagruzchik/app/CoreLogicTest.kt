@@ -140,4 +140,54 @@ class CoreLogicTest {
             pool.shutdownNow()
         }
     }
+
+    @Test
+    fun vkKateOAuthAndApiParsing() {
+        val parsed = VkSource.parseOAuthRedirect("https://oauth.vk.com/blank.html#access_token=vk1.a.test_tok&expires_in=0&user_id=12345678")
+        assertEquals("vk1.a.test_tok", parsed?.first)
+        assertEquals(12345678L, parsed?.second)
+        assertNull(VkSource.parseOAuthRedirect("https://oauth.vk.com/blank.html#error=access_denied"))
+
+        val okJson = """
+            {
+              "response": {
+                "count": 1,
+                "items": [
+                  {
+                    "id": 999,
+                    "owner_id": 12345,
+                    "title": "Ждать её",
+                    "artist": "Playingtheangel",
+                    "duration": 185,
+                    "url": "https://cs9.vkuseraudio.net/p1/test.mp3",
+                    "access_key": "abc",
+                    "album": {"thumb": {"photo_600": "https://sun9.userapi.com/600.jpg"}}
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+        val list = VkSource.parseApiSearch(okJson)
+        assertEquals(1, list.size)
+        assertEquals("vkapi:12345_999", list[0].key)
+        assertEquals("https://cs9.vkuseraudio.net/p1/test.mp3", list[0].directUrl)
+        assertEquals("https://sun9.userapi.com/600.jpg", list[0].cover)
+
+        var err14 = false
+        try {
+            VkSource.parseApiSearch("""{"error":{"error_code":14,"error_msg":"Captcha needed"}}""")
+        } catch (e: UserError) {
+            err14 = true
+            assertTrue(VkSource.pausedUntil > System.currentTimeMillis())
+        }
+        assertTrue(err14)
+
+        var err5 = false
+        try {
+            VkSource.parseApiSearch("""{"error":{"error_code":5,"error_msg":"User authorization failed"}}""")
+        } catch (e: UserError) {
+            err5 = true
+        }
+        assertTrue(err5)
+    }
 }

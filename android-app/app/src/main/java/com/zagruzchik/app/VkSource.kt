@@ -14,12 +14,15 @@ import java.net.URL
  */
 object VkSource {
     private const val UA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+    private const val KATE_UA = "KateMobileAndroid/109.1 lite-550 (Android 13; SDK 33; x86_64; Google Pixel 5; ru)"
+    private const val API_VER = "5.131"
     private val HOSTS = listOf("vk.ru", "m.vk.ru", "vk.com", "m.vk.com")
 
     private lateinit var app: Context
     private val prefs by lazy { app.getSharedPreferences("vk", Context.MODE_PRIVATE) }
 
     @Volatile var userId: Long = 0; private set
+    @Volatile private var accessToken: String = ""
     /** ВК показал капчу или просил подождать — до этого времени к нему не ходим. */
     @Volatile var pausedUntil = 0L; private set
 
@@ -27,17 +30,32 @@ object VkSource {
         if (::app.isInitialized) return
         app = ctx.applicationContext
         userId = prefs.getLong("user_id", 0)
+        accessToken = prefs.getString("token", null).orEmpty()
     }
 
-    private fun cookie(host: String): String = prefs.getString("cookies_$host", null).orEmpty()
+    private fun cookie(host: String): String = if (::app.isInitialized) prefs.getString("cookies_$host", null).orEmpty() else ""
 
     /** User-Agent сессии: ВК привязывает вход к браузеру — запросы тем же UA, что у встроенного браузера (журнал 24.11: «Сессия истекла»). */
-    private fun ua(): String = prefs.getString("ua", null) ?: UA
+    private fun ua(): String = if (::app.isInitialized) prefs.getString("ua", null) ?: UA else UA
     fun saveUa(value: String) { prefs.edit().putString("ua", value).apply() }
 
-    /** Есть живая сессия (проверяем только наличие куки входа; сдохшую заметим по ответу ВК). */
-    val loggedIn: Boolean get() = HOSTS.any { cookie(it).contains("remixsid") }
+    val hasToken: Boolean get() = accessToken.isNotBlank()
+    /** Есть живая сессия (Kate token или куки входа; сдохшую заметим по ответу ВК). */
+    val loggedIn: Boolean get() = accessToken.isNotBlank() || HOSTS.any { cookie(it).contains("remixsid") }
     val available: Boolean get() = loggedIn && System.currentTimeMillis() >= pausedUntil
+
+    fun saveToken(token: String, uid: Long) {
+        accessToken = token.trim()
+        if (uid != 0L) userId = uid
+        prefs.edit().putString("token", accessToken).apply {
+            if (uid != 0L) putLong("user_id", uid)
+        }.apply()
+    }
+
+    fun clearToken() {
+        accessToken = ""
+        if (::app.isInitialized) prefs.edit().remove("token").apply()
+    }
 
     /** Сохранить куки из встроенного браузера после входа. */
     fun saveCookies(manager: android.webkit.CookieManager) {
@@ -50,18 +68,112 @@ object VkSource {
 
     fun logout() {
         prefs.edit().clear().apply()
+        accessToken = ""
         userId = 0
         pausedUntil = 0
     }
 
     class Found(val id: String, val ownerId: String, val h1: String, val h2: String,
-                val title: String, val artist: String, val durationSec: Int, val cover: String?) {
-        val key: String get() = "vk:${ownerId}_${id}_${h1}_${h2}"
+                val title: String, val artist: String, val durationSec: Int, val cover: String?,
+                val directUrl: String = "", val accessKey: String = "") {
+        val key: String get() = if (directUrl.isNotBlank() || (h1.isEmpty() && h2.isEmpty())) "vkapi:${ownerId}_${id}" else "vk:${ownerId}_${id}_${h1}_${h2}"
     }
 
-    // ---------------- Поиск (как на сайте m.vk.ru) ----------------
+    internal fun parseOAuthRedirect(url: String): Pair<String, Long>? {
+        val frag = url.substringAfter('#', "").ifBlank { url.substringAfter('?', "") }
+        if (frag.isBlank()) return null
+        var token = ""
+        var uid = 0L
+        for (part in frag.split('&')) {
+            val eq = part.indexOf('=')
+            if (eq <= 0) continue
+            val k = part.substring(0, eq)
+            val v = java.net.URLDecoder.decode(part.substring(eq + 1), "UTF-8")
+            if (k == "access_token") token = v
+            else if (k == "user_id") uid = v.toLongOrNull() ?: 0L
+        }
+        return token.takeIf { it.isNotBlank() }?.let { it to uid }
+    }
+
+    private fun checkApiError(json: JSONObject) {
+        val err = json.optJSONObject("error") ?: return
+        val code = err.optInt("error_code", 0)
+        when (code) {
+            5 -> {
+                clearToken()
+                throw UserError("Сессия ВК истекла — войдите заново: Настройки → «Музыка из ВК»")
+            }
+            6, 9, 14 -> {
+                pausedUntil = System.currentTimeMillis() + 5 * 60_000L
+                throw UserError("ВК просит подождать (слишком частые запросы или капча)")
+            }
+            else -> throw UserError("ВК API: ${err.optString("error_msg").ifBlank { "ошибка $code" }}")
+        }
+    }
+
+    internal fun parseApiSearch(raw: String): List<Found> {
+        val json = JSONObject(raw)
+        checkApiError(json)
+        val items = json.optJSONObject("response")?.optJSONArray("items") ?: return emptyList()
+        val out = ArrayList<Found>(items.length())
+        for (i in 0 until items.length()) {
+            val o = items.optJSONObject(i) ?: continue
+            val id = o.opt("id")?.toString().orEmpty()
+            val owner = o.opt("owner_id")?.toString().orEmpty()
+            val title = o.optString("title").trim()
+            val artist = o.optString("artist").trim()
+            if (id.isEmpty() || owner.isEmpty() || title.isEmpty()) continue
+            val dur = o.optInt("duration", 0)
+            val direct = o.optString("url").takeIf { it.startsWith("http") }.orEmpty()
+            val accessKey = o.optString("access_key")
+            val thumb = o.optJSONObject("album")?.optJSONObject("thumb")
+            val cover = thumb?.optString("photo_600")?.takeIf { it.startsWith("http") }
+                ?: thumb?.optString("photo_300")?.takeIf { it.startsWith("http") }
+            out += Found(id, owner, "", "", title, artist, dur, cover, direct, accessKey)
+        }
+        return out
+    }
+
+    private fun apiRequest(url: String): String {
+        val c = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000; readTimeout = 15_000
+            setRequestProperty("User-Agent", KATE_UA)
+        }
+        try {
+            val code = c.responseCode
+            val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader(Charsets.UTF_8)?.readText().orEmpty()
+            if (code !in 200..299 && text.isBlank()) throw UserError("ВК API ответил кодом $code")
+            return text
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    private fun apiGetById(audios: List<String>, tok: String): Map<String, String> {
+        if (audios.isEmpty()) return emptyMap()
+        val raw = apiRequest("https://api.vk.com/method/audio.getById?audios=${Http.enc(audios.joinToString(","))}&v=$API_VER&access_token=${Http.enc(tok)}")
+        val json = JSONObject(raw)
+        checkApiError(json)
+        val arr = json.optJSONArray("response") ?: return emptyMap()
+        val out = HashMap<String, String>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val u = o.optString("url").takeIf { it.startsWith("http") } ?: continue
+            val id = o.opt("id")?.toString().orEmpty()
+            val owner = o.opt("owner_id")?.toString().orEmpty()
+            if (id.isNotEmpty() && owner.isNotEmpty()) out["${owner}_$id"] = u
+        }
+        return out
+    }
+
+    // ---------------- Поиск (Kate Mobile API или fallback на сайт m.vk.ru) ----------------
 
     fun search(query: String): List<Found> {
+        val tok = accessToken
+        if (tok.isNotBlank()) {
+            val raw = apiRequest("https://api.vk.com/method/audio.search?q=${Http.enc(query)}&count=15&auto_complete=1&v=$API_VER&access_token=${Http.enc(tok)}")
+            return parseApiSearch(raw)
+        }
         ensureUserId()
         val body = "al=1&act=section&claim=0&is_layer=0&owner_id=$userId&section=search&q=" + Http.enc(query)
         val raw = request("https://vk.ru/al_audio.php", body, xrw = true)
@@ -84,9 +196,15 @@ object VkSource {
         return out
     }
 
-    /** Свежая ссылка на звук для запомненного ключа «vk:owner_id_h1_h2» — ссылки ВК недолговечны, поэтому каждый раз новая. */
+    /** Свежая ссылка на звук для запомненного ключа «vkapi:owner_id» или «vk:owner_id_h1_h2». */
     fun streamOf(t: Track, where: String): StreamInfo? {
         if (!available) throw UserError("ВК не подключён")
+        if (where.startsWith("vkapi:")) {
+            val tok = accessToken.takeIf { it.isNotBlank() } ?: return null
+            val oidId = where.removePrefix("vkapi:")
+            val u = apiGetById(listOf(oidId), tok)[oidId] ?: return null
+            return StreamInfo(u, "https://vk.ru/audio", "VK Музыка · MP3", t.cover, t.title)
+        }
         ensureUserId()
         val p = where.removePrefix("vk:").split('_')
         if (p.size < 4) return null
@@ -97,6 +215,23 @@ object VkSource {
 
     /** Из подходящих вариантов — первый, для которого ВК отдал играющую ссылку. */
     fun streamOf(t: Track, candidates: List<Found>): Pair<String, StreamInfo>? {
+        val tok = accessToken
+        if (tok.isNotBlank()) {
+            for (c in candidates) {
+                if (c.directUrl.startsWith("http")) {
+                    return c.key to StreamInfo(c.directUrl, "https://vk.ru/audio", "VK Музыка · MP3", t.cover ?: c.cover, c.title)
+                }
+            }
+            val ids = candidates.take(10).map {
+                if (it.accessKey.isNotBlank()) "${it.ownerId}_${it.id}_${it.accessKey}" else "${it.ownerId}_${it.id}"
+            }
+            val urls = apiGetById(ids, tok)
+            for (c in candidates) {
+                val u = urls["${c.ownerId}_${c.id}"] ?: continue
+                return c.key to StreamInfo(u, "https://vk.ru/audio", "VK Музыка · MP3", t.cover ?: c.cover, c.title)
+            }
+            return null
+        }
         ensureUserId()
         val urls = reload(candidates.take(10))
         for (c in candidates) {
