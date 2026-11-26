@@ -5,6 +5,7 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
@@ -38,6 +39,27 @@ class VkLoginActivity : Activity() {
     private var web: WebView? = null
     private var useMirror = false
 
+    private fun styledButton(label: String, accent: Boolean = false, onClick: Button.() -> Unit): Button =
+        Button(this).apply {
+            text = label
+            textSize = 12.5f
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            minHeight = 0
+            minimumHeight = 0
+            setPadding(dp(10), dp(9), dp(10), dp(9))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                if (accent) {
+                    setColor(Color.parseColor("#7C4DFF"))
+                } else {
+                    setColor(Color.parseColor("#26262E"))
+                    setStroke(dp(1), Color.parseColor("#383844"))
+                }
+            }
+            setOnClickListener { onClick() }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         VkSource.init(this)
@@ -47,55 +69,40 @@ class VkLoginActivity : Activity() {
         }
         status = TextView(this).apply {
             textSize = 14f; setTextColor(Color.WHITE)
-            setPadding(dp(16), dp(12), dp(16), dp(4))
+            setPadding(dp(16), dp(14), dp(16), dp(6))
+            setLineSpacing(dp(2).toFloat(), 1f)
         }
         progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             isIndeterminate = false
             visibility = View.VISIBLE
         }
-        val vkApiBtn = Button(this).apply {
-            text = "Логин ВК (API)"
-            textSize = 12f
-            setOnClickListener { showVkAndroidLoginDialog() }
+        val vkApiBtn = styledButton("Логин ВК (API)", accent = true) {
+            showVkAndroidLoginDialog()
         }
-        val siteBtn = Button(this).apply {
-            text = "Сайт m.vk.ru"
-            textSize = 12f
-            setOnClickListener {
-                progressBar.isIndeterminate = false
-                progressBar.visibility = View.VISIBLE
-                progressBar.progress = 10
-                web?.loadUrl("https://m.vk.ru/")
+        val siteBtn = styledButton("Сайт m.vk.ru") {
+            progressBar.isIndeterminate = false
+            progressBar.visibility = View.VISIBLE
+            progressBar.progress = 10
+            web?.loadUrl("https://m.vk.ru/")
+        }
+        mirrorBtn = styledButton("Зеркало vk.ru") {
+            useMirror = !useMirror
+            text = if (useMirror) "Основной vk.com" else "Зеркало vk.ru"
+            progressBar.isIndeterminate = false
+            progressBar.visibility = View.VISIBLE
+            render()
+            web?.loadUrl(currentOAuthUrl())
+        }
+        val browserBtn = styledButton("Через браузер") {
+            runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(currentOAuthUrl())))
+            }.onFailure {
+                Toast.makeText(this@VkLoginActivity, "Не удалось открыть браузер", Toast.LENGTH_SHORT).show()
             }
         }
-        mirrorBtn = Button(this).apply {
-            text = "Зеркало vk.ru"
-            textSize = 12f
-            setOnClickListener {
-                useMirror = !useMirror
-                text = if (useMirror) "Основной vk.com" else "Зеркало vk.ru"
-                progressBar.isIndeterminate = false
-                progressBar.visibility = View.VISIBLE
-                render()
-                web?.loadUrl(currentOAuthUrl())
-            }
-        }
-        val browserBtn = Button(this).apply {
-            text = "Через браузер"
-            textSize = 12f
-            setOnClickListener {
-                runCatching {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(currentOAuthUrl())))
-                }.onFailure {
-                    Toast.makeText(this@VkLoginActivity, "Не удалось открыть браузер", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-        val pasteBtn = Button(this).apply {
-            text = "Вставить ссылку"
-            textSize = 12f
-            setOnClickListener { showPasteDialog() }
+        val pasteBtn = styledButton("Вставить ссылку") {
+            showPasteDialog()
         }
         val rowWeightLp = {
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -104,25 +111,26 @@ class VkLoginActivity : Activity() {
         }
         val primaryRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(8), dp(2), dp(8), dp(2))
+            setPadding(dp(10), dp(6), dp(10), dp(4))
             addView(vkApiBtn, rowWeightLp())
             addView(siteBtn, rowWeightLp())
         }
         val actionsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(8), dp(2), dp(8), dp(4))
+            setPadding(dp(10), dp(2), dp(10), dp(8))
             addView(mirrorBtn, rowWeightLp())
             addView(browserBtn, rowWeightLp())
             addView(pasteBtn, rowWeightLp())
         }
-        out = Button(this).apply {
-            text = "Выйти из ВК"
+        out = styledButton("Выйти из ВК") {
+            CookieManager.getInstance().removeAllCookies(null)
+            CookieManager.getInstance().flush()
+            VkSource.logout()
+            finish()
+        }.apply {
             visibility = View.GONE
-            setOnClickListener {
-                CookieManager.getInstance().removeAllCookies(null)
-                CookieManager.getInstance().flush()
-                VkSource.logout()
-                finish()
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(dp(14), dp(8), dp(14), dp(12))
             }
         }
         val webView = WebView(this).apply {

@@ -12,7 +12,7 @@ object HearthisSource {
     class Found(val title: String, val artist: String, val durationSec: Int, val url: String, val cover: String?, val views: Long = 0)
 
     fun search(query: String, limit: Int = 10): List<Found> {
-        val raw = Http.get("$BASE/search/?t=${Http.enc(query)}&page=1&count=$limit", timeoutMs = 6000)
+        val raw = Http.get("$BASE/search/?t=${Http.enc(query)}&page=1&count=$limit", timeoutMs = 2500)
         return parseJson(raw, limit)
     }
 

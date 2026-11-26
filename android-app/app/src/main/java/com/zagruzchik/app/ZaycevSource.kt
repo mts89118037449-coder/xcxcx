@@ -13,9 +13,33 @@ object ZaycevSource {
     /** [explicit] — запись помечена как версия без цензуры. */
     class Found(val id: Long, val title: String, val artist: String, val durationSec: Int, val bitrate: Int, val cover: String?, val explicit: Boolean = false)
 
+    internal fun sanitizeQuery(q: String): String {
+        var s = q
+            .replace(Regex("""\[[^\]]*]"""), " ")
+            .replace(Regex("""\((?:feat\.?|ft\.?|with)\b[^)]*\)""", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("""\b(?:feat\.?|ft\.?)\b.*$""", RegexOption.IGNORE_CASE), " ")
+            .replace(',', ' ')
+            .replace('&', ' ')
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+        if (s.length > 60) {
+            val cut = s.substring(0, 60)
+            s = cut.substringBeforeLast(' ', cut).trim().ifBlank { cut.trim() }
+        }
+        return s
+    }
+
     /** Результаты поиска (только те, что можно слушать), в порядке выдачи. Ответ — около килобайта. */
     fun search(query: String): List<Found> = twice {
-        val raw = Http.get("$BASE/api/external/pages/search/tracks?q=${Http.enc(query)}&page=1&limit=10", Http.DESKTOP_UA, 8000, headers = mapOf("Referer" to "$BASE/"))
+        val clean = sanitizeQuery(query).ifBlank { query.take(60).trim() }
+        val raw = try {
+            Http.get("$BASE/api/external/pages/search/tracks?q=${Http.enc(clean)}&page=1&limit=10", Http.DESKTOP_UA, 8000, headers = mapOf("Referer" to "$BASE/"))
+        } catch (e: Exception) {
+            val shorter = clean.take(32).substringBeforeLast(' ', clean.take(32)).trim()
+            if (shorter.isNotBlank() && shorter.length < clean.length) {
+                Http.get("$BASE/api/external/pages/search/tracks?q=${Http.enc(shorter)}&page=1&limit=10", Http.DESKTOP_UA, 8000, headers = mapOf("Referer" to "$BASE/"))
+            } else throw e
+        }
         return parseSearchJson(raw)
     }
 

@@ -17,6 +17,7 @@ import kotlin.concurrent.thread
 
 /** Главная SoundAura: «Аура дня» и плитки разделов (вместо длинных списков). */
 object HomeViews {
+    private val fontCache = java.util.concurrent.ConcurrentHashMap<Int, android.graphics.Typeface>()
 
     private fun blob(a: Activity, color: Int, sizeDp: Int, x: Int, y: Int, alpha: Int) = View(a).apply {
         background = GradientDrawable().apply {
@@ -29,7 +30,7 @@ object HomeViews {
 
     private fun text(a: Activity, s: String, sizeSp: Float, font: Int, color: Int) = TextView(a).apply {
         text = s; textSize = sizeSp; setTextColor(color)
-        typeface = ResourcesCompat.getFont(a, font)
+        typeface = fontCache[font] ?: ResourcesCompat.getFont(a, font)?.also { fontCache[font] = it }
     }
 
     /** Кольца из логотипа — декор в углу карточки. */

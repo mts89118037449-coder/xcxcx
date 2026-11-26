@@ -239,4 +239,33 @@ class CoreLogicTest {
         assertEquals("vk1.a.refreshed", VkSource.parseRefreshTokenResponse("""{"response":{"token":"vk1.a.refreshed"}}""", "vk1.a.android_tok"))
         assertEquals("vk1.a.android_tok", VkSource.parseRefreshTokenResponse("""{"error":{"error_code":5}}""", "vk1.a.android_tok"))
     }
+
+    @Test
+    fun zaycevSanitizeQueryAndImmediateFallback() {
+        val longQ = "Justice, Tame Impala, SZA & King Gizzard & The Lizard Wizard Neverender [From Arcane Season 2] (feat. Someone)"
+        val clean = ZaycevSource.sanitizeQuery(longQ)
+        assertTrue(clean.length <= 60)
+        assertTrue(!clean.contains("["))
+        assertTrue(!clean.contains("feat."))
+        assertTrue(clean.startsWith("Justice Tame Impala SZA"))
+
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(3)
+        try {
+            val hitStream = StreamInfo("https://hm/fast.mp3", "https://hm/fast.mp3", "Hitmotop · MP3", null, "Song")
+            val fPriorityNull = pool.submit<StreamInfo?> { Thread.sleep(15); null }
+            val fFallback = pool.submit<StreamInfo?> { Thread.sleep(15); hitStream }
+            val t0 = System.currentTimeMillis()
+            val picked = Streams.awaitStream(
+                started = t0,
+                graceMs = 4500L,
+                fastPriority = listOf(fPriorityNull),
+                fallback = listOf(fFallback),
+                startSlow = null,
+            )
+            assertEquals("Hitmotop · MP3", picked?.source)
+            assertTrue(System.currentTimeMillis() - t0 < 1000L)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
 }

@@ -459,9 +459,11 @@ class MainActivity : AppCompatActivity() {
         // Вы недавно слушали — из истории, включаются мгновенно, если есть в памяти.
         val recent = History.all.filter { it.kind == Kind.MUSIC }.take(12)
         if (recent.isNotEmpty()) shelf(home, "Вы недавно слушали", "История", { showPage(R.id.nav_library) }) { inner ->
-            val items = recent.map { e -> Playback.QItem(e.track, e.local ?: Library.localFor(e.track), e.sourceUrl, e.pageUrl) }
             recent.forEachIndexed { i, e ->
-                inner.addView(Rows.card(this, inner, e.track.title, e.track.artist, e.track.cover, false) { Playback.playQueue(this, items, i) })
+                inner.addView(Rows.card(this, inner, e.track.title, e.track.artist, e.track.cover, false) {
+                    val items = recent.map { r -> Playback.QItem(r.track, r.local ?: Library.localFor(r.track), r.sourceUrl, r.pageUrl) }
+                    Playback.playQueue(this, items, i)
+                })
             }
         }
 
@@ -471,8 +473,11 @@ class MainActivity : AppCompatActivity() {
             mine.forEach { name ->
                 val card = Rows.card(this, inner, name, null, null, true) { Rows.openArtist(this, name) }
                 inner.addView(card)
-                pool { runCatching { Catalog.artistByName(name) }.getOrNull() }.let { f ->
-                    thread { val a = runCatching { f.get() }.getOrNull(); runOnUiThread { a?.picture?.let { Images.into(card.findViewById(R.id.cardImage), it, R.drawable.ph_artist) } } }
+                pool {
+                    val a = runCatching { Catalog.artistByName(name) }.getOrNull()
+                    a?.picture?.let { pic ->
+                        runOnUiThread { if (!isDestroyed) Images.into(card.findViewById(R.id.cardImage), pic, R.drawable.ph_artist) }
+                    }
                 }
             }
         }
@@ -1437,22 +1442,27 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshSites() {
         if (!::sites.isInitialized) return
-        val logged = Cookies.loggedInSites(this).toSet()
-        sites.removeAllViews()
-        Cookies.SITES.forEachIndexed { i, site ->
-            val row = layoutInflater.inflate(R.layout.item_site, sites, false)
-            row.findViewById<TextView>(R.id.badge).showBadge(siteBadge(site.name))
-            row.findViewById<TextView>(R.id.name).text = site.name
-            val ok = site.name in logged
-            row.findViewById<TextView>(R.id.state).text = if (ok) "Вход выполнен" else "Нажмите, чтобы войти"
-            row.findViewById<ImageView>(R.id.stateIcon).apply {
-                setImageResource(if (ok) R.drawable.ic_check_circle else R.drawable.ic_person_outline)
-                imageTintList = ColorStateList.valueOf(MaterialColors.getColor(this, if (ok) M.attr.colorPrimary else M.attr.colorOnSurfaceVariant))
+        pool {
+            val logged = runCatching { Cookies.loggedInSites(this).toSet() }.getOrDefault(emptySet())
+            runOnUiThread {
+                if (isDestroyed || !::sites.isInitialized) return@runOnUiThread
+                sites.removeAllViews()
+                Cookies.SITES.forEachIndexed { i, site ->
+                    val row = layoutInflater.inflate(R.layout.item_site, sites, false)
+                    row.findViewById<TextView>(R.id.badge).showBadge(siteBadge(site.name))
+                    row.findViewById<TextView>(R.id.name).text = site.name
+                    val ok = site.name in logged
+                    row.findViewById<TextView>(R.id.state).text = if (ok) "Вход выполнен" else "Нажмите, чтобы войти"
+                    row.findViewById<ImageView>(R.id.stateIcon).apply {
+                        setImageResource(if (ok) R.drawable.ic_check_circle else R.drawable.ic_person_outline)
+                        imageTintList = ColorStateList.valueOf(MaterialColors.getColor(this, if (ok) M.attr.colorPrimary else M.attr.colorOnSurfaceVariant))
+                    }
+                    row.setOnClickListener {
+                        startActivity(Intent(this, LoginActivity::class.java).putExtra(LoginActivity.EXTRA_SITE, i))
+                    }
+                    sites.addView(row)
+                }
             }
-            row.setOnClickListener {
-                startActivity(Intent(this, LoginActivity::class.java).putExtra(LoginActivity.EXTRA_SITE, i))
-            }
-            sites.addView(row)
         }
     }
 

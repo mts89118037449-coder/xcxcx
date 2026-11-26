@@ -213,7 +213,8 @@ object Streams {
     internal class Breaker { val fails = java.util.concurrent.atomic.AtomicInteger(); @Volatile var until = 0L
         val open get() = System.currentTimeMillis() < until
         fun ok() { fails.set(0) }
-        fun fail() { if (fails.incrementAndGet() >= 2) { until = System.currentTimeMillis() + 3 * 60_000L; fails.set(0) } } }
+        fun fail() { if (fails.incrementAndGet() >= 2) { until = System.currentTimeMillis() + 3 * 60_000L; fails.set(0) } }
+        fun trip(ms: Long = 5 * 60_000L) { until = System.currentTimeMillis() + ms; fails.set(0) } }
     private val ytBreaker = Breaker()
     private val ytmBreaker = Breaker()
     private val ytPhoneBreaker = Breaker()
@@ -541,11 +542,11 @@ object Streams {
                             Downloader.streamOf(page, yandexName, t.title, problems)?.takeUnless { isBlacklisted(it.url, it.pageUrl) }?.also { picked[yandexName] = page }
                         }
                         if (res != null) yandexBreaker.ok()
-                        else if (problems.any { it.contains("yandexmusic", ignoreCase = true) || it.contains("NoneType", ignoreCase = true) }) yandexBreaker.fail()
+                        else if (problems.any { it.contains("yandexmusic", ignoreCase = true) || it.contains("NoneType", ignoreCase = true) }) yandexBreaker.trip(5 * 60_000L)
                         res
                     }
                 } catch (e: Exception) {
-                    if (e.message?.let { it.contains("yandexmusic", ignoreCase = true) || it.contains("NoneType", ignoreCase = true) } == true) yandexBreaker.fail()
+                    if (e.message?.let { it.contains("yandexmusic", ignoreCase = true) || it.contains("NoneType", ignoreCase = true) } == true) yandexBreaker.trip(5 * 60_000L)
                     log += yandexName + why(e)
                     null
                 } finally {
@@ -750,7 +751,8 @@ object Streams {
         }
         val fastPriority = listOfNotNull(remembered, telegram, vk, ytm, zaycev, onPhone.getOrNull(0), onPhone.getOrNull(1))
         val fallback = listOfNotNull(hitmotop, hearthis)
-        val graceMs = if (bg) 4500L else 2500L
+        val priorityUnavailable = bg && !Telegram.ready && !VkSource.available && ytmBreaker.open && ytPhoneBreaker.open
+        val graceMs = if (priorityUnavailable) 0L else if (bg) 4500L else 2500L
         awaitStream(
             started = started,
             graceMs = graceMs,
@@ -849,7 +851,7 @@ object Warm {
                 // SoundCloud отдаёт звук нарезкой — начало для него сохранить нельзя, такие песни не перебираем заново.
                 val list = Library.favorites.filter {
                     Library.localFor(it) == null && !MediaCache.has(it) && !HeadCache.has(it) && Streams.whereOf(it)?.contains("soundcloud") != true
-                }
+                }.take(15)
                 val remaining = java.util.concurrent.atomic.AtomicInteger(list.size)
                 left = list.size
                 // 1) Zaycev — на любой сети, в том числе мобильной: ответ в килобайт и 256 КБ начала песни.

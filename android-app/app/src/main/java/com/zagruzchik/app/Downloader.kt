@@ -576,12 +576,22 @@ object Downloader {
 
     @Volatile private var lastRaw = ""
     @Volatile private var lastRawAt = 0L
+    @Volatile private var lastYandexSpamAt = 0L
 
     internal fun explain(err: String): String {
         // В журнал — исходный текст ошибки (по переводу «требует вход» не понять, что ответил сайт). Один и тот же — не чаще раза в минуту.
         val line = err.lineSequence().map { it.trim() }.lastOrNull { it.isNotEmpty() }.orEmpty().take(300)
         val now = System.currentTimeMillis()
-        if (line.isNotEmpty() && (line != lastRaw || now - lastRawAt > 60_000)) { lastRaw = line; lastRawAt = now; AppLog.add("ОШИБКА yt-dlp ${YtdlpDaemon.version}: $line") }
+        val isYandexNoise = err.contains("yandexmusic", ignoreCase = true) || line.contains("NoneType", ignoreCase = true)
+        if (isYandexNoise) {
+            if (now - lastYandexSpamAt > 5 * 60_000L) {
+                lastYandexSpamAt = now
+                AppLog.add("ОШИБКА yt-dlp ${YtdlpDaemon.version}: Яндекс Музыка требует сессию ($line)")
+            }
+        } else if (line.isNotEmpty() && (line != lastRaw || now - lastRawAt > 60_000)) {
+            lastRaw = line; lastRawAt = now
+            AppLog.add("ОШИБКА yt-dlp ${YtdlpDaemon.version}: $line")
+        }
         val e = err.lowercase()
         return when {
             "drm" in e -> "Трек защищён от скачивания (платный, DRM)."
