@@ -10,9 +10,11 @@ class CoreLogicTest {
     @Test
     fun matchNormAndBase() {
         assertEquals("елка прованс", Match.norm("Ёлка — Прованс!"))
+        assertEquals("еще один день", Match.norm("Ещё один день (2025)"))
         assertEquals("moonlight on the river", Match.base("Moonlight on the River (Official Audio)"))
         assertEquals("kahlil gibran", Match.base("Kahlil Gibran – Single Version"))
         assertEquals("ждать ее", Match.base("Ждать её (feat. Кто-то) [Remix]"))
+        assertEquals("темная ночь", Match.base("Тёмная ночь [Live] ft. Кто-то"))
     }
 
     @Test

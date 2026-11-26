@@ -102,15 +102,22 @@ object Match {
         }
     }
 
+    private val NON_ALNUM_RE = Regex("""[^\p{L}\p{N}]+""")
+    private val BRACKETS_RE = Regex("""\s*[(\[].*?[)\]]""")
+    private val FEAT_TAIL_RE = Regex("""\s+(feat|ft)\.?\s.*$""", RegexOption.IGNORE_CASE)
+    private val FEAT_WORD_RE = Regex("""\b(feat|ft)\b""", RegexOption.IGNORE_CASE)
+    private val ARTIST_SPLIT_RE = Regex("""\s*(,|&|\band\b|\bи\b|\bx\b)\s*""")
+    private val REPEAT_CHAR_RE = Regex("(.)\\1+")
+
     fun norm(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFKC).lowercase()
         .replace('ё', 'е')
-        .replace(Regex("""[^\p{L}\p{N}]+"""), " ")
+        .replace(NON_ALNUM_RE, " ")
         .trim()
 
     /** Название без скобок, «feat.» и приписок через дефис. */
     fun base(title: String) = norm(
-        title.replace(Regex("""\s*[(\[].*?[)\]]"""), "")
-            .replace(Regex("""\s+(feat|ft)\.?\s.*$""", RegexOption.IGNORE_CASE), "")
+        title.replace(BRACKETS_RE, "")
+            .replace(FEAT_TAIL_RE, "")
             .substringBefore(" - ")
             .substringBefore(" — ")
             .substringBefore(" – ")
@@ -119,8 +126,8 @@ object Match {
     // Приписки, которые не делают запись другой версией: «official audio», «лирик видео», «премьера трека»…
     private val PLAIN_TAGS = listOf("official", "audio", "lyric", "лирик", "текст", "премьера", "visualizer", "визуал", "клип", "video", "видео", "hd", "hq", "4k", "original mix")
 
-    private fun artists(a: String) = norm(a.replace(Regex("""\b(feat|ft)\b""", RegexOption.IGNORE_CASE), ","))
-        .split(Regex("""\s*(,|&|\band\b|\bи\b|\bx\b)\s*""")).map { it.trim() }.filter { it.isNotEmpty() }
+    private fun artists(a: String) = norm(a.replace(FEAT_WORD_RE, ","))
+        .split(ARTIST_SPLIT_RE).map { it.trim() }.filter { it.isNotEmpty() }
 
     // Кириллица и латиница, которые выглядят одинаково (МАЯК Х и МАЯК X): для сравнения — одно и то же.
     private val LOOKALIKE = mapOf('а' to 'a', 'в' to 'b', 'е' to 'e', 'ё' to 'e', 'к' to 'k', 'м' to 'm', 'н' to 'h', 'о' to 'o',
@@ -136,9 +143,9 @@ object Match {
     fun sound(s: String): String {
         val b = StringBuilder(s.length + 4)
         for (ch in s) b.append(TRANSLIT[ch] ?: ch.toString())
-        return b.toString().replace(Regex("(.)\\1+"), "$1").replace("ph", "f").replace("x", "ks")
+        return b.toString().replace(REPEAT_CHAR_RE, "$1").replace("ph", "f").replace("x", "ks")
             .replace('c', 'k').replace('q', 'k').replace('w', 'v').replace('y', 'i').replace('j', 'i').replace('z', 's')
-            .replace(Regex("(.)\\1+"), "$1")
+            .replace(REPEAT_CHAR_RE, "$1")
     }
 
     /** Название то же, но записано другим алфавитом («Метеоритный дождь» и «Meteoritnyj dozhd»). */
