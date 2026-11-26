@@ -15,7 +15,13 @@ import java.net.URL
 object VkSource {
     private const val UA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
     private const val KATE_UA = "KateMobileAndroid/109.1 lite-550 (Android 13; SDK 33; x86_64; Google Pixel 5; ru)"
+    private const val VK_ANDROID_UA = "VKAndroidApp/8.143-40891 (Android 13; SDK 33; arm64-v8a; Pixel 5; ru; 1440x2891)"
     private const val API_VER = "5.131"
+    private const val VK_ANDROID_VER = "8.143"
+    private const val VK_ANDROID_CLIENT_ID = "2274003"
+    private const val VK_ANDROID_CLIENT_SECRET = "hHbZxrka2uZ6jB1inYsH"
+    const val TOKEN_TYPE_KATE = "kate"
+    const val TOKEN_TYPE_VK_ANDROID = "vk_android"
     private val HOSTS = listOf("vk.ru", "m.vk.ru", "vk.com", "m.vk.com")
 
     private lateinit var app: Context
@@ -23,6 +29,8 @@ object VkSource {
 
     @Volatile var userId: Long = 0; private set
     @Volatile private var accessToken: String = ""
+    @Volatile var tokenType: String = TOKEN_TYPE_KATE; private set
+    @Volatile private var apiDisabledForToken: Boolean = false
     /** ВК показал капчу или просил подождать — до этого времени к нему не ходим. */
     @Volatile var pausedUntil = 0L; private set
 
@@ -31,6 +39,8 @@ object VkSource {
         app = ctx.applicationContext
         userId = prefs.getLong("user_id", 0)
         accessToken = prefs.getString("token", null).orEmpty()
+        tokenType = prefs.getString("token_type", null).orEmpty().ifBlank { TOKEN_TYPE_KATE }
+        apiDisabledForToken = prefs.getBoolean("api_disabled", false)
     }
 
     private fun cookie(host: String): String = if (::app.isInitialized) prefs.getString("cookies_$host", null).orEmpty() else ""
@@ -39,22 +49,48 @@ object VkSource {
     private fun ua(): String = if (::app.isInitialized) prefs.getString("ua", null) ?: UA else UA
     fun saveUa(value: String) { prefs.edit().putString("ua", value).apply() }
 
+    private fun apiUserAgent(): String = if (tokenType == TOKEN_TYPE_VK_ANDROID) VK_ANDROID_UA else KATE_UA
+    private fun apiVersion(): String = if (tokenType == TOKEN_TYPE_VK_ANDROID) VK_ANDROID_VER else API_VER
+
+    val hasCookies: Boolean get() = HOSTS.any { cookie(it).contains("remixsid") }
     val hasToken: Boolean get() = accessToken.isNotBlank()
-    /** Есть живая сессия (Kate token или куки входа; сдохшую заметим по ответу ВК). */
-    val loggedIn: Boolean get() = accessToken.isNotBlank() || HOSTS.any { cookie(it).contains("remixsid") }
+    val isApiUsable: Boolean get() = accessToken.isNotBlank() && !apiDisabledForToken
+    /** Есть живая сессия (API token или куки входа; сдохшую заметим по ответу ВК). */
+    val loggedIn: Boolean get() = isApiUsable || hasCookies
     val available: Boolean get() = loggedIn && System.currentTimeMillis() >= pausedUntil
 
-    fun saveToken(token: String, uid: Long) {
+    fun saveToken(token: String, uid: Long, type: String = TOKEN_TYPE_KATE) {
         accessToken = token.trim()
+        tokenType = type.ifBlank { TOKEN_TYPE_KATE }
+        apiDisabledForToken = false
         if (uid != 0L) userId = uid
-        prefs.edit().putString("token", accessToken).apply {
-            if (uid != 0L) putLong("user_id", uid)
-        }.apply()
+        if (::app.isInitialized) {
+            prefs.edit()
+                .putString("token", accessToken)
+                .putString("token_type", tokenType)
+                .putBoolean("api_disabled", false)
+                .apply {
+                    if (uid != 0L) putLong("user_id", uid)
+                }.apply()
+        }
     }
 
     fun clearToken() {
         accessToken = ""
-        if (::app.isInitialized) prefs.edit().remove("token").apply()
+        tokenType = TOKEN_TYPE_KATE
+        apiDisabledForToken = false
+        if (::app.isInitialized) {
+            prefs.edit()
+                .remove("token")
+                .remove("token_type")
+                .remove("api_disabled")
+                .apply()
+        }
+    }
+
+    private fun markApiDisabled() {
+        apiDisabledForToken = true
+        if (::app.isInitialized) prefs.edit().putBoolean("api_disabled", true).apply()
     }
 
     /** Сохранить куки из встроенного браузера после входа. */
@@ -67,8 +103,10 @@ object VkSource {
     fun setUserId(id: Long) { userId = id; prefs.edit().putLong("user_id", id).apply() }
 
     fun logout() {
-        prefs.edit().clear().apply()
+        if (::app.isInitialized) prefs.edit().clear().apply()
         accessToken = ""
+        tokenType = TOKEN_TYPE_KATE
+        apiDisabledForToken = false
         userId = 0
         pausedUntil = 0
     }
@@ -78,6 +116,13 @@ object VkSource {
                 val directUrl: String = "", val accessKey: String = "") {
         val key: String get() = if (directUrl.isNotBlank() || (h1.isEmpty() && h2.isEmpty())) "vkapi:${ownerId}_${id}" else "vk:${ownerId}_${id}_${h1}_${h2}"
     }
+
+    sealed class VkAndroidAuthResult {
+        data class Success(val accessToken: String, val userId: Long) : VkAndroidAuthResult()
+        data class NeedOtp(val sid: String, val anonymToken: String, val description: String) : VkAndroidAuthResult()
+    }
+
+    private class ApiMethodUnavailableError : Exception()
 
     internal fun parseOAuthRedirect(url: String): Pair<String, Long>? {
         val trimmed = url.trim()
@@ -103,6 +148,15 @@ object VkSource {
         val err = json.optJSONObject("error") ?: return
         val code = err.optInt("error_code", 0)
         when (code) {
+            3, 15 -> {
+                if (hasCookies) {
+                    markApiDisabled()
+                    throw ApiMethodUnavailableError()
+                } else {
+                    clearToken()
+                    throw UserError("Этот токен ВК без доступа к музыке — войдите через «Логин ВК (API)» или «Сайт m.vk.ru»")
+                }
+            }
             5 -> {
                 clearToken()
                 throw UserError("Сессия ВК истекла — войдите заново: Настройки → «Музыка из ВК»")
@@ -141,7 +195,7 @@ object VkSource {
     private fun apiRequest(url: String): String {
         val c = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000; readTimeout = 15_000
-            setRequestProperty("User-Agent", KATE_UA)
+            setRequestProperty("User-Agent", apiUserAgent())
         }
         try {
             val code = c.responseCode
@@ -153,9 +207,159 @@ object VkSource {
         }
     }
 
+    private fun apiPost(url: String, params: Map<String, String>): String {
+        val body = params.entries.joinToString("&") { "${Http.enc(it.key)}=${Http.enc(it.value)}" }
+        val c = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000; readTimeout = 15_000
+            requestMethod = "POST"
+            doOutput = true
+            setRequestProperty("User-Agent", VK_ANDROID_UA)
+            setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        }
+        try {
+            val code = c.responseCode
+            val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader(Charsets.UTF_8)?.readText().orEmpty()
+            if (code !in 200..299 && text.isBlank()) throw UserError("ВК API ответил кодом $code")
+            return text
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    private fun deviceId(): String {
+        if (!::app.isInitialized) return "1234567890abcdef"
+        val saved = prefs.getString("device_id", null)
+        if (!saved.isNullOrBlank()) return saved
+        val generated = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+        prefs.edit().putString("device_id", generated).apply()
+        return generated
+    }
+
+    internal fun parseAnonymTokenResponse(raw: String): String {
+        val json = JSONObject(raw)
+        val err = json.optJSONObject("error")
+        if (err != null) throw UserError("ВК: ${err.optString("error_msg").ifBlank { "ошибка получения анонимного токена" }}")
+        val errStr = json.optString("error")
+        if (errStr.isNotBlank()) throw UserError("ВК: ${json.optString("error_description").ifBlank { errStr }}")
+        val tok = json.optString("token").ifBlank { json.optJSONObject("response")?.optString("token").orEmpty() }
+        if (tok.isBlank()) throw UserError("ВК: не удалось получить анонимный токен")
+        return tok
+    }
+
+    internal fun parseValidateAccountResponse(raw: String): String {
+        val json = JSONObject(raw)
+        val err = json.optJSONObject("error")
+        if (err != null) throw UserError("ВК: ${err.optString("error_msg").ifBlank { "ошибка проверки аккаунта" }}")
+        val sid = json.optJSONObject("response")?.optString("sid").orEmpty().ifBlank { json.optString("sid") }
+        if (sid.isBlank()) throw UserError("ВК: не получен sid для входа")
+        return sid
+    }
+
+    internal fun parseCheckOtpResponse(raw: String, fallbackSid: String): String {
+        val json = JSONObject(raw)
+        val err = json.optJSONObject("error")
+        if (err != null) throw UserError("ВК: ${err.optString("error_msg").ifBlank { "неверный код подтверждения" }}")
+        return json.optJSONObject("response")?.optString("sid").orEmpty().ifBlank { fallbackSid }
+    }
+
+    internal fun parseOAuthTokenResponse(raw: String, fallbackSid: String, anonymToken: String): VkAndroidAuthResult {
+        val json = JSONObject(raw)
+        val err = json.optString("error")
+        if (err.isNotBlank()) {
+            if (err == "need_validation" || err.contains("2fa", ignoreCase = true)) {
+                val vsid = json.optString("validation_sid").ifBlank { fallbackSid }
+                val desc = json.optString("error_description").ifBlank { "Требуется код подтверждения (2FA)" }
+                return VkAndroidAuthResult.NeedOtp(vsid, anonymToken, desc)
+            }
+            val desc = json.optString("error_description").ifBlank { err }
+            throw UserError("ВК: $desc")
+        }
+        val errObj = json.optJSONObject("error")
+        if (errObj != null) throw UserError("ВК: ${errObj.optString("error_msg").ifBlank { "ошибка авторизации" }}")
+        val tok = json.optString("access_token")
+        if (tok.isBlank()) throw UserError("ВК: не получен access_token")
+        val uid = json.optLong("user_id", 0L)
+        return VkAndroidAuthResult.Success(tok, uid)
+    }
+
+    internal fun parseRefreshTokenResponse(raw: String, fallbackToken: String): String {
+        val json = runCatching { JSONObject(raw) }.getOrNull() ?: return fallbackToken
+        val tok = json.optJSONObject("response")?.optString("token").orEmpty()
+        return tok.ifBlank { fallbackToken }
+    }
+
+    fun loginVkAndroid(login: String, password: String): VkAndroidAuthResult {
+        val devId = deviceId()
+        val anonRaw = apiPost("https://api.vk.com/oauth/get_anonym_token", mapOf(
+            "client_id" to VK_ANDROID_CLIENT_ID,
+            "client_secret" to VK_ANDROID_CLIENT_SECRET,
+            "v" to VK_ANDROID_VER,
+            "api_id" to VK_ANDROID_CLIENT_ID,
+            "https" to "1",
+            "lang" to "ru",
+            "device_id" to devId
+        ))
+        val anonymToken = parseAnonymTokenResponse(anonRaw)
+        val valRaw = apiPost("https://api.vk.com/method/auth.validateAccount", mapOf(
+            "access_token" to anonymToken,
+            "login" to login.trim(),
+            "supported_ways" to "push,email,sms,callreset,password,reserve_code,codegen,passkey",
+            "force_password" to "0",
+            "flow_type" to "auth_without_password",
+            "api_id" to VK_ANDROID_CLIENT_ID,
+            "v" to VK_ANDROID_VER
+        ))
+        val sid = parseValidateAccountResponse(valRaw)
+        return exchangeSidForToken(sid, anonymToken, login.trim(), password, devId)
+    }
+
+    fun completeVkAndroidOtp(sid: String, anonymToken: String, login: String, password: String, code: String): VkAndroidAuthResult {
+        val devId = deviceId()
+        val otpRaw = apiPost("https://api.vk.com/method/ecosystem.checkOtp", mapOf(
+            "sid" to sid,
+            "code" to code.trim(),
+            "verification_method" to "codegen",
+            "access_token" to anonymToken,
+            "api_id" to VK_ANDROID_CLIENT_ID,
+            "v" to VK_ANDROID_VER
+        ))
+        val nextSid = parseCheckOtpResponse(otpRaw, sid)
+        return exchangeSidForToken(nextSid, anonymToken, login.trim(), password, devId)
+    }
+
+    private fun exchangeSidForToken(sid: String, anonymToken: String, login: String, password: String, devId: String): VkAndroidAuthResult {
+        val tokRaw = apiPost("https://api.vk.com/oauth/token", mapOf(
+            "grant_type" to "phone_confirmation_sid",
+            "sid" to sid,
+            "username" to login,
+            "password" to password,
+            "anonymous_token" to anonymToken,
+            "client_id" to VK_ANDROID_CLIENT_ID,
+            "client_secret" to VK_ANDROID_CLIENT_SECRET,
+            "2fa_supported" to "1",
+            "supported_ways" to "push,email",
+            "flow_type" to "tg_flow",
+            "api_id" to VK_ANDROID_CLIENT_ID,
+            "v" to VK_ANDROID_VER
+        ))
+        val res = parseOAuthTokenResponse(tokRaw, sid, anonymToken)
+        if (res !is VkAndroidAuthResult.Success) return res
+        val refreshRaw = runCatching {
+            apiPost("https://api.vk.com/method/auth.refreshToken", mapOf(
+                "access_token" to res.accessToken,
+                "device_id" to devId,
+                "v" to VK_ANDROID_VER
+            ))
+        }.getOrDefault("")
+        val finalToken = parseRefreshTokenResponse(refreshRaw, res.accessToken)
+        saveToken(finalToken, res.userId, TOKEN_TYPE_VK_ANDROID)
+        return VkAndroidAuthResult.Success(finalToken, res.userId)
+    }
+
     private fun apiGetById(audios: List<String>, tok: String): Map<String, String> {
         if (audios.isEmpty()) return emptyMap()
-        val raw = apiRequest("https://api.vk.com/method/audio.getById?audios=${Http.enc(audios.joinToString(","))}&v=$API_VER&access_token=${Http.enc(tok)}")
+        val raw = apiRequest("https://api.vk.com/method/audio.getById?audios=${Http.enc(audios.joinToString(","))}&v=${apiVersion()}&access_token=${Http.enc(tok)}")
         val json = JSONObject(raw)
         checkApiError(json)
         val arr = json.optJSONArray("response") ?: return emptyMap()
@@ -170,13 +374,16 @@ object VkSource {
         return out
     }
 
-    // ---------------- Поиск (Kate Mobile API или fallback на сайт m.vk.ru) ----------------
+    // ---------------- Поиск (VK API или fallback на сайт m.vk.ru) ----------------
 
     fun search(query: String): List<Found> {
-        val tok = accessToken
-        if (tok.isNotBlank()) {
-            val raw = apiRequest("https://api.vk.com/method/audio.search?q=${Http.enc(query)}&count=15&auto_complete=1&v=$API_VER&access_token=${Http.enc(tok)}")
-            return parseApiSearch(raw)
+        if (isApiUsable) {
+            try {
+                val raw = apiRequest("https://api.vk.com/method/audio.search?q=${Http.enc(query)}&count=15&auto_complete=1&v=${apiVersion()}&access_token=${Http.enc(accessToken)}")
+                return parseApiSearch(raw)
+            } catch (_: ApiMethodUnavailableError) {
+                // Автоматический переход на веб-поиск al_audio.php по сохранённым кукам
+            }
         }
         ensureUserId()
         val body = "al=1&act=section&claim=0&is_layer=0&owner_id=$userId&section=search&q=" + Http.enc(query)
@@ -204,9 +411,9 @@ object VkSource {
     fun streamOf(t: Track, where: String): StreamInfo? {
         if (!available) throw UserError("ВК не подключён")
         if (where.startsWith("vkapi:")) {
-            val tok = accessToken.takeIf { it.isNotBlank() } ?: return null
+            if (!isApiUsable) return null
             val oidId = where.removePrefix("vkapi:")
-            val u = apiGetById(listOf(oidId), tok)[oidId] ?: return null
+            val u = try { apiGetById(listOf(oidId), accessToken)[oidId] } catch (_: ApiMethodUnavailableError) { null } ?: return null
             return StreamInfo(u, "https://vk.ru/audio", "VK Музыка · MP3", t.cover, t.title)
         }
         ensureUserId()
@@ -219,8 +426,7 @@ object VkSource {
 
     /** Из подходящих вариантов — первый, для которого ВК отдал играющую ссылку. */
     fun streamOf(t: Track, candidates: List<Found>): Pair<String, StreamInfo>? {
-        val tok = accessToken
-        if (tok.isNotBlank()) {
+        if (isApiUsable) {
             for (c in candidates) {
                 if (c.directUrl.startsWith("http")) {
                     return c.key to StreamInfo(c.directUrl, "https://vk.ru/audio", "VK Музыка · MP3", t.cover ?: c.cover, c.title)
@@ -229,7 +435,7 @@ object VkSource {
             val ids = candidates.take(10).map {
                 if (it.accessKey.isNotBlank()) "${it.ownerId}_${it.id}_${it.accessKey}" else "${it.ownerId}_${it.id}"
             }
-            val urls = apiGetById(ids, tok)
+            val urls = try { apiGetById(ids, accessToken) } catch (_: ApiMethodUnavailableError) { emptyMap() }
             for (c in candidates) {
                 val u = urls["${c.ownerId}_${c.id}"] ?: continue
                 return c.key to StreamInfo(u, "https://vk.ru/audio", "VK Музыка · MP3", t.cover ?: c.cover, c.title)

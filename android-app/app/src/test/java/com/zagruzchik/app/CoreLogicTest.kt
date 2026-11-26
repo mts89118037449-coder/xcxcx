@@ -195,5 +195,48 @@ class CoreLogicTest {
             err5 = true
         }
         assertTrue(err5)
+
+        VkSource.saveToken("stale_kate_tok", 123L, VkSource.TOKEN_TYPE_KATE)
+        assertTrue(VkSource.hasToken)
+        var err3Msg = ""
+        try {
+            VkSource.parseApiSearch("""{"error":{"error_code":3,"error_msg":"Unknown method passed"}}""")
+        } catch (e: UserError) {
+            err3Msg = e.message.orEmpty()
+        }
+        assertTrue(err3Msg.contains("без доступа к музыке"))
+        assertTrue(!VkSource.hasToken)
+    }
+
+    @Test
+    fun vkAndroidAuthResponseParsing() {
+        assertEquals("anon_tok_1", VkSource.parseAnonymTokenResponse("""{"token":"anon_tok_1"}"""))
+        assertEquals("anon_tok_2", VkSource.parseAnonymTokenResponse("""{"response":{"token":"anon_tok_2"}}"""))
+        assertEquals("sid_abc", VkSource.parseValidateAccountResponse("""{"response":{"sid":"sid_abc"}}"""))
+        assertEquals("sid_otp", VkSource.parseCheckOtpResponse("""{"response":{"sid":"sid_otp"}}""", "sid_abc"))
+        assertEquals("sid_abc", VkSource.parseCheckOtpResponse("""{"response":{}}""", "sid_abc"))
+
+        val otp = VkSource.parseOAuthTokenResponse(
+            """{"error":"need_validation","error_description":"Enter code from app","validation_sid":"vsid_99"}""",
+            "sid_abc",
+            "anon_tok_1"
+        )
+        assertTrue(otp is VkSource.VkAndroidAuthResult.NeedOtp)
+        val otpRes = otp as VkSource.VkAndroidAuthResult.NeedOtp
+        assertEquals("vsid_99", otpRes.sid)
+        assertEquals("anon_tok_1", otpRes.anonymToken)
+
+        val ok = VkSource.parseOAuthTokenResponse(
+            """{"access_token":"vk1.a.android_tok","user_id":555777}""",
+            "sid_abc",
+            "anon_tok_1"
+        )
+        assertTrue(ok is VkSource.VkAndroidAuthResult.Success)
+        val okRes = ok as VkSource.VkAndroidAuthResult.Success
+        assertEquals("vk1.a.android_tok", okRes.accessToken)
+        assertEquals(555777L, okRes.userId)
+
+        assertEquals("vk1.a.refreshed", VkSource.parseRefreshTokenResponse("""{"response":{"token":"vk1.a.refreshed"}}""", "vk1.a.android_tok"))
+        assertEquals("vk1.a.android_tok", VkSource.parseRefreshTokenResponse("""{"error":{"error_code":5}}""", "vk1.a.android_tok"))
     }
 }
