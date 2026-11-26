@@ -146,6 +146,12 @@ class CoreLogicTest {
         val parsed = VkSource.parseOAuthRedirect("https://oauth.vk.com/blank.html#access_token=vk1.a.test_tok&expires_in=0&user_id=12345678")
         assertEquals("vk1.a.test_tok", parsed?.first)
         assertEquals(12345678L, parsed?.second)
+        val parsedMirror = VkSource.parseOAuthRedirect("https://oauth.vk.ru/blank.html#access_token=vk1.a.mirror_tok&expires_in=0&user_id=87654321")
+        assertEquals("vk1.a.mirror_tok", parsedMirror?.first)
+        assertEquals(87654321L, parsedMirror?.second)
+        val parsedDirect = VkSource.parseOAuthRedirect("access_token=vk1.a.direct_tok&expires_in=0&user_id=112233")
+        assertEquals("vk1.a.direct_tok", parsedDirect?.first)
+        assertEquals(112233L, parsedDirect?.second)
         assertNull(VkSource.parseOAuthRedirect("https://oauth.vk.com/blank.html#error=access_denied"))
 
         val okJson = """

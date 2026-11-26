@@ -80,7 +80,10 @@ object VkSource {
     }
 
     internal fun parseOAuthRedirect(url: String): Pair<String, Long>? {
-        val frag = url.substringAfter('#', "").ifBlank { url.substringAfter('?', "") }
+        val trimmed = url.trim()
+        val frag = trimmed.substringAfter('#', "")
+            .ifBlank { trimmed.substringAfter('?', "") }
+            .ifBlank { if (trimmed.contains("access_token=")) trimmed else "" }
         if (frag.isBlank()) return null
         var token = ""
         var uid = 0L
@@ -88,7 +91,8 @@ object VkSource {
             val eq = part.indexOf('=')
             if (eq <= 0) continue
             val k = part.substring(0, eq)
-            val v = java.net.URLDecoder.decode(part.substring(eq + 1), "UTF-8")
+            val raw = part.substring(eq + 1)
+            val v = runCatching { java.net.URLDecoder.decode(raw, "UTF-8") }.getOrDefault(raw)
             if (k == "access_token") token = v
             else if (k == "user_id") uid = v.toLongOrNull() ?: 0L
         }
