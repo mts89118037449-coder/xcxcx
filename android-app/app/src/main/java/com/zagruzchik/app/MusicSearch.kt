@@ -748,35 +748,23 @@ object Streams {
             jobs.forEach { if (!it.isDone) it.cancel(true) }
             throw UserError("источники собраны")
         }
-        // Даём быстрым источникам без Python (Zaycev, ВК, Telegram, NewPipe) фору 1.2 с,
-        // чтобы не нагружать сеть и VPN тяжёлым yt-dlp, если песня нашлась сразу.
-        var slowStarted = light
-        var yandex: java.util.concurrent.Future<StreamInfo?>? = null
-        var viaYtdlp: List<java.util.concurrent.Future<StreamInfo?>> = emptyList()
-        var spare: List<java.util.concurrent.Future<StreamInfo?>> = emptyList()
-        var jobs: List<java.util.concurrent.Future<StreamInfo?>> =
-            listOfNotNull(remembered, zaycev, hitmotop, hearthis, onPhone.getOrNull(0), telegram, vk, ytm, onPhone.getOrNull(1))
-        while (true) {
-            if (!slowStarted && (System.currentTimeMillis() - started >= 1200 || jobs.all { it.isDone })) {
-                slowStarted = true
-                yandex = startYandex()
-                viaYtdlp = startViaYtdlp()
-                spare = startSpare()
+        val fastPriority = listOfNotNull(remembered, telegram, vk, ytm, zaycev, onPhone.getOrNull(0), onPhone.getOrNull(1))
+        val fallback = listOfNotNull(hitmotop, hearthis)
+        val graceMs = if (bg) 4500L else 2500L
+        awaitStream(
+            started = started,
+            graceMs = graceMs,
+            fastPriority = fastPriority,
+            fallback = fallback,
+            startSlow = if (light) null else ({
+                val yandex = startYandex()
+                val viaYtdlp = startViaYtdlp()
+                val spare = startSpare()
                 val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
-                jobs = listOfNotNull(remembered, zaycev, hitmotop, hearthis, yandex) + soundcloud + listOf(telegram, vk, ytm) + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
-            }
-            for (f in jobs) {
-                if (!f.isDone) continue
-                val stream = runCatching { f.get() }.getOrNull() ?: continue
-                jobs.forEach { if (!it.isDone) it.cancel(true) }
-                return stream
-            }
-            if (slowStarted && jobs.all { it.isDone }) break
-            // Основные площадки отвечают дольше 25 с — не ждём их, идём к запасным.
-            if (System.currentTimeMillis() - started > 25_000) { log += "Ждал площадки 25 с — не дождался"; break }
-            Thread.sleep(40)
-        }
-        jobs.forEach { if (!it.isDone) it.cancel(true) }
+                listOfNotNull(remembered, telegram, vk, ytm, zaycev, yandex) + soundcloud + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
+            }),
+            onTimeout = { log += "Ждал площадки 25 с — не дождался" },
+        )?.let { return it }
         if (light) throw UserError("В быстрых источниках не нашлась")
         if (problems.isNotEmpty()) log += "Ошибки:\n  " + problems.distinct().joinToString("\n  ") { it.take(160) }
         // Честно: где песня есть и почему не играет (чаще всего — платная на SoundCloud).
@@ -792,6 +780,52 @@ object Streams {
             append(" Искал: Zaycev, Hitmotop, Hearthis," + (if (Telegram.ready) " Telegram," else "") + (if (VkSource.loggedIn) " ВК," else "") + " SoundCloud, YouTube, YouTube Music, Яндекс, Bandcamp, Rutube, Internet Archive, Dailymotion, Audius.")
             append(" Нажмите на это сообщение — можно указать ссылку на песню вручную.")
         })
+    }
+
+    internal fun awaitStream(
+        started: Long,
+        graceMs: Long,
+        totalMs: Long = 25_000L,
+        fastPriority: List<java.util.concurrent.Future<StreamInfo?>>,
+        fallback: List<java.util.concurrent.Future<StreamInfo?>>,
+        startSlow: (() -> List<java.util.concurrent.Future<StreamInfo?>>)? = null,
+        onTimeout: () -> Unit = {},
+    ): StreamInfo? {
+        var slowStarted = startSlow == null
+        var priority = fastPriority
+        var fallbackStream: StreamInfo? = null
+        while (true) {
+            val elapsed = System.currentTimeMillis() - started
+            if (!slowStarted && (elapsed >= 1200 || priority.all { it.isDone })) {
+                slowStarted = true
+                priority = startSlow!!.invoke()
+            }
+            for (f in priority) {
+                if (!f.isDone) continue
+                val stream = runCatching { f.get() }.getOrNull() ?: continue
+                (priority + fallback).forEach { if (!it.isDone) it.cancel(true) }
+                return stream
+            }
+            if (fallbackStream == null) {
+                for (f in fallback) {
+                    if (!f.isDone) continue
+                    val stream = runCatching { f.get() }.getOrNull()
+                    if (stream != null) { fallbackStream = stream; break }
+                }
+            }
+            if (fallbackStream != null && ((slowStarted && priority.all { it.isDone }) || elapsed >= graceMs)) {
+                (priority + fallback).forEach { if (!it.isDone) it.cancel(true) }
+                return fallbackStream
+            }
+            if (slowStarted && priority.all { it.isDone } && fallback.all { it.isDone }) break
+            if (elapsed > totalMs) {
+                onTimeout()
+                break
+            }
+            Thread.sleep(40)
+        }
+        (priority + fallback).forEach { if (!it.isDone) it.cancel(true) }
+        return fallbackStream
     }
 }
 

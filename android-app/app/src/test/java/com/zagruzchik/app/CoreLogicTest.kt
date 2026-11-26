@@ -108,4 +108,36 @@ class CoreLogicTest {
         val remix = WebResult("https://a/2.mp3", "Kahlil Gibran (Remix)", "STRFKR", 220, "Hearthis", views = 100)
         assertTrue(WebSearch.relevance("STRFKR Kahlil Gibran", orig) > WebSearch.relevance("STRFKR Kahlil Gibran", remix))
     }
+
+    @Test
+    fun awaitStreamPriorityOverFallback() {
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
+        try {
+            val ytmStream = StreamInfo("https://yt/1", "https://yt/1", "YouTube Music", null, "Song")
+            val hitStream = StreamInfo("https://hm/1.mp3", "https://hm/1.mp3", "Hitmotop · MP3", null, "Song")
+
+            // 1) Fallback finishes in 10ms, priority (ytm) finishes in 120ms (< graceMs 600ms) -> priority wins
+            val fHit1 = pool.submit<StreamInfo?> { Thread.sleep(10); hitStream }
+            val fYtm1 = pool.submit<StreamInfo?> { Thread.sleep(120); ytmStream }
+            val picked1 = Streams.awaitStream(System.currentTimeMillis(), graceMs = 600L, fastPriority = listOf(fYtm1), fallback = listOf(fHit1))
+            assertEquals("YouTube Music", picked1?.source)
+
+            // 2) Fallback finishes in 10ms, priority hangs past graceMs 150ms -> fallback wins & cancels priority
+            val fHit2 = pool.submit<StreamInfo?> { Thread.sleep(10); hitStream }
+            val fSlow2 = pool.submit<StreamInfo?> { Thread.sleep(2000); ytmStream }
+            val picked2 = Streams.awaitStream(System.currentTimeMillis(), graceMs = 150L, fastPriority = listOf(fSlow2), fallback = listOf(fHit2))
+            assertEquals("Hitmotop · MP3", picked2?.source)
+            assertTrue(fSlow2.isCancelled || fSlow2.isDone)
+
+            // 3) Priority finishes null quickly -> fallback returns immediately without waiting for full graceMs
+            val fHit3 = pool.submit<StreamInfo?> { Thread.sleep(10); hitStream }
+            val fNull3 = pool.submit<StreamInfo?> { Thread.sleep(20); null }
+            val t0 = System.currentTimeMillis()
+            val picked3 = Streams.awaitStream(t0, graceMs = 2000L, fastPriority = listOf(fNull3), fallback = listOf(fHit3))
+            assertEquals("Hitmotop · MP3", picked3?.source)
+            assertTrue(System.currentTimeMillis() - t0 < 1000L)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
 }
