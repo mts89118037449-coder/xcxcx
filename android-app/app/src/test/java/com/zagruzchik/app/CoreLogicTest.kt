@@ -347,4 +347,44 @@ class CoreLogicTest {
         // В портрете (1080x2400) радиус остаётся без изменений
         assertEquals(370f, SmokeView.computeVisualRadius(1080, 2400, 370f), 1e-4f)
     }
+
+    @Test
+    fun playbackBackStack() {
+        Playback.clearBackStack()
+        val t1 = Playback.QItem(Track("Song 1", "Artist 1"))
+        val t2 = Playback.QItem(Track("Song 2", "Artist 2"))
+        val t3 = Playback.QItem(Track("Song 3", "Artist 3"))
+
+        // Нет дубликатов подряд
+        Playback.pushBack(t1)
+        Playback.pushBack(t1)
+        Playback.pushBack(t2)
+        Playback.pushBack(t3)
+
+        // Пропускает текущий трек (t3) и возвращает t2 (LIFO)
+        val p1 = Playback.popBack(Library.key(t3.track))
+        assertEquals("Song 2", p1?.track?.title)
+
+        val p2 = Playback.popBack(null)
+        assertEquals("Song 1", p2?.track?.title)
+        assertNull(Playback.popBack(null))
+
+        // Лимит 50 треков
+        Playback.clearBackStack()
+        for (i in 1..60) {
+            Playback.pushBack(Playback.QItem(Track("Track $i", "Artist $i")))
+        }
+        var count = 0
+        var lastTitle: String? = null
+        var firstPopped: String? = null
+        while (true) {
+            val item = Playback.popBack(null) ?: break
+            if (firstPopped == null) firstPopped = item.track.title
+            lastTitle = item.track.title
+            count++
+        }
+        assertEquals(50, count)
+        assertEquals("Track 60", firstPopped)
+        assertEquals("Track 11", lastTitle)
+    }
 }

@@ -191,10 +191,62 @@ object Playback {
         } else if (i >= 0) playQueue(ctx, queue, i, openScreen = false) else playTrack(ctx, t, openScreen = false)
     }
 
-    private fun playQueue(ctx: Context, given: List<QItem>, start: Int, openScreen: Boolean, auto: Boolean, retainHistory: Boolean = false) {
+    private val backStack = java.util.ArrayDeque<QItem>()
+
+    internal fun pushBack(item: QItem) {
+        synchronized(backStack) {
+            val k = Library.key(item.track)
+            if (backStack.peekLast()?.let { Library.key(it.track) } == k) return
+            backStack.addLast(item)
+            while (backStack.size > 50) backStack.removeFirst()
+        }
+    }
+
+    internal fun popBack(currentKey: String?): QItem? {
+        synchronized(backStack) {
+            while (backStack.isNotEmpty()) {
+                val top = backStack.removeLast()
+                if (currentKey == null || Library.key(top.track) != currentKey) return top
+            }
+            return null
+        }
+    }
+
+    internal fun clearBackStack() {
+        synchronized(backStack) { backStack.clear() }
+    }
+
+    private fun currentQItem(): QItem? {
+        val c = hooked
+        val idx = if (c != null && c.currentMediaItemIndex in queue.indices) c.currentMediaItemIndex else startIndex
+        queue.getOrNull(idx)?.let { return it }
+        val m = c?.currentMediaItem?.mediaMetadata ?: return null
+        val title = m.title?.toString()?.takeIf { it.isNotBlank() } ?: return null
+        val artist = m.artist?.toString().orEmpty()
+        val x = m.extras
+        val t = Track(title, artist, cover = m.artworkUri?.toString())
+        return QItem(t, Library.localFor(t), x?.getString(X_SOURCE_URL), x?.getString(X_PAGE_URL))
+    }
+
+    private fun playQueue(
+        ctx: Context,
+        given: List<QItem>,
+        start: Int,
+        openScreen: Boolean,
+        auto: Boolean,
+        retainHistory: Boolean = false,
+        pushHistory: Boolean = true,
+    ) {
         if (given.isEmpty()) return
         // Источник, выбранный человеком для песни, главнее страницы, запомненной в истории.
         val items = given.map { if (it.pageUrl != null && it.directUrl == null && Streams.chosen(it.track) != null) QItem(it.track, it.local, it.sourceUrl) else it }
+        val clampedStart = start.coerceIn(0, items.lastIndex)
+        val first = items[clampedStart]
+        if (pushHistory) {
+            currentQItem()?.let { prev ->
+                if (Library.key(prev.track) != Library.key(first.track)) pushBack(prev)
+            }
+        }
         val app = ctx.applicationContext
         val gen = ++queueGen
         if (retainHistory) retainHistoryGen = gen
@@ -203,11 +255,10 @@ object Playback {
         AppLog.add("НАЖАТИЕ «${items.getOrNull(start)?.track?.label}» (очередь ${items.size})")
         Streams.busy() // фон («Медиатека на телефоне», подготовка) уступает сеть нажатому
         queue = items
-        startIndex = start.coerceIn(0, items.lastIndex)
+        startIndex = clampedStart
         requestedIndex = null
         nextToAdd = startIndex + 1
         filling = false
-        val first = items[start.coerceIn(0, items.lastIndex)]
         LinkCache.prefetch(first.track, first.sourceUrl)
         // Соседние песни готовим, когда нажатая уже зазвучала (или через 8 с): раньше их поиск шёл одновременно с ней
         // и отнимал сеть — журнал 17.11: нажатая песня ждала 12,7 с, пока рядом искались две следующие.
@@ -726,9 +777,41 @@ object Playback {
         }
     }
 
-    fun previous(ctx: Context) = controller(ctx.applicationContext) {
-        requestedIndex = null
-        if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() else it.seekToPrevious()
+    fun hasPrevious(c: MediaController): Boolean {
+        if (c.hasPreviousMediaItem() || startIndex > 0) return true
+        if (synchronized(backStack) { backStack.isNotEmpty() }) return true
+        val curKey = nowPlayingKey
+        return History.all.any { it.kind == Kind.MUSIC && (curKey == null || Library.key(it.track) != curKey) }
+    }
+
+    fun previous(ctx: Context) {
+        val app = ctx.applicationContext
+        controller(app) { c ->
+            requestedIndex = null
+            if (c.currentPosition > 4_000L) {
+                c.seekTo(0L)
+                return@controller
+            }
+            if (c.hasPreviousMediaItem()) {
+                c.seekToPreviousMediaItem()
+                return@controller
+            }
+            if (startIndex > 0 && startIndex - 1 < queue.size) {
+                playQueue(app, queue, startIndex - 1, openScreen = false, auto = false, retainHistory = retainHistoryGen == queueGen, pushHistory = false)
+                return@controller
+            }
+            val curKey = nowPlayingKey
+            val prev = popBack(curKey) ?: History.all.firstOrNull {
+                it.kind == Kind.MUSIC && (curKey == null || Library.key(it.track) != curKey)
+            }?.let { e ->
+                QItem(e.track, e.local ?: Library.localFor(e.track), e.sourceUrl, e.pageUrl)
+            }
+            if (prev != null) {
+                playQueue(app, listOf(prev), 0, openScreen = false, auto = false, pushHistory = false)
+            } else {
+                c.seekTo(0L)
+            }
+        }
     }
 
     private const val READY_TRACKS = 6

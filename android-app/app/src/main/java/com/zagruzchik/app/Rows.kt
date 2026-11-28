@@ -104,6 +104,15 @@ object Rows {
                 }
             }
         }
+        row.isFocusable = true
+        row.setOnFocusChangeListener { v, focused ->
+            v.foreground = if (focused) android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = act.dp(16).toFloat()
+                setColor(android.graphics.Color.TRANSPARENT)
+                setStroke(act.dp(2), 0xFFB388FF.toInt())
+            } else null
+            v.animate().scaleX(if (focused) 1.02f else 1f).scaleY(if (focused) 1.02f else 1f).setDuration(90).start()
+        }
         return row
     }
 
@@ -133,6 +142,15 @@ object Rows {
             textAlignment = if (round) View.TEXT_ALIGNMENT_CENTER else View.TEXT_ALIGNMENT_VIEW_START
         }
         v.setOnClickListener { onClick() }
+        v.isFocusable = true
+        v.setOnFocusChangeListener { view, focused ->
+            view.foreground = if (focused) android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = act.dp(16).toFloat()
+                setColor(android.graphics.Color.TRANSPARENT)
+                setStroke(act.dp(2), android.graphics.Color.WHITE)
+            } else null
+            view.animate().scaleX(if (focused) 1.03f else 1f).scaleY(if (focused) 1.03f else 1f).setDuration(90).start()
+        }
         return v
     }
 

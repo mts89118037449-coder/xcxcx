@@ -262,15 +262,13 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
             val cell = LinearLayout(context).apply {
                 orientation = HORIZONTAL; gravity = Gravity.CENTER
                 setPadding(context.dp(12), 0, context.dp(14), 0)
-                if ((resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
-                    android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) {
-                    setOnFocusChangeListener { _, focused ->
-                        foreground = if (focused) GradientDrawable().apply {
-                            cornerRadius = context.dp(20).toFloat()
-                            setColor(Color.TRANSPARENT)
-                            setStroke(context.dp(3), Color.WHITE)
-                        } else null
-                    }
+                setOnFocusChangeListener { v, focused ->
+                    v.foreground = if (focused) GradientDrawable().apply {
+                        cornerRadius = context.dp(20).toFloat()
+                        setColor(Color.TRANSPARENT)
+                        setStroke(context.dp(2), Color.WHITE)
+                    } else null
+                    v.animate().scaleX(if (focused) 1.04f else 1f).scaleY(if (focused) 1.04f else 1f).setDuration(100).start()
                 }
                 contentDescription = it.label
                 isClickable = true; isFocusable = true

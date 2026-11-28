@@ -148,8 +148,11 @@ class NowPlayingActivity : AppCompatActivity() {
         findViewById<View>(R.id.npNext).setOnClickListener { Playback.next(this) }
         // Свайп по обложке: вправо — следующая песня из текущего списка, влево — предыдущая.
         Swipe.attach(findViewById(R.id.npCoverFrame), onRight = { Playback.next(this) }, onLeft = { Playback.previous(this) })
-        // Нажатие на диск переворачивает его: с обратной стороны — «компакт-диск на свету».
-        findViewById<View>(R.id.npCoverFrame).setOnClickListener { flipDisc() }
+        seekView.isFocusable = true
+        findViewById<View>(R.id.npCoverFrame).apply {
+            isFocusable = true
+            setOnClickListener { flipDisc() }
+        }
         // Перемотка: по кольцу пальцем по кругу или по волне — влево-вправо.
         seek.onScrub = { f ->
             val d = controller?.let { Playback.duration(it) } ?: 0
@@ -185,6 +188,65 @@ class NowPlayingActivity : AppCompatActivity() {
         setupCastButton(findViewById(R.id.npCast))
     }
 
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            val c = controller
+            when (event.keyCode) {
+                android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                android.view.KeyEvent.KEYCODE_MEDIA_PLAY,
+                android.view.KeyEvent.KEYCODE_MEDIA_PAUSE,
+                android.view.KeyEvent.KEYCODE_SPACE -> {
+                    c?.let {
+                        if (it.isPlaying) it.pause() else {
+                            if (it.playbackState == Player.STATE_ENDED) it.seekTo(0)
+                            it.play()
+                        }
+                    }
+                    return true
+                }
+                android.view.KeyEvent.KEYCODE_MEDIA_NEXT,
+                android.view.KeyEvent.KEYCODE_CHANNEL_UP -> {
+                    Playback.next(this)
+                    return true
+                }
+                android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+                android.view.KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                    Playback.previous(this)
+                    return true
+                }
+                android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                    if (c != null) {
+                        val d = Playback.duration(c)
+                        val target = (Playback.position(c) + 10_000L).let { if (d > 0) minOf(d, it) else it }
+                        Playback.seek(c, target)
+                    }
+                    return true
+                }
+                android.view.KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                    if (c != null) Playback.seek(c, maxOf(0L, Playback.position(c) - 10_000L))
+                    return true
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    val f = currentFocus
+                    if (c != null && (f === seekView || f?.id == R.id.npCoverFrame)) {
+                        val d = Playback.duration(c)
+                        val target = (Playback.position(c) + 10_000L).let { if (d > 0) minOf(d, it) else it }
+                        Playback.seek(c, target)
+                        return true
+                    }
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    val f = currentFocus
+                    if (c != null && (f === seekView || f?.id == R.id.npCoverFrame)) {
+                        Playback.seek(c, maxOf(0L, Playback.position(c) - 10_000L))
+                        return true
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onStart() {
         super.onStart()
         Playback.Pending.listen(pendingListener)
@@ -196,6 +258,10 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         render()
         seekView.post(ticker)
+        val isTv = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+        if (!window.decorView.isInTouchMode || isTv) {
+            play.post { if (!isFinishing && !isDestroyed) play.requestFocus() }
+        }
     }
 
     override fun onDestroy() {
@@ -307,6 +373,7 @@ class NowPlayingActivity : AppCompatActivity() {
             text = speedLabel(c?.playbackParameters?.speed ?: 1f)
             contentDescription = "Скорость воспроизведения $text"
         }
+        findViewById<View>(R.id.npPrev).isEnabled = c != null && (Playback.hasPrevious(c) || c.currentPosition > 4_000L)
         findViewById<View>(R.id.npShare).isEnabled = track != null
         loading.isVisible = pending
         if (pending || extras()?.getBoolean(Playback.X_PREVIEW) == true) {
