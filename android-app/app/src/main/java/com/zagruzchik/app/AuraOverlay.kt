@@ -67,9 +67,8 @@ class AuraOverlay private constructor(private val a: ComponentActivity) {
         (a.findViewById<ViewGroup>(android.R.id.content)).addView(root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         root.animate().alpha(1f).setDuration(140).start()
         step.text = "Собираю твою ауру…"
-        // Назад или нажатие по заставке отменяет переход в новую подборку.
+        // Назад отменяет переход в новую подборку (случайный тап по экрану анимацию не прерывает).
         a.onBackPressedDispatcher.addCallback(a, back)
-        root.setOnClickListener { back.handleOnBackPressed() }
         title.scaleX = 0.9f; title.scaleY = 0.9f
         title.animate().scaleX(1f).scaleY(1f).setDuration(900).setInterpolator(DecelerateInterpolator()).start()
     }
@@ -86,23 +85,29 @@ class AuraOverlay private constructor(private val a: ComponentActivity) {
 
     /** Новый шаг: старый текст тает, новый проявляется. */
     fun say(text: String) {
-        if (gone) return
+        if (gone || cancelled || a.isFinishing || a.isDestroyed) return
         step.animate().cancel()
         step.animate().alpha(0f).setDuration(120).withEndAction {
+            if (gone || cancelled || a.isFinishing || a.isDestroyed) return@withEndAction
             step.text = text
             step.translationY = a.dp(6).toFloat()
             step.animate().alpha(1f).translationY(0f).setDuration(220).start()
         }.start()
     }
 
-    /** Убрать — не раньше чем через 1,2 с после появления, чтобы заставка не мелькала ([now] — сразу, по нажатию). */
+    /** Убрать — не раньше чем через 1,2 с после появления, чтобы заставка не мелькала ([now] — сразу, по отмене). */
     fun dismiss(extraMs: Long = 0, now: Boolean = false) {
         if (gone) return
         val wait = if (now) 0L else maxOf(0L, 1200 - (SystemClock.uptimeMillis() - shownAt)) + extraMs
         root.postDelayed({
             if (gone) return@postDelayed
-            back.remove()
+            runCatching { back.remove() }
             gone = true
+            if (a.isFinishing || a.isDestroyed) {
+                smoke.playing = false
+                (root.parent as? ViewGroup)?.removeView(root)
+                return@postDelayed
+            }
             root.animate().alpha(0f).setDuration(420).withEndAction {
                 smoke.playing = false
                 (root.parent as? ViewGroup)?.removeView(root)

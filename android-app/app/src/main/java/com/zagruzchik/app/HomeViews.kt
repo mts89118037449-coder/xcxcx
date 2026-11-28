@@ -146,27 +146,43 @@ object HomeViews {
      * «Аура дня»: каждое нажатие — новая подборка (радио любимых исполнителей + новые песни по вашим тегам), а не перемешанная
      * прошлая. Следующая готовится заранее, сразу после нажатия, — поэтому играет мгновенно.
      */
+    @Volatile private var auraLaunching = false
+
     fun playAura(a: androidx.activity.ComponentActivity) {
+        if (auraLaunching) return
+        auraLaunching = true
         val overlay = AuraOverlay.show(a)
         thread {
-            val proposed = runCatching { AuraDay.build(a.applicationContext) }.getOrDefault(emptyList())
-            val mixed = if (proposed.size >= 2) proposed else {
-                (proposed + Library.downloaded().map { it.first }.shuffled() + Library.favorites.shuffled())
-                    .distinctBy { Library.key(it) }.take(30)
-            }
-            a.runOnUiThread {
-                if (overlay.cancelled || a.isFinishing || a.isDestroyed) return@runOnUiThread
-                if (!a.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
-                    overlay.dismiss(0, now = true)
-                    return@runOnUiThread
+            try {
+                val proposed = runCatching {
+                    AuraDay.build(a.applicationContext) { msg ->
+                        a.runOnUiThread { if (!overlay.cancelled && !a.isFinishing && !a.isDestroyed) overlay.say(msg) }
+                    }
+                }.getOrDefault(emptyList())
+                val mixed = if (proposed.size >= 2) proposed else {
+                    (proposed + Library.downloaded().map { it.first }.shuffled() + Library.favorites.shuffled())
+                        .distinctBy { Library.key(it) }.take(30)
                 }
-                if (mixed.isEmpty()) {
-                    overlay.say("Нет связи — попробуйте ещё раз")
-                    overlay.dismiss(1500)
-                } else {
-                    overlay.dismiss(0, now = true)
-                    thread { AuraDay.played(a.applicationContext, mixed) }
-                    Playback.playAura(a, mixed.map { Playback.QItem(it, Library.localFor(it), it.url) })
+                a.runOnUiThread {
+                    auraLaunching = false
+                    if (overlay.cancelled || a.isFinishing || a.isDestroyed) return@runOnUiThread
+                    if (!a.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                        overlay.dismiss(0, now = true)
+                        return@runOnUiThread
+                    }
+                    if (mixed.isEmpty()) {
+                        overlay.say("Нет связи — попробуйте ещё раз")
+                        overlay.dismiss(1500)
+                    } else {
+                        thread { AuraDay.played(a.applicationContext, mixed) }
+                        Playback.playAura(a, mixed.map { Playback.QItem(it, Library.localFor(it), it.url) })
+                        overlay.dismiss(extraMs = 450, now = false)
+                    }
+                }
+            } catch (t: Throwable) {
+                auraLaunching = false
+                a.runOnUiThread {
+                    if (!a.isFinishing && !a.isDestroyed) overlay.dismiss(0, now = true)
                 }
             }
         }
