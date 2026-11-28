@@ -139,6 +139,29 @@ object Tags {
         private set
     fun refreshTop() { topCached = runCatching { top(3) }.getOrDefault(emptyList()) }
 
+    @Synchronized internal fun backup(): JSONObject = JSONObject().apply { map.forEach { (key, value) -> put(key, JSONObject(value.toString())) } }
+
+    internal fun restore(snapshot: JSONObject) {
+        synchronized(this) {
+            snapshot.keys().forEach { key ->
+                val incoming = snapshot.optJSONObject(key) ?: return@forEach
+                val current = map.getOrPut(key) { JSONObject() }
+                if (!current.has("bpm")) incoming.optInt("bpm").takeIf { it in 30..400 }?.let { current.put("bpm", it) }
+                if (!current.has("bass")) incoming.optDouble("bass").takeIf { it in 0.0..1.0 }?.let { current.put("bass", it) }
+                if (!current.has("a")) incoming.optLong("a").takeIf { it > 0L }?.let { current.put("a", it) }
+                if (!current.has("g")) incoming.optJSONArray("g")?.let { genres ->
+                    current.put("g", JSONArray((0 until minOf(16, genres.length())).mapNotNull { i ->
+                        genres.optString(i).takeIf { it.isNotBlank() && it.length <= 80 }
+                    }))
+                }
+            }
+            bassCutValid = false
+            dirty = true
+        }
+        save()
+        refreshTop()
+    }
+
     fun save() {
         if (!::file.isInitialized) return
         val json = synchronized(this) {
@@ -183,6 +206,7 @@ object Tags {
  */
 object Recs {
     private fun file(ctx: Context) = File(ctx.filesDir, "recs.json")
+    internal fun invalidate(ctx: Context) { file(ctx).delete() }
     private fun day() = System.currentTimeMillis() / 86_400_000L
 
     // Жанры Deezer для чарта любимого жанра (номера из api.deezer.com/genre).

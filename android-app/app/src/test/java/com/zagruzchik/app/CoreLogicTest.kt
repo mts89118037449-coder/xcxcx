@@ -8,6 +8,15 @@ import org.junit.Test
 class CoreLogicTest {
 
     @Test
+    fun portableProfileDoesNotAcceptDeviceOrCredentialLinks() {
+        assertEquals("https://example.com/song.mp3", ProfileBackup.publicUrl("https://example.com/song.mp3"))
+        assertNull(ProfileBackup.publicUrl("content://music/local/12"))
+        assertNull(ProfileBackup.publicUrl("https://user:password@example.com/song"))
+        assertNull(ProfileBackup.publicUrl("http://127.0.0.1:8800/song"))
+    }
+
+
+    @Test
     fun stallRecoveryKeepsPausedAndPreviewTracks() {
         assertTrue(Playback.shouldRecoverStall(true, false, 0))
         assertTrue(!Playback.shouldRecoverStall(false, false, 0))

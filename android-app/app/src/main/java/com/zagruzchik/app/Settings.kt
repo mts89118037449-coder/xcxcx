@@ -99,6 +99,12 @@ object Settings {
     fun quality(ctx: Context) = runCatching { Quality.valueOf(prefs(ctx).getString("quality", null)!!) }.getOrDefault(Quality.ORIGINAL)
     fun setQuality(ctx: Context, q: Quality) = prefs(ctx).edit().putString("quality", q.name).apply()
 
+    fun followSystemNetwork(ctx: Context) = prefs(ctx).getBoolean("followSystemNetwork", true)
+    fun setFollowSystemNetwork(ctx: Context, on: Boolean) {
+        prefs(ctx).edit().putBoolean("followSystemNetwork", on).apply()
+        if (on) Net.youtubeDirect = false
+    }
+
     fun sourceOrder(ctx: Context) = runCatching { SourceOrder.valueOf(prefs(ctx).getString("source", null)!!) }.getOrDefault(SourceOrder.AUTO)
     fun setSourceOrder(ctx: Context, s: SourceOrder) = prefs(ctx).edit().putString("source", s.name).apply()
 

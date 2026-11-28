@@ -349,7 +349,7 @@ object Downloader {
             val fast = streamPool.submit<StreamInfo?> {
                 var np = runCatching { NewPipeSource.audio(pageUrl, wantTotal) }
                 // Адрес VPN YouTube не устраивает — пробуем напрямую, через обычную сеть телефона (остальное остаётся в VPN).
-                if (blocked(np.exceptionOrNull()) && !Net.youtubeDirect && Net.vpnActive() && Net.physical() != null) {
+                if (!Settings.followSystemNetwork(App.instance) && blocked(np.exceptionOrNull()) && !Net.youtubeDirect && Net.vpnActive() && Net.physical() != null) {
                     Net.youtubeDirect = true
                     np = runCatching { NewPipeSource.audio(pageUrl, wantTotal) }
                     if (np.getOrNull() == null) Net.youtubeDirect = false

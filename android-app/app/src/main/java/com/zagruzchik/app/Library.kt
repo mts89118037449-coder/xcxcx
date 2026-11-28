@@ -27,7 +27,7 @@ object Library {
             loaded += Track(
                 o.getString("title"), o.optString("artist"), o.optInt("duration"),
                 isrc = o.optString("isrc").ifEmpty { null }, cover = o.optString("cover").ifEmpty { null },
-                url = o.optString("url").ifEmpty { null }, preview = o.optString("preview").ifEmpty { null },
+                url = o.optString("url").ifEmpty { null }, preview = o.optString("preview").ifEmpty { null }, explicit = o.optBoolean("explicit"),
             )
         }
         // Перенос из файла в 6.3 мог записать вместо исполнителя «spotify:artist:…» — такие песни убираем (перенесите файл заново).
@@ -55,21 +55,32 @@ object Library {
     fun isAlbumSaved(a: Album) = synchronized(savedAlbums) { savedAlbums.any { albumKey(it) == albumKey(a) } }
 
     fun toggleAlbum(a: Album): Boolean {
-        val (was, snapshot) = synchronized(savedAlbums) {
-            val w = savedAlbums.removeAll { albumKey(it) == albumKey(a) }
-            if (!w) savedAlbums.add(0, a)
-            w to savedAlbums.toList()
-        }
-        runCatching {
-            val arr = JSONArray()
-            snapshot.forEach { x ->
-                arr.put(JSONObject().put("id", x.id ?: 0).put("title", x.title).put("artist", x.artist).put("cover", x.cover ?: "")
-                    .put("year", x.year ?: "").put("explicit", x.explicit).put("type", x.type))
+        val existed = synchronized(savedAlbums) {
+            savedAlbums.removeAll { albumKey(it) == albumKey(a) }.also { removed ->
+                if (!removed) savedAlbums.add(0, a)
             }
-            File(albumsFile.path + ".tmp").apply { writeText(arr.toString()) }.renameTo(albumsFile)
         }
+        saveAlbums()
         changed()
-        return !was
+        return !existed
+    }
+
+    internal fun mergeAlbums(incoming: List<Album>) {
+        val added = synchronized(savedAlbums) {
+            val existing = savedAlbums.map(::albumKey).toHashSet()
+            savedAlbums.addAll(0, incoming.filter { existing.add(albumKey(it)) })
+        }
+        if (added) { saveAlbums(); changed() }
+    }
+
+    @Synchronized private fun saveAlbums() = runCatching {
+        val entries = JSONArray()
+        albums.forEach { album ->
+            entries.put(JSONObject().put("id", album.id ?: 0).put("title", album.title).put("artist", album.artist)
+                .put("cover", album.cover.orEmpty()).put("year", album.year.orEmpty())
+                .put("explicit", album.explicit).put("type", album.type))
+        }
+        File(albumsFile.path + ".tmp").apply { writeText(entries.toString()) }.renameTo(albumsFile)
     }
 
     private fun loadAlbums(ctx: Context) {
@@ -101,18 +112,27 @@ object Library {
         return p
     }
 
+    internal fun mergePlaylists(incoming: List<Playlist>) {
+        val added = synchronized(savedPlaylists) {
+            val ids = savedPlaylists.map { it.id }.toHashSet()
+            val fresh = incoming.filter { ids.add(it.id) }
+            savedPlaylists.addAll(fresh)
+        }
+        if (added) { savePlaylists(); changed() }
+    }
+
     fun removePlaylist(id: String) {
         synchronized(savedPlaylists) { savedPlaylists.removeAll { it.id == id } }; savePlaylists(); changed()
     }
 
-    private fun trackJson(t: Track) = JSONObject().put("title", t.title).put("artist", t.artist).put("duration", t.durationSec)
+    internal fun trackJson(t: Track) = JSONObject().put("title", t.title).put("artist", t.artist).put("duration", t.durationSec)
         .put("isrc", t.isrc ?: "").put("cover", t.cover ?: "").put("url", t.url ?: "").put("explicit", t.explicit)
 
-    private fun trackFrom(o: JSONObject) = Track(o.getString("title"), o.optString("artist"), o.optInt("duration"),
+    internal fun trackFrom(o: JSONObject) = Track(o.getString("title"), o.optString("artist"), o.optInt("duration"),
         isrc = o.optString("isrc").ifEmpty { null }, cover = o.optString("cover").ifEmpty { null },
         url = o.optString("url").ifEmpty { null }, explicit = o.optBoolean("explicit"))
 
-    private fun savePlaylists() = runCatching {
+    @Synchronized private fun savePlaylists() = runCatching {
         val arr = JSONArray()
         val snapshot = synchronized(savedPlaylists) { savedPlaylists.toList() }
         snapshot.forEach { p ->
@@ -364,7 +384,7 @@ object Library {
         val arr = JSONArray()
         favorites.forEach { t ->
             arr.put(JSONObject().put("title", t.title).put("artist", t.artist).put("duration", t.durationSec)
-                .put("isrc", t.isrc ?: "").put("cover", t.cover ?: "").put("url", t.url ?: "").put("preview", t.preview ?: ""))
+                .put("isrc", t.isrc ?: "").put("cover", t.cover ?: "").put("url", t.url ?: "").put("preview", t.preview ?: "").put("explicit", t.explicit))
         }
         runCatching { File(file.path + ".tmp").apply { writeText(arr.toString()) }.renameTo(file) }
     }

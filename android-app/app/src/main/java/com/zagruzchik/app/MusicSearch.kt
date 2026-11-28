@@ -344,7 +344,7 @@ object Streams {
 
     private fun fromKnown(t: Track, where: String, wantTotal: Long? = null): StreamInfo? {
         if (isBlacklisted(where)) return null
-        if (where.startsWith("direct:https://")) {
+        if (where.startsWith("direct:https://") || where.startsWith("direct:http://")) {
             val url = where.removePrefix("direct:")
             if (isBlacklisted(url)) return null
             return StreamInfo(url, url, Describe.site(url), t.cover, t.title)
@@ -367,6 +367,7 @@ object Streams {
             if (!VkSource.available) throw UserError("ВК не подключён")
             return VkSource.streamOf(t, where) ?: throw UserError("ВК не отдал ссылку")
         }
+        if (PublicTelegram.canonical(where) != null) return PublicTelegram.stream(where, t.title)
         if (!isYoutube(where) && Service.of(where) != Service.SOUNDCLOUD) App.awaitReady() // YouTube и SoundCloud — средствами телефона, движок не ждём
         return Downloader.streamOf(where, Describe.site(where), t.title, wantTotal = wantTotal)
     }

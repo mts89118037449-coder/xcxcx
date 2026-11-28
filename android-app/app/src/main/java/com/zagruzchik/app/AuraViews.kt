@@ -293,7 +293,7 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
                     setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.section_nav_label))
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     gravity = Gravity.CENTER
-                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.onest_semibold)
+                    typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
                     setPadding(0, context.dp(2), 0, 0)
                 })
             }

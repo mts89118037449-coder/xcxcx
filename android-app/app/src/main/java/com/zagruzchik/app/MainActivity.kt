@@ -92,6 +92,36 @@ class MainActivity : AppCompatActivity() {
         refreshSummary()
     }
 
+    private val saveProfile = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri == null) return@registerForActivityResult
+        thread {
+            val result = runCatching {
+                val json = ProfileBackup.export(this)
+                checkNotNull(contentResolver.openOutputStream(uri, "wt")).bufferedWriter().use { it.write(json) }
+            }
+            runOnUiThread { if (!isDestroyed) snack(if (result.isSuccess) "Копия профиля сохранена" else "Не удалось сохранить файл") }
+        }
+    }
+
+    private val restoreProfile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        thread {
+            val result = runCatching { checkNotNull(contentResolver.openInputStream(uri)).use { ProfileBackup.restore(this, it) } }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                result.onSuccess {
+                    libraryStamp = null
+                    refreshLibrary()
+                    refreshMusicSettings()
+                    AudioFx.apply(this)
+                    if (homeData.size == 4) renderHomeAgain()
+                    snack("Профиль восстановлен · добавлено песен: ${it.added}")
+                    androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(Settings.theme(this).mode)
+                }.onFailure { snack("Не удалось прочитать файл профиля") }
+            }
+        }
+    }
+
     private val pickCookies = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@registerForActivityResult
         val n = runCatching { contentResolver.openInputStream(uri)!!.bufferedReader().use { Cookies.import(this, it.readText()) } }.getOrDefault(0)
@@ -185,6 +215,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        intent?.getStringExtra("open_music_url")?.let { url ->
+            intent.removeExtra("open_music_url")
+            showPage(R.id.nav_music)
+            OpenMusic.show(this, url, intent.getStringExtra("open_music_hint"))
+            intent.removeExtra("open_music_hint")
+        }
         // Вкладка нижнего меню, нажатая на другом экране (подборка, эквалайзер…).
         intent?.getIntExtra(EXTRA_PAGE, 0)?.takeIf { it != 0 && pages.containsKey(it) }?.let { showPage(it); intent.removeExtra(EXTRA_PAGE) }
         when (intent?.action) {
@@ -368,6 +404,7 @@ class MainActivity : AppCompatActivity() {
         val searchBox = findViewById<View>(R.id.musicSearchLayout)
         fun openSearch(open: Boolean) {
             searchBox.isVisible = open
+            findViewById<View>(R.id.musicLinkActions).isVisible = open
             if (open) {
                 musicSearch.requestFocus()
                 getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showSoftInput(musicSearch, 0)
@@ -393,15 +430,20 @@ class MainActivity : AppCompatActivity() {
         }
         musicSearch.setOnEditorActionListener { _, _, _ ->
             val input = musicSearch.text?.toString()?.trim().orEmpty()
-            if (PublicTelegram.canonical(input) != null || Http.isDirectAudio(input)) {
+            if (ProfileBackup.publicUrl(input) != null) {
                 musicSearch.removeCallbacks(musicSearchRun)
                 musicSeq++
                 openSearch(false)
-                Playback.playLink(this, input, null)
+                OpenMusic.show(this, input)
             }
             hideKeyboard()
             true
         }
+        findViewById<View>(R.id.searchBrowser).setOnClickListener {
+            val query = musicSearch.text.toString().trim()
+            if (query.isNotBlank()) OpenMusic.search(this, query)
+        }
+        findViewById<View>(R.id.addMusicLink).setOnClickListener { OpenMusic.show(this) }
         loadHome()
     }
 
@@ -472,6 +514,15 @@ class MainActivity : AppCompatActivity() {
             else fav.joinToString(", ") + " и новое по вашим тегам" + Tags.topCached.takeIf { it.isNotEmpty() }?.joinToString(" · ", prefix = "\n")
                 .orEmpty(),
         ) { HomeViews.playAura(this) })
+
+        home.addView(sectionHeader("Подборки для вас"))
+        fun mix(mode: PersonalMixes.Mode) = HomeViews.tile(this, mode.title, mode.description, emptyList(), null, null, false) {
+            PersonalMixes.play(this, mode, ::snack)
+        }
+        home.addView(HomeViews.grid(this, listOf(
+            mix(PersonalMixes.Mode.MOOD) to mix(PersonalMixes.Mode.REDISCOVER),
+            mix(PersonalMixes.Mode.DISCOVER) to mix(PersonalMixes.Mode.LIKES),
+        ), listOf(88, 88)))
 
         val releases = News.releases
         val fresh = releases.count { it.isNew }
@@ -1264,6 +1315,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSettingsPage() {
         sites = findViewById(R.id.sites)
+        findViewById<View>(R.id.exportProfile).setOnClickListener {
+            runCatching { saveProfile.launch("SoundAura-profile.json") }.onFailure { snack("Файловое приложение недоступно") }
+        }
+        findViewById<View>(R.id.importProfile).setOnClickListener {
+            MaterialAlertDialogBuilder(this).setTitle("Восстановить профиль?")
+                .setMessage("Песни, альбомы и плейлисты объединятся с текущими. Настройки из файла применятся на этом устройстве.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Выбрать файл") { _, _ ->
+                    runCatching { restoreProfile.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }
+                        .onFailure { snack("Файловое приложение недоступно") }
+                }
+                .show()
+        }
         refreshMusicSettings()
         findViewById<View>(R.id.importCookies).setOnClickListener { cookiesHelp() }
         findViewById<View>(R.id.logoutAll).setOnClickListener {
@@ -1397,6 +1461,12 @@ class MainActivity : AppCompatActivity() {
                 else Settings.setCacheLimitMb(this, Settings.CACHE_OPTIONS[i])
                 refreshMusicSettings()
             }
+        }
+        val systemNetwork = Settings.followSystemNetwork(this)
+        row(R.drawable.ic_link, "Сеть", if (systemNetwork) "Системное подключение" else "Автоматический маршрут",
+            "Системное подключение использует активную сеть Android, включая ваш VPN") {
+            Settings.setFollowSystemNetwork(this, !systemNetwork)
+            refreshMusicSettings()
         }
         val src = Settings.sourceOrder(this)
         row(R.drawable.ic_link, "Приоритет источников", src.label, src.hint) {

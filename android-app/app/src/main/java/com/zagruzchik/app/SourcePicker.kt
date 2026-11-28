@@ -59,7 +59,9 @@ object SourcePicker {
             if (a.isFinishing || a.isDestroyed) return
             val current = Streams.chosen(t)
             rows.removeAllViews()
-            row("Автоматически", "как решит приложение", current == null) { choose(null, "автоматически") }
+            row("Автоматически", null, current == null) { choose(null, "автоматически") }
+            row("Искать в браузере", null, false) { OpenMusic.search(a, t.query) }
+            row("Указать ссылку", null, false) { dialog.dismiss(); OpenMusic.show(a, target = t) }
             live.list.forEach { o ->
                 val sub = if (o.title.isNotBlank() && !o.title.equals(t.title, true)) "запись: «${o.title.take(60)}»" else null
                 row(o.label, sub, o.where == current) { choose(o.where, o.label, o) }

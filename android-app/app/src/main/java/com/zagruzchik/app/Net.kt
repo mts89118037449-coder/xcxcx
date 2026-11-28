@@ -59,7 +59,7 @@ object Net {
 
     /** Соединение: для YouTube в режиме «напрямую» — через обычную сеть, иначе как обычно. */
     fun open(url: URL): HttpURLConnection {
-        if (youtubeDirect && isYoutube(url.host)) physical()?.let { return it.openConnection(url) as HttpURLConnection }
+        if (youtubeDirect && !Settings.followSystemNetwork(App.instance) && isYoutube(url.host)) physical()?.let { return it.openConnection(url) as HttpURLConnection }
         return url.openConnection() as HttpURLConnection
     }
 }

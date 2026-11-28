@@ -50,19 +50,29 @@ object Taste {
     fun init(ctx: Context) {
         file = File(ctx.filesDir, "taste.json")
         val o = runCatching { JSONObject(file.readText()) }.getOrNull() ?: return
-        synchronized(this) {
-            o.optJSONObject("t")?.let { t ->
-                t.keys().forEach { k ->
-                    t.optJSONArray(k)?.let { a ->
-                        val slots = IntArray(4) { idx -> a.optInt(3 + idx, 0) }
-                        tracks[k] = Stat(a.optInt(0), a.optInt(1), a.optLong(2), slots)
-                    }
-                }
+        merge(o)
+    }
+
+    @Synchronized private fun merge(o: JSONObject) {
+        o.optJSONObject("t")?.let { t ->
+            t.keys().forEach { k ->
+                val a = t.optJSONArray(k) ?: return@forEach
+                val stat = tracks.getOrPut(k) { Stat() }
+                stat.plays = maxOf(stat.plays, a.optInt(0).coerceIn(0, 1_000_000))
+                stat.skips = maxOf(stat.skips, a.optInt(1).coerceIn(0, 1_000_000))
+                stat.last = maxOf(stat.last, a.optLong(2).coerceAtMost(System.currentTimeMillis()))
+                for (i in 0..3) stat.slots[i] = maxOf(stat.slots[i], a.optInt(3 + i).coerceIn(0, 1_000_000))
             }
-            o.optJSONObject("a")?.let { a -> a.keys().forEach { k -> artists[k] = a.optInt(k) } }
-            o.optJSONObject("n")?.let { n -> n.keys().forEach { k -> names[k] = n.optString(k) } }
-            o.optJSONObject("as")?.let { sk -> sk.keys().forEach { k -> artistSkips[k] = sk.optLong(k) } }
         }
+        o.optJSONObject("a")?.let { a -> a.keys().forEach { k -> artists[k] = maxOf(artists[k] ?: 0, a.optInt(k).coerceIn(0, 1_000_000)) } }
+        o.optJSONObject("n")?.let { n -> n.keys().forEach { k -> names.putIfAbsent(k, n.optString(k)) } }
+        o.optJSONObject("as")?.let { sk -> sk.keys().forEach { k -> artistSkips[k] = maxOf(artistSkips[k] ?: 0, sk.optLong(k).coerceAtMost(System.currentTimeMillis())) } }
+    }
+
+    @Synchronized internal fun restore(snapshot: JSONObject) {
+        merge(snapshot)
+        favMemo = null
+        save()
     }
 
     private val artistSplit = Regex("""\s*(,|&| feat\.? | ft\.? )\s*""", RegexOption.IGNORE_CASE)
@@ -190,8 +200,7 @@ object Taste {
     /** Часто пропускаемые песни радио не предлагает. */
     @Synchronized fun disliked(t: Track): Boolean = tracks[Library.key(t)]?.let { it.skips >= 2 && it.skips > it.plays } ?: false
 
-    private fun save() {
-        if (!::file.isInitialized) return
+    @Synchronized internal fun backup(): JSONObject {
         val t = JSONObject()
         tracks.forEach { (k, s) ->
             t.put(k, JSONArray().put(s.plays).put(s.skips).put(s.last)
@@ -204,7 +213,12 @@ object Taste {
         val sk = JSONObject()
         val now = System.currentTimeMillis()
         artistSkips.forEach { (k, ts) -> if (now - ts < ARTIST_COOLDOWN_MS.toLong()) sk.put(k, ts) }
-        val json = JSONObject().put("t", t).put("a", a).put("n", n).put("as", sk).toString()
+        return JSONObject().put("t", t).put("a", a).put("n", n).put("as", sk)
+    }
+
+    private fun save() {
+        if (!::file.isInitialized) return
+        val json = backup().toString()
         io.execute { runCatching { File(file.path + ".tmp").apply { writeText(json) }.renameTo(file) } }
     }
 }

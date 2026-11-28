@@ -10,14 +10,12 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.content.res.ResourcesCompat
 import com.google.android.material.imageview.ShapeableImageView
 import com.google.android.material.shape.ShapeAppearanceModel
 import kotlin.concurrent.thread
 
 /** Главная SoundAura: «Аура дня» и плитки разделов (вместо длинных списков). */
 object HomeViews {
-    private val fontCache = java.util.concurrent.ConcurrentHashMap<Int, android.graphics.Typeface>()
 
     private fun blob(a: Activity, color: Int, sizeDp: Int, x: Int, y: Int, alpha: Int) = View(a).apply {
         background = GradientDrawable().apply {
@@ -28,9 +26,10 @@ object HomeViews {
         layoutParams = FrameLayout.LayoutParams(a.dp(sizeDp), a.dp(sizeDp)).apply { leftMargin = a.dp(x); topMargin = a.dp(y) }
     }
 
-    private fun text(a: Activity, s: String, sizeSp: Float, font: Int, color: Int) = TextView(a).apply {
+    private fun text(a: Activity, s: String, sizeSp: Float, bold: Boolean, color: Int) = TextView(a).apply {
         text = s; textSize = sizeSp; setTextColor(color)
-        typeface = fontCache[font] ?: ResourcesCompat.getFont(a, font)?.also { fontCache[font] = it }
+        typeface = android.graphics.Typeface.create("sans-serif", if (bold)
+            android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
     }
 
     /** Кольца из логотипа — декор в углу карточки. */
@@ -63,9 +62,8 @@ object HomeViews {
         card.addView(blob(a, AuraColors.c3(a), 340, 140, 30, 0xB8))
         card.addView(Rings(a), FrameLayout.LayoutParams(a.dp(240), a.dp(240), Gravity.END).apply { rightMargin = -a.dp(48); topMargin = -a.dp(12) })
         val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(22), a.dp(22), a.dp(22), a.dp(22)) }
-        col.addView(text(a, "РАДИО ПО ВАШЕМУ ВКУСУ", 11f, R.font.onest_semibold, 0xCCFFFFFF.toInt()).apply { letterSpacing = 0.12f })
-        col.addView(text(a, "Аура дня", 31f, R.font.onest_bold, Color.WHITE).apply { letterSpacing = -0.02f; setPadding(0, a.dp(4), 0, 0) })
-        col.addView(text(a, subtitle, 14f, R.font.onest_regular, 0xE0FFFFFF.toInt()).apply {
+        col.addView(text(a, "Аура дня", 31f, true, Color.WHITE).apply { letterSpacing = -0.02f; setPadding(0, a.dp(4), 0, 0) })
+        col.addView(text(a, subtitle, 14f, false, 0xE0FFFFFF.toInt()).apply {
             maxWidth = a.dp(240); setPadding(0, a.dp(6), 0, 0); maxLines = 2
         })
         col.addView(View(a), LinearLayout.LayoutParams(1, 0, 1f))
@@ -99,14 +97,14 @@ object HomeViews {
             setOnClickListener { onClick() }
         }
         val head = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP }
-        head.addView(text(a, title, if (tall) 15f else 13.5f, R.font.onest_semibold, onSurface).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END },
+        head.addView(text(a, title, if (tall) 16f else 15f, true, onSurface).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        if (badge != null) head.addView(text(a, badge, 11f, R.font.onest_bold, Color.WHITE).apply {
+        if (badge != null) head.addView(text(a, badge, 11f, true, Color.WHITE).apply {
             background = AuraColors.drawable(a, a.dp(11).toFloat(), GradientDrawable.Orientation.LEFT_RIGHT)
             setPadding(a.dp(8), a.dp(3), a.dp(8), a.dp(3))
         })
         v.addView(head)
-        v.addView(text(a, sub, 12f, R.font.onest_regular, muted).apply { setPadding(0, a.dp(3), 0, 0); maxLines = if (tall) 1 else 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+        v.addView(text(a, sub, 13f, false, muted).apply { setPadding(0, a.dp(3), 0, 0); maxLines = if (tall) 1 else 2; ellipsize = android.text.TextUtils.TruncateAt.END })
         if (tall) {
             v.addView(View(a), LinearLayout.LayoutParams(1, 0, 1f))
             val strip = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL }
@@ -123,7 +121,7 @@ object HomeViews {
                 strip.addView(img, LinearLayout.LayoutParams(a.dp(52), a.dp(52)).apply { if (i > 0) leftMargin = -a.dp(16) })
             }
             v.addView(strip)
-            if (foot != null) v.addView(text(a, foot, 13f, R.font.onest_semibold, onSurface).apply { setPadding(0, a.dp(8), 0, 0); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            if (foot != null) v.addView(text(a, foot, 13f, true, onSurface).apply { setPadding(0, a.dp(8), 0, 0); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
         } else {
             v.addView(View(a), LinearLayout.LayoutParams(1, 0, 1f))
         }

@@ -13,6 +13,30 @@
 
         <TextView
             style="@style/SectionTitle"
+            android:text="Локальный профиль" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Сохранённые песни, плейлисты и настройки в одном файле"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/exportProfile"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Сохранить копию" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/importProfile"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Восстановить из файла" />
+
+        <TextView
+            style="@style/SectionTitle"
             android:text="Оформление" />
 
         <com.google.android.material.card.MaterialCardView
