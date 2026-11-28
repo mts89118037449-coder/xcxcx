@@ -31,7 +31,7 @@ class CollectionActivity : AppCompatActivity() {
         val i = intent
         val title = i.getStringExtra(X_TITLE).orEmpty()
         findViewById<TextView>(R.id.colTitle).text = title
-        Images.into(findViewById(R.id.colImage), i.getStringExtra(X_IMAGE), R.drawable.ph_cover)
+        setHeadCover(i.getStringExtra(X_IMAGE))
         when (i.getStringExtra(X_KIND)) {
             KIND_LIST -> loadList(i.getStringExtra(X_ID_S).orEmpty())
             KIND_PLAYLIST -> loadPlaylist(i.getStringExtra(X_ID_S).orEmpty())
@@ -46,6 +46,15 @@ class CollectionActivity : AppCompatActivity() {
                 Images.load(i.getStringExtra(X_IMAGE)) { findViewById<android.widget.ImageView>(R.id.colHeroImage).setImageBitmap(it) }
                 loadArtist(i.getLongExtra(X_ID, 0).takeIf { it > 0 }, title)
             }
+        }
+    }
+
+    private fun setHeadCover(url: String?) {
+        Images.into(findViewById(R.id.colImage), url, R.drawable.ph_cover)
+        val blur = findViewById<android.widget.ImageView>(R.id.colHeadBlur)
+        Images.into(blur, url, R.drawable.ph_cover)
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            blur.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(48f, 48f, android.graphics.Shader.TileMode.CLAMP))
         }
     }
 
@@ -65,7 +74,7 @@ class CollectionActivity : AppCompatActivity() {
                         if (total > 0) "${total / 60} мин" else null).joinToString(" · ")
                     setOnClickListener { Rows.openArtist(this@CollectionActivity, full.artist) }
                 }
-                Images.into(findViewById(R.id.colImage), full.cover, R.drawable.ph_cover)
+                setHeadCover(full.cover)
                 // ♥ — альбом в медиатеку (вкладка «Альбомы»).
                 findViewById<android.widget.ImageButton>(R.id.colLike).apply {
                     isVisible = true
@@ -86,7 +95,7 @@ class CollectionActivity : AppCompatActivity() {
         val p = Library.playlist(id) ?: return error(UserError("Плейлист удалён"))
         findViewById<TextView>(R.id.colTitle).text = p.name
         findViewById<TextView>(R.id.colSub).text = "${p.tracks.size} песен · из ${p.source}"
-        Images.into(findViewById(R.id.colImage), p.tracks.firstOrNull { it.cover != null }?.cover, R.drawable.ph_cover)
+        setHeadCover(p.tracks.firstOrNull { it.cover != null }?.cover)
         tracks = p.tracks
         showTracks(p.tracks, numbered = false)
         Streams.prefetchMany(p.tracks, 4)

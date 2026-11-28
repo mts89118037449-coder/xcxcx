@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface">
+    android:background="@drawable/bg_aura">
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/colScroll"
@@ -62,50 +62,68 @@
                 </LinearLayout>
             </FrameLayout>
 
-            <!-- Альбом / чарт: обложка по центру -->
-            <LinearLayout
+            <!-- Альбом / чарт: размытый фон под обложкой + плавный переход в тёмный список -->
+            <FrameLayout
                 android:id="@+id/colHead"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_horizontal"
-                android:orientation="vertical"
-                android:paddingHorizontal="20dp"
-                android:paddingTop="64dp">
+                android:layout_height="wrap_content">
 
-                <com.google.android.material.imageview.ShapeableImageView
-                    android:id="@+id/colImage"
-                    android:layout_width="240dp"
-                    android:layout_height="240dp"
-                    android:elevation="8dp"
+                <ImageView
+                    android:id="@+id/colHeadBlur"
+                    android:layout_width="match_parent"
+                    android:layout_height="340dp"
+                    android:alpha="0.42"
                     android:importantForAccessibility="no"
-                    android:scaleType="centerCrop"
-                    app:shapeAppearanceOverlay="@style/NowPlayingCoverShape" />
+                    android:scaleType="centerCrop" />
 
-                <TextView
-                    android:id="@+id/colTitle"
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="340dp"
+                    android:background="@drawable/fade_to_surface" />
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:gravity="center"
-                    android:textAppearance="@style/TA.HeadlineSmall"
-                    android:textSize="24sp" />
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="20dp"
+                    android:paddingTop="68dp">
 
-                <TextView
-                    android:id="@+id/colSub"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:background="?attr/selectableItemBackground"
-                    android:gravity="center"
-                    android:textAppearance="?attr/textAppearanceBodyMedium"
-                    android:textColor="?attr/colorOnSurfaceVariant" />
-            </LinearLayout>
+                    <com.google.android.material.imageview.ShapeableImageView
+                        android:id="@+id/colImage"
+                        android:layout_width="236dp"
+                        android:layout_height="236dp"
+                        android:elevation="16dp"
+                        android:importantForAccessibility="no"
+                        android:scaleType="centerCrop"
+                        app:shapeAppearanceOverlay="@style/NowPlayingCoverShape" />
+
+                    <TextView
+                        android:id="@+id/colTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="20dp"
+                        android:gravity="center"
+                        android:textAppearance="@style/TA.HeadlineSmall"
+                        android:textSize="24sp" />
+
+                    <TextView
+                        android:id="@+id/colSub"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:gravity="center"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+                </LinearLayout>
+            </FrameLayout>
 
             <LinearLayout
                 android:id="@+id/colButtons"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="18dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingHorizontal="20dp"
@@ -113,10 +131,11 @@
 
                 <ImageButton
                     android:id="@+id/colPlay"
-                    android:layout_width="56dp"
-                    android:layout_height="56dp"
+                    android:layout_width="58dp"
+                    android:layout_height="58dp"
                     android:background="@drawable/bg_aura_circle"
                     android:contentDescription="Слушать"
+                    android:elevation="6dp"
                     android:src="@drawable/ic_play_arrow"
                     app:tint="@android:color/white" />
 
@@ -124,8 +143,8 @@
                     android:id="@+id/colShuffle"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
-                    android:layout_marginStart="10dp"
-                    android:background="@drawable/bg_round_button"
+                    android:layout_marginStart="12dp"
+                    android:background="@drawable/bg_glass_soft"
                     android:contentDescription="Перемешать"
                     android:src="@drawable/ic_shuffle"
                     app:tint="?attr/colorOnSurface" />
@@ -135,7 +154,7 @@
                     android:layout_width="48dp"
                     android:layout_height="48dp"
                     android:layout_marginStart="10dp"
-                    android:background="@drawable/bg_round_button"
+                    android:background="@drawable/bg_glass_soft"
                     android:contentDescription="В медиатеку"
                     android:src="@drawable/ic_favorite_border"
                     android:visibility="gone"
@@ -143,16 +162,21 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/colRadio"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="wrap_content"
                     android:layout_height="48dp"
                     android:layout_marginStart="10dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
                     android:text="Радио"
+                    android:textColor="?attr/colorOnSurface"
                     android:visibility="gone"
+                    app:backgroundTint="@color/glass"
                     app:cornerRadius="24dp"
-                    app:icon="@drawable/ic_queue_music" />
+                    app:icon="@drawable/ic_queue_music"
+                    app:iconTint="?attr/colorOnSurface"
+                    app:strokeColor="@color/line"
+                    app:strokeWidth="1dp" />
             </LinearLayout>
 
             <com.google.android.material.progressindicator.LinearProgressIndicator

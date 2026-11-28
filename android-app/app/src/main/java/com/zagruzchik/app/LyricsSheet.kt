@@ -22,33 +22,40 @@ object LyricsSheet {
     fun show(act: Activity, t: Track, position: () -> Long, seek: (Long) -> Unit, onVisibilityChanged: () -> Unit) {
         val dlg = BottomSheetDialog(act)
         val pad = act.dp(20)
-        val root = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, act.dp(8), pad, 0) }
+        val onSurface = 0xFFF4F4F5.toInt()
+        val muted = 0xFFA8A4B8.toInt()
+        val root = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, 0, pad, 0) }
+        root.addView(glassDragHandle(act))
         val head = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val titles = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
         titles.addView(TextView(act).apply {
             text = t.title; setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleLarge)
+            setTextColor(onSurface)
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
         })
         val sub = TextView(act).apply {
             text = t.artist; setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
-            setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSurfaceVariant))
+            setTextColor(muted)
         }
         titles.addView(sub)
         head.addView(titles, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         val karaoke = MaterialButton(act, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
             text = "Караоке"; isCheckable = true; isVisible = false
+            setTextColor(onSurface)
         }
         head.addView(karaoke)
         root.addView(head)
         root.addView(MaterialButton(act, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
             val visible = Settings.lyricsInPlayer(act)
             text = if (visible) "Скрыть текст в плеере" else "Показывать текст в плеере"
+            setTextColor(onSurface)
             setOnClickListener {
                 Settings.setLyricsInPlayer(act, !visible)
                 onVisibilityChanged()
                 dlg.dismiss()
             }
         })
+        root.addView(glassDivider(act))
 
         val progress = CircularProgressIndicator(act).apply { isIndeterminate = true }
         root.addView(progress, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -62,8 +69,8 @@ object LyricsSheet {
         dlg.behavior.state = BottomSheetBehavior.STATE_EXPANDED
         dlg.behavior.skipCollapsed = true
 
-        val normal = MaterialColors.getColor(root, com.google.android.material.R.attr.colorOnSurfaceVariant)
-        val active = MaterialColors.getColor(root, com.google.android.material.R.attr.colorPrimary)
+        val normal = muted
+        val active = 0xFFC9B6FF.toInt()
         var lines: List<TextView> = emptyList()
         var synced: List<Lyrics.Line> = emptyList()
         var lastActive = -1
@@ -90,6 +97,7 @@ object LyricsSheet {
             body.removeAllViews(); lines = emptyList(); lastActive = -1
             body.addView(TextView(act).apply {
                 this.text = text; setTextIsSelectable(true)
+                setTextColor(onSurface)
                 setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge)
                 setLineSpacing(0f, 1.25f)
             })
@@ -108,7 +116,7 @@ object LyricsSheet {
             }
         }
 
-        dlg.setOnShowListener { scroll.post(ticker) }
+        dlg.makeGlassSheet(root) { scroll.post(ticker) }
         dlg.setOnDismissListener { scroll.removeCallbacks(ticker) }
         dlg.show()
 

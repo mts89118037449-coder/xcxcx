@@ -1,3 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Фон экранов: спокойный, без свечения (свет на экран приносит обложка в плеере) -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"><solid android:color="@color/m3_background" /></shape>
+<!-- Фон экранов: глубокий космический градиент с мягким свечением ауры сверху -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <gradient
+                android:angle="270"
+                android:startColor="#09090E"
+                android:centerColor="#120E20"
+                android:endColor="#09090E" />
+        </shape>
+    </item>
+    <item>
+        <shape>
+            <gradient
+                android:type="radial"
+                android:gradientRadius="320dp"
+                android:centerX="0.18"
+                android:centerY="0.06"
+                android:startColor="#2E6A3DF0"
+                android:endColor="#0009090E" />
+        </shape>
+    </item>
+    <item>
+        <shape>
+            <gradient
+                android:type="radial"
+                android:gradientRadius="280dp"
+                android:centerX="0.86"
+                android:centerY="0.12"
+                android:startColor="#22FF4F9A"
+                android:endColor="#0009090E" />
+        </shape>
+    </item>
+</layer-list>

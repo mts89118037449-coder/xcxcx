@@ -163,12 +163,13 @@
 
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/activeCard"
-            style="?attr/materialCardViewFilledStyle"
+            style="@style/AuraGlassCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:visibility="gone"
-            app:cardBackgroundColor="?attr/colorPrimaryContainer">
+            app:cardBackgroundColor="#CC241848"
+            app:strokeColor="#556A3DF0">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -181,7 +182,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:textAppearance="?attr/textAppearanceTitleSmall"
-                    android:textColor="?attr/colorOnPrimaryContainer" />
+                    android:textColor="@android:color/white" />
 
                 <com.google.android.material.progressindicator.LinearProgressIndicator
                     android:id="@+id/activeProgress"
@@ -198,12 +199,12 @@
                     android:layout_marginTop="8dp"
                     android:text="Открыть загрузки →"
                     android:textAppearance="?attr/textAppearanceLabelLarge"
-                    android:textColor="?attr/colorOnPrimaryContainer" />
+                    android:textColor="@color/aura3" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
         <com.google.android.material.card.MaterialCardView
-            style="?attr/materialCardViewOutlinedStyle"
+            style="@style/AuraGlassCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp">

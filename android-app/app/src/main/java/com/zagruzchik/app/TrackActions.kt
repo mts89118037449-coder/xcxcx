@@ -1,25 +1,57 @@
 package com.zagruzchik.app
 
 import android.app.Activity
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.res.ResourcesCompat
 import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.color.MaterialColors
 import com.google.android.material.imageview.ShapeableImageView
 import com.google.android.material.shape.ShapeAppearanceModel
 import kotlin.concurrent.thread
+
+internal fun BottomSheetDialog.makeGlassSheet(root: View, extraOnShow: (() -> Unit)? = null) {
+    root.setBackgroundResource(R.drawable.bg_glass_sheet)
+    setOnShowListener {
+        findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
+        extraOnShow?.invoke()
+    }
+}
+
+internal fun glassDragHandle(a: Activity): View = View(a).apply {
+    background = GradientDrawable().apply {
+        cornerRadius = a.dp(2).toFloat()
+        setColor(0x48FFFFFF)
+    }
+    layoutParams = LinearLayout.LayoutParams(a.dp(38), a.dp(4)).apply {
+        gravity = Gravity.CENTER_HORIZONTAL
+        topMargin = a.dp(10)
+        bottomMargin = a.dp(12)
+    }
+}
+
+internal fun glassDivider(a: Activity): View = View(a).apply {
+    setBackgroundColor(0x18FFFFFF)
+    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, a.dp(1)).apply {
+        topMargin = a.dp(4)
+        bottomMargin = a.dp(6)
+    }
+}
 
 /** Действия с песней («…» в строке): в любимое, скачать, исполнитель, радио, поделиться. */
 object TrackActions {
     fun show(a: Activity, t: Track, snack: (String) -> Unit, pageUrl: String? = null, directUrl: String? = null, local: SavedFile? = null,
              onLikeChanged: (Boolean) -> Unit = {}) {
         val dlg = BottomSheetDialog(a)
-        val onSurface = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurface, 0)
-        val muted = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurfaceVariant, 0)
-        val root = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(20), a.dp(8), a.dp(20), a.dp(24)) }
+        val onSurface = 0xFFF4F4F5.toInt()
+        val muted = 0xFFA8A4B8.toInt()
+        val root = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(20), 0, a.dp(20), a.dp(24)) }
+        root.addView(glassDragHandle(a))
 
         val head = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, a.dp(12)) }
         head.addView(ShapeableImageView(a).apply {
@@ -32,12 +64,12 @@ object TrackActions {
         names.addView(TextView(a).apply { text = t.artist; textSize = 14f; setTextColor(muted); maxLines = 1 })
         head.addView(names)
         root.addView(head)
+        root.addView(glassDivider(a))
 
         fun item(icon: Int, label: String, action: () -> Unit) {
             root.addView(LinearLayout(a).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 minimumHeight = a.dp(52)
-                setBackgroundResource(android.R.drawable.list_selector_background)
                 background = a.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).let { ta -> ta.getDrawable(0).also { ta.recycle() } }
                 addView(ImageView(a).apply { setImageResource(icon); setColorFilter(onSurface) }, LinearLayout.LayoutParams(a.dp(24), a.dp(24)))
                 addView(TextView(a).apply { text = label; textSize = 16f; setTextColor(onSurface); setPadding(a.dp(16), 0, 0, 0) })
@@ -91,6 +123,7 @@ object TrackActions {
                 }
                 .setNegativeButton("Отмена", null).show()
         }
+        dlg.makeGlassSheet(root)
         dlg.setContentView(root)
         dlg.show()
     }
