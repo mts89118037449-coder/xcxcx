@@ -179,6 +179,9 @@ object Playback {
 
     private var startIndex = 0
     private var skips = 0 // сколько песен подряд пропустили сами (не нашлись) — чтобы не листать очередь бесконечно
+    internal fun shouldRecoverStall(playRequested: Boolean, waitingForFull: Boolean, bufferedAhead: Long): Boolean =
+        playRequested && !waitingForFull && bufferedAhead < 1_000L
+
     /** Up to two automatic recoveries per track in a short window; prevents endless retry loops. */
     private val recoveryAt = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Int>>()
 
@@ -197,16 +200,16 @@ object Playback {
      * Всё, что было сохранено от прежнего источника (файл в памяти, начало), убирается.
      */
     fun replay(ctx: Context, t: Track) {
-        // Сменили источник, чтобы сравнить (например, есть ли цензура), — новая запись играет с того же места, на 5 с раньше.
         val k = Library.key(t)
-        hooked?.takeIf { nowPlayingKey == k }?.let { c -> resumeAt = maxOf(0L, position(c) - 5_000); resumeKey = k; resumeSet = System.currentTimeMillis() }
+        val resume = hooked?.takeIf { nowPlayingKey == k }?.let { position(it) } ?: 0L
         MediaCache.forget(t); HeadCache.drop(t)
         val i = queue.indexOfFirst { Library.key(it.track) == k }
         if (Streams.chosen(t) != null) {
             val selected = QItem(t, sourceUrl = queue.getOrNull(i)?.sourceUrl)
             val items = if (i >= 0) queue.toMutableList().apply { set(i, selected) } else listOf(selected)
-            playQueue(ctx, items, i.coerceAtLeast(0), openScreen = false)
-        } else if (i >= 0) playQueue(ctx, queue, i, openScreen = false) else playTrack(ctx, t, openScreen = false)
+            playQueue(ctx, items, i.coerceAtLeast(0), openScreen = false, auto = false, resumePosition = resume)
+        } else if (i >= 0) playQueue(ctx, queue, i, openScreen = false, auto = false, resumePosition = resume)
+        else playQueue(ctx, listOf(QItem(t)), 0, openScreen = false, auto = false, resumePosition = resume)
     }
 
     private val backStack = java.util.ArrayDeque<QItem>()
@@ -254,6 +257,8 @@ object Playback {
         auto: Boolean,
         retainHistory: Boolean = false,
         pushHistory: Boolean = true,
+        resumePosition: Long = 0L,
+        replacement: StreamInfo? = null,
     ) {
         if (given.isEmpty()) return
         // Источник, выбранный человеком для песни, главнее страницы, запомненной в истории.
@@ -268,6 +273,8 @@ object Playback {
         val app = ctx.applicationContext
         val gen = ++queueGen
         if (retainHistory) retainHistoryGen = gen
+        startPosition = resumePosition.coerceAtLeast(0L)
+        waitingFull = null
         if (!auto) skips = 0
         tapAt = System.currentTimeMillis(); startInfo = null
         AppLog.add("НАЖАТИЕ «${items.getOrNull(start)?.track?.label}» (очередь ${items.size})")
@@ -288,6 +295,12 @@ object Playback {
             ctx.startActivity(intent)
         }
 
+        if (replacement != null) {
+            Pending.set(null, loading = false, error = null)
+            startPath = "запасной источник"
+            start(app, gen, streamItem(first, replacement))
+            return
+        }
         first.local?.let { f ->
             Pending.set(null, loading = false, error = null)
             startPath = "файл на телефоне"; start(app, gen, item(f).withTrack(first.track))
@@ -300,7 +313,7 @@ object Playback {
             return
         }
         // Начало полной версии уже на телефоне — играем сразу, остальное подтянется из сети.
-        if (first.pageUrl == null && first.directUrl == null) HeadCache.entry(first.track)?.let { e ->
+        if (first.pageUrl == null && first.directUrl == null) HeadCache.entry(first.track)?.takeIf(HeadCache::ready)?.let { e ->
             Pending.set(null, loading = false, error = null)
             startPath = "начало на телефоне"; start(app, gen, headItem(first, e))
             return
@@ -319,12 +332,11 @@ object Playback {
         // бесшовно подхватывает его с того же места. Ждать полную в тишине больше не будем.
         // Нажал человек (не авто-переход) — недавняя неудача поиска не в счёт: площадки флапают, ищем заново.
         val fullSoon = worker.submit<StreamInfo> { resolve(first, force = !auto) }
-        val preview = first.track.preview
         // Конкретная страница/файл (результат «Везде в интернете») — фрагмента у неё нет, просто ждём.
         val canPreview = first.pageUrl == null && first.directUrl == null
         // «Сразу полная»: источник известен или найдётся за пару секунд — ждём её и начинаем с начала, без фрагмента.
         // Фрагмент — только если поиск затянулся.
-        if (canPreview && (Cast.isPlayingRemotely || Settings.startMode(app) == Settings.StartMode.FULL)) {
+        if (resumePosition > 0L || (canPreview && (Cast.isPlayingRemotely || Settings.startMode(app) == Settings.StartMode.FULL))) {
             Pending.set(first.track, loading = true, error = null)
             worker.execute {
                 // Фрагмент не включаем вообще: ждём полную, пока идёт поиск.
@@ -483,24 +495,13 @@ object Playback {
     private fun continueFromPreview(app: Context, gen: Int, full: MediaItem, previewUrl: String, align: Align.Result?) {
         controller(app) { c ->
             if (gen != queueGen) return@controller
-            val onPreview = c.currentMediaItem?.mediaId == previewUrl
-            if (!onPreview) return@controller
+            if (c.currentMediaItem?.mediaId != previewUrl) return@controller
             // Бесшовно: полная версия встаёт в очередь сразу за фрагментом, обрезанная так, что начинается
             // ровно с того места песни, где фрагмент закончится. Проигрыватель заранее её подгружает и
             // переходит без паузы, перемотки и затухания — на слух звук просто становится полным.
             // Место не нашлось — полная идёт с начала, но тоже без паузы: сразу после фрагмента, подгруженная заранее.
-            val previewAlive = onPreview && c.playerError == null &&
+            val previewAlive = c.playerError == null &&
                 c.playbackState != androidx.media3.common.Player.STATE_ENDED && c.playbackState != androidx.media3.common.Player.STATE_IDLE
-            // Настройка «Сразу»: не ждём конца фрагмента — переключаемся на полную с того же места.
-            if (previewAlive && align != null && Settings.joinMode(app) == Settings.JoinMode.IMMEDIATE) {
-                val index = c.currentMediaItemIndex
-                val position = align.fullPositionMs(c.currentPosition + 300)
-                c.replaceMediaItem(index, full)
-                c.seekTo(index, position)
-                c.prepare(); c.play()
-                hook(app, c); fill(app, gen)
-                return@controller
-            }
             if (previewAlive) {
                 val start = align?.fullPositionMs(PREVIEW_END_MS) ?: 0L
                 val extras = android.os.Bundle(full.mediaMetadata.extras ?: android.os.Bundle()).apply { if (start > 0) putLong(X_OFFSET, start) }
@@ -514,17 +515,15 @@ object Playback {
                 return@controller
             }
             val previewPos = when {
-                !onPreview -> 0L
                 c.playbackState == androidx.media3.common.Player.STATE_ENDED -> c.duration.coerceAtLeast(0)
                 else -> c.currentPosition
             }
             // Фрагмент так и не заиграл (ошибка) — полную с начала, а не с середины.
-            val target = if (onPreview && align != null && c.playerError == null) align.fullPositionMs(previewPos) else 0L
+            val target = if (align != null && c.playerError == null) align.fullPositionMs(previewPos) else 0L
             val index = c.currentMediaItemIndex
             c.replaceMediaItem(index, full)
             c.seekTo(index, target)
             c.prepare()
-            c.play()
             hook(app, c)
             fill(app, gen)
         }
@@ -532,6 +531,7 @@ object Playback {
 
     // Замер «от нажатия до звука» — показываем в плеере, чтобы было видно, что и где тормозит.
     private var tapAt = 0L
+    private var startPosition = 0L
     private var startPath = ""
     @Volatile var startInfo: String? = null; private set
 
@@ -542,9 +542,9 @@ object Playback {
             if (retainHistoryGen == gen && c.currentMediaItem != null && c.currentMediaItem?.mediaMetadata?.extras?.getBoolean(X_VIDEO) != true) {
                 val next = c.currentMediaItemIndex + 1
                 c.replaceMediaItems(next, c.mediaItemCount, listOf(item))
-                c.seekToDefaultPosition(next)
+                c.seekTo(next, startPosition)
             } else {
-                c.setMediaItem(item)
+                c.setMediaItem(item, startPosition)
             }
             c.prepare()
             c.play()
@@ -600,6 +600,7 @@ object Playback {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 // Файл из памяти не играет — выбрасываем его и включаем ту же песню из сети.
                 val m = c.currentMediaItem?.mediaMetadata
+                val resume = position(c)
                 val fromHead = m?.extras?.getBoolean(X_HEAD) == true
                 // То же, если не удалось продолжить песню после сохранённого начала (источник изменился) — играем обычным путём.
                 if (m?.extras?.getString(X_SOURCE) == "памяти" || fromHead) {
@@ -611,7 +612,7 @@ object Playback {
                     val failedGen = activeQueueGen
                     main.post {
                         if (failedGen == queueGen && c.currentMediaItem?.mediaMetadata == m && requestedIndex == null)
-                            playQueue(app, listOf(here) + rest.filter { it !== here }, 0, openScreen = false)
+                            playQueue(app, listOf(here) + rest.filter { it !== here }, 0, openScreen = false, auto = false, resumePosition = resume)
                     }
                     return
                 }
@@ -639,17 +640,17 @@ object Playback {
                     HeadCache.drop(t)
                     Pending.set(t, loading = true, error = null)
                     val failedGen = activeQueueGen
-                    main.postDelayed({
+                    main.post {
                         if (failedGen == queueGen && c.currentMediaItem?.mediaMetadata == m && requestedIndex == null) {
                             val i = queue.indexOfFirst { Library.key(it.track) == key }
                             if (i >= 0) {
                                 val cur = queue[i]
                                 val reset = if (cur.pageUrl != null || cur.directUrl != null || cur.directSource != null) QItem(cur.track, cur.local, cur.sourceUrl) else cur
                                 val items = if (reset !== cur) queue.toMutableList().apply { set(i, reset) } else queue
-                                playQueue(app, items, i, openScreen = false)
-                            } else playTrack(app, t, openScreen = false)
+                                playQueue(app, items, i, openScreen = false, auto = false, resumePosition = resume)
+                            } else playQueue(app, listOf(QItem(t)), 0, openScreen = false, auto = false, resumePosition = resume)
                         }
-                    }, 350)
+                    }
                 } else {
                     Pending.set(t, loading = false, error = "Звук не пошёл: ${error.errorCodeName}. ${error.cause?.message.orEmpty().take(120)}\nПопробовал другой поток. Нажмите «Ещё раз» для нового поиска.")
                 }
@@ -684,14 +685,7 @@ object Playback {
 
             private var bufferingAt = 0L
             override fun onPlaybackStateChanged(state: Int) {
-                // CastPlayer ignores queue inserts until the receiver has loaded the first item.
-                if (state == androidx.media3.common.Player.STATE_READY && Cast.isPlayingRemotely) fill(app, queueGen)
-                // После смены источника — на то же место (см. replay), как только новая запись готова играть.
-                if (state == androidx.media3.common.Player.STATE_READY && resumeKey != null && resumeKey == nowPlayingKey &&
-                    c.mediaMetadata.extras?.getBoolean(X_PREVIEW) != true) {
-                    val to = resumeAt; resumeKey = null
-                    if (to > 0 && System.currentTimeMillis() - resumeSet < 60_000) { c.seekTo(to); AppLog.add("ИСТОЧНИК СМЕНЁН: продолжаю с ${to / 1000} с") }
-                }
+                if (state == androidx.media3.common.Player.STATE_READY) fill(app, queueGen)
                 // Подгрузка посреди песни (сеть не успевает) — с какой секунды и сколько длилась.
                 if (state == androidx.media3.common.Player.STATE_BUFFERING) {
                     val since = System.currentTimeMillis()
@@ -701,7 +695,9 @@ object Playback {
                     if (c.currentPosition > 1500) AppLog.add("ПОДГРУЗКА началась на ${c.currentPosition / 1000} с «${m?.title}» из ${m?.extras?.getString(X_SOURCE)} (в запасе ${(c.bufferedPosition - c.currentPosition) / 1000} с)")
                     main.postDelayed({
                         if (bufferingAt == since && failedGen == queueGen && c.playbackState == androidx.media3.common.Player.STATE_BUFFERING &&
-                            c.playWhenReady && (c.bufferedPosition - c.currentPosition) < 1_000L && c.currentMediaItem?.mediaMetadata == m && requestedIndex == null) {
+                            shouldRecoverStall(c.playWhenReady, m?.extras?.getBoolean(X_PREVIEW) == true && waitingFull != null,
+                                c.bufferedPosition - c.currentPosition) &&
+                            c.currentMediaItem?.mediaMetadata == m && requestedIndex == null) {
                             val t = Track(m?.title?.toString().orEmpty(), m?.artist?.toString().orEmpty(), cover = m?.artworkUri?.toString())
                             val key = Library.key(t)
                             val now = System.currentTimeMillis()
@@ -709,20 +705,31 @@ object Playback {
                                 if (prev == null || now - prev.first > 60_000L) now to 1 else prev.first to (prev.second + 1)
                             }!!
                             if (t.title.isNotBlank() && attempt.second <= 2) {
-                                AppLog.add("ДОЛГАЯ ПОДГРУЗКА «${t.label}» (>14 с) — переключаюсь на запасной источник")
+                                val failedItem = c.currentMediaItem
+                                val failedUrl = failedItem?.requestMetadata?.mediaUri?.toString() ?: failedItem?.mediaId
+                                AppLog.add("ДОЛГАЯ ПОДГРУЗКА «${t.label}» — ищу запасной источник")
                                 Streams.forget(t)
-                                Streams.blacklist(c.currentMediaItem?.requestMetadata?.mediaUri?.toString() ?: c.currentMediaItem?.mediaId, m?.extras?.getString(X_PAGE_URL))
-                                MediaCache.forget(t); HeadCache.drop(t)
-                                val i = queue.indexOfFirst { Library.key(it.track) == key }
-                                if (i >= 0) {
-                                    val cur = queue[i]
-                                    val reset = if (cur.pageUrl != null || cur.directUrl != null || cur.directSource != null) QItem(cur.track, cur.local, cur.sourceUrl) else cur
-                                    val items = if (reset !== cur) queue.toMutableList().apply { set(i, reset) } else queue
-                                    playQueue(app, items, i, openScreen = false)
-                                } else playTrack(app, t, openScreen = false)
+                                Streams.blacklist(failedUrl, m?.extras?.getString(X_PAGE_URL))
+                                worker.execute {
+                                    val alternative = runCatching { Streams.resolve(t, force = true) }.getOrNull()
+                                        ?: return@execute
+                                    main.post {
+                                        if (failedGen != queueGen || c.currentMediaItem != failedItem ||
+                                            c.playbackState != androidx.media3.common.Player.STATE_BUFFERING ||
+                                            !shouldRecoverStall(c.playWhenReady, false, c.bufferedPosition - c.currentPosition) ||
+                                            requestedIndex != null) return@post
+                                        val resume = position(c)
+                                        MediaCache.forget(t)
+                                        HeadCache.drop(t)
+                                        val i = queue.indexOfFirst { Library.key(it.track) == key }
+                                        val items = if (i >= 0) queue else listOf(QItem(t))
+                                        playQueue(app, items, i.coerceAtLeast(0), openScreen = false, auto = false,
+                                            resumePosition = resume, replacement = alternative)
+                                    }
+                                }
                             }
                         }
-                    }, 14_000L)
+                    }, 6_000L)
                 } else if (state == androidx.media3.common.Player.STATE_READY && bufferingAt > 0) {
                     val ms = System.currentTimeMillis() - bufferingAt; bufferingAt = 0
                     if (ms > 700 && c.currentPosition > 1500) AppLog.add("ПОДГРУЗКА закончилась: ждали ${ms / 100 / 10.0} с")
@@ -838,14 +845,14 @@ object Playback {
     private const val AHEAD = 2
 
     private var aheadGen = -1
-    // Куда перемотать новую запись после смены источника (replay).
-    @Volatile private var resumeKey: String? = null
-    @Volatile private var resumeAt = 0L
-    @Volatile private var resumeSet = 0L // для какой очереди соседние песни ещё ждут, пока зазвучит нажатая
-
     private fun prefetchAhead(from: Int) {
         val next = queue.drop(from).take(AHEAD).filter { it.local == null && it.directUrl == null && !MediaCache.has(it.track) }
-        Streams.prefetchAhead(next.filter { it.pageUrl == null }.map { it.track })
+        val unresolved = next.filter { q ->
+            val head = HeadCache.entry(q.track).takeIf { q.pageUrl == null }
+            if (head != null && !HeadCache.ready(head)) HeadCache.resolveAsync(head)
+            head == null
+        }
+        Streams.prefetchAhead(unresolved.filter { it.pageUrl == null }.map { it.track })
         next.mapNotNull { q -> q.pageUrl?.let { Triple(it, Describe.site(it), q.track.title) } }
             .forEach { (u, site, title) -> Ytdlp.inBackground { Streams.prefetchPage(u, site, title) } }
     }
@@ -864,6 +871,10 @@ object Playback {
     private fun fill(app: Context, gen: Int) {
         if (filling || gen != queueGen || gen != activeQueueGen) return
         val c = hooked ?: return
+        if (requestedIndex == null && c.playbackState in setOf(
+                androidx.media3.common.Player.STATE_IDLE, androidx.media3.common.Player.STATE_BUFFERING,
+            )) return
+        if (waitingFull != null && c.mediaMetadata.extras?.getBoolean(X_PREVIEW) == true && requestedIndex == null) return
         if (requestedIndex == null && c.mediaItemCount - 1 - c.currentMediaItemIndex >= READY_TRACKS) return
         if (nextToAdd >= queue.size) return radio(app, gen)
         val index = nextToAdd
@@ -873,7 +884,7 @@ object Playback {
             if (gen != queueGen) return@execute
             val item = q.local?.let { item(it).withTrack(q.track) }
                 ?: MediaCache.fileFor(q.track)?.let { cachedItem(q, it) }
-                ?: (if (q.pageUrl == null && q.directUrl == null) HeadCache.entry(q.track)?.let { headItem(q, it) } else null)
+                ?: (if (q.pageUrl == null && q.directUrl == null) HeadCache.entry(q.track)?.takeIf(HeadCache::ready)?.let { headItem(q, it) } else null)
                 ?: runCatching { Ytdlp.inBackground { resolve(q) }.also { MediaCache.store(app, q.track, it) }.let { streamItem(q, it) } }.getOrNull() // не нашлась — пропускаем
             main.post {
                 if (gen != queueGen) return@post
@@ -887,7 +898,7 @@ object Playback {
                     val selected = requestedIndex?.let { index >= it } == true
                     if (selected) requestedIndex = null
                     if (selected || stalled) c.seekToDefaultPosition(c.mediaItemCount - 1)
-                    if (stalled) { c.prepare(); c.play() }
+                    if (stalled) c.prepare()
                 }
                 if (nextToAdd >= queue.size) requestedIndex = null
                 fill(app, gen)

@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -17,7 +16,6 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.imageview.ShapeableImageView
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.snackbar.Snackbar
-import java.net.URL
 import java.util.concurrent.Executors
 
 /** Трансфер: прислали песню в одном сервисе — показываем ссылки на неё во всех остальных. */
@@ -154,17 +152,8 @@ class TransferActivity : AppCompatActivity() {
         loading.isVisible = false
         bottomBar.isVisible = true
         findViewById<TextView>(R.id.mp3).text = if (item.tracks.size > 1) "MP3 · ${item.tracks.size}" else "MP3"
-        t.cover?.let { c ->
-            pool.execute {
-                val bmp = runCatching {
-                    val conn = URL(c).openConnection().apply {
-                        connectTimeout = 10_000
-                        readTimeout = 10_000
-                    }
-                    conn.getInputStream().use { BitmapFactory.decodeStream(it) }
-                }.getOrNull()
-                main.post { if (bmp != null && !isDestroyed) { coverBitmap = bmp; cover.setImageBitmap(bmp) } }
-            }
+        Images.load(t.cover) { bmp ->
+            if (!isDestroyed) { coverBitmap = bmp; cover.setImageBitmap(bmp) }
         }
     }
 

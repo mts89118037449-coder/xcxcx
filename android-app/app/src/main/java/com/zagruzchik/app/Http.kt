@@ -70,13 +70,17 @@ object Http {
         }
     }.getOrDefault(false)
 
-    fun bytes(url: String, ua: String = MOBILE_UA, timeoutMs: Int = 15_000): ByteArray {
+    fun bytes(url: String, ua: String = MOBILE_UA, timeoutMs: Int = 15_000, maxBytes: Long = Long.MAX_VALUE): ByteArray {
         val req = Request.Builder().url(url)
             .header("User-Agent", ua)
             .build()
         clientFor(timeoutMs).newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw HttpError(resp.code, url)
-            return resp.body?.bytes() ?: ByteArray(0)
+            val source = resp.body?.source() ?: return ByteArray(0)
+            if (maxBytes != Long.MAX_VALUE && source.request(maxBytes + 1)) {
+                throw java.io.IOException("Изображение слишком большое")
+            }
+            return source.readByteArray()
         }
     }
 

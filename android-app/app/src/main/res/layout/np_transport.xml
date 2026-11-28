@@ -46,13 +46,21 @@
         android:contentDescription="Следующая"
         android:focusable="true"
         android:nextFocusLeft="@+id/npPlay"
-        android:nextFocusRight="@id/npMore"
+        android:nextFocusRight="@+id/npShare"
         app:backgroundTint="@null"
         app:icon="@drawable/ic_skip_next"
         app:iconSize="34dp"
         app:iconTint="?attr/colorOnSurface" />
 
-    <Space
+    <ImageButton
+        android:id="@+id/npShare"
         android:layout_width="48dp"
-        android:layout_height="1dp" />
+        android:layout_height="48dp"
+        android:background="@drawable/bg_glass_circle"
+        android:contentDescription="Поделиться"
+        android:focusable="true"
+        android:nextFocusLeft="@id/npNext"
+        android:nextFocusRight="@id/npMore"
+        android:src="@drawable/ic_share"
+        app:tint="?attr/colorOnSurface" />
 </LinearLayout>

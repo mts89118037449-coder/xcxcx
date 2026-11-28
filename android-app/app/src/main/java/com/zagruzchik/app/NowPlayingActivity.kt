@@ -2,7 +2,6 @@ package com.zagruzchik.app
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.View
@@ -45,6 +44,9 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var retry: View
     private var coverBitmap: Bitmap? = null
     private var coverKey: Any? = null
+    private var requestedCatalogCover: String? = null
+    private var catalogCover: String? = null
+    private var emptyCoverTrack: String? = null
 
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
@@ -181,6 +183,9 @@ class NowPlayingActivity : AppCompatActivity() {
         status.setOnClickListener { Playback.Pending.track?.takeIf { Playback.Pending.error != null }?.let(::notFoundDialog) }
         findViewById<View>(R.id.npLike).setOnClickListener { toggleLike() }
         findViewById<View>(R.id.npShare).setOnClickListener { share() }
+        findViewById<View>(R.id.npEqualizer).setOnClickListener {
+            startActivity(Intent(this, EqualizerActivity::class.java))
+        }
         findViewById<View>(R.id.npMore).setOnClickListener(::showActions)
         findViewById<View>(R.id.npLyricsPeek).setOnClickListener { openLyrics() }
         // Исполнитель — ссылкой на его страницу: популярное, альбомы, радио.
@@ -451,14 +456,25 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private fun setCover(url: String?, data: ByteArray?) {
-        val key: Any? = data?.contentHashCode() ?: url
-        if (key == coverKey && coverBitmap != null) return
+        val track = currentTrack()
+        val trackKey = track?.let(Library::key)
+        val resolvedUrl = url ?: catalogCover.takeIf { requestedCatalogCover == trackKey }
+        val key: Any? = data?.let { it.size to it.contentHashCode() } ?: resolvedUrl
+        if (key != null && key == coverKey) return
         coverKey = key
+        if (key != null) emptyCoverTrack = null
         if (data != null) {
-            BitmapFactory.decodeByteArray(data, 0, data.size)?.let { applyCover(it); return }
+            Images.loadArtwork(data, dp(512)) { bitmap ->
+                if (coverKey == key && !isDestroyed) {
+                    if (bitmap != null) applyCover(bitmap) else setCover(url, null)
+                }
+            }
+            return
         }
-        if (url == null) {
-            if (coverBitmap != null && showingPending()) return // пока включается следующая — держим прежнюю обложку, без мигания
+        if (resolvedUrl == null) {
+            if (coverBitmap != null && showingPending()) return
+            if (trackKey != null && emptyCoverTrack == trackKey) return
+            emptyCoverTrack = trackKey
             coverBitmap = null
             smoke?.setCover(null)
             if (ring) setFront(android.graphics.drawable.LayerDrawable(arrayOf(
@@ -468,20 +484,22 @@ class NowPlayingActivity : AppCompatActivity() {
             else cover.setImageResource(R.drawable.player_artwork)
             paintBackground(null)
             // Картинки нет ни у песни, ни у записи — ищем обложку этой песни в каталоге; найдётся — появится сама.
-            currentTrack()?.let { t ->
-                val k = Library.key(t)
+            if (track != null && trackKey != requestedCatalogCover) {
+                requestedCatalogCover = trackKey
+                catalogCover = null
                 kotlin.concurrent.thread(name = "cover") {
-                    val found = Catalog.coverFor(t) ?: return@thread
+                    val found = runCatching { Catalog.coverFor(track) }.getOrNull() ?: return@thread
                     runOnUiThread {
-                        if (isFinishing || isDestroyed || coverKey != null || currentTrack()?.let { Library.key(it) } != k) return@runOnUiThread
-                        coverKey = found
-                        Images.load(found) { if (coverKey == found) applyCover(it) }
+                        if (isFinishing || isDestroyed || requestedCatalogCover != trackKey ||
+                            currentTrack()?.let(Library::key) != trackKey || coverKey != null) return@runOnUiThread
+                        catalogCover = found
+                        setCover(found, null)
                     }
                 }
             }
             return
         }
-        Images.load(url) { if (coverKey == key) applyCover(it) }
+        Images.load(resolvedUrl) { if (coverKey == key && !isDestroyed) applyCover(it) }
     }
 
     private var smoke: SmokeView? = null
@@ -672,7 +690,6 @@ class NowPlayingActivity : AppCompatActivity() {
         action("Слушать в другом сервисе", track != null) {
             track?.let { TransferActivity.openTrack(this, it, x?.getString(Playback.X_SOURCE_URL)) }
         }
-        action("Эквалайзер") { startActivity(Intent(this, EqualizerActivity::class.java)) }
         popup.show()
     }
 

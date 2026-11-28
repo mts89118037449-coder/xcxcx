@@ -23,15 +23,9 @@ object Settings {
     fun playerStyle(ctx: Context) = runCatching { PlayerStyle.valueOf(prefs(ctx).getString("playerStyle", null)!!) }.getOrDefault(PlayerStyle.RING)
     fun setPlayerStyle(ctx: Context, s: PlayerStyle) = prefs(ctx).edit().putString("playerStyle", s.name).apply()
 
-    /** Переход с фрагмента на полную: бесшовно в конце фрагмента или сразу (с короткой паузой на подгрузку). */
-    enum class JoinMode(val label: String, val hint: String) {
-        SEAMLESS("Бесшовно", "Фрагмент доигрывает, полная продолжает с того же места без паузы"),
-        IMMEDIATE("Сразу", "Как только полная нашлась — переключаемся на неё с того же места (пауза меньше секунды)"),
-    }
-
     /** С чего начинать песню, которой ещё нет под рукой. */
     enum class StartMode(val label: String, val hint: String) {
-        FULL("Сразу полная", "Ждём полную версию несколько секунд; фрагмент — только если поиск затянулся"),
+        FULL("Сразу полная", "Ищем и запускаем полную версию"),
         PREVIEW("Фрагмент сразу", "Мгновенно играет 30-секундный фрагмент, полная подхватывает"),
     }
     fun startMode(ctx: Context) = runCatching { StartMode.valueOf(prefs(ctx).getString("startMode", null)!!) }.getOrDefault(StartMode.FULL)
@@ -45,9 +39,6 @@ object Settings {
     }
     fun warm(ctx: Context) = runCatching { Warm.valueOf(prefs(ctx).getString("warm", null)!!) }.getOrDefault(Warm.WIFI)
     fun setWarm(ctx: Context, m: Warm) = prefs(ctx).edit().putString("warm", m.name).apply()
-
-    fun joinMode(ctx: Context) = runCatching { JoinMode.valueOf(prefs(ctx).getString("joinMode", null)!!) }.getOrDefault(JoinMode.SEAMLESS)
-    fun setJoinMode(ctx: Context, m: JoinMode) = prefs(ctx).edit().putString("joinMode", m.name).apply()
 
     /** Текст песни прямо в плеере (идёт вместе с музыкой). */
     /** Цветной дым вокруг обложки в плеере (цвета — с краёв обложки). */

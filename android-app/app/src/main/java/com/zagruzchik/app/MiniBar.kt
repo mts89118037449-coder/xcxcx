@@ -3,7 +3,6 @@ package com.zagruzchik.app
 import android.app.Activity
 import android.app.Application
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.graphics.Outline
 import android.os.Bundle
 import android.text.TextUtils
@@ -34,7 +33,6 @@ object MiniBar {
         ShareActivity::class.java, LoginActivity::class.java,
     )
     private val bars = WeakHashMap<Activity, Bar>()
-    private val artExec = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     fun install(app: Application) {
         app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
@@ -203,21 +201,19 @@ object MiniBar {
             when {
                 art != null -> {
                     coverUrl = null
-                    val artKey = "${m.title}|${m.artist}|${art.size}"
+                    val artKey = "${art.size}:${art.contentHashCode()}"
                     if (artKey != coverArtKey) {
                         coverArtKey = artKey
-                        artExec.execute {
-                            val bmp = runCatching { BitmapFactory.decodeByteArray(art, 0, art.size) }.getOrNull()
-                            cover.post {
-                                if (started && coverArtKey == artKey) {
-                                    if (bmp != null) cover.setImageBitmap(bmp) else cover.setImageResource(R.drawable.ph_cover)
-                                }
+                        cover.tag = null
+                        Images.loadArtwork(art, a.dp(48)) { bmp ->
+                            if (started && coverArtKey == artKey) {
+                                if (bmp != null) cover.setImageBitmap(bmp) else cover.setImageResource(R.drawable.ph_cover)
                             }
                         }
                     }
                 }
                 url != null && url != coverUrl -> { coverArtKey = null; coverUrl = url; Images.into(cover, url, R.drawable.ph_cover) }
-                url == null -> { coverArtKey = null; coverUrl = null; cover.setImageResource(R.drawable.ph_cover) }
+                url == null -> { coverArtKey = null; coverUrl = null; cover.tag = null; cover.setImageResource(R.drawable.ph_cover) }
             }
         }
     }

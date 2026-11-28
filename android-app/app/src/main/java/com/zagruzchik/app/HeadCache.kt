@@ -77,13 +77,13 @@ object HeadCache {
 
     fun drop(t: Track) {
         if (!::dir.isInitialized) return
-        byKey.remove(Library.key(t))?.let { byId.remove(it.id); it.file.delete(); dirty = true }
+        byKey.remove(Library.key(t))?.let { byId.remove(it.id); tails.remove(it.id); it.file.delete(); dirty = true }
     }
 
     /** Убрать сохранённые начала, взятые из источников, подходящих под условие. */
     fun dropWhere(match: (String) -> Boolean) {
         if (!::dir.isInitialized) return
-        byKey.values.filter { match(it.where) }.forEach { e -> byKey.remove(e.key); byId.remove(e.id); e.file.delete(); dirty = true }
+        byKey.values.filter { match(it.where) }.forEach { e -> byKey.remove(e.key); byId.remove(e.id); tails.remove(e.id); e.file.delete(); dirty = true }
     }
 
     /** Сохранить начало в фоне (песня на экране, только что найдена). */
@@ -136,6 +136,9 @@ object HeadCache {
                 renamed = tmp.renameTo(e.file)
                 if (!renamed) return false
                 byKey[key] = e; byId[id] = e; dirty = true
+                if (code == 206 && n < total) {
+                    tails[id] = System.currentTimeMillis() to java.util.concurrent.CompletableFuture.completedFuture(s.url)
+                }
                 trim()
                 return true
             } finally {
@@ -149,7 +152,7 @@ object HeadCache {
         if (sum <= LIMIT) return
         for (e in byKey.values.sortedBy { it.used }) {
             if (sum <= LIMIT * 9 / 10) break
-            byKey.remove(e.key); byId.remove(e.id); e.file.delete(); sum -= e.headLen
+            byKey.remove(e.key); byId.remove(e.id); tails.remove(e.id); e.file.delete(); sum -= e.headLen
         }
     }
 
@@ -166,10 +169,19 @@ object HeadCache {
 
     private val tails = ConcurrentHashMap<String, Pair<Long, Future<String>>>()
 
+    fun ready(e: Entry): Boolean {
+        if (e.headLen >= e.total) return true
+        val (created, future) = tails[e.id] ?: return false
+        return System.currentTimeMillis() - created < TAIL_TTL_MS && future.isDone &&
+            runCatching { future.get() }.isSuccess
+    }
+
+    private const val TAIL_TTL_MS = 8 * 60 * 1000L
+
     /** Начать готовить ссылку на продолжение (если ещё не готовится). */
-    fun resolveAsync(e: Entry): Future<String> {
+    @Synchronized fun resolveAsync(e: Entry): Future<String> {
         e.used = System.currentTimeMillis(); dirty = true
-        tails[e.id]?.let { (time, f) -> if (System.currentTimeMillis() - time < 8 * 60 * 1000L && !(f.isDone && runCatching { f.get() }.isFailure)) return f }
+        tails[e.id]?.let { (time, f) -> if (System.currentTimeMillis() - time < TAIL_TTL_MS && !(f.isDone && runCatching { f.get() }.isFailure)) return f }
         val f = pool2.submit<String> {
             val t = e.track
             // Та же запись, что и начало: тот же источник и тот же размер файла.
@@ -189,7 +201,7 @@ object HeadCache {
         c.connectTimeout = 6000; c.readTimeout = 6000
         c.setRequestProperty("User-Agent", Http.DESKTOP_UA)
         c.setRequestProperty("Accept-Language", "ru,en;q=0.8")
-        if ("hitmotop" in url) c.setRequestProperty("Referer", "https://rus.hitmotop.com/")
+        if ("hitmotop" in url || "hitmcdn" in url) c.setRequestProperty("Referer", "https://rus.hitmotop.com/")
         c.setRequestProperty("Range", "bytes=$from-${from + 1}")
         try {
             if (c.responseCode != 206) return -1
@@ -198,7 +210,7 @@ object HeadCache {
     }
 
     fun awaitTail(e: Entry): String = try {
-        resolveAsync(e).get(40, TimeUnit.SECONDS)
+        resolveAsync(e).get(6, TimeUnit.SECONDS)
     } catch (x: java.util.concurrent.ExecutionException) {
         throw IOException(x.cause?.message ?: "Не получилось продолжить песню", x.cause)
     } catch (x: Exception) {
@@ -310,7 +322,7 @@ private class AuraDataSource(private val base: DataSource.Factory) : DataSource 
         pos = dataSpec.position
         if (pos > e.total) throw androidx.media3.datasource.DataSourceException(androidx.media3.common.PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE)
         remaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) minOf(dataSpec.length, e.total - pos) else e.total - pos
-        HeadCache.resolveAsync(e) // ссылка на продолжение готовится, пока играет начало
+        if (e.headLen < e.total) HeadCache.resolveAsync(e)
         if (pos < e.headLen) file = RandomAccessFile(e.file, "r").also { it.seek(pos) }
         started = true
         listeners.forEach { it.onTransferStart(this, dataSpec, true) }
@@ -336,7 +348,12 @@ private class AuraDataSource(private val base: DataSource.Factory) : DataSource 
             } else {
                 val d = base.createDataSource()
                 upstream = d
-                d.open(DataSpec.Builder().setUri(url).setPosition(pos).setLength(remaining).build())
+                val request = DataSpec.Builder().setUri(url).setPosition(pos).setLength(remaining)
+                val host = url.host.orEmpty()
+                if (host.contains("hitmotop") || host.contains("hitmcdn")) {
+                    request.setHttpRequestHeaders(mapOf("Referer" to "https://rus.hitmotop.com/", "User-Agent" to Http.DESKTOP_UA))
+                }
+                d.open(request.build())
             }
         }
         val want = minOf(length.toLong(), remaining).toInt()

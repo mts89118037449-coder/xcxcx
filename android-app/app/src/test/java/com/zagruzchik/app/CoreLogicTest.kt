@@ -8,6 +8,15 @@ import org.junit.Test
 class CoreLogicTest {
 
     @Test
+    fun stallRecoveryKeepsPausedAndPreviewTracks() {
+        assertTrue(Playback.shouldRecoverStall(true, false, 0))
+        assertTrue(!Playback.shouldRecoverStall(false, false, 0))
+        assertTrue(!Playback.shouldRecoverStall(true, true, 0))
+        assertTrue(!Playback.shouldRecoverStall(true, false, 1200))
+    }
+
+
+    @Test
     fun telegramPublicPostAndAudio() {
         assertEquals("https://t.me/music_channel/42", PublicTelegram.canonical("https://t.me/s/music_channel/42?embed=1"))
         assertNull(PublicTelegram.canonical("https://t.me/c/12345/42"))

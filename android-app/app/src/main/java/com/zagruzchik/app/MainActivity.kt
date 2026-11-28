@@ -1176,21 +1176,26 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.miniNext).isVisible = Playback.hasNext(c)
         val cover = findViewById<com.google.android.material.imageview.ShapeableImageView>(R.id.miniCover)
-        val art = m.artworkData?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
+        val art = m.artworkData
         val url = m.artworkUri?.toString()
-        when {
-            art != null -> { cover.setImageBitmap(art); miniGlow(art) }
-            url != null && url != miniCoverUrl -> {
-                miniCoverUrl = url
-                Images.into(cover, url, R.drawable.ph_cover)
-                Images.load(url) { b -> if (miniCoverUrl == url) miniGlow(b) }
+        val key = art?.let { "${it.size}:${it.contentHashCode()}" } ?: url
+        if (key != miniCoverKey) {
+            miniCoverKey = key
+            cover.tag = null
+            if (art != null) Images.loadArtwork(art, dp(48)) { bmp ->
+                if (miniCoverKey == key) {
+                    if (bmp != null) cover.setImageBitmap(bmp) else cover.setImageResource(R.drawable.ph_cover)
+                    miniGlow(bmp)
+                }
+            } else {
+                miniGlow(null)
+                Images.into(cover, url, R.drawable.ph_cover) { bmp -> if (miniCoverKey == key) miniGlow(bmp) }
             }
-            url == null -> { cover.setImageResource(R.drawable.ph_cover); miniCoverUrl = null; miniGlow(null) }
         }
         updateMiniProgress()
     }
 
-    private var miniCoverUrl: String? = null
+    private var miniCoverKey: String? = null
 
     /** Слева в мини-плеере — мягкое свечение в цвет обложки. */
     private fun miniGlow(b: android.graphics.Bitmap?) {
@@ -1333,12 +1338,6 @@ class MainActivity : AppCompatActivity() {
             wm.label + " · готово ${HeadCache.count}" + (Warm.left.takeIf { it > 0 }?.let { ", осталось $it" } ?: ""), wm.hint) {
             choose("Мгновенный старт", Settings.Warm.entries.map { "${it.label} — ${it.hint}" }, wm.ordinal) {
                 Settings.setWarm(this, Settings.Warm.entries[it]); Warm.start(this); refreshMusicSettings()
-            }
-        }
-        val jm = Settings.joinMode(this)
-        settingRow(appearance, R.drawable.ic_skip_next, "Переход на полную версию", jm.label, jm.hint) {
-            choose("Переход с фрагмента на полную", Settings.JoinMode.entries.map { "${it.label} — ${it.hint}" }, jm.ordinal) {
-                Settings.setJoinMode(this, Settings.JoinMode.entries[it]); refreshMusicSettings()
             }
         }
         val ps = Settings.playerStyle(this)

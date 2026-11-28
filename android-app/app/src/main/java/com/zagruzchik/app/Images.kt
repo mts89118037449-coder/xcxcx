@@ -6,20 +6,18 @@ import android.os.Handler
 import android.os.Looper
 import android.util.LruCache
 import android.widget.ImageView
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 /**
  * Обложки по ссылке. Для списков картинка уменьшается до размера миниатюры (раньше 1000×1000
- * раскодировались ради значка 52 dp — это и тормозило поиск), кэш в памяти — по объёму,
- * а обложки строк, которых уже нет на экране, не качаются.
+ * раскодировались ради значка 52 dp), кэш в памяти — по объёму.
+ * Все размеры одной обложки используют один запрос и одну копию на диске.
  */
 object Images {
     private val memory = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8 / 1024).toInt()) {
-        override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
+        override fun sizeOf(key: String, value: Bitmap) = (value.byteCount / 1024).coerceAtLeast(1)
     }
     // Свежие запросы — первыми (при наборе текста старые строки уже не нужны).
     private val pool = ThreadPoolExecutor(4, 4, 30, TimeUnit.SECONDS, object : LinkedBlockingDeque<Runnable>() {
@@ -27,104 +25,146 @@ object Images {
     })
     private val main = Handler(Looper.getMainLooper())
 
-    private fun keyOf(url: String, maxPx: Int) = if (maxPx > 0) "$url@$maxPx" else url
+    private fun keyOf(url: String, maxPx: Int) = "$maxPx:$url"
+    private val requests = mutableMapOf<String, MutableList<Request>>()
+    private val recentFailures = android.util.LruCache<String, Long>(128)
+    private data class Request(val maxPx: Int, val wanted: () -> Boolean, val onReady: (Bitmap) -> Unit)
 
-    fun cached(url: String?) = url?.let { memory.get(it) }
+    private fun targetSize(px: Int) = when {
+        px <= 128 && px > 0 -> 128
+        px <= 256 && px > 0 -> 256
+        px <= 512 && px > 0 -> 512
+        else -> 1024
+    }
+
+    fun cached(url: String?): Bitmap? {
+        if (url.isNullOrBlank()) return null
+        return listOf(1024, 512, 256, 128).firstNotNullOfOrNull { memory.get(keyOf(url, it)) }
+    }
 
     /** Полноразмерная картинка (обложка в плеере, карточка песни). */
     fun load(url: String?, onReady: (Bitmap) -> Unit) = load(url, 0, { true }, onReady)
 
     private fun load(url: String?, maxPx: Int, wanted: () -> Boolean, onReady: (Bitmap) -> Unit) {
-        if (url.isNullOrEmpty()) return
-        val key = keyOf(url, maxPx)
-        memory.get(key)?.let { onReady(it); return }
+        if (url.isNullOrBlank()) return
+        val size = targetSize(maxPx)
+        val key = keyOf(url, size)
+        memory.get(key)?.let { if (wanted()) onReady(it); return }
+        val lastFailure = recentFailures.get(url)
+        if (lastFailure != null && android.os.SystemClock.elapsedRealtime() - lastFailure < 15_000L) return
+        synchronized(requests) {
+            requests[url]?.let { it += Request(size, wanted, onReady); return }
+            requests[url] = mutableListOf(Request(size, wanted, onReady))
+        }
         pool.execute {
-            if (!wanted()) return@execute // строка уже ушла с экрана — не качаем
-            val b = runCatching { decode(url, maxPx) }.getOrNull() ?: return@execute
-            memory.put(key, b)
-            main.post { onReady(b) }
+            val bytes = runCatching { imageBytes(url) }.getOrNull()
+            val pending = synchronized(requests) { requests.getValue(url).toList().also { requests.getValue(url).clear() } }
+            val variants = mutableMapOf<Int, Bitmap?>()
+            fun deliver(batch: List<Request>) = batch.forEach { request ->
+                val variantKey = keyOf(url, request.maxPx)
+                val b = memory.get(variantKey) ?: variants.getOrPut(request.maxPx) {
+                    bytes?.let { runCatching { decodeBytes(it, request.maxPx) }.getOrNull() }
+                        ?.also { memory.put(variantKey, it) }
+                }
+                if (b != null) main.post { if (request.wanted()) request.onReady(b) }
+            }
+            deliver(pending)
+            if (bytes == null || (variants.isNotEmpty() && variants.values.all { it == null })) {
+                recentFailures.put(url, android.os.SystemClock.elapsedRealtime())
+                if (bytes != null) diskFile(url).delete()
+            }
+            while (true) {
+                val more = synchronized(requests) {
+                    val queued = requests.getValue(url)
+                    if (queued.isEmpty()) { requests.remove(url); null }
+                    else queued.toList().also { queued.clear() }
+                } ?: break
+                deliver(more)
+            }
         }
     }
 
-    // Дисковый кэш картинок: повторный поиск и списки показывают обложки сразу, без сети.
-    // Лежит в cacheDir — система сама чистит при нехватке места; сами держим до ~60 МБ.
     private val diskDir by lazy { java.io.File(App.instance.cacheDir, "img").apply { mkdirs() } }
-
-    private val writesSincePrune = java.util.concurrent.atomic.AtomicInteger(0)
+    private val writesSincePrune = java.util.concurrent.atomic.AtomicInteger()
     private val pruneLock = Any()
+    private const val DISK_LIMIT = 128L * 1024 * 1024
+    private const val MAX_IMAGE_BYTES = 12L * 1024 * 1024
 
     private fun diskFile(url: String): java.io.File = java.io.File(diskDir, Http.sha1(url))
 
     private fun pruneDisk() {
         synchronized(pruneLock) {
-            val files = diskDir.listFiles() ?: return
-            var total = 0L
-            val entries = ArrayList<Triple<java.io.File, Long, Long>>(files.size)
-            for (f in files) {
-                val len = f.length()
-                total += len
-                entries += Triple(f, f.lastModified(), len)
-            }
-            if (total < 60L * 1024 * 1024) return
-            entries.sortBy { it.second }
-            for ((f, _, len) in entries) {
-                if (total <= 30L * 1024 * 1024) break
-                if (f.delete()) total -= len
+            val files = diskDir.listFiles()?.filter { it.name.length == 40 } ?: return
+            var total = files.sumOf { it.length() }
+            if (total <= DISK_LIMIT) return
+            for (file in files.sortedBy { it.lastModified() }) {
+                if (total <= DISK_LIMIT) break
+                val size = file.length()
+                if (file.delete()) total -= size
             }
         }
     }
 
-    private fun fetch(url: String): ByteArray = Http.bytes(url, timeoutMs = 15_000)
+    private fun imageBytes(url: String): ByteArray? {
+        val file = diskFile(url)
+        if (file.length() in 1..MAX_IMAGE_BYTES) {
+            val bytes = runCatching { file.readBytes() }.getOrNull()
+            if (bytes != null && bytes.isNotEmpty()) {
+                val now = System.currentTimeMillis()
+                if (now - file.lastModified() > 60_000L) file.setLastModified(now)
+                return bytes
+            }
+        }
+        val bytes = Http.bytes(url, timeoutMs = 8000, maxBytes = MAX_IMAGE_BYTES)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        runCatching {
+            val tmp = java.io.File(diskDir, "${file.name}.tmp.${Thread.currentThread().id}")
+            try {
+                tmp.writeBytes(bytes)
+                if (tmp.renameTo(file) && writesSincePrune.incrementAndGet() % 4 == 1) pruneDisk()
+            } finally {
+                tmp.delete()
+            }
+        }
+        return bytes
+    }
+
+    fun loadArtwork(bytes: ByteArray, maxPx: Int, onReady: (Bitmap?) -> Unit) {
+        val size = targetSize(maxPx)
+        val key = "art:$size:${bytes.size}:${bytes.contentHashCode()}"
+        memory.get(key)?.let { onReady(it); return }
+        pool.execute {
+            val bitmap = memory.get(key) ?: runCatching { decodeBytes(bytes, size) }.getOrNull()
+                ?.also { memory.put(key, it) }
+            main.post { onReady(bitmap) }
+        }
+    }
 
     private fun decodeBytes(bytes: ByteArray, maxPx: Int): Bitmap? {
         if (bytes.isEmpty()) return null
-        if (maxPx <= 0) return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         var sample = 1
-        while (bounds.outWidth / (sample * 2) >= maxPx && bounds.outHeight / (sample * 2) >= maxPx) sample *= 2
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxPx * 2) sample *= 2
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
             inSampleSize = sample
-            inPreferredConfig = Bitmap.Config.RGB_565 // обложкам прозрачность не нужна — вдвое меньше памяти
+            if (maxPx <= 256) inPreferredConfig = Bitmap.Config.RGB_565
         })
     }
 
-    private fun decode(url: String, maxPx: Int): Bitmap? {
-        val f = diskFile(url)
-        val cachedBytes = if (f.exists()) runCatching { f.readBytes() }.getOrNull() else null
-        if (cachedBytes != null) {
-            decodeBytes(cachedBytes, maxPx)?.let { return it }
-            runCatching { f.delete() } // битый или пустой файл в кэше — удаляем и качаем заново
-        }
-        val netBytes = fetch(url)
-        val bmp = decodeBytes(netBytes, maxPx) ?: return null
-        runCatching {
-            val tmp = java.io.File(diskDir, "${f.name}.tmp.${Thread.currentThread().id}")
-            tmp.writeBytes(netBytes)
-            if (tmp.renameTo(f)) {
-                f.setLastModified(System.currentTimeMillis())
-                if (writesSincePrune.incrementAndGet() >= 25) {
-                    writesSincePrune.set(0)
-                    pruneDisk()
-                }
-            } else {
-                tmp.delete()
-            }
-        }
-        return bmp
-    }
-
     /** В список: картинка размером с вид; подставляется, только если строку не переиспользовали под другую песню. */
-    fun into(view: ImageView, url: String?, placeholder: Int) {
+    fun into(view: ImageView, url: String?, placeholder: Int, onReady: (Bitmap) -> Unit = {}) {
         view.animate().cancel()
         view.alpha = 1f
         view.tag = url
         val lp = view.layoutParams
         val maxPx = maxOf(lp?.width ?: 0, lp?.height ?: 0).takeIf { it > 0 } ?: 0
-        val key = url?.let { keyOf(it, maxPx) }
+        val key = url?.let { keyOf(it, targetSize(maxPx)) }
         val c = key?.let { memory.get(it) }
-        if (c != null) { view.setImageBitmap(c); return }
+        if (c != null) { view.setImageBitmap(c); onReady(c); return }
         view.setImageResource(placeholder)
         if (url.isNullOrEmpty()) return
         // Строку убрали с экрана (новый поиск перерисовал список) — её обложка больше не нужна.
@@ -141,6 +181,7 @@ object Images {
             if (view.tag == url && !gone) {
                 view.alpha = 0.4f
                 view.setImageBitmap(it)
+                onReady(it)
                 view.animate().alpha(1f).setDuration(160).start()
             }
         }
