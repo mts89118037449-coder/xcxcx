@@ -117,7 +117,7 @@ object Playback {
             }
         }
     }
-    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private val main by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
 
     const val X_PREVIEW = "preview"
     const val X_HEAD = "head"              // играет с сохранённого начала (мгновенный старт)
