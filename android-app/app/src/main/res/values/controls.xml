@@ -1,0 +1,9 @@
+<resources>
+    <dimen name="player_control_size">48dp</dimen>
+    <dimen name="player_control_gap">8dp</dimen>
+    <dimen name="section_nav_height">60dp</dimen>
+    <dimen name="section_nav_edge">12dp</dimen>
+    <dimen name="section_nav_bottom">12dp</dimen>
+    <dimen name="section_nav_cell">48dp</dimen>
+    <dimen name="section_nav_label">10sp</dimen>
+</resources>

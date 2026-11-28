@@ -6,6 +6,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -15,7 +16,6 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
-import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.imageview.ShapeableImageView
 import com.google.android.material.snackbar.Snackbar
@@ -38,7 +38,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private val seek: AuraSeek get() = seekView as AuraSeek
     private lateinit var pos: TextView
     private lateinit var dur: TextView
-    private lateinit var play: MaterialButton
+    private lateinit var play: ImageButton
     private lateinit var loading: View
     private lateinit var status: TextView
     private lateinit var retry: View
@@ -100,7 +100,12 @@ class NowPlayingActivity : AppCompatActivity() {
             @Suppress("DEPRECATION") runCatching { overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out) }
         }
         // Два вида плеера — выбираются в настройках: «Кольцо» (диск и кольцо ауры) или «Волна».
-        setContentView(if (Settings.playerStyle(this) == Settings.PlayerStyle.WAVE) R.layout.activity_now_playing_wave else R.layout.activity_now_playing)
+        val wave = Settings.playerStyle(this) == Settings.PlayerStyle.WAVE
+        setContentView(when {
+            isTv -> R.layout.activity_now_playing_tv
+            wave -> R.layout.activity_now_playing_wave
+            else -> R.layout.activity_now_playing
+        })
         cover = findViewById(R.id.npCover)
         title = findViewById(R.id.npTitle)
         artist = findViewById(R.id.npArtist)
@@ -121,7 +126,16 @@ class NowPlayingActivity : AppCompatActivity() {
                 .setNeutralButton("Скопировать журнал") { _, _ -> AppLog.copy(this) }
                 .setNegativeButton("Закрыть", null).show()
         }
-        seekView = findViewById(R.id.npSeek)
+        seekView = findViewById(if (isTv && wave) R.id.npTvWaveSeek else R.id.npSeek)
+        if (isTv) {
+            findViewById<View>(R.id.npSeek).isVisible = !wave
+            findViewById<View>(R.id.npTvDiscHole).isVisible = !wave
+            findViewById<View>(R.id.npTvWaveSeek).visibility = if (wave) View.VISIBLE else View.INVISIBLE
+            if (wave) (cover.layoutParams as android.widget.FrameLayout.LayoutParams).apply {
+                setMargins(0, 0, 0, 0)
+                cover.layoutParams = this
+            }
+        }
         pos = findViewById(R.id.npPos)
         dur = findViewById(R.id.npDur)
         play = findViewById(R.id.npPlay)
@@ -149,7 +163,7 @@ class NowPlayingActivity : AppCompatActivity() {
             }
         }
         box.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
-            val side = minOf(r - l, b - t)
+            val side = minOf(r - l, b - t).coerceAtLeast(0)
             if (frame.layoutParams.width != side) frame.post {
                 frame.layoutParams = frame.layoutParams.apply { width = side; height = side }
                 // В «кольце» диск всегда помещается внутри кольца прогресса — с зазором.
@@ -165,8 +179,8 @@ class NowPlayingActivity : AppCompatActivity() {
         Swipe.attach(findViewById(R.id.npCoverFrame), onRight = { Playback.next(this) }, onLeft = { Playback.previous(this) })
         seekView.isFocusable = true
         findViewById<View>(R.id.npCoverFrame).apply {
-            isFocusable = true
             setOnClickListener { flipDisc() }
+            isFocusable = ring || !isTv
         }
         // Перемотка: по кольцу пальцем по кругу или по волне — влево-вправо.
         seek.onScrub = { f ->
@@ -193,7 +207,29 @@ class NowPlayingActivity : AppCompatActivity() {
             val name = currentTrack()?.artist?.takeIf { it.isNotBlank() && it != "Скачано" } ?: return@setOnClickListener
             Rows.openArtist(this, name)
         }
-        setupCastButton(findViewById(R.id.npCast))
+        val castButton = findViewById<androidx.mediarouter.app.MediaRouteButton>(R.id.npCast)
+        setupCastButton(castButton)
+        findViewById<View>(R.id.npCastSlot).isVisible = isTv || castButton.isVisible
+        if (isTv) {
+            val control = resources.getDimensionPixelSize(R.dimen.player_control_size)
+            val gap = resources.getDimensionPixelSize(R.dimen.player_control_gap)
+            val close = findViewById<View>(R.id.npClose)
+            close.layoutParams = (close.layoutParams as android.widget.LinearLayout.LayoutParams).apply {
+                marginEnd = (control + gap) * 2
+            }
+            val header = findViewById<View>(R.id.npHeader)
+            header.isFocusable = true
+            close.nextFocusRightId = R.id.npHeader
+            header.nextFocusLeftId = R.id.npClose
+            header.nextFocusRightId = R.id.npCast
+            castButton.nextFocusLeftId = R.id.npHeader
+            castButton.nextFocusRightId = R.id.npEqualizer
+            findViewById<View>(R.id.npEqualizer).nextFocusLeftId = R.id.npCast
+            seekView.nextFocusUpId = R.id.npHeader
+            seekView.nextFocusDownId = R.id.npPlay
+            play.nextFocusUpId = seekView.id
+            header.nextFocusDownId = seekView.id
+        }
     }
 
     private fun wantsToPlay(c: Player) = c.playWhenReady && c.playbackState != Player.STATE_ENDED
@@ -444,7 +480,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val playing = c?.isPlaying == true
         findViewById<EqBarsView>(R.id.npEq).playing(playing)
         val playRequested = c?.let(::wantsToPlay) == true
-        play.setIconResource(if (playRequested) R.drawable.ic_pause else R.drawable.ic_play_arrow)
+        play.setImageResource(if (playRequested) R.drawable.ic_pause else R.drawable.ic_play_arrow)
         glow.playing(playing && !isTv && smoke == null)
         smoke?.playing = playing
         discBack.playing = playing

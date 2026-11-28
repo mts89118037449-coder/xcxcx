@@ -269,10 +269,13 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
 
     fun setItems(list: List<Item>) {
         items.clear(); items += list; removeAllViews(); views.clear(); badges.clear()
-        for (it in list) {
+        for ((index, it) in list.withIndex()) {
             val box = FrameLayout(context)
             val cell = LinearLayout(context).apply {
+                id = it.id
                 orientation = VERTICAL; gravity = Gravity.CENTER
+                list.getOrNull(index - 1)?.let { item -> nextFocusLeftId = item.id }
+                list.getOrNull(index + 1)?.let { item -> nextFocusRightId = item.id }
                 setPadding(context.dp(3), 0, context.dp(3), 0)
                 setOnFocusChangeListener { v, focused ->
                     v.foreground = if (focused) GradientDrawable().apply {
@@ -280,28 +283,28 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
                         setColor(Color.TRANSPARENT)
                         setStroke(context.dp(2), Color.WHITE)
                     } else null
-                    v.animate().scaleX(if (focused) 1.04f else 1f).scaleY(if (focused) 1.04f else 1f).setDuration(100).start()
                 }
                 contentDescription = it.label
                 isClickable = true; isFocusable = true
                 setOnClickListener { _ -> selectedItemId = it.id }
                 addView(ImageView(context).apply { setImageResource(it.icon); layoutParams = LayoutParams(context.dp(22), context.dp(22)) })
                 addView(TextView(context).apply {
-                    text = it.label; textSize = 10f; setTextColor(Color.WHITE); maxLines = 1
+                    text = it.label; setTextColor(Color.WHITE); maxLines = 1
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.section_nav_label))
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     gravity = Gravity.CENTER
                     typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.onest_semibold)
                     setPadding(0, context.dp(2), 0, 0)
                 })
             }
-            box.addView(cell, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, context.dp(48), Gravity.CENTER))
+            box.addView(cell, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, resources.getDimensionPixelSize(R.dimen.section_nav_cell), Gravity.CENTER))
             val badge = TextView(context).apply {
                 textSize = 10f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; visibility = GONE
                 background = AuraColors.drawable(context, context.dp(9).toFloat())
                 setPadding(context.dp(4), 0, context.dp(4), 0)
             }
-            box.addView(badge, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, context.dp(18), Gravity.CENTER).apply {
-                leftMargin = context.dp(14); bottomMargin = context.dp(18)
+            box.addView(badge, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, context.dp(18), Gravity.TOP or Gravity.END).apply {
+                marginEnd = context.dp(8); topMargin = context.dp(4)
             })
             addView(box, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
             views[it.id] = cell; badges[it.id] = badge
@@ -311,6 +314,13 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
 
     fun setBadge(id: Int, count: Int) {
         badges[id]?.apply { visibility = if (count > 0) VISIBLE else GONE; text = count.toString() }
+    }
+
+    fun linkAbove(controls: List<View>) {
+        items.zip(controls).forEach { (item, control) ->
+            views[item.id]?.nextFocusUpId = control.id
+            control.nextFocusDownId = item.id
+        }
     }
 
     fun focusSelected() { views[selectedItemId]?.requestFocus() }
@@ -326,9 +336,7 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
             label.setTextColor(if (on) Color.WHITE else idle)
             icon.setColorFilter(if (on) Color.WHITE else idle)
             cell.background = if (on) AuraColors.drawable(context, context.dp(20).toFloat(), GradientDrawable.Orientation.LEFT_RIGHT) else null
-
         }
-        requestLayout()
     }
 }
 

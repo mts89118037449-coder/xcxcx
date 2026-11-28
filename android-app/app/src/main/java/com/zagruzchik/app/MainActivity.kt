@@ -121,8 +121,8 @@ class MainActivity : AppCompatActivity() {
 
         setupMiniPlayer()
         // Остальные вкладки достраиваются при первом открытии, а не все разом при запуске.
-        val initial = savedInstanceState?.getInt("page") ?: R.id.nav_music
-        ensurePage(initial)
+        val requested = intent?.getIntExtra(EXTRA_PAGE, 0)?.takeIf(pages::containsKey)
+        val initial = requested ?: savedInstanceState?.getInt("page") ?: R.id.nav_music
         showPage(initial) // приложение открывается на музыке
         handleIntent(intent)
         if (savedInstanceState == null) askNotificationPermission()
@@ -142,7 +142,7 @@ class MainActivity : AppCompatActivity() {
             R.id.nav_download -> { setupDownloadPage(); refreshSummary(); pasteFromClipboard(force = false) }
             R.id.nav_jobs -> { setupJobsPage(); refreshJobs() }
             R.id.nav_settings -> { setupSettingsPage(); refreshSites() }
-            R.id.nav_library -> { } // содержимое медиатеки строит LibraryPage (создаётся с «Музыкой»)
+            R.id.nav_library -> setupLibraryPage()
         }
     }
 
@@ -251,7 +251,7 @@ class MainActivity : AppCompatActivity() {
         toolbar.isVisible = id != R.id.nav_music && id != R.id.nav_library
         // Медиатека: первые песни, которых нет на телефоне и в памяти, готовим заранее.
         // (в фоне: проверка «есть ли на телефоне» трогает диск — на всей медиатеке это давало паузу при переключении вкладки)
-        if (id == R.id.nav_library && ::musicSearch.isInitialized) thread {
+        if (id == R.id.nav_library) thread {
             val first = Library.favorites.take(40).filter { Library.localFor(it) == null && !MediaCache.has(it) && !HeadCache.has(it) }
             if (first.isNotEmpty()) Streams.prefetchMany(first, 3)
         }
@@ -402,10 +402,13 @@ class MainActivity : AppCompatActivity() {
             hideKeyboard()
             true
         }
+        loadHome()
+    }
+
+    private fun setupLibraryPage() {
         library = LibraryPage(this, ::snack) { parent, t, local, status, video, onPlay ->
             trackRow(parent, t, local = local, status = status, video = video, onPlay = onPlay)
         }
-        loadHome()
     }
 
     private var homeLoaded = false
@@ -708,14 +711,15 @@ class MainActivity : AppCompatActivity() {
     private var libraryDirty = true
     private var libraryStamp: String? = null
     private fun refreshLibrary() {
-        if (pages[R.id.nav_library]?.isVisible != true) { libraryDirty = true; return }
+        val libraryPage = library
+        if (shownPage != R.id.nav_library || libraryPage == null) { libraryDirty = true; return }
         libraryDirty = false
         // Пересобираем, только если данные действительно изменились: раньше список строился заново при каждом входе во вкладку.
         val fav = Library.favorites
         val stamp = "${fav.size}|${fav.firstOrNull()?.let { it.title + it.artist + (it.cover ?: "") }}|${Jobs.version}|${History.all.size}|${Library.playlists.size}|${Library.albums.size}"
         if (stamp == libraryStamp) return
         libraryStamp = stamp
-        library?.refresh()
+        libraryPage.refresh()
     }
 
     /** Строка песни — общая с экранами исполнителя и альбома. */

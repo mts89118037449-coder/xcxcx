@@ -1,17 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Верх плеера: свернуть · «Играет из …» · трансляция и поделиться -->
+<!-- Действия и текущий источник -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="48dp"
+    android:layout_height="@dimen/player_control_size"
     android:gravity="center_vertical"
     android:orientation="horizontal">
 
     <ImageButton
         android:id="@+id/npClose"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:background="@drawable/bg_glass_soft"
+        style="@style/PlayerControl"
         android:contentDescription="Свернуть"
         android:src="@drawable/ic_expand_more"
         app:tint="?attr/colorOnSurface" />
@@ -48,17 +46,24 @@
         </LinearLayout>
     </FrameLayout>
 
-    <androidx.mediarouter.app.MediaRouteButton
-        android:id="@+id/npCast"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:visibility="gone" />
+    <FrameLayout
+        android:id="@+id/npCastSlot"
+        android:layout_width="@dimen/player_control_size"
+        android:layout_height="@dimen/player_control_size"
+        android:visibility="gone">
+
+        <androidx.mediarouter.app.MediaRouteButton
+            android:id="@+id/npCast"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_glass_circle"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <ImageButton
         android:id="@+id/npEqualizer"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
+        style="@style/PlayerControl"
+        android:layout_marginStart="@dimen/player_control_gap"
         android:contentDescription="Эквалайзер"
         android:focusable="true"
         android:nextFocusRight="@+id/npMore"
@@ -67,9 +72,8 @@
 
     <ImageButton
         android:id="@+id/npMore"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
+        style="@style/PlayerControl"
+        android:layout_marginStart="@dimen/player_control_gap"
         android:contentDescription="Ещё"
         android:nextFocusLeft="@id/npEqualizer"
         android:src="@drawable/ic_more_horiz"

@@ -57,7 +57,7 @@
             android:id="@+id/miniPlayer"
             android:layout_width="match_parent"
             android:layout_height="64dp"
-            android:layout_marginHorizontal="12dp"
+            android:layout_marginHorizontal="@dimen/section_nav_edge"
             android:layout_marginBottom="8dp"
             android:background="@drawable/bg_mini_player"
             android:clickable="true"
@@ -155,8 +155,8 @@
         <com.zagruzchik.app.PillNav
             android:id="@+id/bottomNav"
             android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:layout_marginHorizontal="12dp"
-            android:layout_marginBottom="12dp" />
+            android:layout_height="@dimen/section_nav_height"
+            android:layout_marginHorizontal="@dimen/section_nav_edge"
+            android:layout_marginBottom="@dimen/section_nav_bottom" />
     </LinearLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

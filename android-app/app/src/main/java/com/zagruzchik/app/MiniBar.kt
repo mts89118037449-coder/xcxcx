@@ -119,13 +119,22 @@ object MiniBar {
             listener = go; onReselect = go
         }
 
+        private val navHeight = a.resources.getDimensionPixelSize(R.dimen.section_nav_height)
+        private val navEdge = a.resources.getDimensionPixelSize(R.dimen.section_nav_edge)
+        private val navBottom = a.resources.getDimensionPixelSize(R.dimen.section_nav_bottom)
+
         init {
             content.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, a.dp(HEIGHT), Gravity.BOTTOM).apply {
-                leftMargin = a.dp(12); rightMargin = a.dp(12); bottomMargin = a.dp(8)
+                marginStart = navEdge; marginEnd = navEdge; bottomMargin = a.dp(8)
             })
-            content.addView(nav, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, a.dp(NAV), Gravity.BOTTOM).apply {
-                leftMargin = a.dp(12); rightMargin = a.dp(12); bottomMargin = a.dp(12)
+            content.addView(nav, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, navHeight, Gravity.BOTTOM).apply {
+                marginStart = navEdge; marginEnd = navEdge; bottomMargin = navBottom
             })
+            if (navOnly && (a.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
+                android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) {
+                nav.linkAbove(listOf(R.id.npLike, R.id.npPrev, R.id.npPlay, R.id.npNext, R.id.npShare)
+                    .map { id -> a.findViewById<View>(id) })
+            }
             Swipe.attach(view, onRight = { Playback.next(a) }, onLeft = { Playback.previous(a) })
             // Экран может уходить под системную панель навигации — поднимаем полоску над ней.
             ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets -> place(); insets }
@@ -166,11 +175,11 @@ object MiniBar {
                 at[1] + content.height >= content.rootView.height
             }
             val sys = if (under) navInset else 0
-            (this.nav.layoutParams as FrameLayout.LayoutParams).let { val b = a.dp(12) + sys; if (it.bottomMargin != b) { it.bottomMargin = b; this.nav.layoutParams = it } }
+            (this.nav.layoutParams as FrameLayout.LayoutParams).let { val b = navBottom + sys; if (it.bottomMargin != b) { it.bottomMargin = b; this.nav.layoutParams = it } }
             // Полоска «сейчас играет» — над меню.
-            val bottom = a.dp(12 + NAV + 8) + sys
+            val bottom = navBottom + navHeight + a.dp(8) + sys
             (view.layoutParams as FrameLayout.LayoutParams).let { if (it.bottomMargin != bottom) { it.bottomMargin = bottom; view.layoutParams = it } }
-            val room = a.dp(NAV + 12 + 8) + sys + if (view.isVisible) a.dp(HEIGHT + 8) else 0
+            val room = bottom + if (view.isVisible) a.dp(HEIGHT + 8) else 0
             for (i in 0 until content.childCount) {
                 val child = content.getChildAt(i)
                 if (child === view || child === this.nav) continue
@@ -219,5 +228,4 @@ object MiniBar {
     }
 
     private const val HEIGHT = 60
-    private const val NAV = 60
 }

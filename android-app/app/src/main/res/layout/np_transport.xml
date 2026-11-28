@@ -2,65 +2,55 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="64dp"
-    android:layout_marginTop="2dp"
+    android:layout_height="wrap_content"
     android:gravity="center"
-    android:orientation="horizontal">
+    android:orientation="horizontal"
+    android:paddingVertical="6dp">
 
     <ImageButton
         android:id="@+id/npLike"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:background="@drawable/bg_glass_circle"
+        style="@style/PlayerControl"
         android:contentDescription="В любимое"
-        android:focusable="true"
         android:nextFocusRight="@+id/npPrev"
         android:src="@drawable/ic_favorite_border"
         app:tint="?attr/colorOnSurface" />
 
-    <com.google.android.material.button.MaterialButton
+    <ImageButton
         android:id="@+id/npPrev"
-        style="?attr/materialIconButtonStyle"
-        android:layout_width="56dp"
-        android:layout_height="48dp"
-        android:layout_marginStart="6dp"
-        android:background="@drawable/bg_glass_circle"
+        style="@style/PlayerControl"
+        android:layout_marginStart="@dimen/player_control_gap"
         android:contentDescription="Предыдущая"
-        android:focusable="true"
-        android:nextFocusLeft="@+id/npLike"
+        android:nextFocusLeft="@id/npLike"
         android:nextFocusRight="@+id/npPlay"
-        app:backgroundTint="@null"
-        app:icon="@drawable/ic_skip_previous"
-        app:iconSize="34dp"
-        app:iconTint="?attr/colorOnSurface" />
+        android:src="@drawable/ic_skip_previous"
+        app:tint="?attr/colorOnSurface" />
 
-    <include layout="@layout/np_play_button" />
+    <ImageButton
+        android:id="@+id/npPlay"
+        style="@style/PlayerControl"
+        android:layout_marginStart="@dimen/player_control_gap"
+        android:contentDescription="Играть"
+        android:nextFocusLeft="@id/npPrev"
+        android:nextFocusRight="@+id/npNext"
+        android:src="@drawable/ic_play_arrow"
+        app:tint="?attr/colorOnSurface" />
 
-    <com.google.android.material.button.MaterialButton
+    <ImageButton
         android:id="@+id/npNext"
-        style="?attr/materialIconButtonStyle"
-        android:layout_width="56dp"
-        android:layout_height="48dp"
-        android:layout_marginStart="6dp"
-        android:background="@drawable/bg_glass_circle"
+        style="@style/PlayerControl"
+        android:layout_marginStart="@dimen/player_control_gap"
         android:contentDescription="Следующая"
-        android:focusable="true"
-        android:nextFocusLeft="@+id/npPlay"
+        android:nextFocusLeft="@id/npPlay"
         android:nextFocusRight="@+id/npShare"
-        app:backgroundTint="@null"
-        app:icon="@drawable/ic_skip_next"
-        app:iconSize="34dp"
-        app:iconTint="?attr/colorOnSurface" />
+        android:src="@drawable/ic_skip_next"
+        app:tint="?attr/colorOnSurface" />
 
     <ImageButton
         android:id="@+id/npShare"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:background="@drawable/bg_glass_circle"
+        style="@style/PlayerControl"
+        android:layout_marginStart="@dimen/player_control_gap"
         android:contentDescription="Поделиться"
-        android:focusable="true"
         android:nextFocusLeft="@id/npNext"
-        android:nextFocusRight="@id/npMore"
         android:src="@drawable/ic_share"
         app:tint="?attr/colorOnSurface" />
 </LinearLayout>

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center"
+    android:orientation="horizontal"
+    android:paddingHorizontal="6dp"
+    android:paddingVertical="6dp">
+
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="@dimen/player_control_size"
+        android:layout_weight="1">
+        <ImageButton
+            android:id="@+id/npLike"
+            style="@style/PlayerControl"
+            android:layout_gravity="center"
+            android:contentDescription="В любимое"
+            android:nextFocusRight="@+id/npPrev"
+            android:src="@drawable/ic_favorite_border"
+            app:tint="?attr/colorOnSurface" />
+    </FrameLayout>
+
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="@dimen/player_control_size"
+        android:layout_weight="1">
+        <ImageButton
+            android:id="@+id/npPrev"
+            style="@style/PlayerControl"
+            android:layout_gravity="center"
+            android:contentDescription="Предыдущая"
+            android:nextFocusLeft="@id/npLike"
+            android:nextFocusRight="@+id/npPlay"
+            android:src="@drawable/ic_skip_previous"
+            app:tint="?attr/colorOnSurface" />
+    </FrameLayout>
+
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="@dimen/player_control_size"
+        android:layout_weight="1">
+        <ImageButton
+            android:id="@+id/npPlay"
+            style="@style/PlayerControl"
+            android:layout_gravity="center"
+            android:contentDescription="Играть"
+            android:nextFocusLeft="@id/npPrev"
+            android:nextFocusRight="@+id/npNext"
+            android:src="@drawable/ic_play_arrow"
+            app:tint="?attr/colorOnSurface" />
+    </FrameLayout>
+
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="@dimen/player_control_size"
+        android:layout_weight="1">
+        <ImageButton
+            android:id="@+id/npNext"
+            style="@style/PlayerControl"
+            android:layout_gravity="center"
+            android:contentDescription="Следующая"
+            android:nextFocusLeft="@id/npPlay"
+            android:nextFocusRight="@+id/npShare"
+            android:src="@drawable/ic_skip_next"
+            app:tint="?attr/colorOnSurface" />
+    </FrameLayout>
+
+    <FrameLayout
+        android:layout_width="0dp"
+        android:layout_height="@dimen/player_control_size"
+        android:layout_weight="1">
+        <ImageButton
+            android:id="@+id/npShare"
+            style="@style/PlayerControl"
+            android:layout_gravity="center"
+            android:contentDescription="Поделиться"
+            android:nextFocusLeft="@id/npNext"
+            android:src="@drawable/ic_share"
+            app:tint="?attr/colorOnSurface" />
+    </FrameLayout>
+</LinearLayout>
