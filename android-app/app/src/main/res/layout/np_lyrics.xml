@@ -25,7 +25,7 @@
         app:autoSizeMinTextSize="13sp"
         app:autoSizeMaxTextSize="15sp"
         app:autoSizeStepGranularity="1sp"
-        android:textColor="?attr/colorOnSurfaceVariant" />
+        android:textColor="#B8B4C8" />
 
     <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/npLyrNow"
@@ -36,7 +36,7 @@
         android:fontFamily="@font/onest"
         android:gravity="center_vertical"
         android:maxLines="2"
-        android:textColor="?attr/colorOnSurface"
+        android:textColor="@android:color/white"
         android:textFontWeight="700"
         android:textSize="20sp"
         app:autoSizeTextType="uniform"
@@ -55,5 +55,5 @@
         app:autoSizeMinTextSize="13sp"
         app:autoSizeMaxTextSize="15sp"
         app:autoSizeStepGranularity="1sp"
-        android:textColor="?attr/colorOnSurfaceVariant" />
+        android:textColor="#B8B4C8" />
 </LinearLayout>

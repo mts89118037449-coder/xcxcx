@@ -50,8 +50,8 @@
 
                     <FrameLayout
                         android:id="@+id/npCoverFrame"
-                        android:layout_width="320dp"
-                        android:layout_height="320dp"
+                        android:layout_width="276dp"
+                        android:layout_height="276dp"
                         android:layout_gravity="center">
 
                         <com.zagruzchik.app.RingProgressView
@@ -138,9 +138,14 @@
                     android:maxLines="1"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
-                <include layout="@layout/np_bottom_slot" />
             </LinearLayout>
         </ScrollView>
+
+        <include
+            layout="@layout/np_bottom_slot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp" />
 
         <include layout="@layout/np_transport" />
 
