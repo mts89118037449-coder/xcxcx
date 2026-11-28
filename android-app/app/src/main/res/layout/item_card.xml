@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="136dp"
+    android:layout_width="148dp"
     android:layout_height="wrap_content"
     android:layout_marginEnd="12dp"
-    android:background="?attr/selectableItemBackground"
+    android:background="@drawable/bg_glass_pill"
     android:orientation="vertical"
-    android:paddingBottom="4dp">
+    android:padding="8dp">
 
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/cardImage"
-        android:layout_width="136dp"
-        android:layout_height="136dp"
+        android:layout_width="132dp"
+        android:layout_height="132dp"
         android:importantForAccessibility="no"
         android:scaleType="centerCrop"
-        app:shapeAppearanceOverlay="@style/JobCoverShape" />
+        app:shapeAppearanceOverlay="@style/CardCoverShape" />
 
     <TextView
         android:id="@+id/cardTitle"
@@ -23,14 +23,18 @@
         android:layout_marginTop="8dp"
         android:ellipsize="end"
         android:maxLines="2"
-        android:textAppearance="?attr/textAppearanceTitleSmall" />
+        android:textAppearance="?attr/textAppearanceTitleSmall"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="14sp" />
 
     <TextView
         android:id="@+id/cardSub"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
         android:ellipsize="end"
         android:maxLines="1"
         android:textAppearance="?attr/textAppearanceBodySmall"
-        android:textColor="?attr/colorOnSurfaceVariant" />
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:textSize="12sp" />
 </LinearLayout>

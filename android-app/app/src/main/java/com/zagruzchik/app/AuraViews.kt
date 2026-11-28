@@ -248,11 +248,11 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
         val pad = ctx.dp(6)
         setPadding(pad, 0, pad, 0)
         background = GradientDrawable().apply {
-            cornerRadius = ctx.dp(30).toFloat()
-            setColor(ContextCompat.getColor(ctx, R.color.card))
-            setStroke(ctx.dp(1), ContextCompat.getColor(ctx, R.color.line))
+            cornerRadius = ctx.dp(24).toFloat()
+            setColor(ContextCompat.getColor(ctx, R.color.nav_bg))
+            setStroke(ctx.dp(1), ContextCompat.getColor(ctx, R.color.nav_line))
         }
-        elevation = ctx.dp(6).toFloat()
+        elevation = ctx.dp(8).toFloat()
     }
 
     fun setItems(list: List<Item>) {
@@ -266,7 +266,7 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
                     android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) {
                     setOnFocusChangeListener { _, focused ->
                         foreground = if (focused) GradientDrawable().apply {
-                            cornerRadius = context.dp(24).toFloat()
+                            cornerRadius = context.dp(20).toFloat()
                             setColor(Color.TRANSPARENT)
                             setStroke(context.dp(3), Color.WHITE)
                         } else null
@@ -282,7 +282,7 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
                     setPadding(context.dp(6), 0, 0, 0)
                 })
             }
-            box.addView(cell, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, context.dp(48), Gravity.CENTER))
+            box.addView(cell, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, context.dp(46), Gravity.CENTER))
             val badge = TextView(context).apply {
                 textSize = 10f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; visibility = GONE
                 background = AuraColors.drawable(context, context.dp(9).toFloat())
@@ -310,10 +310,45 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
             val label = cell.getChildAt(1) as TextView
             label.visibility = if (on) VISIBLE else GONE
             icon.setColorFilter(if (on) Color.WHITE else idle)
-            cell.background = if (on) AuraColors.drawable(context, context.dp(24).toFloat(), GradientDrawable.Orientation.LEFT_RIGHT) else null
+            cell.background = if (on) AuraColors.drawable(context, context.dp(20).toFloat(), GradientDrawable.Orientation.LEFT_RIGHT) else null
             // Активная вкладка — шире, остальные делят место поровну.
             (cell.parent as View).layoutParams = (cell.parent as View).layoutParams.apply { (this as LayoutParams).weight = if (on) 2.8f else 1f }
         }
         requestLayout()
+    }
+}
+
+/** Тонкая полоска прогресса (2dp) в градиенте ауры для мини-плеера. */
+class AuraProgressLine @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = null) : View(ctx, attrs) {
+    private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x1AFFFFFF }
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    var progress: Float = 0f
+        set(v) {
+            val clamped = v.coerceIn(0f, 1f)
+            if (field != clamped) {
+                field = clamped
+                invalidate()
+            }
+        }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        if (w > 0) {
+            fillPaint.shader = LinearGradient(
+                0f, 0f, w.toFloat(), 0f,
+                intArrayOf(AuraColors.c1(context), AuraColors.c2(context), AuraColors.c3(context)),
+                null,
+                Shader.TileMode.CLAMP
+            )
+        }
+    }
+
+    override fun onDraw(c: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        c.drawRect(0f, 0f, w, h, trackPaint)
+        if (progress > 0f) {
+            c.drawRect(0f, 0f, w * progress, h, fillPaint)
+        }
     }
 }

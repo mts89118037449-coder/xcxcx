@@ -71,6 +71,7 @@ object MiniBar {
         private val artist = TextView(a).apply { textSize = 12f; setTextColor(muted); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
         private val play = button(R.drawable.ic_pause, "Пауза") { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
         private val next = button(R.drawable.ic_skip_next, "Следующая") { Playback.next(a) }
+        private val progressLine = AuraProgressLine(a)
         private val view = FrameLayout(a).apply {
             setBackgroundResource(R.drawable.bg_mini_player)
             clipToOutline = true
@@ -89,6 +90,7 @@ object MiniBar {
                 addView(play, LinearLayout.LayoutParams(a.dp(48), a.dp(48)))
                 addView(next, LinearLayout.LayoutParams(a.dp(48), a.dp(48)))
             }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(progressLine, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, a.dp(2), Gravity.BOTTOM))
             setOnClickListener { a.startActivity(Intent(a, NowPlayingActivity::class.java)) }
         }
         private var controller: MediaController? = null
@@ -97,6 +99,15 @@ object MiniBar {
         private var coverArtKey: String? = null
         private val listener = object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) = update()
+        }
+        private val tick = object : Runnable {
+            override fun run() {
+                val c = controller ?: return
+                if (!started || !view.isVisible) return
+                val d = Playback.duration(c)
+                progressLine.progress = if (d > 0) Playback.position(c).toFloat() / d else 0f
+                if (c.isPlaying) view.postDelayed(this, 500L)
+            }
         }
 
         // Нижнее меню — как на главном экране: раньше при переходе в раздел оно пропадало.
@@ -144,6 +155,7 @@ object MiniBar {
 
         fun stop() {
             started = false
+            view.removeCallbacks(tick)
             controller?.removeListener(listener)
             controller = null
         }
@@ -174,6 +186,7 @@ object MiniBar {
             val has = !navOnly && c != null && c.mediaItemCount > 0 && c.playbackState != Player.STATE_IDLE
             if (view.isVisible != has) { view.isVisible = has; view.bringToFront(); nav.bringToFront() }
             place()
+            view.removeCallbacks(tick)
             if (!has || c == null) return
             val m = c.mediaMetadata
             title.text = m.title ?: "Без названия"
@@ -182,6 +195,9 @@ object MiniBar {
             play.setImageResource(if (c.isPlaying) R.drawable.ic_pause else R.drawable.ic_play_arrow)
             play.contentDescription = if (c.isPlaying) "Пауза" else "Играть"
             next.isVisible = Playback.hasNext(c)
+            val d = Playback.duration(c)
+            progressLine.progress = if (d > 0) Playback.position(c).toFloat() / d else 0f
+            if (started && c.isPlaying) view.postDelayed(tick, 500L)
             val art = m.artworkData
             val url = m.artworkUri?.toString()
             when {

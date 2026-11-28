@@ -4,11 +4,13 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:layout_marginVertical="2dp"
     android:background="?attr/selectableItemBackground"
     android:gravity="center_vertical"
-    android:minHeight="64dp"
+    android:minHeight="68dp"
     android:orientation="horizontal"
-    android:paddingVertical="6dp">
+    android:paddingHorizontal="10dp"
+    android:paddingVertical="8dp">
 
     <TextView
         android:id="@+id/srNumber"
@@ -22,8 +24,8 @@
 
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/srCover"
-        android:layout_width="50dp"
-        android:layout_height="50dp"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
         android:importantForAccessibility="no"
         android:scaleType="centerCrop"
         app:shapeAppearanceOverlay="@style/MiniCoverShape" />
@@ -42,17 +44,19 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:textAppearance="?attr/textAppearanceTitleSmall"
-            android:textColor="?attr/colorOnSurface" />
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="15sp" />
 
         <TextView
             android:id="@+id/srSub"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="3dp"
             android:ellipsize="end"
             android:maxLines="1"
             android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="?attr/colorOnSurfaceVariant" />
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="13sp" />
     </LinearLayout>
 
     <!-- Уже в «Любимом» -->

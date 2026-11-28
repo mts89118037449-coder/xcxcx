@@ -49,24 +49,33 @@ object HomeViews {
     /** Большая карточка «Аура дня»: радио по вашему вкусу. */
     fun hero(a: Activity, subtitle: String, onPlay: () -> Unit): View {
         val card = FrameLayout(a).apply {
-            background = a.getDrawable(R.drawable.bg_card)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xCC161622.toInt(), 0xCC1D1530.toInt(), 0xCC241428.toInt())
+            ).apply {
+                cornerRadius = a.dp(22).toFloat()
+                setStroke(a.dp(1), 0x33FFFFFF)
+            }
             clipToOutline = true
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, a.dp(210)).apply { bottomMargin = a.dp(12) }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, a.dp(220)).apply { bottomMargin = a.dp(14) }
         }
-        card.addView(blob(a, AuraColors.c1(a), 340, -120, -150, 0xE6))
-        card.addView(blob(a, AuraColors.c3(a), 320, 150, 40, 0xCC))
-        card.addView(Rings(a), FrameLayout.LayoutParams(a.dp(230), a.dp(230), Gravity.END).apply { rightMargin = -a.dp(50); topMargin = -a.dp(10) })
-        val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(22), a.dp(20), a.dp(22), a.dp(20)) }
-        col.addView(text(a, "РАДИО ПО ВАШЕМУ ВКУСУ", 11f, R.font.onest_semibold, 0xCCFFFFFF.toInt()).apply { letterSpacing = 0.1f })
-        col.addView(text(a, "Аура дня", 30f, R.font.unbounded_bold, Color.WHITE).apply { letterSpacing = -0.02f; setPadding(0, a.dp(4), 0, 0) })
-        col.addView(text(a, subtitle, 14f, R.font.onest_regular, 0xDDFFFFFF.toInt()).apply {
-            maxWidth = a.dp(230); setPadding(0, a.dp(4), 0, 0); maxLines = 2
+        card.addView(blob(a, AuraColors.c1(a), 360, -110, -140, 0xCC))
+        card.addView(blob(a, AuraColors.c3(a), 340, 140, 30, 0xB8))
+        card.addView(Rings(a), FrameLayout.LayoutParams(a.dp(240), a.dp(240), Gravity.END).apply { rightMargin = -a.dp(48); topMargin = -a.dp(12) })
+        val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(22), a.dp(22), a.dp(22), a.dp(22)) }
+        col.addView(text(a, "РАДИО ПО ВАШЕМУ ВКУСУ", 11f, R.font.onest_semibold, 0xCCFFFFFF.toInt()).apply { letterSpacing = 0.12f })
+        col.addView(text(a, "Аура дня", 31f, R.font.unbounded_bold, Color.WHITE).apply { letterSpacing = -0.02f; setPadding(0, a.dp(4), 0, 0) })
+        col.addView(text(a, subtitle, 14f, R.font.onest_regular, 0xE0FFFFFF.toInt()).apply {
+            maxWidth = a.dp(240); setPadding(0, a.dp(6), 0, 0); maxLines = 2
         })
         col.addView(View(a), LinearLayout.LayoutParams(1, 0, 1f))
         val row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         row.addView(ImageView(a).apply {
-            setImageResource(R.drawable.ic_play_arrow); setColorFilter(0xFF0B0A0F.toInt())
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
+            setImageResource(R.drawable.ic_play_arrow); setColorFilter(Color.WHITE)
+            background = AuraColors.drawable(a, a.dp(28).toFloat(), GradientDrawable.Orientation.TL_BR).apply {
+                setStroke(a.dp(1), 0x4DFFFFFF)
+            }
+            elevation = a.dp(4).toFloat()
             setPadding(a.dp(14), a.dp(14), a.dp(14), a.dp(14))
             contentDescription = "Слушать «Ауру дня»"
             setOnClickListener { onPlay() }

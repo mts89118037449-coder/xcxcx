@@ -8,10 +8,12 @@
     <color name="mini_end">#FFFFFFFF</color>
     <color name="line">#FFE2DEEA</color>
     <color name="card">#FFFFFFFF</color>
-    <color name="glass">#0F15131B</color>
-    <color name="nav_idle">#FF7A7686</color>
-    <!-- Аура: фирменный градиент -->
-    <color name="aura1">#FF6236E8</color>
-    <color name="aura2">#FF9B3DE0</color>
-    <color name="aura3">#FFE0457F</color>
+    <color name="glass">#16FFFFFF</color>
+    <color name="nav_bg">#E614141F</color>
+    <color name="nav_line">#26FFFFFF</color>
+    <color name="nav_idle">#FF9691A8</color>
+    <!-- Аура: фирменный градиент (#6A3DF0 → #FF4F9A) -->
+    <color name="aura1">#FF6A3DF0</color>
+    <color name="aura2">#FFA843C8</color>
+    <color name="aura3">#FFFF4F9A</color>
 </resources>

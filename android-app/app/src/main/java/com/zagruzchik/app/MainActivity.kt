@@ -1175,7 +1175,9 @@ class MainActivity : AppCompatActivity() {
     private fun updateMiniProgress() {
         val c = controller ?: return
         val d = Playback.duration(c)
-        findViewById<RingProgressView>(R.id.miniRing).progress = if (d > 0) Playback.position(c).toFloat() / d else 0f
+        val p = if (d > 0) Playback.position(c).toFloat() / d else 0f
+        findViewById<RingProgressView>(R.id.miniRing).progress = p
+        findViewById<AuraProgressLine>(R.id.miniProgressLine).progress = p
     }
 
     private fun open(job: Job) {

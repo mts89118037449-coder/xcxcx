@@ -52,33 +52,49 @@ object Rows {
         row.setOnClickListener(play)
         // Палец задержался на песне (не листание) — уже ищем полную версию, к отпусканию часть работы сделана.
         // При прокрутке ничего не запускаем: иначе десятки поисков забивали очередь и нажатая песня ждала.
-        if (!video && local == null && directUrl == null) {
-            val slop = android.view.ViewConfiguration.get(act).scaledTouchSlop
-            var downX = 0f; var downY = 0f
-            val start = Runnable {
-                if (Library.localFor(t) == null && !MediaCache.has(t)) {
-                    if (pageUrl != null) Streams.prefetchPage(pageUrl, Describe.site(pageUrl), t.title) else Streams.touch(t)
-                }
+        val doPrefetch = !video && local == null && directUrl == null
+        val slop = android.view.ViewConfiguration.get(act).scaledTouchSlop
+        var downX = 0f; var downY = 0f
+        val start = if (doPrefetch) Runnable {
+            if (Library.localFor(t) == null && !MediaCache.has(t)) {
+                if (pageUrl != null) Streams.prefetchPage(pageUrl, Describe.site(pageUrl), t.title) else Streams.touch(t)
             }
-            val touch = View.OnTouchListener { v, e ->
-                when (e.actionMasked) {
-                    android.view.MotionEvent.ACTION_DOWN -> {
-                        downX = e.rawX; downY = e.rawY
-                        v.postDelayed(start, android.view.ViewConfiguration.getTapTimeout().toLong())
+        } else null
+        row.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    downX = e.rawX; downY = e.rawY
+                    v.animate().scaleX(0.98f).scaleY(0.98f).setDuration(80).start()
+                    if (start != null) v.postDelayed(start, android.view.ViewConfiguration.getTapTimeout().toLong())
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    if (kotlin.math.abs(e.rawX - downX) > slop || kotlin.math.abs(e.rawY - downY) > slop) {
+                        if (start != null) v.removeCallbacks(start)
+                        v.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
                     }
-                    android.view.MotionEvent.ACTION_MOVE ->
-                        if (kotlin.math.abs(e.rawX - downX) > slop || kotlin.math.abs(e.rawY - downY) > slop) v.removeCallbacks(start)
-                    android.view.MotionEvent.ACTION_CANCEL -> v.removeCallbacks(start)
                 }
-                false
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    if (start != null) v.removeCallbacks(start)
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(120).start()
+                }
             }
-            row.setOnTouchListener(touch)
+            false
         }
         if (!video && t.artist.isNotBlank()) row.setOnLongClickListener { openArtist(act, t.artist); true }
-        // Играет сейчас — столбики ауры справа.
+        // Играет сейчас — столбики ауры справа и мягкая аура-подсветка строки.
         // Песня уже в «Любимом» — сердечко ауры справа (видно везде: у исполнителя, в альбоме, в поиске).
         row.findViewById<View>(R.id.srLiked).isVisible = !video && Library.isSaved(t)
         val playingNow = Playback.nowPlayingKey == Library.key(t)
+        if (playingNow) {
+            row.background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(0x286A3DF0, 0x1CFF4F9A)
+            ).apply {
+                cornerRadius = act.dp(16).toFloat()
+                setStroke(act.dp(1), 0x44A843C8)
+            }
+            row.findViewById<TextView>(R.id.srTitle).setTextColor(0xFFE9DDFF.toInt())
+        }
         row.findViewById<EqBarsView>(R.id.srEq).apply { isVisible = playingNow; playing(playingNow) }
         row.findViewById<View>(R.id.srMore).apply {
             isVisible = !video
