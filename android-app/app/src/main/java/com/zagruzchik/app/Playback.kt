@@ -306,7 +306,7 @@ object Playback {
         val canPreview = first.pageUrl == null && first.directUrl == null
         // «Сразу полная»: источник известен или найдётся за пару секунд — ждём её и начинаем с начала, без фрагмента.
         // Фрагмент — только если поиск затянулся.
-        if (canPreview && Settings.startMode(app) == Settings.StartMode.FULL) {
+        if (canPreview && (Cast.isPlayingRemotely || Settings.startMode(app) == Settings.StartMode.FULL)) {
             Pending.set(first.track, loading = true, error = null)
             worker.execute {
                 // Фрагмент не включаем вообще: ждём полную, пока идёт поиск.
@@ -531,7 +531,7 @@ object Playback {
             c.prepare()
             c.play()
             hook(app, c)
-            if (fill) fill(app, gen)
+            if (fill && !Cast.isPlayingRemotely) fill(app, gen)
         }
     }
 
@@ -576,7 +576,7 @@ object Playback {
                 // Через 8 с, а не 1,2: при быстром листании не запускаем на каждую мелькнувшую песню полный опрос площадок.
                 current?.let { playingNow -> main.postDelayed({ if (current == playingNow) Streams.live(playingNow) }, 8000) }
                 mediaItem?.let { remember(it) }
-                fill(app, queueGen)
+                if (c.playbackState == androidx.media3.common.Player.STATE_READY || !Cast.isPlayingRemotely) fill(app, queueGen)
             }
             // Фрагмент не открылся — показываем «готовлю», полная версия включится сама, как только найдётся.
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -605,7 +605,7 @@ object Playback {
                 AppLog.error("проигрыватель: «${m?.title}» из ${m?.extras?.getString(X_SOURCE)} (${error.errorCodeName})", error)
                 val t = Track(m?.title?.toString().orEmpty(), m?.artist?.toString().orEmpty(), cover = m?.artworkUri?.toString())
                 Streams.forget(t) // ссылка не играет — в следующий раз ищем заново, а не берём её же
-                val failedUrl = c.currentMediaItem?.localConfiguration?.uri?.toString() ?: c.currentMediaItem?.mediaId
+                val failedUrl = c.currentMediaItem?.requestMetadata?.mediaUri?.toString() ?: c.currentMediaItem?.mediaId
                 Streams.blacklist(failedUrl, m?.extras?.getString(X_PAGE_URL))
                 val key = Library.key(t)
                 val now = System.currentTimeMillis()
@@ -666,6 +666,8 @@ object Playback {
 
             private var bufferingAt = 0L
             override fun onPlaybackStateChanged(state: Int) {
+                // CastPlayer ignores queue inserts until the receiver has loaded the first item.
+                if (state == androidx.media3.common.Player.STATE_READY && Cast.isPlayingRemotely) fill(app, queueGen)
                 // После смены источника — на то же место (см. replay), как только новая запись готова играть.
                 if (state == androidx.media3.common.Player.STATE_READY && resumeKey != null && resumeKey == nowPlayingKey &&
                     c.mediaMetadata.extras?.getBoolean(X_PREVIEW) != true) {
@@ -691,7 +693,7 @@ object Playback {
                             if (t.title.isNotBlank() && attempt.second <= 2) {
                                 AppLog.add("ДОЛГАЯ ПОДГРУЗКА «${t.label}» (>14 с) — переключаюсь на запасной источник")
                                 Streams.forget(t)
-                                Streams.blacklist(c.currentMediaItem?.localConfiguration?.uri?.toString() ?: c.currentMediaItem?.mediaId, m?.extras?.getString(X_PAGE_URL))
+                                Streams.blacklist(c.currentMediaItem?.requestMetadata?.mediaUri?.toString() ?: c.currentMediaItem?.mediaId, m?.extras?.getString(X_PAGE_URL))
                                 MediaCache.forget(t); HeadCache.drop(t)
                                 val i = queue.indexOfFirst { Library.key(it.track) == key }
                                 if (i >= 0) {

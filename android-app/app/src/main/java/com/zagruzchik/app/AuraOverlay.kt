@@ -28,7 +28,7 @@ class AuraOverlay private constructor(private val a: ComponentActivity) {
     private val smoke = SmokeView(a)
     private val title = TextView(a).apply {
         text = "Аура дня"; textSize = 34f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
-        typeface = ResourcesCompat.getFont(a, R.font.unbounded_bold); letterSpacing = -0.02f
+        typeface = ResourcesCompat.getFont(a, R.font.onest_bold); letterSpacing = -0.02f
         setShadowLayer(a.dp(18).toFloat(), 0f, 0f, 0xAA000000.toInt())
     }
     private val step = TextView(a).apply {

@@ -36,7 +36,7 @@ class TelegramActivity : AppCompatActivity() {
             contentDescription = "Назад"; setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(dp(44), dp(44)))
         root.addView(TextView(this).apply {
-            text = "Музыка\nиз Telegram"; textSize = 28f; setTextColor(onSurface); typeface = ResourcesCompat.getFont(this@TelegramActivity, R.font.unbounded_bold)
+            text = "Музыка\nиз Telegram"; textSize = 28f; setTextColor(onSurface); typeface = ResourcesCompat.getFont(this@TelegramActivity, R.font.onest_bold)
             setPadding(0, dp(16), 0, dp(6)); setLineSpacing(0f, 1.05f)
         })
         box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }

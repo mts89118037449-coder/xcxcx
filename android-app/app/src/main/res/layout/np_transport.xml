@@ -41,28 +41,18 @@
         style="?attr/materialIconButtonStyle"
         android:layout_width="56dp"
         android:layout_height="48dp"
-        android:layout_marginEnd="6dp"
+        android:layout_marginStart="6dp"
         android:background="@drawable/bg_glass_circle"
         android:contentDescription="Следующая"
         android:focusable="true"
         android:nextFocusLeft="@+id/npPlay"
-        android:nextFocusRight="@+id/npSpeed"
+        android:nextFocusRight="@id/npMore"
         app:backgroundTint="@null"
         app:icon="@drawable/ic_skip_next"
         app:iconSize="34dp"
         app:iconTint="?attr/colorOnSurface" />
 
-    <Button
-        android:id="@+id/npSpeed"
-        style="?attr/borderlessButtonStyle"
+    <Space
         android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:background="@drawable/bg_glass_circle"
-        android:focusable="true"
-        android:minWidth="0dp"
-        android:nextFocusLeft="@+id/npNext"
-        android:padding="0dp"
-        android:text="1×"
-        android:textAllCaps="false"
-        app:backgroundTint="@null" />
+        android:layout_height="1dp" />
 </LinearLayout>

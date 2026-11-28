@@ -189,7 +189,7 @@ class LibraryPage(
         card.addView(blob(AuraColors.c3(a), 220, 70, -40))
         val rowV = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(a.dp(16), 0, a.dp(16), 0) }
         val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
-        col.addView(TextView(a).apply { text = title; textSize = 17f; typeface = font(R.font.unbounded_semibold); setTextColor(Color.WHITE) })
+        col.addView(TextView(a).apply { text = title; textSize = 17f; typeface = font(R.font.onest_semibold); setTextColor(Color.WHITE) })
         col.addView(TextView(a).apply { text = sub; textSize = 13f; setTextColor(0xCCFFFFFF.toInt()); setPadding(0, a.dp(4), 0, 0) })
         rowV.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         rowV.addView(ImageView(a).apply {

@@ -45,6 +45,8 @@ internal fun glassDivider(a: Activity): View = View(a).apply {
 
 /** Действия с песней («…» в строке): в любимое, скачать, исполнитель, радио, поделиться. */
 object TrackActions {
+    fun favoriteMessage(saved: Boolean) = if (saved) "В избранном" else "Убрано из избранного"
+
     fun show(a: Activity, t: Track, snack: (String) -> Unit, pageUrl: String? = null, directUrl: String? = null, local: SavedFile? = null,
              onLikeChanged: (Boolean) -> Unit = {}) {
         val dlg = BottomSheetDialog(a)
@@ -70,6 +72,7 @@ object TrackActions {
             root.addView(LinearLayout(a).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 minimumHeight = a.dp(52)
+                isFocusable = true
                 background = a.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).let { ta -> ta.getDrawable(0).also { ta.recycle() } }
                 addView(ImageView(a).apply { setImageResource(icon); setColorFilter(onSurface) }, LinearLayout.LayoutParams(a.dp(24), a.dp(24)))
                 addView(TextView(a).apply { text = label; textSize = 16f; setTextColor(onSurface); setPadding(a.dp(16), 0, 0, 0) })
@@ -78,15 +81,8 @@ object TrackActions {
         }
         val saved = Library.isSaved(t)
         item(if (saved) R.drawable.ic_favorite else R.drawable.ic_favorite_border, if (saved) "Убрать из любимого" else "В любимое") {
-            val inCache = MediaCache.has(t)
             val now = Library.like(a, t, pageUrl ?: directUrl, t.url)
             onLikeChanged(now)
-            snack(when {
-                !now -> "Убрано из любимого"
-                local != null || !Settings.saveLiked(a) -> "«${t.title}» — в любимом"
-                inCache -> "«${t.title}» — в любимом, сохраняю из памяти"
-                else -> "«${t.title}» — в любимом, скачиваю на телефон"
-            })
         }
         if (local == null) item(R.drawable.ic_download, "Скачать") {
             val u = directUrl ?: pageUrl ?: t.url ?: return@item snack("Эту песню можно только послушать")

@@ -47,9 +47,22 @@ class NowPlayingActivity : AppCompatActivity() {
     private var coverKey: Any? = null
 
     private val listener = object : Player.Listener {
-        override fun onEvents(player: Player, events: Player.Events) = render()
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (events.contains(Player.EVENT_POSITION_DISCONTINUITY)) progressItem = null
+            render()
+        }
     }
     private val pendingListener = { render() }
+    private val isTv by lazy {
+        resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    }
+    private val progressAnimator = android.animation.ValueAnimator().apply {
+        duration = 230L
+        interpolator = android.view.animation.LinearInterpolator()
+        addUpdateListener { if (!seek.isScrubbing) seek.progress = it.animatedValue as Float }
+    }
+    private var progressItem: androidx.media3.common.MediaItem? = null
     private val ticker = object : Runnable {
         override fun run() {
             updateProgress()
@@ -119,7 +132,7 @@ class NowPlayingActivity : AppCompatActivity() {
         val box = findViewById<View>(R.id.npCoverBox)
         val frame = findViewById<View>(R.id.npCoverFrame)
         // Дым вокруг обложки: отдельный слой сразу над фоном, под обложкой и кнопками.
-        if (Settings.coverSmoke(this)) {
+        if (!isTv && Settings.coverSmoke(this)) {
             val aura = findViewById<View>(R.id.npAura)
             val layer = aura.parent as ViewGroup
             // Своё свечение приложения (с фиолетовым оттенком) под дымом не нужно: оно подмешивало к цветам обложки чужой цвет.
@@ -143,7 +156,7 @@ class NowPlayingActivity : AppCompatActivity() {
         }
 
         findViewById<View>(R.id.npClose).setOnClickListener { finish() }
-        play.setOnClickListener { controller?.let { if (it.isPlaying) it.pause() else { if (it.playbackState == Player.STATE_ENDED) it.seekTo(0); it.play() } } }
+        play.setOnClickListener { controller?.let { setPlaying(it, !wantsToPlay(it)) } }
         findViewById<View>(R.id.npPrev).setOnClickListener { Playback.previous(this) }
         findViewById<View>(R.id.npNext).setOnClickListener { Playback.next(this) }
         // Свайп по обложке: вправо — следующая песня из текущего списка, влево — предыдущая.
@@ -155,6 +168,8 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         // Перемотка: по кольцу пальцем по кругу или по волне — влево-вправо.
         seek.onScrub = { f ->
+            progressAnimator.cancel()
+            positionSecond = -1L
             val d = controller?.let { Playback.duration(it) } ?: 0
             if (d > 0) pos.text = time((f * d).toLong())
         }
@@ -165,18 +180,6 @@ class NowPlayingActivity : AppCompatActivity() {
         // Не нашлась — по нажатию на сообщение: что ответили площадки и поле для своей ссылки.
         status.setOnClickListener { Playback.Pending.track?.takeIf { Playback.Pending.error != null }?.let(::notFoundDialog) }
         findViewById<View>(R.id.npLike).setOnClickListener { toggleLike() }
-        findViewById<View>(R.id.npSpeed).setOnClickListener { anchor ->
-            val c = controller ?: return@setOnClickListener
-            val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
-            for (speed in listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)) {
-                popup.menu.add(speedLabel(speed)).apply {
-                    isCheckable = true
-                    isChecked = c.playbackParameters.speed == speed
-                    setOnMenuItemClickListener { c.setPlaybackSpeed(speed); true }
-                }
-            }
-            popup.show()
-        }
         findViewById<View>(R.id.npShare).setOnClickListener { share() }
         findViewById<View>(R.id.npMore).setOnClickListener(::showActions)
         findViewById<View>(R.id.npLyricsPeek).setOnClickListener { openLyrics() }
@@ -188,19 +191,32 @@ class NowPlayingActivity : AppCompatActivity() {
         setupCastButton(findViewById(R.id.npCast))
     }
 
+    private fun wantsToPlay(c: Player) = c.playWhenReady && c.playbackState != Player.STATE_ENDED
+
+    private fun setPlaying(c: Player, shouldPlay: Boolean) {
+        if (shouldPlay) {
+            if (c.playbackState == Player.STATE_ENDED) c.seekTo(0)
+            c.play()
+        } else {
+            c.pause()
+        }
+    }
+
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         if (event.action == android.view.KeyEvent.ACTION_DOWN) {
             val c = controller
             when (event.keyCode) {
-                android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
                 android.view.KeyEvent.KEYCODE_MEDIA_PLAY,
                 android.view.KeyEvent.KEYCODE_MEDIA_PAUSE,
+                android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
                 android.view.KeyEvent.KEYCODE_SPACE -> {
-                    c?.let {
-                        if (it.isPlaying) it.pause() else {
-                            if (it.playbackState == Player.STATE_ENDED) it.seekTo(0)
-                            it.play()
+                    if (c != null && event.repeatCount == 0) {
+                        val shouldPlay = when (event.keyCode) {
+                            android.view.KeyEvent.KEYCODE_MEDIA_PLAY -> true
+                            android.view.KeyEvent.KEYCODE_MEDIA_PAUSE -> false
+                            else -> !wantsToPlay(c)
                         }
+                        setPlaying(c, shouldPlay)
                     }
                     return true
                 }
@@ -258,7 +274,6 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         render()
         seekView.post(ticker)
-        val isTv = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
         if (!window.decorView.isInTouchMode || isTv) {
             play.post { if (!isFinishing && !isDestroyed) play.requestFocus() }
         }
@@ -274,6 +289,8 @@ class NowPlayingActivity : AppCompatActivity() {
         controller?.removeListener(listener)
         controller = null
         seekView.removeCallbacks(ticker)
+        progressAnimator.cancel()
+        glow.stop()
         super.onStop()
     }
 
@@ -368,11 +385,6 @@ class NowPlayingActivity : AppCompatActivity() {
             setImageResource(if (saved) R.drawable.ic_favorite else R.drawable.ic_favorite_border)
             contentDescription = if (saved) "Убрать из любимого" else "В любимое"
         }
-        findViewById<TextView>(R.id.npSpeed).apply {
-            isEnabled = c?.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH) == true
-            text = speedLabel(c?.playbackParameters?.speed ?: 1f)
-            contentDescription = "Скорость воспроизведения $text"
-        }
         findViewById<View>(R.id.npPrev).isEnabled = c != null && (Playback.hasPrevious(c) || c.currentPosition > 4_000L)
         findViewById<View>(R.id.npShare).isEnabled = track != null
         loading.isVisible = pending
@@ -426,12 +438,13 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         val playing = c?.isPlaying == true
         findViewById<EqBarsView>(R.id.npEq).playing(playing)
-        play.setIconResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play_arrow)
-        glow.playing(playing) // аура «дышит», пока играет
+        val playRequested = c?.let(::wantsToPlay) == true
+        play.setIconResource(if (playRequested) R.drawable.ic_pause else R.drawable.ic_play_arrow)
+        glow.playing(playing && !isTv && smoke == null)
         smoke?.playing = playing
         discBack.playing = playing
-        play.contentDescription = if (playing) "Пауза" else "Играть"
-        play.isEnabled = !pending
+        play.contentDescription = if (playRequested) "Пауза" else "Играть"
+        play.isEnabled = !pending && c?.isCommandAvailable(Player.COMMAND_PLAY_PAUSE) == true
         updateProgress()
         // Ссылки для «Отправить» готовим сразу, пока песня играет.
         currentTrack()?.let { LinkCache.prefetch(it, extras()?.getString(Playback.X_SOURCE_URL)) }
@@ -548,6 +561,8 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private var positionSecond = -1L
     private var durationSecond = -1L
+    private var lastProgressMs = 0L
+    private var progressTarget = 0f
 
     private fun updateProgress() {
         val c = controller ?: return
@@ -556,7 +571,21 @@ class NowPlayingActivity : AppCompatActivity() {
         val p = if (pending) 0L else Playback.position(c).coerceAtLeast(0)
         if (!seek.isScrubbing) {
             val fraction = if (d > 0) (p.toFloat() / d).coerceIn(0f, 1f) else 0f
-            if (seek.progress != fraction) seek.progress = fraction
+            val item = c.currentMediaItem
+            val smooth = c.isPlaying && !pending && item == progressItem &&
+                p >= lastProgressMs && p - lastProgressMs < 1_000L
+            progressItem = item
+            lastProgressMs = p
+            if (progressTarget != fraction || !smooth) {
+                progressTarget = fraction
+                progressAnimator.cancel()
+                if (smooth && fraction > seek.progress) {
+                    progressAnimator.setFloatValues(seek.progress, fraction)
+                    progressAnimator.start()
+                } else if (seek.progress != fraction) {
+                    seek.progress = fraction
+                }
+            }
             if (positionSecond != p / 1000) {
                 positionSecond = p / 1000
                 pos.text = time(p)
@@ -583,16 +612,14 @@ class NowPlayingActivity : AppCompatActivity() {
     private fun toggleLike() {
         val t = currentTrack() ?: return
         val x = extras()?.takeUnless { showingPending() }
-        val local = x?.getString(Playback.X_LOCAL_URI) != null && x.getString(Playback.X_SOURCE) == "Скачано"
         val saved = Library.like(this, t, x?.getString(Playback.X_PAGE_URL), x?.getString(Playback.X_SOURCE_URL))
-        val msg = when {
-            !saved -> "Убрано из любимого"
-            local || !Settings.saveLiked(this) -> "В любимом"
-            MediaCache.has(t) -> "В любимом · сохраняю на телефон из памяти"
-            else -> "В любимом · скачиваю на телефон"
-        }
-        Snackbar.make(seekView, msg, Snackbar.LENGTH_SHORT).show()
         render()
+        val heart = findViewById<ImageView>(R.id.npLike)
+        heart.animate().cancel()
+        heart.scaleX = 0.88f
+        heart.scaleY = 0.88f
+        heart.animate().scaleX(1f).scaleY(1f).setDuration(160L).start()
+        heart.announceForAccessibility(TrackActions.favoriteMessage(saved))
     }
 
     private fun showActions(anchor: View) {
@@ -615,6 +642,20 @@ class NowPlayingActivity : AppCompatActivity() {
         action("Перемешать", c != null) { c?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }.apply {
             isCheckable = true
             isChecked = c?.shuffleModeEnabled == true
+        }
+        if (!pending && c != null && c.currentMediaItem != null && c.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH)) {
+            val speeds = popup.menu.addSubMenu("Скорость · ${speedLabel(c.playbackParameters.speed)}")
+            listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEachIndexed { index, speed ->
+                speeds.add(0, index, index, if (speed == 1f) "Обычная · 1×" else speedLabel(speed)).apply {
+                    isCheckable = true
+                    isChecked = c.playbackParameters.speed == speed
+                    setOnMenuItemClickListener {
+                        if (c.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH)) c.setPlaybackSpeed(speed)
+                        true
+                    }
+                }
+            }
+            speeds.setGroupCheckable(0, true, true)
         }
         val modes = popup.menu.addSubMenu("Повтор")
         modes.item.isEnabled = c != null

@@ -3,10 +3,12 @@ package com.zagruzchik.app
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
+import android.content.res.Configuration
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
@@ -29,10 +31,19 @@ class PlaybackService : MediaSessionService() {
     private var local: ExoPlayer? = null
     private var cast: androidx.media3.cast.CastPlayer? = null
 
+    private data class QueueState(
+        val items: List<MediaItem>, val index: Int, val position: Long, val play: Boolean,
+    )
+
+    private var castQueue: QueueState? = null
+
     override fun onCreate() {
         super.onCreate()
         // Свой обработчик звука («восстановление верхов») встраивается в вывод проигрывателя.
-        val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+        val isTv = resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK ==
+            Configuration.UI_MODE_TYPE_TELEVISION
+        val renderers = if (isTv) androidx.media3.exoplayer.DefaultRenderersFactory(this)
+        else object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
             override fun buildAudioSink(context: android.content.Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean) =
                 androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
                     .setAudioProcessors(arrayOf<androidx.media3.common.audio.AudioProcessor>(Exciter())).build()
@@ -43,7 +54,7 @@ class PlaybackService : MediaSessionService() {
             .setAllowCrossProtocolRedirects(true)
             .setDefaultRequestProperties(mapOf("Accept-Language" to "ru,en;q=0.8", "Referer" to "https://rus.hitmotop.com/"))
         val hitmotopFactory = DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(this, hitmotopHttp))
-        val player = ExoPlayer.Builder(this, renderers)
+        val player = ExoPlayer.Builder(this, renderers.setEnableDecoderFallback(true))
             // «aura://head/…» — начало песни с телефона, продолжение из сети (мгновенный старт); остальное — как обычно.
             .setMediaSourceFactory(MergingFactory(DefaultMediaSourceFactory(this), DefaultMediaSourceFactory(AuraDataSourceFactory(this)), hitmotopFactory))
             // Начинаем играть, как только есть 0,7 с звука (по умолчанию ждёт 2,5 с), и держим запас на минуту вперёд.
@@ -107,7 +118,16 @@ class PlaybackService : MediaSessionService() {
      */
     private fun setupCast() {
         val ctx = Cast.context(this) ?: return // нет сервисов Google Play — без трансляции
-        val cp = androidx.media3.cast.CastPlayer(ctx)
+        val cp = androidx.media3.cast.CastPlayer(ctx, SoundAuraCastConverter())
+        cp.addListener(object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (session?.player === cp && cp.mediaItemCount > 0 && events.containsAny(
+                        Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION,
+                        Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_POSITION_DISCONTINUITY,
+                    )
+                ) castQueue = queueState(cp)
+            }
+        })
         cast = cp
         cp.setSessionAvailabilityListener(object : androidx.media3.cast.SessionAvailabilityListener {
             override fun onCastSessionAvailable() { local?.let { switchPlayer(it, cp) } }
@@ -116,21 +136,44 @@ class PlaybackService : MediaSessionService() {
         if (cp.isCastSessionAvailable) local?.let { switchPlayer(it, cp) }
     }
 
-    private fun switchPlayer(from: androidx.media3.common.Player, to: androidx.media3.common.Player) {
+    private fun queueState(player: Player) = QueueState(
+        (0 until player.mediaItemCount).map(player::getMediaItemAt),
+        player.currentMediaItemIndex,
+        player.currentPosition,
+        player.playWhenReady,
+    )
+
+    private fun switchPlayer(from: Player, to: Player) {
         val s = session ?: return
-        if (s.player === to) return
-        val items = (0 until from.mediaItemCount).map { from.getMediaItemAt(it) }
-        val index = from.currentMediaItemIndex
-        val position = from.currentPosition
-        val play = from.playWhenReady
-        from.stop()
-        val prepared = if (to === cast) items.mapNotNull { Cast.castable(this, it) } else items
-        if (prepared.isNotEmpty()) {
-            to.setMediaItems(prepared, index.coerceIn(0, prepared.lastIndex), position)
-            to.playWhenReady = play
-            to.prepare()
+        if (s.player === to || s.player !== from) return
+        val casting = to === cast
+        val current = queueState(from)
+        // CastPlayer clears its timeline before notifying us that the receiver disconnected.
+        val state = if (!casting && current.items.isEmpty()) {
+            castQueue?.let { it.copy(position = current.position.takeIf { position -> position > 0 } ?: it.position) } ?: current
+        } else current
+        val index = state.index.coerceAtLeast(0)
+        val prepared = if (casting) {
+            val mapped = state.items.map { Cast.castable(this, it) }
+            if (state.items.isNotEmpty() && mapped.getOrNull(index) == null) return
+            mapped.take(index).count { it != null } to mapped.filterNotNull()
+        } else {
+            index to state.items.map { item ->
+                val originalUri = item.requestMetadata.mediaUri
+                if (originalUri == null) item else item.buildUpon().setUri(originalUri).build()
+            }
         }
+        from.stop()
+        castQueue = if (casting) state else null
+        Cast.isPlayingRemotely = casting
         s.player = to
+        if (prepared.second.isNotEmpty()) {
+            to.setMediaItems(prepared.second, prepared.first.coerceAtMost(prepared.second.lastIndex), state.position.coerceAtLeast(0))
+            to.prepare()
+            to.playWhenReady = state.play
+        } else {
+            to.clearMediaItems()
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
@@ -142,6 +185,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        Cast.isPlayingRemotely = false
         cast?.setSessionAvailabilityListener(null)
         cast?.release()
         AudioFx.onSkipSilence = null

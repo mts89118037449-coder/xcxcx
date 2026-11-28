@@ -78,7 +78,7 @@ class ImportActivity : AppCompatActivity() {
         }, LinearLayout.LayoutParams(dp(44), dp(44)))
         root.addView(head)
         root.addView(TextView(this).apply {
-            text = "Перенести\nмедиатеку"; textSize = 28f; setTextColor(onSurface); typeface = ResourcesCompat.getFont(this@ImportActivity, R.font.unbounded_bold)
+            text = "Перенести\nмедиатеку"; textSize = 28f; setTextColor(onSurface); typeface = ResourcesCompat.getFont(this@ImportActivity, R.font.onest_bold)
             setPadding(0, dp(16), 0, dp(6)); setLineSpacing(0f, 1.05f)
         })
         root.addView(TextView(this).apply {

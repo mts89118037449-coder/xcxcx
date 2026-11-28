@@ -111,7 +111,7 @@ class EqualizerActivity : AppCompatActivity() {
             contentDescription = "Назад"; setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(dp(44), dp(44)))
         head.addView(TextView(this).apply {
-            text = "Эквалайзер"; textSize = 24f; setTextColor(onSurface); typeface = ResourcesCompat.getFont(this@EqualizerActivity, R.font.unbounded_bold)
+            text = "Эквалайзер"; textSize = 24f; setTextColor(onSurface); typeface = ResourcesCompat.getFont(this@EqualizerActivity, R.font.onest_bold)
             setPadding(dp(14), 0, 0, 0)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         sw = MaterialSwitch(this).apply { contentDescription = "Включить эквалайзер" }

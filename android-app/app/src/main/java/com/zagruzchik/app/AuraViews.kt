@@ -144,8 +144,15 @@ class WaveSeekView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? 
     var seed: Int = 0
         set(v) { field = v; heights = makeHeights(); invalidate() }
     var idleColor = 0x2EFFFFFF
+    private var tones: IntArray? = null
     override var accent: Int? = null
-        set(v) { if (field != v) { field = v; invalidate() } }
+        set(v) {
+            if (field != v) {
+                field = v
+                tones = v?.let(::shades)
+                invalidate()
+            }
+        }
 
     private val bar = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
@@ -165,17 +172,22 @@ class WaveSeekView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? 
     override fun onDraw(canvas: Canvas) {
         val gap = context.dp(3).toFloat()
         val w = (width - gap * (count - 1)) / count
-        val played = (progress * count).toInt()
-        val tones = accent?.let { shades(it) }
+        val position = progress * count
+        val played = position.toInt()
+        val fraction = position - played
         for (i in 0 until count) {
             val h = height * heights[i]
             val x = i * (w + gap)
             rect.set(x, (height - h) / 2, x + w, (height + h) / 2)
             bar.color = when {
-                i == played -> Color.WHITE
-                i < played -> (i / maxOf(1f, played - 1f)).let { t ->
-                    tones?.let { g -> if (t < 0.5f) AuraColors.mix(g[0], g[1], t * 2) else AuraColors.mix(g[1], g[2], (t - 0.5f) * 2) } ?: AuraColors.at(context, t)
+                i <= played -> {
+                    val t = (i / maxOf(1f, position - 1f)).coerceAtMost(1f)
+                    val filled = tones?.let { g ->
+                        if (t < 0.5f) AuraColors.mix(g[0], g[1], t * 2) else AuraColors.mix(g[1], g[2], (t - 0.5f) * 2)
+                    } ?: AuraColors.at(context, t)
+                    if (i == played) AuraColors.mix(Color.WHITE, filled, fraction) else filled
                 }
+                i == played + 1 -> AuraColors.mix(idleColor, Color.WHITE, fraction)
                 else -> idleColor
             }
             canvas.drawRoundRect(rect, w / 2, w / 2, bar)

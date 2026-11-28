@@ -64,7 +64,7 @@ object HomeViews {
         card.addView(Rings(a), FrameLayout.LayoutParams(a.dp(240), a.dp(240), Gravity.END).apply { rightMargin = -a.dp(48); topMargin = -a.dp(12) })
         val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(22), a.dp(22), a.dp(22), a.dp(22)) }
         col.addView(text(a, "РАДИО ПО ВАШЕМУ ВКУСУ", 11f, R.font.onest_semibold, 0xCCFFFFFF.toInt()).apply { letterSpacing = 0.12f })
-        col.addView(text(a, "Аура дня", 31f, R.font.unbounded_bold, Color.WHITE).apply { letterSpacing = -0.02f; setPadding(0, a.dp(4), 0, 0) })
+        col.addView(text(a, "Аура дня", 31f, R.font.onest_bold, Color.WHITE).apply { letterSpacing = -0.02f; setPadding(0, a.dp(4), 0, 0) })
         col.addView(text(a, subtitle, 14f, R.font.onest_regular, 0xE0FFFFFF.toInt()).apply {
             maxWidth = a.dp(240); setPadding(0, a.dp(6), 0, 0); maxLines = 2
         })
@@ -99,7 +99,7 @@ object HomeViews {
             setOnClickListener { onClick() }
         }
         val head = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP }
-        head.addView(text(a, title, if (tall) 15f else 13.5f, R.font.unbounded_semibold, onSurface).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END },
+        head.addView(text(a, title, if (tall) 15f else 13.5f, R.font.onest_semibold, onSurface).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         if (badge != null) head.addView(text(a, badge, 11f, R.font.onest_bold, Color.WHITE).apply {
             background = AuraColors.drawable(a, a.dp(11).toFloat(), GradientDrawable.Orientation.LEFT_RIGHT)

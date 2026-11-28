@@ -100,7 +100,13 @@ object Rows {
             isVisible = !video
             setOnClickListener {
                 TrackActions.show(act, t, snack, pageUrl = pageUrl, directUrl = directUrl, local = local) { liked ->
-                    row.findViewById<View>(R.id.srLiked).isVisible = liked
+                    row.findViewById<View>(R.id.srLiked).apply {
+                        animate().cancel()
+                        isVisible = liked
+                        alpha = if (liked) 0f else 1f
+                        if (liked) animate().alpha(1f).setDuration(160L).start()
+                    }
+                    row.announceForAccessibility(TrackActions.favoriteMessage(liked))
                 }
             }
         }

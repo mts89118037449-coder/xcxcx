@@ -35,7 +35,7 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">?attr/colorSurfaceContainer</item>
         <item name="android:windowBackground">@color/m3_background</item>
-        <!-- Шрифты: Onest для всего, Unbounded для крупных заголовков -->
+        <!-- Onest для заголовков, текста и подписей -->
         <item name="android:fontFamily">@font/onest</item>
         <item name="fontFamily">@font/onest</item>
         <item name="textAppearanceDisplaySmall">@style/TA.Display</item>
@@ -55,10 +55,10 @@
     </style>
 
     <!-- Типографика SoundAura -->
-    <style name="TA.Display" parent="TextAppearance.Material3.DisplaySmall"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
-    <style name="TA.Headline" parent="TextAppearance.Material3.HeadlineMedium"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
-    <style name="TA.HeadlineSmall" parent="TextAppearance.Material3.HeadlineSmall"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
-    <style name="TA.TitleLarge" parent="TextAppearance.Material3.TitleLarge"><item name="android:fontFamily">@font/unbounded</item><item name="fontFamily">@font/unbounded</item><item name="android:textStyle">bold</item></style>
+    <style name="TA.Display" parent="TextAppearance.Material3.DisplaySmall"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
+    <style name="TA.Headline" parent="TextAppearance.Material3.HeadlineMedium"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
+    <style name="TA.HeadlineSmall" parent="TextAppearance.Material3.HeadlineSmall"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textStyle">bold</item><item name="android:letterSpacing">-0.02</item></style>
+    <style name="TA.TitleLarge" parent="TextAppearance.Material3.TitleLarge"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textStyle">bold</item></style>
     <style name="TA.TitleMedium" parent="TextAppearance.Material3.TitleMedium"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textStyle">bold</item></style>
     <style name="TA.TitleSmall" parent="TextAppearance.Material3.TitleSmall"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item><item name="android:textStyle">bold</item><item name="android:textSize">15sp</item></style>
     <style name="TA.BodyLarge" parent="TextAppearance.Material3.BodyLarge"><item name="android:fontFamily">@font/onest</item><item name="fontFamily">@font/onest</item></style>
