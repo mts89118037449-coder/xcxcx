@@ -145,6 +145,55 @@ object Rows {
     fun openAlbum(act: Activity, a: Album) = act.startActivity(CollectionActivity.album(act, a))
     fun openArtist(act: Activity, a: Artist) = act.startActivity(CollectionActivity.artist(act, a.id, a.name, a.picture))
     fun openArtist(act: Activity, name: String) = act.startActivity(CollectionActivity.artistByName(act, name))
+
+    private val chunkTasks = java.util.WeakHashMap<ViewGroup, Pair<Any, Runnable>>()
+
+    fun cancelChunked(container: ViewGroup) {
+        chunkTasks.remove(container)?.let { (_, r) -> container.removeCallbacks(r) }
+    }
+
+    /**
+     * Добавляет длинный список порциями: первые [firstChunk] строк сразу (с мягким проявлением),
+     * остальные — по [chunkSize] через post(), чтобы не блокировать UI-поток и не вызывать инпут-лаг.
+     */
+    fun <T> fillChunked(
+        container: ViewGroup,
+        items: List<T>,
+        firstChunk: Int = 12,
+        chunkSize: Int = 12,
+        buildRow: (Int, T) -> View,
+    ) {
+        cancelChunked(container)
+        if (items.isEmpty()) return
+        val token = Any()
+        var idx = 0
+        val firstEnd = minOf(items.size, firstChunk)
+        while (idx < firstEnd) {
+            val v = buildRow(idx, items[idx])
+            v.alpha = 0f
+            container.addView(v)
+            v.animate().alpha(1f).setDuration(140).start()
+            idx++
+        }
+        if (idx >= items.size) return
+        val step = object : Runnable {
+            override fun run() {
+                if (chunkTasks[container]?.first !== token) return
+                if (!container.isAttachedToWindow) {
+                    chunkTasks.remove(container)
+                    return
+                }
+                val end = minOf(items.size, idx + chunkSize)
+                while (idx < end) {
+                    container.addView(buildRow(idx, items[idx]))
+                    idx++
+                }
+                if (idx < items.size) container.post(this) else chunkTasks.remove(container)
+            }
+        }
+        chunkTasks[container] = token to step
+        container.post(step)
+    }
 }
 
 /**

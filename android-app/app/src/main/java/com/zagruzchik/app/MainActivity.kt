@@ -214,8 +214,13 @@ class MainActivity : AppCompatActivity() {
                 v.animate().cancel()
                 v.alpha = 0f; v.translationY = dp(8).toFloat()
                 v.isVisible = true
-                v.animate().alpha(1f).translationY(0f).setDuration(140).start()
-            } else v.isVisible = show
+                v.animate().alpha(1f).translationY(0f).setDuration(180).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+            } else if (!show && v.isVisible) {
+                v.animate().cancel()
+                v.isVisible = false
+            } else {
+                v.isVisible = show
+            }
         }
         if (id == R.id.nav_library && libraryDirty) refreshLibrary()
         toolbar.title = when (id) {
@@ -567,10 +572,13 @@ class MainActivity : AppCompatActivity() {
                 if (seq != musicSeq) return@runOnUiThread
                 findViewById<View>(R.id.musicProgress).isVisible = false
                 findViewById<View>(R.id.catalogEmpty).isVisible = found.isEmpty()
+                Rows.cancelChunked(catalog)
                 catalog.removeAllViews()
                 // Результаты — это список: дальше играют следующие песни из него (и свайп по плееру).
                 val items = found.map { Playback.QItem(it, Library.localFor(it), it.url) }
-                found.forEachIndexed { i, t -> catalog.addView(trackRow(catalog, t, onPlay = { Playback.playQueue(this, items, i) })) }
+                Rows.fillChunked(catalog, found, firstChunk = 12, chunkSize = 12) { i, t ->
+                    trackRow(catalog, t, onPlay = { Playback.playQueue(this, items, i) })
+                }
                 Streams.prefetchMany(found, 4) // к нажатию ▶ полная версия уже готова
             }
         }

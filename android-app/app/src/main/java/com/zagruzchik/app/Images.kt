@@ -117,6 +117,8 @@ object Images {
 
     /** В список: картинка размером с вид; подставляется, только если строку не переиспользовали под другую песню. */
     fun into(view: ImageView, url: String?, placeholder: Int) {
+        view.animate().cancel()
+        view.alpha = 1f
         view.tag = url
         val lp = view.layoutParams
         val maxPx = maxOf(lp?.width ?: 0, lp?.height ?: 0).takeIf { it > 0 } ?: 0
@@ -129,9 +131,19 @@ object Images {
         var gone = false
         view.addOnAttachStateChangeListener(object : android.view.View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: android.view.View) {}
-            override fun onViewDetachedFromWindow(v: android.view.View) { gone = true; v.removeOnAttachStateChangeListener(this) }
+            override fun onViewDetachedFromWindow(v: android.view.View) {
+                gone = true
+                v.animate().cancel()
+                v.removeOnAttachStateChangeListener(this)
+            }
         })
-        load(url, maxPx, wanted = { view.tag == url && !gone }) { if (view.tag == url) view.setImageBitmap(it) }
+        load(url, maxPx, wanted = { view.tag == url && !gone }) {
+            if (view.tag == url && !gone) {
+                view.alpha = 0.4f
+                view.setImageBitmap(it)
+                view.animate().alpha(1f).setDuration(160).start()
+            }
+        }
     }
 
     /** Основной цвет картинки — для фона плеера. */

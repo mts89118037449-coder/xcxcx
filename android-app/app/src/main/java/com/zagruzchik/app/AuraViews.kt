@@ -352,3 +352,63 @@ class AuraProgressLine @JvmOverloads constructor(ctx: Context, attrs: AttributeS
         }
     }
 }
+
+/** Стеклянные строки-скелетоны для подгрузки списков (аниматор отменяется при detach). */
+object AuraSkeleton {
+    private class Row(ctx: Context) : LinearLayout(ctx) {
+        private var pulse: ValueAnimator? = null
+
+        init {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = ctx.dp(68)
+            setPadding(ctx.dp(10), ctx.dp(8), ctx.dp(10), ctx.dp(8))
+            addView(View(ctx).apply {
+                background = GradientDrawable().apply {
+                    cornerRadius = ctx.dp(12).toFloat()
+                    setColor(0x24FFFFFF)
+                    setStroke(ctx.dp(1), 0x18FFFFFF)
+                }
+            }, LayoutParams(ctx.dp(52), ctx.dp(52)))
+            addView(LinearLayout(ctx).apply {
+                orientation = VERTICAL
+                addView(View(ctx).apply {
+                    background = GradientDrawable().apply {
+                        cornerRadius = ctx.dp(7).toFloat()
+                        setColor(0x28FFFFFF)
+                    }
+                }, LayoutParams(ctx.dp(168), ctx.dp(14)))
+                addView(View(ctx).apply {
+                    background = GradientDrawable().apply {
+                        cornerRadius = ctx.dp(5).toFloat()
+                        setColor(0x18FFFFFF)
+                    }
+                }, LayoutParams(ctx.dp(108), ctx.dp(10)).apply { topMargin = ctx.dp(8) })
+            }, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = ctx.dp(14) })
+        }
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            pulse?.cancel()
+            pulse = ValueAnimator.ofFloat(0.35f, 0.75f).apply {
+                duration = 850L
+                repeatMode = ValueAnimator.REVERSE
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+                addUpdateListener { alpha = it.animatedValue as Float }
+                start()
+            }
+        }
+
+        override fun onDetachedFromWindow() {
+            pulse?.cancel()
+            pulse = null
+            super.onDetachedFromWindow()
+        }
+    }
+
+    fun fill(container: android.view.ViewGroup, count: Int = 6) {
+        container.removeAllViews()
+        repeat(count) { container.addView(Row(container.context)) }
+    }
+}

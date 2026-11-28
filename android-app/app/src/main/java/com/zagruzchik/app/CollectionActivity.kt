@@ -21,6 +21,11 @@ class CollectionActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            runCatching { overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, android.R.anim.fade_in, android.R.anim.fade_out) }
+        } else {
+            @Suppress("DEPRECATION") runCatching { overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out) }
+        }
         VisiblePrefetch.install(this)
         setContentView(R.layout.activity_collection)
         content = findViewById(R.id.colContent)
@@ -33,19 +38,30 @@ class CollectionActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.colTitle).text = title
         setHeadCover(i.getStringExtra(X_IMAGE))
         when (i.getStringExtra(X_KIND)) {
-            KIND_LIST -> loadList(i.getStringExtra(X_ID_S).orEmpty())
+            KIND_LIST -> { AuraSkeleton.fill(content, 6); loadList(i.getStringExtra(X_ID_S).orEmpty()) }
             KIND_PLAYLIST -> loadPlaylist(i.getStringExtra(X_ID_S).orEmpty())
-            KIND_ALBUM -> loadAlbum(
-                Album(i.getLongExtra(X_ID, 0).takeIf { it > 0 }, title, i.getStringExtra(X_ARTIST).orEmpty(), i.getStringExtra(X_IMAGE))
-            )
+            KIND_ALBUM -> {
+                AuraSkeleton.fill(content, 6)
+                loadAlbum(Album(i.getLongExtra(X_ID, 0).takeIf { it > 0 }, title, i.getStringExtra(X_ARTIST).orEmpty(), i.getStringExtra(X_IMAGE)))
+            }
             else -> {
                 // Исполнитель — фото на всю ширину, имя поверх.
                 findViewById<View>(R.id.colHero).isVisible = true
                 findViewById<View>(R.id.colHead).isVisible = false
                 findViewById<TextView>(R.id.colHeroName).text = title
                 Images.load(i.getStringExtra(X_IMAGE)) { findViewById<android.widget.ImageView>(R.id.colHeroImage).setImageBitmap(it) }
+                AuraSkeleton.fill(content, 6)
                 loadArtist(i.getLongExtra(X_ID, 0).takeIf { it > 0 }, title)
             }
+        }
+    }
+
+    override fun finish() {
+        super.finish()
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            runCatching { overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, android.R.anim.fade_in, android.R.anim.fade_out) }
+        } else {
+            @Suppress("DEPRECATION") runCatching { overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out) }
         }
     }
 
@@ -66,6 +82,7 @@ class CollectionActivity : AppCompatActivity() {
                 if (isDestroyed) return@runOnUiThread
                 findViewById<View>(R.id.colProgress).isVisible = false
                 r.onFailure { return@runOnUiThread error(it) }
+                content.removeAllViews()
                 val (full, list) = r.getOrThrow()
                 findViewById<TextView>(R.id.colTitle).text = full.title + if (full.explicit) "  🅴" else ""
                 val total = list.sumOf { it.durationSec }
@@ -136,6 +153,7 @@ class CollectionActivity : AppCompatActivity() {
                 if (isDestroyed) return@runOnUiThread
                 findViewById<View>(R.id.colProgress).isVisible = false
                 list.onFailure { return@runOnUiThread error(it) }
+                content.removeAllViews()
                 val l = list.getOrThrow()
                 if (l.isEmpty()) return@runOnUiThread error(UserError(when {
                     which != LIST_NEWS -> "Не загрузилось. Проверьте интернет."
@@ -161,6 +179,7 @@ class CollectionActivity : AppCompatActivity() {
                 if (isDestroyed) return@runOnUiThread
                 findViewById<View>(R.id.colProgress).isVisible = false
                 r.onFailure { return@runOnUiThread error(it) }
+                content.removeAllViews()
                 val p = r.getOrThrow()
                 findViewById<TextView>(R.id.colHeroName).text = p.artist.name
                 findViewById<TextView>(R.id.colHeroSub).text =
@@ -207,17 +226,23 @@ class CollectionActivity : AppCompatActivity() {
     private fun showTracks(list: List<Track>, numbered: Boolean) {
         findViewById<View>(R.id.colButtons).isVisible = list.isNotEmpty()
         val items = list.map { Playback.QItem(it, Library.localFor(it), it.url) }
-        // Длинные списки (перенесённый плейлист на тысячи песен) — порциями по мере прокрутки.
-        var next = 0
+        val trackBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(trackBox)
+        // Первую страницу (до 36) добавляем порциями по 12, остальные — при прокрутке.
+        val firstEnd = minOf(list.size, 36)
+        Rows.fillChunked(trackBox, (0 until firstEnd).toList(), firstChunk = 12, chunkSize = 12) { _, i ->
+            Rows.track(this, trackBox, list[i], ::snack, local = items[i].local, number = if (numbered) i + 1 else null,
+                onPlay = { Playback.playQueue(this, items, i) })
+        }
+        var next = firstEnd
         fun more() {
-            val end = minOf(list.size, next + 40)
+            val end = minOf(list.size, next + 12)
             while (next < end) {
                 val i = next++
-                content.addView(Rows.track(this, content, list[i], ::snack, local = items[i].local, number = if (numbered) i + 1 else null,
+                trackBox.addView(Rows.track(this, trackBox, list[i], ::snack, local = items[i].local, number = if (numbered) i + 1 else null,
                     onPlay = { Playback.playQueue(this, items, i) }))
             }
         }
-        more()
         val scroll = findViewById<androidx.core.widget.NestedScrollView>(R.id.colScroll)
         scroll.setOnScrollChangeListener { v: androidx.core.widget.NestedScrollView, _: Int, y: Int, _: Int, _: Int ->
             if (next < list.size && v.getChildAt(0).bottom - (v.height + y) < dp(1200)) more()
@@ -274,6 +299,7 @@ class CollectionActivity : AppCompatActivity() {
     }
 
     private fun error(e: Throwable) {
+        content.removeAllViews()
         findViewById<TextView>(R.id.colError).apply {
             isVisible = true
             text = (e as? UserError)?.message ?: "Не удалось загрузить. Проверьте интернет."

@@ -39,7 +39,28 @@ class LibraryPage(
     private var shown = 0          // сколько элементов уже на экране — чтобы обновление не сбрасывало прокрутку
     private var keepShown = 0
 
-    /** Показать [n] элементов порциями: [add] добавляет i-й. */
+    /** Показать [items] порциями: первые 12 сразу (с мягким проявлением), остаток первой страницы по 12 через post(), далее при прокрутке по 12. */
+    private fun <T> pagedChunked(items: List<T>, buildRow: (Int, T) -> View) {
+        val n = items.size
+        if (n == 0) return
+        val first = minOf(n, maxOf(PAGE, keepShown))
+        Rows.fillChunked(content, items.subList(0, first), firstChunk = 12, chunkSize = 12, buildRow)
+        var i = first
+        shown = first
+        more = if (i < n) {
+            {
+                val end = minOf(n, i + 12)
+                while (i < end) {
+                    content.addView(buildRow(i, items[i]))
+                    i++
+                }
+                shown = i
+                i < n
+            }
+        } else null
+    }
+
+    /** Показать [n] элементов порциями (для сеток исполнителей): [add] добавляет i-й. */
     private fun paged(n: Int, add: (Int) -> Unit) {
         var i = 0
         fun chunk(size: Int): Boolean {
@@ -49,7 +70,7 @@ class LibraryPage(
             return i < n
         }
         val first = maxOf(PAGE, keepShown)
-        more = if (chunk(first)) { { chunk(PAGE) } } else null
+        more = if (chunk(first)) { { chunk(12) } } else null
     }
 
     // Прокрутка остановилась — готовим звук для песен, которые сейчас на экране: нажатие включит сразу.
@@ -137,6 +158,7 @@ class LibraryPage(
         keepShown = if (reset) 0 else shown
         more = null; shown = 0
         if (reset) scroll.scrollTo(0, 0)
+        Rows.cancelChunked(content)
         content.removeAllViews()
         when (tab) {
             Tab.SONGS -> songsTab()
@@ -214,10 +236,9 @@ class LibraryPage(
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = a.dp(6) })
         }
         content.addView(chips, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = a.dp(6) })
-        paged(items.size) { i ->
-            val q = items[i]
-            content.addView(row(content, q.track, q.local, Rows.statusOf(q.track, q.local), false) { Playback.playQueue(a, items, i) }
-                .also { v -> if (q.local == null) v.setTag(R.id.libContent, q.track) })
+        pagedChunked(items) { i, q ->
+            row(content, q.track, q.local, Rows.statusOf(q.track, q.local), false) { Playback.playQueue(a, items, i) }
+                .also { v -> if (q.local == null) v.setTag(R.id.libContent, q.track) }
         }
     }
 
@@ -387,23 +408,22 @@ class LibraryPage(
             }
             if (items.isNotEmpty()) content.addView(TextView(a, null, 0, R.style.SectionTitle).apply { text = "Музыка" })
         }
-        paged(items.size) { i -> val q = items[i]; content.addView(row(content, q.track, q.local, "на телефоне", false) { Playback.playQueue(a, items, i) }) }
+        pagedChunked(items) { i, q -> row(content, q.track, q.local, "на телефоне", false) { Playback.playQueue(a, items, i) } }
     }
 
     private fun historyTab() {
         val all = History.all.filter { matches(it.track.artist + " " + it.track.title) }
         if (all.isEmpty()) return empty("Здесь будет всё, что вы слушали и смотрели.\nПовторное включение — мгновенно.")
-        paged(all.size) { ei ->
-            val e = all[ei]
+        pagedChunked(all) { _, e ->
             val local = e.local ?: if (e.kind == Kind.MUSIC) Library.localFor(e.track) else null
             val video = e.kind == Kind.VIDEO
-            content.addView(row(content, e.track, local, listOfNotNull(if (video) "видео" else Rows.statusOf(e.track, local), ago(e.time)).joinToString(" · "), video) {
+            row(content, e.track, local, listOfNotNull(if (video) "видео" else Rows.statusOf(e.track, local), ago(e.time)).joinToString(" · "), video) {
                 when {
                     local != null -> Playback.play(a, listOf(local to null), 0)
                     video && e.pageUrl != null -> Playback.playVideoPage(a, e.pageUrl, e.track.title)
                     else -> Playback.playQueue(a, listOf(Playback.QItem(e.track, null, e.sourceUrl, e.pageUrl)), 0)
                 }
-            })
+            }
         }
     }
 

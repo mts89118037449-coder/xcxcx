@@ -68,8 +68,22 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private lateinit var glow: Aura.Glow
 
+    override fun finish() {
+        super.finish()
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            runCatching { overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, android.R.anim.fade_in, android.R.anim.fade_out) }
+        } else {
+            @Suppress("DEPRECATION") runCatching { overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out) }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            runCatching { overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, android.R.anim.fade_in, android.R.anim.fade_out) }
+        } else {
+            @Suppress("DEPRECATION") runCatching { overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out) }
+        }
         // Два вида плеера — выбираются в настройках: «Кольцо» (диск и кольцо ауры) или «Волна».
         setContentView(if (Settings.playerStyle(this) == Settings.PlayerStyle.WAVE) R.layout.activity_now_playing_wave else R.layout.activity_now_playing)
         cover = findViewById(R.id.npCover)
