@@ -338,4 +338,13 @@ class CoreLogicTest {
             assertTrue(spaced[i].artist != spaced[i - 1].artist)
         }
     }
+
+    @Test
+    fun smokeViewLandscapeVisualRadius() {
+        // В альбомном виде на ТВ (1920x1080) при сжатой обложке (r = 140) дым не схлопывается в мелкие точки
+        val tvR = SmokeView.computeVisualRadius(1920, 1080, 140f)
+        assertTrue("Expected visualR >= 280f on 1920x1080, got $tvR", tvR >= 280f)
+        // В портрете (1080x2400) радиус остаётся без изменений
+        assertEquals(370f, SmokeView.computeVisualRadius(1080, 2400, 370f), 1e-4f)
+    }
 }

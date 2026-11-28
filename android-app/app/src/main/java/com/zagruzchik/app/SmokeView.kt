@@ -179,17 +179,27 @@ class SmokeView(ctx: Context) : View(ctx) {
             }
         }
 
+        val landscape = width > height
+        val minDim = minOf(width, height).toFloat()
+        val visualR = computeVisualRadius(width, height, radius)
+        val farX = if (landscape) width * 0.56f else maxOf(width, height) * 0.62f
+        val farY = if (landscape) height * 0.58f else maxOf(width, height) * 0.62f
+        val stretchX = if (landscape) 1.15f else 1f
+
         // Ореол вплотную к обложке — из него «выходит» дым.
         halo?.let { h ->
             paint.shader = h
             paint.alpha = (255 * (0.54f + 0.46f * maxOf(shown, instrumental)) * level).toInt().coerceIn(0, 255)
             canvas.save(); canvas.translate(cx, cy)
-            val hs = radius * (1.55f + 0.7f * shown + 0.2f * bandShown[0])
+            val haloR = maxOf(radius, visualR * 0.9f)
+            val hs = haloR * (1.55f + 0.7f * shown + 0.2f * bandShown[0])
             canvas.scale(hs, hs); canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
         }
 
-        // Как далеко уплывает дым: до краёв экрана.
-        val far = maxOf(width, height) * 0.62f
+        // Как далеко уплывает дым: эллиптический разлёт на широком экране ТВ и круглый в портрете.
+        val startR = radius * 0.85f
+        val maxMainSize = if (landscape) minDim * 0.58f else width * 0.45f
+        val mainRiseCap = minOf(visualR * 1.4f, height * 0.20f)
         for (i in 0 until COUNT) {
             val lifeSec = 7f + 5f * rnd(i, 0, 1)                    // сколько живёт клуб
             val shifted = t + rnd(i, 0, 2) * lifeSec                 // клубы рождаются вразнобой
@@ -200,12 +210,14 @@ class SmokeView(ctx: Context) : View(ctx) {
             val rise = 0.25f + 0.35f * rnd(i, life, 5)               // пар тянется вверх
             // Путь: от края обложки наружу, с замедлением, петляя и поднимаясь.
             val out = 1f - (1f - age) * (1f - age)
-            val dist = radius * 0.85f + (far - radius * 0.85f) * out * (0.55f + 0.45f * rnd(i, life, 6))
+            val factor = out * (0.55f + 0.45f * rnd(i, life, 6))
+            val distX = startR + (farX - startR) * factor
+            val distY = startR + (farY - startR) * factor
             val a = dir + drift * out + 0.25f * sin(age * 6.3f + i)
-            val x = cx + cos(a) * dist
-            val y = cy + sin(a) * dist - rise * radius * 1.6f * out
+            val x = cx + cos(a) * distX
+            val y = cy + sin(a) * distY - rise * mainRiseCap * out
             // Растёт и тает.
-            val size = minOf(width * 0.45f, radius * (0.5f + 0.9f * out) * (0.85f + 0.3f * rnd(i, life, 7)) * (0.9f + 0.3f * fullness))
+            val size = minOf(maxMainSize, visualR * (0.5f + 0.9f * out) * (0.85f + 0.3f * rnd(i, life, 7)) * (0.9f + 0.3f * fullness))
             val fade = minOf(1f, age * 7f) * (1f - age) * (1f - age * 0.35f)
             val alpha = minOf(0.9f, fade * 1.1f * level * pulse * (0.85f + 0.3f * fullness))
             if (alpha <= 0.01f) continue
@@ -215,9 +227,11 @@ class SmokeView(ctx: Context) : View(ctx) {
             // Клуб — рваное облако, медленно закручивается, пока летит.
             // На ударе баса весь дым толкается наружу и светлеет.
             val kick = 1f + 0.15f * shown
-            layer(canvas, idx, alpha, x, y, turn + age * 70f, size * 1.25f * kick, size * 1.05f * kick, i * 7 + life, 0.12f + 0.3f * shown, shade = false)
+            layer(canvas, idx, alpha, x, y, turn + age * 70f, size * 1.25f * kick * stretchX, size * 1.05f * kick, i * 7 + life, 0.12f + 0.3f * shown, shade = false)
         }
         // Клубы от нот: несколько мягких облаков веером, растут и расплываются, накладываясь друг на друга.
+        val maxBillowSize = minDim * 0.65f
+        val billowRiseCap = minOf(visualR * 0.35f, height * 0.08f)
         val it = billows.iterator()
         while (it.hasNext()) {
             val j = it.next()
@@ -228,19 +242,23 @@ class SmokeView(ctx: Context) : View(ctx) {
             val p = age / j.life
             if (p >= 1f || j.fade <= 0f) { it.remove(); continue }
             val out = 1f - (1f - p) * (1f - p)
-            val reach = (far - radius) * j.power * (if (j.band == 2) 0.9f else 0.75f)
+            val pMul = j.power * (if (j.band == 2) 0.9f else 0.75f)
+            val reachX = (farX - radius) * pMul
+            val reachY = (farY - radius) * pMul
             val scale = when (j.band) { 0 -> 1.15f; 1 -> 0.85f; else -> 0.6f } * (0.85f + 0.3f * fullness) * (if (j.band == 0) 1f else 0.6f + 0.4f * j.power)
             val parts = if (j.band == 0) 4 else 3
             for (k in 0 until parts) {
                 val spread = (k / (parts - 1f) - 0.5f) * j.width * (0.6f + 0.6f * out)   // веер расходится по мере полёта
                 val a = j.dir + spread + j.bend * out + 0.15f * sin(p * 5f + j.seed + k)
-                val d = radius * 0.85f + reach * out * (0.8f + 0.25f * rnd(j.seed, k, 13))
-                val size = radius * scale * (0.45f + 1.35f * out) * (0.8f + 0.4f * rnd(j.seed, k, 14))
+                val dFactor = out * (0.8f + 0.25f * rnd(j.seed, k, 13))
+                val dx = startR + reachX * dFactor
+                val dy = startR + reachY * dFactor
+                val size = minOf(maxBillowSize, visualR * scale * (0.45f + 1.35f * out) * (0.8f + 0.4f * rnd(j.seed, k, 14)))
                 val alpha = minOf(if (j.band == 0) 0.95f else 0.88f, minOf(1f, (age + 16) / 45f) * (1f - p) * (1f - p * 0.5f) * (if (j.band == 0) 1.2f else (0.9f + 0.4f * bandShown[j.band]) * j.power) * level) * j.fade
                 if (alpha <= 0.01f) continue
                 val idx = ((a / (2 * PI.toFloat()) * EDGES).toInt() % EDGES + EDGES) % EDGES
-                layer(canvas, idx, alpha, cx + cos(a) * d, cy + sin(a) * d - radius * 0.3f * out,
-                    Math.toDegrees(a.toDouble()).toFloat() + 60f * p + k * 90f, size * 1.3f, size * 1.1f, j.seed * 3 + k,
+                layer(canvas, idx, alpha, cx + cos(a) * dx, cy + sin(a) * dy - billowRiseCap * out,
+                    Math.toDegrees(a.toDouble()).toFloat() + 60f * p + k * 90f, size * 1.3f * stretchX, size * 1.1f, j.seed * 3 + k,
                     if (j.band == 0) 0.3f * (1f - p) + 0.25f * shown else 0.28f + 0.22f * bandShown[j.band])
             }
         }
@@ -272,6 +290,11 @@ class SmokeView(ctx: Context) : View(ctx) {
     }
 
     companion object {
+        @JvmStatic internal fun computeVisualRadius(w: Int, h: Int, r: Float): Float {
+            val minDim = minOf(w, h).toFloat()
+            return if (w > h) maxOf(r, minDim * 0.28f) else r
+        }
+
         // Меньше и мельче клубов: каждый — слой поверх всего экрана, и десятки таких слоёв на кадр давали зависания
         // при переходе в плеер (журнал 17.11: «ЗАВИСАНИЕ ИНТЕРФЕЙСА 2,5–7 с: HardwareRenderer»).
         private const val COUNT = 16
