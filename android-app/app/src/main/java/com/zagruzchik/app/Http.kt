@@ -50,6 +50,26 @@ object Http {
         }
     }
 
+    fun isDirectAudio(url: String): Boolean = runCatching {
+        val uri = java.net.URI(url)
+        uri.scheme?.lowercase() in setOf("http", "https") && uri.host != null &&
+            uri.path.substringAfterLast('.').lowercase() in setOf("mp3", "flac", "m4a", "ogg", "oga", "opus", "wav", "aac")
+    }.getOrDefault(false)
+
+    private val probeClient = client.newBuilder().callTimeout(2500, TimeUnit.MILLISECONDS).build()
+
+    fun canReadAudio(url: String, referer: String? = null): Boolean = runCatching {
+        val request = Request.Builder().url(url).header("User-Agent", DESKTOP_UA)
+            .header("Range", "bytes=0-0")
+            .apply { if (referer != null) header("Referer", referer) }
+            .build()
+        probeClient.newCall(request).execute().use { response ->
+            val type = response.header("Content-Type").orEmpty().substringBefore(';').lowercase()
+            response.isSuccessful && (type.startsWith("audio/") || type.startsWith("video/") ||
+                type.isEmpty() || type == "application/octet-stream" || type == "application/ogg") && response.body?.source()?.exhausted() == false
+        }
+    }.getOrDefault(false)
+
     fun bytes(url: String, ua: String = MOBILE_UA, timeoutMs: Int = 15_000): ByteArray {
         val req = Request.Builder().url(url)
             .header("User-Agent", ua)

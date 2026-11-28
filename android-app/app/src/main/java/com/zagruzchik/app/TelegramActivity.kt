@@ -40,6 +40,31 @@ class TelegramActivity : AppCompatActivity() {
             setPadding(0, dp(16), 0, dp(6)); setLineSpacing(0f, 1.05f)
         })
         box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val publicLink = EditText(this).apply {
+            hint = "https://t.me/канал/123"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine()
+        }
+        root.addView(TextView(this).apply {
+            text = "Публичный пост"
+            setTextColor(onSurface)
+            setTextAppearance(R.style.TA_TitleMedium)
+        })
+        root.addView(publicLink)
+        root.addView(MaterialButton(this).apply {
+            text = "Слушать без входа"
+            setOnClickListener {
+                val url = publicLink.text.toString().trim()
+                if (PublicTelegram.canonical(url) == null) publicLink.error = "Введите ссылку на публичный пост с аудио"
+                else Playback.playLink(this@TelegramActivity, url, null)
+            }
+        })
+        root.addView(TextView(this).apply {
+            text = "Поиск через аккаунт"
+            setTextColor(onSurface)
+            setTextAppearance(R.style.TA_TitleMedium)
+            setPadding(0, dp(20), 0, 0)
+        })
         root.addView(box)
         setContentView(ScrollView(this).apply { addView(root) })
         Telegram.start(this)

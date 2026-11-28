@@ -31,7 +31,7 @@
 
         <TextView
             style="@style/SectionTitle"
-            android:text="Музыка" />
+            android:text="Воспроизведение" />
 
         <com.google.android.material.card.MaterialCardView
             style="@style/AuraGlassCard"
@@ -55,7 +55,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="4dp"
-            android:text="Нужны для Instagram, видео 18+ и приватных публикаций. Входы хранятся только на этом телефоне."
+            android:text="Подключённые сервисы и сохранённые входы."
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="?attr/colorOnSurfaceVariant" />
 

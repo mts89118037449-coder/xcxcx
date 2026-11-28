@@ -135,7 +135,7 @@
 
                 <TextView
                     style="@style/SectionTitle"
-                    android:text="Везде в интернете" />
+                    android:text="Открытые источники" />
 
                 <com.google.android.material.progressindicator.CircularProgressIndicator
                     android:id="@+id/webProgress"
@@ -152,7 +152,7 @@
                 android:id="@+id/webHint"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="YouTube, SoundCloud, Яндекс, Rutube, Internet Archive и другие"
+                android:text="SoundCloud, Hitmotop, YouTube и другие"
                 android:textAppearance="?attr/textAppearanceBodySmall"
                 android:textColor="?attr/colorOnSurfaceVariant" />
 

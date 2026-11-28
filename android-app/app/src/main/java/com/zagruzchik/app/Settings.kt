@@ -10,8 +10,8 @@ object Settings {
     }
 
     enum class SourceOrder(val label: String, val hint: String) {
-        AUTO("Сначала YouTube Music", "Альбомные версии без цензуры, потом SoundCloud, потом YouTube"),
-        SOUNDCLOUD("Сначала SoundCloud", "Потом YouTube Music и YouTube"),
+        AUTO("Быстрый выбор", "SoundCloud, Hitmotop, YouTube и другие доступные источники"),
+        SOUNDCLOUD("Сначала SoundCloud", "Даёт SoundCloud чуть больше времени на ответ"),
     }
 
     /** Вид плеера: «Кольцо» — обложка-диск и кольцо прогресса; «Волна» — обложка и звуковая волна. */

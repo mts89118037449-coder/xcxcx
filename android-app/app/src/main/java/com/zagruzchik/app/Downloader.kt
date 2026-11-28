@@ -338,6 +338,9 @@ object Downloader {
 
     /** Прямая ссылка на звук для одной страницы (SoundCloud/YouTube). null — не играет (DRM и т.п.). */
     fun streamOf(pageUrl: String, source: String, title: String, problems: MutableCollection<String>? = null, wantTotal: Long? = null): StreamInfo? {
+        if (PublicTelegram.canonical(pageUrl) != null) {
+            return runCatching { PublicTelegram.stream(pageUrl, title) }.getOrNull()
+        }
         // YouTube: средствами телефона и через yt-dlp — одновременно, берём того, кто ответил первым.
         // (Раньше шли по очереди: пока первый путь не сдастся, второй не начинал — отсюда долгие ожидания.)
         if (Service.of(pageUrl).let { it == Service.YOUTUBE || it == Service.YOUTUBE_MUSIC }) {

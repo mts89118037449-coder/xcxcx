@@ -92,6 +92,10 @@ object Match {
 
     fun isUncensored(title: String) = java.text.Normalizer.normalize(title, java.text.Normalizer.Form.NFKC).lowercase().let { t -> UNCENSORED.any { t.contains(it) } }
 
+    private val cleanEdition = Regex("""(?:^| )(?:clean|radio edit|censored)(?: |$)|цензур""")
+
+    private fun isClean(title: String) = !isUncensored(title) && cleanEdition.containsMatchIn(norm(title))
+
     /** Слова «другой версии» в названии, которых нет в исходном названии/запросе. */
     fun versionPenaltyWords(title: String, source: String): List<String> {
         val t = norm(title); val src = norm(source)
@@ -183,7 +187,11 @@ object Match {
         }
         val srcLow = norm(src.title)
         s -= 3 * versionPenaltyWords(title, src.title).size
-        if (isUncensored(title) && !isUncensored(src.title)) s += 2 // без цензуры — лучше
+        if (!isClean(src.title) && isUncensored(title)) s += 2
+        if (!isClean(src.title) && isClean(title)) {
+            if (src.explicit || isUncensored(src.title)) return null
+            s -= 3
+        }
         // Лишняя приписка в скобках, которой нет у исходного трека («Pianoforte», «Sped Up»…) — скорее всего, другая версия.
         val extra = EXTRA_BRACKETS_RE.findAll(title).filter { !isUncensored(it.value) }.map { norm(it.groupValues[1]) }
             .filter { it.isNotEmpty() && !srcLow.contains(it) && !it.startsWith("feat") && !it.startsWith("ft ") && !PLAIN_TAGS.any { tag -> it.contains(tag) } }

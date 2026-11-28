@@ -272,8 +272,8 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
         for (it in list) {
             val box = FrameLayout(context)
             val cell = LinearLayout(context).apply {
-                orientation = HORIZONTAL; gravity = Gravity.CENTER
-                setPadding(context.dp(12), 0, context.dp(14), 0)
+                orientation = VERTICAL; gravity = Gravity.CENTER
+                setPadding(context.dp(3), 0, context.dp(3), 0)
                 setOnFocusChangeListener { v, focused ->
                     v.foreground = if (focused) GradientDrawable().apply {
                         cornerRadius = context.dp(20).toFloat()
@@ -287,12 +287,14 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
                 setOnClickListener { _ -> selectedItemId = it.id }
                 addView(ImageView(context).apply { setImageResource(it.icon); layoutParams = LayoutParams(context.dp(22), context.dp(22)) })
                 addView(TextView(context).apply {
-                    text = it.label; textSize = 12.5f; setTextColor(Color.WHITE); maxLines = 1
+                    text = it.label; textSize = 10f; setTextColor(Color.WHITE); maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    gravity = Gravity.CENTER
                     typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.onest_semibold)
-                    setPadding(context.dp(6), 0, 0, 0)
+                    setPadding(0, context.dp(2), 0, 0)
                 })
             }
-            box.addView(cell, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, context.dp(46), Gravity.CENTER))
+            box.addView(cell, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, context.dp(48), Gravity.CENTER))
             val badge = TextView(context).apply {
                 textSize = 10f; setTextColor(Color.WHITE); gravity = Gravity.CENTER; visibility = GONE
                 background = AuraColors.drawable(context, context.dp(9).toFloat())
@@ -311,6 +313,8 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
         badges[id]?.apply { visibility = if (count > 0) VISIBLE else GONE; text = count.toString() }
     }
 
+    fun focusSelected() { views[selectedItemId]?.requestFocus() }
+
     private fun paint() {
         val idle = ContextCompat.getColor(context, R.color.nav_idle)
         for (it in items) {
@@ -318,11 +322,11 @@ class PillNav @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = nul
             val on = it.id == selectedItemId
             val icon = cell.getChildAt(0) as ImageView
             val label = cell.getChildAt(1) as TextView
-            label.visibility = if (on) VISIBLE else GONE
+            cell.isSelected = on
+            label.setTextColor(if (on) Color.WHITE else idle)
             icon.setColorFilter(if (on) Color.WHITE else idle)
             cell.background = if (on) AuraColors.drawable(context, context.dp(20).toFloat(), GradientDrawable.Orientation.LEFT_RIGHT) else null
-            // Активная вкладка — шире, остальные делят место поровну.
-            (cell.parent as View).layoutParams = (cell.parent as View).layoutParams.apply { (this as LayoutParams).weight = if (on) 2.8f else 1f }
+
         }
         requestLayout()
     }

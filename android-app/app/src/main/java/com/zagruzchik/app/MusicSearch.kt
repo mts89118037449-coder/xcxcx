@@ -518,9 +518,8 @@ object Streams {
             // чужие песни с таким же названием отсеивает проверка исполнителя.
             "SoundCloud" to "scsearch10:${Match.base(t.title).ifEmpty { t.title }}",
         )
-        // Каждая площадка сразу и ищет, и берёт ссылку на звук — все одновременно.
-        // Берём по старшинству (SoundCloud → YouTube Music → YouTube), но не ждём старшую дольше 4 с,
-        // если младшая уже готова: полная версия включается за 1–2 секунды.
+        // Основные площадки ищут и проверяют поток параллельно.
+        // SoundCloud получает небольшую фору, затем берём доступный источник.
         val bg = Ytdlp.isBackground // подготовка заранее не мешает нажатому
         val problems = java.util.concurrent.ConcurrentLinkedQueue<String>()
         val foundOn = java.util.concurrent.ConcurrentLinkedQueue<String>()
@@ -581,7 +580,7 @@ object Streams {
             val ok = Match.ranked(t, raw) { Triple(it.title, it.artist, it.durationSec) }
             log += "Hitmotop [${t.query.take(40)}]: результатов ${raw.size}, подошло ${ok.size}" + why(got.exceptionOrNull())
             if (ok.isNotEmpty()) foundOn += "Hitmotop"
-            ok.firstOrNull { !isBlacklisted(it.url) }?.let { c ->
+            ok.take(2).firstOrNull { !isBlacklisted(it.url) && Http.canReadAudio(it.url, "https://rus.hitmotop.com/") }?.let { c ->
                 picked["Hitmotop"] = "direct:${c.url}"
                 StreamInfo(c.url, c.url, "Hitmotop · MP3", t.cover ?: c.cover, c.title)
             }.also { log += "Hitmotop звук: ${if (it != null) "готов" else "нет"} за ${(System.currentTimeMillis() - t0) / 100 / 10.0} с" }
@@ -749,10 +748,10 @@ object Streams {
             jobs.forEach { if (!it.isDone) it.cancel(true) }
             throw UserError("источники собраны")
         }
-        val fastPriority = listOfNotNull(remembered, telegram, vk, ytm, zaycev, onPhone.getOrNull(0), onPhone.getOrNull(1))
-        val fallback = listOfNotNull(hitmotop, hearthis)
-        val priorityUnavailable = bg && !Telegram.ready && !VkSource.available && ytmBreaker.open && ytPhoneBreaker.open
-        val graceMs = if (priorityUnavailable) 0L else if (bg) 4500L else 2500L
+        val preferSoundCloud = Settings.sourceOrder(App.instance) == Settings.SourceOrder.SOUNDCLOUD
+        val fastPriority = listOfNotNull(remembered, onPhone.getOrNull(0))
+        val fallback = listOfNotNull(hitmotop, onPhone.getOrNull(1), ytm, zaycev, hearthis, telegram, vk)
+        val graceMs = if (preferSoundCloud) 1600L else 800L
         awaitStream(
             started = started,
             graceMs = graceMs,
@@ -763,7 +762,7 @@ object Streams {
                 val viaYtdlp = startViaYtdlp()
                 val spare = startSpare()
                 val soundcloud = listOfNotNull(viaYtdlp.getOrNull(0), onPhone.getOrNull(0), viaYtdlp.getOrNull(2))
-                listOfNotNull(remembered, telegram, vk, ytm, zaycev, yandex) + soundcloud + listOfNotNull(onPhone.getOrNull(1), viaYtdlp.getOrNull(1)) + spare
+                listOfNotNull(remembered) + soundcloud + listOfNotNull(viaYtdlp.getOrNull(1), yandex) + spare
             }),
             onTimeout = { log += "Ждал площадки 25 с — не дождался" },
         )?.let { return it }
@@ -808,7 +807,7 @@ object Streams {
                 (priority + fallback).forEach { if (!it.isDone) it.cancel(true) }
                 return stream
             }
-            if (fallbackStream == null) {
+            if (fallback.isNotEmpty()) {
                 for (f in fallback) {
                     if (!f.isDone) continue
                     val stream = runCatching { f.get() }.getOrNull()

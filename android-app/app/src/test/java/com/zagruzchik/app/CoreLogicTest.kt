@@ -8,6 +8,30 @@ import org.junit.Test
 class CoreLogicTest {
 
     @Test
+    fun telegramPublicPostAndAudio() {
+        assertEquals("https://t.me/music_channel/42", PublicTelegram.canonical("https://t.me/s/music_channel/42?embed=1"))
+        assertNull(PublicTelegram.canonical("https://t.me/c/12345/42"))
+        assertNull(PublicTelegram.canonical("https://example.com/music_channel/42"))
+        val html = """<audio src="//cdn4.telesco.pe/file/track.mp3?a=1&amp;b=2"></audio>"""
+        assertEquals("https://cdn4.telesco.pe/file/track.mp3?a=1&b=2", PublicTelegram.audioUrl(html))
+        assertNull(PublicTelegram.audioUrl("""<audio src="https://example.com/track.mp3"></audio>"""))
+    }
+
+    @Test
+    fun protectsPeaksOnlyWhenBoosting() {
+        assertEquals(0f, AudioFx.headroom(floatArrayOf(-2f, -1f), 0), 0.01f)
+        assertEquals(7.5f, AudioFx.headroom(floatArrayOf(-2f, 6f), 500), 0.01f)
+    }
+
+    @Test
+    fun explicitTrackRejectsMarkedCleanEdition() {
+        val original = Track("A Night in the City", "Artist", 180, explicit = true)
+        assertNull(Match.score(original, "A Night in the City (Clean)", "Artist", 180))
+        assertTrue((Match.score(original, "A Night in the City (Uncensored)", "Artist", 180) ?: -1) >= 0)
+    }
+
+
+    @Test
     fun matchNormAndBase() {
         assertEquals("елка прованс", Match.norm("Ёлка — Прованс!"))
         assertEquals("еще один день 2025", Match.norm("Ещё один день (2025)"))

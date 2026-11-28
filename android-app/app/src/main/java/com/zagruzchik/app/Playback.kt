@@ -102,6 +102,21 @@ object Playback {
 
     /** «Слушать» по ссылке на песню (Spotify, Яндекс, Apple…). У альбома — первый трек. */
     fun playLink(ctx: Context, url: String, hint: String?) {
+        PublicTelegram.canonical(url)?.let { page ->
+            val channel = page.substringBeforeLast('/').substringAfterLast('/')
+            val post = page.substringAfterLast('/')
+            playQueue(ctx, listOf(QItem(Track("Пост $post", "@$channel", url = page),
+                sourceUrl = page, pageUrl = page)), 0)
+            return
+        }
+        if (Http.isDirectAudio(url)) {
+            val uri = Uri.parse(url)
+            val title = uri.lastPathSegment?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "Аудио"
+            val source = uri.host.orEmpty()
+            playQueue(ctx, listOf(QItem(Track(title, source, url = url), sourceUrl = url,
+                directUrl = url, directSource = source)), 0)
+            return
+        }
         val guess = Music.hintTrack(hint) ?: Track("Узнаю песню…", Describe.of(url))
         Pending.set(guess, loading = true, error = null)
         ctx.startActivity(Intent(ctx, NowPlayingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
@@ -131,7 +146,10 @@ object Playback {
 
     /** Поток для песни: с конкретной страницы (результат SoundCloud/YouTube) или поиском по названию. */
     private fun resolve(q: QItem, force: Boolean = false): StreamInfo = q.directUrl?.let { StreamInfo(it, it, q.directSource ?: "интернета", q.track.cover, q.track.title) } ?: q.pageUrl?.let { page ->
-        Streams.page(page, Describe.site(page), q.track.title) ?: throw UserError("Этот трек не играет: платный, удалён или недоступен в стране.")
+        Streams.page(page, Describe.site(page), q.track.title) ?: throw UserError(
+            if (PublicTelegram.canonical(page) != null) "В публичной версии поста Telegram нет доступного аудио."
+            else "Источник не отдаёт аудио в этой сети."
+        )
     } ?: Streams.resolve(q.track, force)
 
     private val queueWorker = java.util.concurrent.Executors.newSingleThreadExecutor()

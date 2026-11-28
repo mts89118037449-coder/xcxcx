@@ -150,14 +150,15 @@ class EqualizerActivity : AppCompatActivity() {
             col.addView(TextView(this).apply { text = title; textSize = 16f; setTextColor(onSurface) })
             col.addView(TextView(this).apply { text = hint; textSize = 13f; setTextColor(muted); setPadding(0, dp(2), dp(12), 0) })
             row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(MaterialSwitch(this).apply { isChecked = checked; setOnCheckedChangeListener { _, on -> onChange(on) } })
+            row.addView(MaterialSwitch(this).apply { contentDescription = title; isChecked = checked; setOnCheckedChangeListener { _, on -> onChange(on) } })
             root.addView(row)
         }
         toggle("Выравнивание громкости", "Тихие песни громче, громкие тише — не нужно крутить громкость между песнями", AudioFx.leveling(this)) { AudioFx.setLeveling(this, it) }
+        toggle("Защита от перегруза", "Оставляет запас при усилении частот и баса", AudioFx.protectPeaks(this)) { AudioFx.setProtectPeaks(this, it) }
         toggle("Вырезать тишину", "Следующая песня начинается без паузы. Заодно укорачиваются паузы внутри песен — если это мешает, выключите", AudioFx.skipSilence(this)) { AudioFx.setSkipSilence(this, it) }
         root.addView(TextView(this).apply { text = "Восстановление верхов"; textSize = 16f; setTextColor(onSurface); setPadding(0, dp(10), 0, 0) })
         root.addView(TextView(this).apply {
-            text = "Добавляет яркости записям, у которых сжатие срезало верхние частоты. На хороших записях лучше выключить."
+            text = "Подчёркивает высокие частоты в приглушённых записях."
             textSize = 13f; setTextColor(muted); setPadding(0, dp(2), 0, dp(6))
         })
         val exLevels = listOf("Выключено", "Легко", "Сильнее")

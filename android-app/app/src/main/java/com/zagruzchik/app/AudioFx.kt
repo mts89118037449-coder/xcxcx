@@ -52,6 +52,12 @@ object AudioFx {
     fun gains(ctx: Context): FloatArray =
         prefs(ctx).getString("fx_gains", null)?.split(',')?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 5 }?.toFloatArray()
             ?: PRESETS.first { it.name == preset(ctx) || it.name == "Обычный" }.gains.copyOf()
+    fun protectPeaks(ctx: Context) = prefs(ctx).getBoolean("fx_protect_peaks", true)
+    fun setProtectPeaks(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("fx_protect_peaks", on).apply()
+
+    internal fun headroom(gains: FloatArray, bass: Int): Float =
+        (gains.maxOrNull() ?: 0f).coerceAtLeast(0f) + 3f * bass.coerceIn(0, 1000) / 1000f
+
     fun bass(ctx: Context) = prefs(ctx).getInt("fx_bass", 0)
     fun virt(ctx: Context) = prefs(ctx).getInt("fx_virt", 0)
 
@@ -112,10 +118,7 @@ object AudioFx {
         val cfg = android.media.audiofx.DynamicsProcessing.Config.Builder(
             android.media.audiofx.DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION, 2, false, 0, true, 1, false, 0, true).build()
         return android.media.audiofx.DynamicsProcessing(0, audioSession, cfg).apply {
-            for (ch in 0 until 2) {
-                setMbcBandByChannelIndex(ch, 0, android.media.audiofx.DynamicsProcessing.MbcBand(true, 20000f, 30f, 300f, 3f, -22f, 6f, -70f, 1f, 0f, 5f))
-                setLimiterByChannelIndex(ch, android.media.audiofx.DynamicsProcessing.Limiter(true, true, 0, 1f, 60f, 10f, -1.5f, 0f))
-            }
+            setLimiterAllChannelsTo(android.media.audiofx.DynamicsProcessing.Limiter(true, true, 0, 1f, 80f, 12f, -1.5f, 0f))
         }
     }
 
@@ -141,17 +144,28 @@ object AudioFx {
             runCatching {
                 e.enabled = on
                 val g = gains(ctx)
+                val reserve = if (protectPeaks(ctx)) headroom(g, bass(ctx)) else 0f
                 val (min, max) = e.bandLevelRange.let { it[0].toInt() to it[1].toInt() }
                 for (i in 0 until e.numberOfBands) {
                     val hz = e.getCenterFreq(i.toShort()) / 1000f
-                    val mb = (gainAt(g, hz) * 100).toInt().coerceIn(min, max)
+                    val mb = ((gainAt(g, hz) - reserve) * 100).toInt().coerceIn(min, max)
                     e.setBandLevel(i.toShort(), mb.toShort())
                 }
             }.onFailure { Log.w(TAG, "eq apply", it) }
         }
         bass?.let { b -> runCatching { b.enabled = on && bass(ctx) > 0; if (b.strengthSupported) b.setStrength(bass(ctx).toShort()) } }
         virt?.let { v -> runCatching { v.enabled = on && virt(ctx) > 0; if (v.strengthSupported) v.setStrength(virt(ctx).toShort()) } }
-        dyn?.let { d -> runCatching { d.enabled = leveling(ctx) } }
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            (dyn as? android.media.audiofx.DynamicsProcessing)?.let { dynamics ->
+                runCatching {
+                    val leveling = leveling(ctx)
+                    dynamics.setMbcBandAllChannelsTo(0, android.media.audiofx.DynamicsProcessing.MbcBand(
+                        leveling, 20_000f, 40f, 350f, 2.5f, -19f, 6f, -70f, 1f, 0f, 3f,
+                    ))
+                    dynamics.enabled = leveling || (on && protectPeaks(ctx))
+                }.onFailure { Log.w(TAG, "dynamics apply", it) }
+            }
+        }
         runCatching { Exciter.level = exciter(ctx) }
         onSkipSilence?.invoke(skipSilence(ctx))
     }

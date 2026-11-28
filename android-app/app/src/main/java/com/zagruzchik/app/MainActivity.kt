@@ -203,26 +203,41 @@ class MainActivity : AppCompatActivity() {
         if (nav.selectedItemId != id) nav.selectedItemId = id else applyPage(id)
     }
 
-    /** Показать содержимое вкладки. Вызывается нижней панелью при выборе вкладки. */
+    private var shownPage: Int? = null
+
+    /** Сохраняем содержимое и позицию прокрутки при переключении вкладок. */
     private fun applyPage(id: Int) {
-        ensurePage(id)
+        val incoming = pages[id] ?: return
+        val previous = shownPage
+        if (previous == id) return
+        val outgoing = previous?.let(pages::get)
+        shownPage = id
         currentPage = id
-        pages.forEach { (k, v) ->
-            val show = k == id
-            if (show && !v.isVisible) {
-                // Раздел не «выпрыгивает», а коротко проявляется.
-                v.animate().cancel()
-                v.alpha = 0f; v.translationY = dp(8).toFloat()
-                v.isVisible = true
-                v.animate().alpha(1f).translationY(0f).setDuration(180).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
-            } else if (!show && v.isVisible) {
-                v.animate().cancel()
-                v.isVisible = false
-            } else {
-                v.isVisible = show
-            }
-        }
+        ensurePage(id)
         if (id == R.id.nav_library && libraryDirty) refreshLibrary()
+
+        if (outgoing?.hasFocus() == true) nav.focusSelected()
+        pages.values.forEach { page ->
+            page.animate().withEndAction(null).cancel()
+            page.importantForAccessibility = if (page === incoming) View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            page.isVisible = page === incoming || page === outgoing
+            if (page !== incoming && page !== outgoing) page.alpha = 1f
+        }
+        incoming.bringToFront()
+        val animate = outgoing != null && (android.os.Build.VERSION.SDK_INT < 26 ||
+            android.animation.ValueAnimator.areAnimatorsEnabled())
+        incoming.alpha = if (animate) 0f else 1f
+        incoming.translationX = if (animate) dp(10).toFloat() else 0f
+        if (animate && outgoing != null) {
+            outgoing.animate().alpha(0f).setDuration(160L).withEndAction {
+                if (shownPage != previous) outgoing.isVisible = false
+            }.start()
+            incoming.animate().alpha(1f).translationX(0f).setDuration(220L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        } else {
+            outgoing?.isVisible = false
+        }
         toolbar.title = when (id) {
             R.id.nav_music -> "Музыка"
             R.id.nav_library -> "Медиатека"
@@ -376,7 +391,17 @@ class MainActivity : AppCompatActivity() {
                 musicSearch.postDelayed(musicSearchRun, 300)
             }
         }
-        musicSearch.setOnEditorActionListener { _, _, _ -> hideKeyboard(); true }
+        musicSearch.setOnEditorActionListener { _, _, _ ->
+            val input = musicSearch.text?.toString()?.trim().orEmpty()
+            if (PublicTelegram.canonical(input) != null || Http.isDirectAudio(input)) {
+                musicSearch.removeCallbacks(musicSearchRun)
+                musicSeq++
+                openSearch(false)
+                Playback.playLink(this, input, null)
+            }
+            hideKeyboard()
+            true
+        }
         library = LibraryPage(this, ::snack) { parent, t, local, status, video, onPlay ->
             trackRow(parent, t, local = local, status = status, video = video, onPlay = onPlay)
         }
@@ -1371,8 +1396,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val src = Settings.sourceOrder(this)
-        row(R.drawable.ic_link, "Где искать песни", src.label, src.hint) {
-            choose("Где искать песни", Settings.SourceOrder.entries.map { "${it.label} — ${it.hint}" }, src.ordinal) {
+        row(R.drawable.ic_link, "Приоритет источников", src.label, src.hint) {
+            choose("Приоритет источников", Settings.SourceOrder.entries.map { "${it.label} — ${it.hint}" }, src.ordinal) {
                 Settings.setSourceOrder(this, Settings.SourceOrder.entries[it]); refreshMusicSettings()
             }
         }
@@ -1510,7 +1535,7 @@ class MainActivity : AppCompatActivity() {
         fun navItems() = listOf(
             PillNav.Item(R.id.nav_music, "Музыка", R.drawable.ic_headphones),
             PillNav.Item(R.id.nav_library, "Медиатека", R.drawable.ic_library_music),
-            PillNav.Item(R.id.nav_download, "Скачать", R.drawable.ic_download),
+            PillNav.Item(R.id.nav_download, "Ссылка", R.drawable.ic_download),
             PillNav.Item(R.id.nav_jobs, "Загрузки", R.drawable.ic_folder_open),
             PillNav.Item(R.id.nav_settings, "Настройки", R.drawable.ic_settings),
         )

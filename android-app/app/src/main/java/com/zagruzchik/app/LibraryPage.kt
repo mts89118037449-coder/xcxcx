@@ -114,14 +114,32 @@ class LibraryPage(
     private fun font(id: Int) = ResourcesCompat.getFont(a, id)
 
     private fun buildTabs() {
-        bar.removeAllViews()
+        if (bar.childCount > 0) {
+            Tab.entries.forEachIndexed { index, item ->
+                val cell = bar.getChildAt(index) as LinearLayout
+                val on = item == tab
+                cell.isSelected = on
+                (cell.getChildAt(0) as TextView).setTextColor(if (on) onSurface else muted)
+                cell.getChildAt(1).alpha = if (on) 1f else 0f
+            }
+            return
+        }
         Tab.entries.forEach { t ->
             val on = t == tab
             val cell = LinearLayout(a).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(a.dp(8), a.dp(4), a.dp(8), 0)
                 isClickable = true; isFocusable = true
-                setOnClickListener { tab = t; buildTabs(); refresh(reset = true) }
+                isSelected = on
+                setOnClickListener {
+                    if (tab == t) return@setOnClickListener
+                    tab = t
+                    buildTabs()
+                    refresh(reset = true)
+                    content.animate().cancel()
+                    content.alpha = 0f
+                    content.animate().alpha(1f).setDuration(180L).start()
+                }
             }
             cell.addView(TextView(a).apply {
                 text = t.label; textSize = 15f; typeface = font(R.font.onest_semibold)
@@ -129,7 +147,8 @@ class LibraryPage(
             })
             // Подчёркивание активной вкладки — градиентом ауры.
             cell.addView(View(a).apply {
-                background = if (on) AuraColors.drawable(a, a.dp(2).toFloat(), GradientDrawable.Orientation.LEFT_RIGHT) else null
+                background = AuraColors.drawable(a, a.dp(2).toFloat(), GradientDrawable.Orientation.LEFT_RIGHT)
+                alpha = if (on) 1f else 0f
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, a.dp(3)).apply { topMargin = a.dp(10) })
             bar.addView(cell)
         }

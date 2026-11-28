@@ -40,14 +40,15 @@ object WebSearch {
         // Главные площадки — средствами телефона, без Python: ответ за секунду и не стоит в очереди за фоновой подготовкой.
         // Не получилось — прежний путь через yt-dlp.
         Source("SoundCloud") { q -> fast("SoundCloud") { NewPipeSource.search(true, q) } ?: ytdlp("scsearch8:$q", "SoundCloud") },
+        Source("Hitmotop", ::hitmotop),
         Source("YouTube Music") { q -> fast("YouTube Music") { NewPipeSource.searchSongs(q) } ?: emptyList() },
         Source("YouTube") { q -> fast("YouTube") { NewPipeSource.search(false, q) } ?: ytdlp("ytsearch8:$q", "YouTube") },
         Source("Яндекс Музыка", ::yandex),
-        Source("Hitmotop", ::hitmotop),
         Source("Hearthis", ::hearthis),
         Source("Bandcamp", ::bandcamp),
         Source("Rutube", ::rutube),
         Source("Internet Archive", ::archive),
+        Source("Wikimedia Commons", ::commons),
         Source("Dailymotion", ::dailymotion),
         Source("Audius", ::audius),
         Source("Mixcloud", ::mixcloud),
@@ -116,14 +117,14 @@ object WebSearch {
      * Дополнительные источники для «Слушать»/«Скачать» песни из каталога, если её нет на
      * SoundCloud/YouTube: Яндекс, Rutube, Internet Archive, Dailymotion, Audius.
      */
-    val playbackSources = listOf(::archive, ::rutube, ::dailymotion, ::audius, ::bandcamp)
+    val playbackSources = listOf(::archive, ::rutube, ::dailymotion, ::audius, ::bandcamp, ::commons)
 
     fun rankCandidates(t: Track, results: List<WebResult>) =
         Match.ranked(t, results) { Triple(it.title, it.artist + " | " + it.title.substringBefore(" - ", ""), it.duration) }
 
     fun extraCandidates(t: Track): List<WebResult> {
         val q = t.query
-        val jobs = listOf(::yandex, ::hearthis, ::archive, ::rutube, ::dailymotion, ::audius, ::bandcamp).map { f -> pool.submit<List<WebResult>> { runCatching { f(q) }.getOrDefault(emptyList()) } }
+        val jobs = listOf(::yandex, ::hearthis, ::archive, ::rutube, ::dailymotion, ::audius, ::bandcamp, ::commons).map { f -> pool.submit<List<WebResult>> { runCatching { f(q) }.getOrDefault(emptyList()) } }
         // Ждём все площадки не дольше 6 с суммарно: медленная не задерживает остальных.
         val deadline = System.currentTimeMillis() + 6000
         val all = jobs.flatMap { j ->
@@ -198,6 +199,26 @@ object WebSearch {
     }
 
     /** Internet Archive: ищем записи, берём аудиофайлы, чьё название похоже на запрос. Ссылки — прямые на MP3. */
+    private fun commons(q: String): List<WebResult> {
+        val endpoint = "https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2" +
+            "&generator=search&gsrnamespace=6&gsrlimit=12&prop=imageinfo&iiprop=url%7Cmime" +
+            "&gsrsearch=" + Http.enc("$q filetype:audio")
+        val pages = JSONObject(Http.get(endpoint, timeoutMs = 5000,
+            headers = mapOf("Api-User-Agent" to "SoundAura Android audio search"))).optJSONObject("query")
+            ?.optJSONArray("pages") ?: return emptyList()
+        return (0 until pages.length()).mapNotNull { i ->
+            val page = pages.optJSONObject(i) ?: return@mapNotNull null
+            val info = page.optJSONArray("imageinfo")?.optJSONObject(0) ?: return@mapNotNull null
+            val url = info.optString("url")
+            val mime = info.optString("mime")
+            if (!url.startsWith("https://upload.wikimedia.org/") ||
+                !(mime.startsWith("audio/") || mime == "application/ogg")) return@mapNotNull null
+            val title = page.optString("title").removePrefix("File:").substringBeforeLast('.').replace('_', ' ')
+            if (title.isBlank()) return@mapNotNull null
+            WebResult(url, title, "", 0, "Wikimedia Commons", direct = true)
+        }
+    }
+
     private fun archive(q: String): List<WebResult> {
         val docs = Http.json(
             "https://archive.org/advancedsearch.php?rows=6&output=json&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&q=" +
