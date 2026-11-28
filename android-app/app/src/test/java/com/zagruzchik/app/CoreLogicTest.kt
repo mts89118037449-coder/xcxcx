@@ -10,7 +10,8 @@ class CoreLogicTest {
     @Test
     fun matchNormAndBase() {
         assertEquals("елка прованс", Match.norm("Ёлка — Прованс!"))
-        assertEquals("еще один день", Match.norm("Ещё один день (2025)"))
+        assertEquals("еще один день 2025", Match.norm("Ещё один день (2025)"))
+        assertEquals("еще один день", Match.base("Ещё один день (2025)"))
         assertEquals("moonlight on the river", Match.base("Moonlight on the River (Official Audio)"))
         assertEquals("kahlil gibran", Match.base("Kahlil Gibran – Single Version"))
         assertEquals("ждать ее", Match.base("Ждать её (feat. Кто-то) [Remix]"))
@@ -268,6 +269,73 @@ class CoreLogicTest {
             assertTrue(System.currentTimeMillis() - t0 < 1000L)
         } finally {
             pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun tasteDaySlotsAndTimeDecay() {
+        // Утро 5..11 -> 0, День 12..17 -> 1, Вечер 18..22 -> 2, Ночь остальное -> 3
+        assertEquals(0, Taste.daySlotOf(5))
+        assertEquals(0, Taste.daySlotOf(11))
+        assertEquals(1, Taste.daySlotOf(12))
+        assertEquals(1, Taste.daySlotOf(17))
+        assertEquals(2, Taste.daySlotOf(18))
+        assertEquals(2, Taste.daySlotOf(22))
+        assertEquals(3, Taste.daySlotOf(23))
+        assertEquals(3, Taste.daySlotOf(0))
+        assertEquals(3, Taste.daySlotOf(4))
+
+        val dayMs = 86_400_000L
+        assertEquals(1.0, Taste.timeDecay(0L), 1e-6)
+        assertEquals(0.5, Taste.timeDecay(21L * dayMs), 1e-6)
+        assertEquals(0.25, Taste.timeDecay(42L * dayMs), 1e-6)
+        assertTrue(Taste.timeDecay(7L * dayMs) > Taste.timeDecay(14L * dayMs))
+        assertTrue(Taste.timeDecay(14L * dayMs) > Taste.timeDecay(30L * dayMs))
+    }
+
+    @Test
+    fun tagsCosineScore() {
+        val profile = mapOf("рок" to 1.0, "русский" to 0.5)
+        // Полное совпадение с единственным тегом профиля
+        assertEquals(1.0, Tags.cosineScore(mapOf("рок" to 1.0), listOf("рок")), 1e-6)
+        // Частичное совпадение
+        val partial = Tags.cosineScore(profile, listOf("рок", "быстрая"))
+        assertTrue(partial > 0.5 && partial < 1.0)
+        // Ортогональные теги
+        assertEquals(0.0, Tags.cosineScore(profile, listOf("джаз", "инструментал")), 1e-6)
+        // Пустые входные данные
+        assertEquals(0.0, Tags.cosineScore(emptyMap(), listOf("рок")), 1e-6)
+        assertEquals(0.0, Tags.cosineScore(profile, emptyList()), 1e-6)
+    }
+
+    @Test
+    fun auraDaySequenceWithSpacing() {
+        val input = listOf(
+            Track("A1", "Artist A"),
+            Track("A2", "Artist A"),
+            Track("A3", "Artist A"),
+            Track("A4", "Artist A"),
+            Track("B1", "Artist B"),
+            Track("C1", "Artist C"),
+            Track("D1", "Artist D"),
+            Track("E1", "Artist E"),
+            Track("F1", "Artist F"),
+            Track("G1", "Artist G"),
+            Track("H1", "Artist H"),
+            Track("I1", "Artist I"),
+            Track("J1", "Artist J"),
+        )
+        val spaced = AuraDay.sequenceWithSpacing(input, minGap = 4)
+        assertEquals(input.size, spaced.size)
+        val aPositions = spaced.mapIndexedNotNull { idx, t -> if (t.artist == "Artist A") idx else null }
+        assertEquals(4, aPositions.size)
+        for (i in 1 until aPositions.size) {
+            val gap = aPositions[i] - aPositions[i - 1]
+            assertTrue("Expected gap >= 4, got $gap at $aPositions", gap >= 4)
+        }
+        // Не идут подряд
+        for (i in 1 until spaced.size) {
+            assertTrue(spaced[i].artist != spaced[i - 1].artist)
         }
     }
 }

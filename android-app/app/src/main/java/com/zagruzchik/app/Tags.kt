@@ -4,6 +4,9 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import kotlin.math.sqrt
 
 /**
  * Теги песни — из чего она сделана: жанр (Deezer, по альбому), язык, приметы в названии (slowed, phonk, remix…),
@@ -105,14 +108,27 @@ object Tags {
     /** Deezer-номер исполнителя песни (если уже узнали). */
     @Synchronized fun artistId(t: Track): Long = map[Library.key(t)]?.optLong("a") ?: 0L
 
-    /**
-     * Вкус: вес каждого тега по любимым и часто слушаемым песням (Taste.score). Чем больше вес — тем сильнее тег.
-     */
+    /** Вкус: вес каждого тега по любимым и часто слушаемым песням (Taste.score). Чем больше вес — тем сильнее тег. */
     fun profile(): Map<String, Double> {
         val w = HashMap<String, Double>()
         Library.favorites.forEach { t -> val s = 1.0 + maxOf(0.0, Taste.score(t)) * 0.3; of(t).forEach { w.merge(it, s, Double::plus) } }
         val total = w.values.maxOrNull() ?: return emptyMap()
         return w.mapValues { it.value / total }
+    }
+
+    /** Косинусная близость профиля вкуса и тегов трека. */
+    internal fun cosineScore(profile: Map<String, Double>, tags: Collection<String>): Double {
+        if (profile.isEmpty() || tags.isEmpty()) return 0.0
+        val uniq = tags.toSet()
+        var dot = 0.0
+        for (t in uniq) dot += profile[t] ?: 0.0
+        if (dot <= 0.0) return 0.0
+        var sumSq = 0.0
+        for (v in profile.values) sumSq += v * v
+        val normP = sqrt(sumSq)
+        val normT = sqrt(uniq.size.toDouble())
+        if (normP <= 0.0 || normT <= 0.0) return 0.0
+        return dot / (normP * normT)
     }
 
     /** Самые «ваши» теги — для подписи на главной. */
@@ -198,34 +214,78 @@ object Recs {
         val favKeys = favArtists.map { Match.norm(it) }.toSet()
         val rnd = java.util.Random(day())
 
-        // Похожие исполнители: чем к большему числу любимых они «похожи», тем выше.
-        val related = HashMap<Long, Pair<Artist, Int>>()
-        for (name in favArtists) {
-            val a = runCatching { Catalog.artistByName(name) }.getOrNull() ?: continue
-            val page = runCatching { Catalog.artist(a.id) }.getOrNull() ?: continue
-            page.related.filter { Match.norm(it.name) !in favKeys }.forEach { r ->
-                related[r.id] = r to ((related[r.id]?.second ?: 0) + 1)
+        val pool = Executors.newFixedThreadPool(5)
+        try {
+            // Чарт самого «вашего» жанра — запускаем параллельно с похожими артистами.
+            val topGenre = profile.entries.filter { it.key in GENRE_ID }.maxByOrNull { it.value }?.key
+            val chartFuture = topGenre?.let { g ->
+                pool.submit<List<Pair<Track, Double>>> {
+                    val d = runCatching { Http.cachedJson("https://api.deezer.com/chart/${GENRE_ID[g]}/tracks?limit=40").optJSONArray("data") }.getOrNull()
+                        ?: return@submit emptyList()
+                    (0 until d.length()).map { DeezerSource.track(d.getJSONObject(it)) to 0.6 }
+                }
             }
-        }
-        val candidates = ArrayList<Pair<Track, Double>>()
-        related.values.sortedByDescending { it.second }.take(12).forEach { (artist, votes) ->
-            val top = runCatching { Catalog.artist(artist.id).top }.getOrDefault(emptyList()).take(5)
-            top.forEach { candidates += it to 1.0 + 0.5 * votes }
-        }
-        // Чарт самого «вашего» жанра.
-        profile.entries.filter { it.key in GENRE_ID }.maxByOrNull { it.value }?.let { (g, _) ->
-            runCatching { Http.cachedJson("https://api.deezer.com/chart/${GENRE_ID[g]}/tracks?limit=40").optJSONArray("data") }.getOrNull()?.let { d ->
-                (0 until d.length()).forEach { candidates += DeezerSource.track(d.getJSONObject(it)) to 0.6 }
+
+            // Похожие исполнители: чем к большему числу любимых они «похожи», тем выше.
+            val relatedFutures = favArtists.map { name ->
+                pool.submit<List<Artist>> {
+                    val a = runCatching { Catalog.artistByName(name) }.getOrNull() ?: return@submit emptyList()
+                    val page = runCatching { Catalog.artist(a.id) }.getOrNull() ?: return@submit emptyList()
+                    page.related.filter { Match.norm(it.name) !in favKeys }
+                }
             }
-        }
-        val seen = HashSet<String>()
-        return candidates.filter { (t, _) -> val k = Library.key(t); k !in known && seen.add(k) && !Taste.disliked(t) && t.title.isNotBlank() }
-            .map { (t, base) ->
-                // Совпадение тегов: язык и приметы видны сразу; жанр — у тех, кто уже в базе тегов.
-                val tagScore = Tags.of(t).sumOf { profile[it] ?: 0.0 }
-                t to base + tagScore + rnd.nextDouble() * 0.6
+            val related = HashMap<Long, Pair<Artist, Int>>()
+            relatedFutures.forEach { f ->
+                val list = runCatching { f.get(10, TimeUnit.SECONDS) }.getOrDefault(emptyList())
+                list.forEach { r -> related[r.id] = r to ((related[r.id]?.second ?: 0) + 1) }
             }
-            .sortedByDescending { it.second }.take(n).map { it.first }
+
+            val topFutures = related.values.sortedByDescending { it.second }.take(12).map { (artist, votes) ->
+                pool.submit<List<Pair<Track, Double>>> {
+                    val top = runCatching { Catalog.artist(artist.id).top }.getOrDefault(emptyList()).take(5)
+                    top.map { it to (1.0 + 0.5 * votes) }
+                }
+            }
+            val candidates = ArrayList<Pair<Track, Double>>()
+            topFutures.forEach { f ->
+                candidates += runCatching { f.get(10, TimeUnit.SECONDS) }.getOrDefault(emptyList())
+            }
+            chartFuture?.let { f ->
+                candidates += runCatching { f.get(10, TimeUnit.SECONDS) }.getOrDefault(emptyList())
+            }
+
+            val seen = HashSet<String>()
+            val scored = candidates.filter { (t, _) -> val k = Library.key(t); k !in known && seen.add(k) && !Taste.disliked(t) && t.title.isNotBlank() }
+                .map { (t, base) ->
+                    val cos = Tags.cosineScore(profile, Tags.of(t))
+                    t to (base + 2.5 * cos + rnd.nextDouble() * 0.4)
+                }
+                .toMutableList()
+
+            val picked = ArrayList<Track>(minOf(n, scored.size))
+            val artistCount = HashMap<String, Int>()
+            while (picked.size < n && scored.isNotEmpty()) {
+                var bestIdx = 0
+                var bestScore = Double.NEGATIVE_INFINITY
+                for (i in scored.indices) {
+                    val (track, sc) = scored[i]
+                    val ak = Match.norm(Library.mainArtist(track.artist))
+                    val cnt = if (ak.isNotEmpty()) (artistCount[ak] ?: 0) else 0
+                    val adj = sc - 0.8 * cnt
+                    if (adj > bestScore) {
+                        bestScore = adj
+                        bestIdx = i
+                    }
+                }
+                val chosen = scored.removeAt(bestIdx).first
+                picked += chosen
+                val ak = Match.norm(Library.mainArtist(chosen.artist))
+                if (ak.isNotEmpty()) artistCount[ak] = (artistCount[ak] ?: 0) + 1
+            }
+            return picked
+        } finally {
+            pool.shutdownNow()
+        }
     }
 
     private fun trackTo(t: Track) = JSONObject().put("t", t.title).put("a", t.artist).put("d", t.durationSec).put("c", t.cover ?: "")

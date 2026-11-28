@@ -102,16 +102,17 @@ object Match {
         }
     }
 
-    private val NON_ALNUM_RE = Regex("""[^\p{L}\p{N}]+""")
+    private val NORM_RE = Regex("""[^\p{L}\p{N}]+""")
     private val BRACKETS_RE = Regex("""\s*[(\[].*?[)\]]""")
     private val FEAT_TAIL_RE = Regex("""\s+(feat|ft)\.?\s.*$""", RegexOption.IGNORE_CASE)
-    private val FEAT_WORD_RE = Regex("""\b(feat|ft)\b""", RegexOption.IGNORE_CASE)
+    private val ARTIST_FEAT_RE = Regex("""\b(feat|ft)\b""", RegexOption.IGNORE_CASE)
     private val ARTIST_SPLIT_RE = Regex("""\s*(,|&|\band\b|\bи\b|\bx\b)\s*""")
     private val REPEAT_CHAR_RE = Regex("(.)\\1+")
+    private val EXTRA_BRACKETS_RE = Regex("""[(\[]([^)\]]+)[)\]]""")
 
     fun norm(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFKC).lowercase()
         .replace('ё', 'е')
-        .replace(NON_ALNUM_RE, " ")
+        .replace(NORM_RE, " ")
         .trim()
 
     /** Название без скобок, «feat.» и приписок через дефис. */
@@ -126,7 +127,7 @@ object Match {
     // Приписки, которые не делают запись другой версией: «official audio», «лирик видео», «премьера трека»…
     private val PLAIN_TAGS = listOf("official", "audio", "lyric", "лирик", "текст", "премьера", "visualizer", "визуал", "клип", "video", "видео", "hd", "hq", "4k", "original mix")
 
-    private fun artists(a: String) = norm(a.replace(FEAT_WORD_RE, ","))
+    private fun artists(a: String) = norm(a.replace(ARTIST_FEAT_RE, ","))
         .split(ARTIST_SPLIT_RE).map { it.trim() }.filter { it.isNotEmpty() }
 
     // Кириллица и латиница, которые выглядят одинаково (МАЯК Х и МАЯК X): для сравнения — одно и то же.
@@ -184,7 +185,7 @@ object Match {
         s -= 3 * versionPenaltyWords(title, src.title).size
         if (isUncensored(title) && !isUncensored(src.title)) s += 2 // без цензуры — лучше
         // Лишняя приписка в скобках, которой нет у исходного трека («Pianoforte», «Sped Up»…) — скорее всего, другая версия.
-        val extra = Regex("""[(\[]([^)\]]+)[)\]]""").findAll(title).filter { !isUncensored(it.value) }.map { norm(it.groupValues[1]) }
+        val extra = EXTRA_BRACKETS_RE.findAll(title).filter { !isUncensored(it.value) }.map { norm(it.groupValues[1]) }
             .filter { it.isNotEmpty() && !srcLow.contains(it) && !it.startsWith("feat") && !it.startsWith("ft ") && !PLAIN_TAGS.any { tag -> it.contains(tag) } }
         if (extra.any()) s -= 3
         if (src.durationSec > 0 && durationSec > 0) {

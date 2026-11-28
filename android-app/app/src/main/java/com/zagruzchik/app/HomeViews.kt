@@ -227,12 +227,52 @@ object AuraDay {
         return out
     }
 
+    internal fun sequenceWithSpacing(
+        tracks: List<Track>,
+        minGap: Int = 4,
+        artistOf: (Track) -> String = { Library.mainArtist(it.artist) },
+    ): List<Track> {
+        if (tracks.size <= 1 || minGap <= 0) return tracks.toList()
+        val remaining = tracks.toMutableList()
+        val out = ArrayList<Track>(tracks.size)
+        val lastSeen = HashMap<String, Int>()
+        while (remaining.isNotEmpty()) {
+            val pos = out.size
+            var pickIdx = -1
+            for (i in remaining.indices) {
+                val ak = Match.norm(artistOf(remaining[i]))
+                val prev = lastSeen[ak]
+                if (ak.isEmpty() || prev == null || pos - prev >= minGap) {
+                    pickIdx = i
+                    break
+                }
+            }
+            if (pickIdx == -1) {
+                var bestPrev = Int.MAX_VALUE
+                for (i in remaining.indices) {
+                    val ak = Match.norm(artistOf(remaining[i]))
+                    val prev = lastSeen[ak] ?: -1
+                    if (prev < bestPrev) {
+                        bestPrev = prev
+                        pickIdx = i
+                    }
+                }
+            }
+            val chosen = remaining.removeAt(pickIdx)
+            val ak = Match.norm(artistOf(chosen))
+            if (ak.isNotEmpty()) lastSeen[ak] = pos
+            out += chosen
+        }
+        return out
+    }
+
     /** Собрать новый набор (сеть). Звать не из главного потока. */
     fun build(ctx: android.content.Context, progress: (String) -> Unit = {}): List<Track> {
         val state = read(ctx)
         val avoid = heard(state)           // услышанное из прошлых наборов — не берём
         val before = previous(state)       // остальное из прошлых наборов — можно, но не больше четверти
         val rnd = java.util.Random()
+        val slotName = Taste.daySlotName(Taste.currentDaySlot())
         // Каждый раз — другие любимые исполнители (из двенадцати самых любимых).
         val artists = Taste.favoriteArtists(12).shuffled(rnd).take(4)
         progress(if (artists.isEmpty()) "Беру лучшее из чарта…" else "Сегодня в основе:\n${artists.joinToString(", ")}")
@@ -247,24 +287,53 @@ object AuraDay {
             for (i in 0 until (lists.maxOfOrNull { it.size } ?: 0)) for (l in lists) l.getOrNull(i)?.let { if (seen.add(Library.key(it))) out += it }
             out
         }
-        // Повторы из прошлых двух наборов — не больше четверти.
-        val (old, fresh) = pool.filter { Library.key(it) !in avoid }.partition { Library.key(it) in before }
-        val base = (fresh.take(24) + old.shuffled(rnd).take(maxOf(0, minOf(8, 30 - fresh.size.coerceAtMost(24))))).take(30)
+
+        // 50% ядро под текущий вкус/слот дня (до 20 из 40), с ограничением повторов из прошлых наборов.
+        val (oldPool, freshPool) = pool.filter { Library.key(it) !in avoid }.partition { Library.key(it) in before }
+        val rankedFresh = Taste.smart(freshPool) { it }
+        val rankedOld = Taste.smart(oldPool) { it }
+        val baseAll = rankedFresh + rankedOld.take(8)
+        val base = baseAll.take(20)
+        val usedKeys = base.map { Library.key(it) }.toHashSet()
+
         progress(Tags.topCached.takeIf { it.isNotEmpty() }?.let { "Ищу новое по вашим тегам:\n${it.joinToString(" · ")}" } ?: "Ищу новое, похожее на любимое…")
-        // Новое по тегам — сначала то, чего не было в прошлых наборах; из прошлых — только если нового не хватает
-        // (журнал 17.11: «из прошлых наборов 13» из 40 — больше обещанной четверти).
-        val allRecs = runCatching { Recs.today(ctx, 60) }.getOrDefault(emptyList()).filter { Library.key(it) !in avoid }
+        // 30% новые открытия (Recs, до 12 из 40).
+        val allRecs = runCatching { Recs.today(ctx, 60) }.getOrDefault(emptyList())
+            .filter { Library.key(it) !in avoid && Library.key(it) !in usedKeys }
         val newRecs = allRecs.filter { Library.key(it) !in before }.shuffled(rnd)
         val oldBudget = maxOf(0, 10 - base.count { Library.key(it) in before })
         val recs = (newRecs + allRecs.filter { Library.key(it) in before }.shuffled(rnd).take(oldBudget)).take(12)
-        val keys = base.map { Library.key(it) }.toHashSet()
-        val mixed = ArrayList<Track>()
-        val ri = recs.filter { Library.key(it) !in keys }.iterator()
-        Taste.smart(base) { it }.forEachIndexed { i, t -> mixed += t; if (i % 2 == 1 && ri.hasNext()) mixed += ri.next() }
-        ri.forEachRemaining { mixed += it }
-        if (mixed.isNotEmpty()) progress("Смешиваю: ${mixed.size} песен,\nиз них новых для вас — ${mixed.size - base.size}")
-        if (mixed.isNotEmpty()) AppLog.add("АУРА ДНЯ: собрана — ${mixed.size} песен (исполнители: ${artists.joinToString(", ")}), " +
-            "новых по тегам ${mixed.size - base.size}, из прошлых наборов ${mixed.count { Library.key(it) in before }} (услышанных исключено ${avoid.size})")
+        recs.forEach { usedKeys += Library.key(it) }
+
+        // 20% забытые любимые (до 8 из 40).
+        val forgotten = Taste.forgottenFavorites(10)
+            .filter { Library.key(it) !in avoid && Library.key(it) !in usedKeys }
+            .take(8)
+        forgotten.forEach { usedKeys += Library.key(it) }
+
+        // Если открытий или забытых не хватило до полного микса, добираем из запаса ядра.
+        val targetSize = 40
+        val extraBase = if (base.size + recs.size + forgotten.size < targetSize) {
+            baseAll.drop(base.size).filter { Library.key(it) !in usedKeys }.take(targetSize - (base.size + recs.size + forgotten.size))
+        } else emptyList()
+        val baseFull = base + extraBase
+
+        // Wave Flow: плавное чередование 50/30/20 (ядро / открытия / забытые любимые) + Anti-Repeat spacing.
+        val interleaved = ArrayList<Track>(baseFull.size + recs.size + forgotten.size)
+        val bi = baseFull.iterator()
+        val ri = recs.iterator()
+        val fi = forgotten.iterator()
+        while (bi.hasNext() || ri.hasNext() || fi.hasNext()) {
+            if (bi.hasNext()) interleaved += bi.next()
+            if (bi.hasNext()) interleaved += bi.next()
+            if (ri.hasNext()) interleaved += ri.next()
+            if (fi.hasNext()) interleaved += fi.next()
+        }
+        val mixed = sequenceWithSpacing(interleaved, minGap = 4)
+
+        if (mixed.isNotEmpty()) progress("Смешиваю: ${mixed.size} песен,\nоткрытий ${recs.size}, забытых ${forgotten.size}")
+        if (mixed.isNotEmpty()) AppLog.add("АУРА ДНЯ ($slotName): собрана — ${mixed.size} песен (исполнители: ${artists.joinToString(", ")}), " +
+            "ядро ${baseFull.size}, открытий ${recs.size}, забытых ${forgotten.size}, из прошлых наборов ${mixed.count { Library.key(it) in before }} (услышанных исключено ${avoid.size})")
         return mixed
     }
 

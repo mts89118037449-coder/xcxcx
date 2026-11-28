@@ -1,35 +1,72 @@
 package com.zagruzchik.app
 
 import android.content.Context
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Calendar
 import java.util.concurrent.Executors
 import kotlin.math.ln
+import kotlin.math.pow
 
 /**
  * Предпочтения: что слушают до конца и часто, что пролистывают, каких исполнителей любят.
  * Отсюда «умная» сортировка медиатеки и порядок песен в радио. Хранится только на телефоне.
  */
 object Taste {
-    private class Stat(var plays: Int = 0, var skips: Int = 0, var last: Long = 0)
+    private class Stat(var plays: Int = 0, var skips: Int = 0, var last: Long = 0, val slots: IntArray = IntArray(4))
+
+    private const val HALF_LIFE_MS = 21.0 * 86_400_000.0
+    private const val ARTIST_COOLDOWN_MS = 2 * 3_600_000.0
 
     private lateinit var file: File
     private val tracks = HashMap<String, Stat>()
     private val artists = HashMap<String, Int>()
     private val names = HashMap<String, String>() // ключ → имя как пишется (для поиска новинок)
+    private val artistSkips = HashMap<String, Long>() // ключ артиста → время последнего пропуска
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "taste-io") }
+
+    internal fun daySlotOf(hour: Int): Int = when (hour) {
+        in 5..11 -> 0  // утро
+        in 12..17 -> 1 // день
+        in 18..22 -> 2 // вечер
+        else -> 3      // ночь
+    }
+
+    internal fun currentDaySlot(): Int = daySlotOf(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
+
+    internal fun daySlotName(slot: Int): String = when (slot) {
+        0 -> "утро"
+        1 -> "день"
+        2 -> "вечер"
+        else -> "ночь"
+    }
+
+    internal fun timeDecay(ageMs: Long): Double {
+        if (ageMs <= 0L) return 1.0
+        return 0.5.pow(ageMs.toDouble() / HALF_LIFE_MS)
+    }
 
     fun init(ctx: Context) {
         file = File(ctx.filesDir, "taste.json")
         val o = runCatching { JSONObject(file.readText()) }.getOrNull() ?: return
-        o.optJSONObject("t")?.let { t ->
-            t.keys().forEach { k -> t.optJSONArray(k)?.let { a -> tracks[k] = Stat(a.optInt(0), a.optInt(1), a.optLong(2)) } }
+        synchronized(this) {
+            o.optJSONObject("t")?.let { t ->
+                t.keys().forEach { k ->
+                    t.optJSONArray(k)?.let { a ->
+                        val slots = IntArray(4) { idx -> a.optInt(3 + idx, 0) }
+                        tracks[k] = Stat(a.optInt(0), a.optInt(1), a.optLong(2), slots)
+                    }
+                }
+            }
+            o.optJSONObject("a")?.let { a -> a.keys().forEach { k -> artists[k] = a.optInt(k) } }
+            o.optJSONObject("n")?.let { n -> n.keys().forEach { k -> names[k] = n.optString(k) } }
+            o.optJSONObject("as")?.let { sk -> sk.keys().forEach { k -> artistSkips[k] = sk.optLong(k) } }
         }
-        o.optJSONObject("a")?.let { a -> a.keys().forEach { k -> artists[k] = a.optInt(k) } }
-        o.optJSONObject("n")?.let { n -> n.keys().forEach { k -> names[k] = n.optString(k) } }
     }
 
-    private fun mainArtist(a: String) = a.split(Regex("""\s*(,|&| feat\.? | ft\.? )\s*""", RegexOption.IGNORE_CASE)).first().trim()
+    private val artistSplit = Regex("""\s*(,|&| feat\.? | ft\.? )\s*""", RegexOption.IGNORE_CASE)
+    private fun mainArtist(a: String) = a.split(artistSplit).first().trim()
     // Нормализация имени дорогая (Unicode + регулярные выражения); на 1400 любимых это 2–2,7 с в главном потоке
     // (журнал 17.11: «ЗАВИСАНИЕ ИНТЕРФЕЙСА … Taste.favoriteArtists»). Запоминаем.
     private val keys = java.util.concurrent.ConcurrentHashMap<String, String>()
@@ -70,37 +107,71 @@ object Taste {
     /** Дослушали (или почти) — плюс песне и исполнителю. */
     @Synchronized fun played(t: Track) {
         val s = tracks.getOrPut(Library.key(t)) { Stat() }
-        s.plays++; s.last = System.currentTimeMillis()
+        s.plays++
+        s.last = System.currentTimeMillis()
+        s.slots[currentDaySlot()]++
         if (t.artist.isNotBlank()) {
             val k = artistKey(t.artist)
             artists.merge(k, 1, Int::plus)
             names[k] = mainArtist(t.artist)
+            artistSkips.remove(k)
         }
         save()
     }
 
     /** Переключили в первые 30 секунд — минус. */
     @Synchronized fun skipped(t: Track) {
+        val now = System.currentTimeMillis()
         val s = tracks.getOrPut(Library.key(t)) { Stat() }
-        s.skips++; s.last = System.currentTimeMillis()
+        s.skips++
+        s.last = now
+        if (t.artist.isNotBlank()) {
+            artistSkips[artistKey(t.artist)] = now
+        }
         save()
     }
 
-    /** Насколько песня «моя»: прослушивания, ♥, любимый исполнитель, пропуски, давно ли слушал. */
+    /** Насколько песня «моя»: прослушивания с затуханием, слот суток, ♥, любимый исполнитель, пропуски и cooldown. */
     @Synchronized fun score(t: Track): Double {
+        val now = System.currentTimeMillis()
         val s = tracks[Library.key(t)]
         val maxArtist = (artists.values.maxOrNull() ?: 0).coerceAtLeast(1)
-        val artist = artists[artistKey(t.artist)] ?: 0
+        val ak = if (t.artist.isNotBlank()) artistKey(t.artist) else ""
+        val artist = if (ak.isNotEmpty()) (artists[ak] ?: 0) else 0
         var x = 0.0
         if (s != null) {
-            x += 2.0 * ln(1.0 + s.plays) - 1.5 * s.skips
-            val days = (System.currentTimeMillis() - s.last) / 86_400_000.0
+            val ageMs = (now - s.last).coerceAtLeast(0L)
+            val decay = timeDecay(ageMs)
+            x += 2.0 * ln(1.0 + s.plays) * (0.4 + 0.6 * decay) - 1.5 * s.skips * decay
+            val totalSlots = s.slots.sum()
+            val slotHits = s.slots[currentDaySlot()]
+            if (totalSlots > 0 && slotHits > 0) {
+                x += 1.2 * (slotHits.toDouble() / totalSlots) * ln(1.0 + slotHits).coerceAtMost(2.0)
+            }
+            val days = ageMs / 86_400_000.0
             if (s.plays > 0 && days < 7) x += 0.5 // недавно нравилось
             if (s.plays > 3 && days < 1) x -= 0.7 // заслушано сегодня — чуть реже
+        }
+        if (ak.isNotEmpty()) {
+            artistSkips[ak]?.let { lastSkip ->
+                val skipAge = now - lastSkip
+                if (skipAge in 0L until ARTIST_COOLDOWN_MS.toLong()) {
+                    x -= 2.5 * (1.0 - skipAge / ARTIST_COOLDOWN_MS)
+                }
+            }
         }
         if (Library.isSaved(t)) x += 3.0
         x += 2.0 * artist / maxArtist
         return x
+    }
+
+    /** Лайкнутые/любимые треки, которые давно не слушали и не пропускали. */
+    @Synchronized fun forgottenFavorites(limit: Int, minAgeDays: Int = 14): List<Track> {
+        if (limit <= 0) return emptyList()
+        val cutoff = System.currentTimeMillis() - minAgeDays.coerceAtLeast(0) * 86_400_000L
+        return Library.favorites.filter { t ->
+            !disliked(t) && (tracks[Library.key(t)]?.let { it.last < cutoff } ?: true)
+        }.shuffled().take(limit)
     }
 
     /** Умная сортировка: любимое и часто слушаемое — выше, но с долей случайности, чтобы не было одинаково каждый раз. */
@@ -120,13 +191,20 @@ object Taste {
     @Synchronized fun disliked(t: Track): Boolean = tracks[Library.key(t)]?.let { it.skips >= 2 && it.skips > it.plays } ?: false
 
     private fun save() {
+        if (!::file.isInitialized) return
         val t = JSONObject()
-        tracks.forEach { (k, s) -> t.put(k, org.json.JSONArray().put(s.plays).put(s.skips).put(s.last)) }
+        tracks.forEach { (k, s) ->
+            t.put(k, JSONArray().put(s.plays).put(s.skips).put(s.last)
+                .put(s.slots[0]).put(s.slots[1]).put(s.slots[2]).put(s.slots[3]))
+        }
         val a = JSONObject()
         artists.forEach { (k, n) -> a.put(k, n) }
         val n = JSONObject()
         names.forEach { (k, v) -> n.put(k, v) }
-        val json = JSONObject().put("t", t).put("a", a).put("n", n).toString()
+        val sk = JSONObject()
+        val now = System.currentTimeMillis()
+        artistSkips.forEach { (k, ts) -> if (now - ts < ARTIST_COOLDOWN_MS.toLong()) sk.put(k, ts) }
+        val json = JSONObject().put("t", t).put("a", a).put("n", n).put("as", sk).toString()
         io.execute { runCatching { File(file.path + ".tmp").apply { writeText(json) }.renameTo(file) } }
     }
 }

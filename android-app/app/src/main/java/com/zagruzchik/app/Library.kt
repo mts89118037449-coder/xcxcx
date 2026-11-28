@@ -19,7 +19,7 @@ object Library {
         loadAlbums(ctx)
         loadPlaylists(ctx)
         file = File(ctx.filesDir, "library.json")
-        synchronized(saved) { saved.clear(); savedKeys = emptySet(); savedLoose = emptySet() }
+        synchronized(saved) { saved.clear(); savedKeys = emptySet(); savedLoose = emptySet(); savedVersion++ }
         val arr = runCatching { JSONArray(file.readText()) }.getOrNull() ?: return
         val loaded = ArrayList<Track>(arr.length())
         for (i in 0 until arr.length()) {
@@ -34,10 +34,11 @@ object Library {
         // …и подписи кнопок, попавшие в медиатеку при переносе с экрана («Открыть контекстное меню для элемента…»).
         val cleaned = synchronized(saved) {
             saved.addAll(loaded)
+            savedVersion++
             saved.removeAll { Importer.isId(it.artist) || ScreenImportService.isUiText(it.artist) || ScreenImportService.isUiText(it.title) }
         }
+        scheduleRebuildSavedIndex()
         if (cleaned) save()
-        rebuildIndexAsync()
     }
 
     // Ключ песни считается через нормализацию текста — недёшево, а в списках он нужен десятки раз: запоминаем.
@@ -147,9 +148,16 @@ object Library {
     fun addFavorites(tracks: List<Track>): Int {
         val fresh = synchronized(saved) {
             val have = saved.map(::key).toHashSet()
-            tracks.filter { have.add(key(it)) }.also { saved.addAll(0, it) }
+            tracks.filter { have.add(key(it)) }.also {
+                if (it.isNotEmpty()) {
+                    saved.addAll(0, it)
+                    savedVersion++
+                    savedKeys = savedKeys + it.map(::key)
+                    savedLoose = savedLoose + it.map(::looseKey)
+                }
+            }
         }
-        rebuildIndexAsync()
+        if (fresh.isNotEmpty()) scheduleRebuildSavedIndex()
         save()
         changed()
         if (fresh.isNotEmpty()) runCatching { Warm.start(App.instance) } // перенесённое — тоже готовим заранее
@@ -163,8 +171,8 @@ object Library {
     fun enriched(playlistId: String?, pairs: List<Pair<Track, Track>>) {
         val by = HashMap<String, Track>(); pairs.forEach { (old, new) -> if (old != new) by[key(old)] = new }
         if (by.isEmpty()) return
-        synchronized(saved) { saved.replaceAll { by[key(it)] ?: it } }
-        rebuildIndexAsync()
+        synchronized(saved) { saved.replaceAll { by[key(it)] ?: it }; savedVersion++ }
+        scheduleRebuildSavedIndex()
         save()
         playlistId?.let { id ->
             synchronized(savedPlaylists) {
@@ -193,26 +201,31 @@ object Library {
 
     @Volatile private var savedKeys: Set<String> = emptySet()
     @Volatile private var savedLoose: Set<String> = emptySet()
-    @Volatile private var indexGen = 0L
-    private val indexPool = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private var savedVersion = 0L
+    private val indexIo = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "library-index") }
 
-    private fun rebuildIndexAsync() {
-        val (snapshot, gen) = synchronized(saved) { saved.toList() to ++indexGen }
-        indexPool.execute {
-            val sk = HashSet<String>(snapshot.size * 2)
-            val sl = HashSet<String>(snapshot.size * 2)
-            for (t in snapshot) {
+    private fun scheduleRebuildSavedIndex() {
+        indexIo.execute {
+            val (ver, snapshot) = synchronized(saved) { savedVersion to saved.toList() }
+            val sk = HashSet<String>(snapshot.size)
+            val sl = HashSet<String>(snapshot.size)
+            snapshot.forEach { t ->
                 sk.add(key(t))
                 sl.add(looseKey(t))
             }
-            if (indexGen == gen) {
-                savedKeys = sk
-                savedLoose = sl
+            val uSk = java.util.Collections.unmodifiableSet(sk)
+            val uSl = java.util.Collections.unmodifiableSet(sl)
+            synchronized(saved) {
+                if (savedVersion == ver) {
+                    savedKeys = uSk
+                    savedLoose = uSl
+                }
             }
         }
     }
 
     /** Основной исполнитель (первый из «А, Б feat. В»). */
+    private val artistSplit = Regex("""\s*(,|&|;| x | feat\.? | ft\.? | и )\s*""", RegexOption.IGNORE_CASE)
     fun mainArtist(a: String) = a.split(artistSplit).first().trim()
 
     /** Ключ попроще: название + основной исполнитель (совместные песни записаны в сервисах по-разному). */
@@ -228,7 +241,6 @@ object Library {
     // Нормализация имени дорогая; на 1400 любимых в главном потоке это 1,4 с (журнал 20.11, страница исполнителя). Запоминаем.
     private val folded = java.util.concurrent.ConcurrentHashMap<String, String>()
     private fun fold(a: String) = folded.getOrPut(a) { Match.fold(Match.norm(a)) }
-    private val artistSplit = Regex("""\s*(,|&|;| x | feat\.? | ft\.? | и )\s*""", RegexOption.IGNORE_CASE)
     private val splitCache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
     fun hasArtist(t: Track, artist: String): Boolean {
         val who = fold(artist)
@@ -237,21 +249,31 @@ object Library {
 
     val favorites: List<Track> get() = synchronized(saved) { saved.toList() }
 
-    fun isSaved(t: Track): Boolean = savedKeys.contains(key(t)) || savedLoose.contains(looseKey(t))
+    fun isSaved(t: Track): Boolean {
+        val sk = savedKeys
+        val sl = savedLoose
+        if (sk.isEmpty() && sl.isEmpty()) return false
+        return sk.contains(key(t)) || sl.contains(looseKey(t))
+    }
 
     /** Добавить/убрать из «Избранного». Возвращает, сохранена ли песня теперь. */
     fun toggle(t: Track): Boolean {
         val k = key(t)
         val lk = looseKey(t)
-        val was = synchronized(saved) { saved.removeAll { key(it) == k || looseKey(it) == lk }.also { if (!it) saved.add(0, t) } }
-        if (was) {
-            savedKeys = savedKeys - k
-            savedLoose = savedLoose - lk
-            rebuildIndexAsync()
-        } else {
-            savedKeys = savedKeys + k
-            savedLoose = savedLoose + lk
+        val was = synchronized(saved) {
+            val removed = saved.removeAll { key(it) == k || looseKey(it) == lk }
+            if (!removed) saved.add(0, t)
+            savedVersion++
+            if (removed) {
+                savedKeys = savedKeys - k
+                savedLoose = savedLoose - lk
+            } else {
+                savedKeys = savedKeys + k
+                savedLoose = savedLoose + lk
+            }
+            removed
         }
+        scheduleRebuildSavedIndex()
         save()
         changed()
         return !was
